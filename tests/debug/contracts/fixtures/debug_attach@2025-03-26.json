@@ -1,0 +1,64 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_attach",
+ "protocol_version": "2025-03-26",
+ "cases": [
+  {
+   "id": "debug_attach/fixed-capability-unavailable@2025-03-26",
+   "kind": "fixed-capability-unavailable",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_attach/fixed-capability-unavailable@2025-03-26",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_attach",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "pid": 4242,
+      "runtime_identity": "clr4",
+      "runtime_family": "net48",
+      "architecture": "x64",
+      "attach_nonce": "n"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_attach/fixed-capability-unavailable@2025-03-26",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "isError": true
+    }
+   }
+  },
+  {
+   "id": "debug_attach/invalid-fields@2025-03-26",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_attach/invalid-fields@2025-03-26",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_attach",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "pid": 0
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_attach/invalid-fields@2025-03-26",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  }
+ ]
+}

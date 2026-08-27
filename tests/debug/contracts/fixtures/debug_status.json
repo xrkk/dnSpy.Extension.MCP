@@ -1,0 +1,190 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_status",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "debug_status/valid",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/valid",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/valid",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"running\"},\"result\":{\"state\":\"running\",\"active_session_id\":\"c2Vzc2lvbi0wMDAx\",\"last_session_id\":\"c2Vzc2lvbi0wMDAw\",\"owned_process\":{\"process_handle\":\"cHJvYy0wMDAx\",\"pid\":4242,\"start_time_utc\":\"2026-08-27T08:00:00.000Z\",\"filename\":\"Sample.exe\",\"image_identity\":{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"runtime_identity\":\"clr4-v4.0.30319\",\"runtime_family\":\"net48\",\"architecture\":\"x64\"},\"observed_process_state\":\"running\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"start_kind\":\"launch\",\"launch_mode\":\"net48-exe\"},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "running"
+      },
+      "result": {
+       "state": "running",
+       "active_session_id": "c2Vzc2lvbi0wMDAx",
+       "last_session_id": "c2Vzc2lvbi0wMDAw",
+       "owned_process": {
+        "process_handle": "cHJvYy0wMDAx",
+        "pid": 4242,
+        "start_time_utc": "2026-08-27T08:00:00.000Z",
+        "filename": "Sample.exe",
+        "image_identity": {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "runtime_identity": "clr4-v4.0.30319",
+        "runtime_family": "net48",
+        "architecture": "x64"
+       },
+       "observed_process_state": "running",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "start_kind": "launch",
+       "launch_mode": "net48-exe"
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_status/invalid-state",
+   "kind": "invalid-state",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/invalid-state",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/invalid-state",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"The requested resource was not found.\",\"recovery\":\"requery_resource\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "NOT_FOUND",
+       "message": "The requested resource was not found.",
+       "recovery": "requery_resource",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "current_state": "idle",
+   "note": "no disallowed state in 3.6; not-found for unknown session"
+  },
+  {
+   "id": "debug_status/invalid-fields",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/invalid-fields",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "bogus": 1
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/invalid-fields",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_status/disabled-gate",
+   "kind": "disabled-gate",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/disabled-gate",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_status/disabled-gate",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"DEBUG_DISABLED\",\"message\":\"Debug tools are disabled.\",\"recovery\":\"enable_debug_tools\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "DEBUG_DISABLED",
+       "message": "Debug tools are disabled.",
+       "recovery": "enable_debug_tools",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   }
+  }
+ ]
+}

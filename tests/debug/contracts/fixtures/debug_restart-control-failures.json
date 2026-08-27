@@ -1,0 +1,245 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_restart",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "debug_restart/scheduled-deadline",
+   "kind": "control-failure",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/scheduled-deadline",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_restart",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/scheduled-deadline",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"running\"},\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The operation timed out.\",\"recovery\":\"wait_for_state\",\"current_state\":\"running\",\"required_states\":[],\"retry_after_ms\":0},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "running"
+      },
+      "error": {
+       "code": "TIMEOUT",
+       "message": "The operation timed out.",
+       "recovery": "wait_for_state",
+       "current_state": "running",
+       "required_states": [],
+       "retry_after_ms": 0
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "expected_event": {
+    "schema_version": "dnspy.debug.v1",
+    "cursor": 11,
+    "timestamp_utc": "2026-08-27T08:00:00.000Z",
+    "kind": "control_failed",
+    "debug_context": {
+     "session_id": "c2Vzc2lvbi0wMDAx",
+     "generation": 1,
+     "pause_epoch": 2,
+     "event_cursor": 10,
+     "state": "running"
+    },
+    "payload": {
+     "operation": "restart",
+     "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+     "control_epoch": 5,
+     "phase": "scheduled",
+     "error": {
+      "code": "TIMEOUT",
+      "message": "The operation timed out.",
+      "recovery": "wait_for_state",
+      "current_state": "running",
+      "required_states": [],
+      "retry_after_ms": 0
+     },
+     "late_completion_policy": "finish_restart_as_failed"
+    },
+    "untrusted_sample_data": false
+   }
+  },
+  {
+   "id": "debug_restart/issued-deadline",
+   "kind": "control-failure",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/issued-deadline",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_restart",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/issued-deadline",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"faulted\"},\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The operation timed out.\",\"recovery\":\"wait_for_state\",\"current_state\":\"faulted\",\"required_states\":[],\"retry_after_ms\":0},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "faulted"
+      },
+      "error": {
+       "code": "TIMEOUT",
+       "message": "The operation timed out.",
+       "recovery": "wait_for_state",
+       "current_state": "faulted",
+       "required_states": [],
+       "retry_after_ms": 0
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "expected_event": {
+    "schema_version": "dnspy.debug.v1",
+    "cursor": 11,
+    "timestamp_utc": "2026-08-27T08:00:00.000Z",
+    "kind": "control_failed",
+    "debug_context": {
+     "session_id": "c2Vzc2lvbi0wMDAx",
+     "generation": 1,
+     "pause_epoch": 2,
+     "event_cursor": 10,
+     "state": "running"
+    },
+    "payload": {
+     "operation": "restart",
+     "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+     "control_epoch": 5,
+     "phase": "issued",
+     "error": {
+      "code": "TIMEOUT",
+      "message": "The operation timed out.",
+      "recovery": "wait_for_state",
+      "current_state": "faulted",
+      "required_states": [],
+      "retry_after_ms": 0
+     },
+     "late_completion_policy": "finish_restart_as_failed"
+    },
+    "untrusted_sample_data": false
+   }
+  },
+  {
+   "id": "debug_restart/issued-explicit-failure",
+   "kind": "control-failure",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/issued-explicit-failure",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_restart",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_restart/issued-explicit-failure",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"faulted\"},\"error\":{\"code\":\"INTERNAL_ERROR\",\"message\":\"An internal error occurred.\",\"recovery\":\"inspect_server_log\",\"current_state\":\"faulted\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "faulted"
+      },
+      "error": {
+       "code": "INTERNAL_ERROR",
+       "message": "An internal error occurred.",
+       "recovery": "inspect_server_log",
+       "current_state": "faulted",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "expected_event": {
+    "schema_version": "dnspy.debug.v1",
+    "cursor": 11,
+    "timestamp_utc": "2026-08-27T08:00:00.000Z",
+    "kind": "control_failed",
+    "debug_context": {
+     "session_id": "c2Vzc2lvbi0wMDAx",
+     "generation": 1,
+     "pause_epoch": 2,
+     "event_cursor": 10,
+     "state": "running"
+    },
+    "payload": {
+     "operation": "restart",
+     "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+     "control_epoch": 5,
+     "phase": "issued",
+     "error": {
+      "code": "INTERNAL_ERROR",
+      "message": "An internal error occurred.",
+      "recovery": "inspect_server_log",
+      "current_state": "faulted",
+      "required_states": []
+     },
+     "late_completion_policy": "finish_restart_as_failed"
+    },
+    "untrusted_sample_data": false
+   }
+  }
+ ]
+}

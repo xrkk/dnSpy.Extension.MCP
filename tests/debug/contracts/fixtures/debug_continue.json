@@ -1,0 +1,186 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_continue",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "debug_continue/valid",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/valid",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_continue",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/valid",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"paused\"},\"result\":{\"state\":\"running\",\"pause_epoch\":2},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "paused"
+      },
+      "result": {
+       "state": "running",
+       "pause_epoch": 2
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_continue/invalid-state",
+   "kind": "invalid-state",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/invalid-state",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_continue",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/invalid-state",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"idle\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "INVALID_STATE",
+       "message": "The operation is invalid in the current state.",
+       "recovery": "query_status",
+       "current_state": "idle",
+       "required_states": [
+        "paused"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "current_state": "idle",
+   "required_states": [
+    "paused"
+   ]
+  },
+  {
+   "id": "debug_continue/invalid-fields",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/invalid-fields",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_continue",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/invalid-fields",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_continue/disabled-gate",
+   "kind": "disabled-gate",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/disabled-gate",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_continue",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_continue/disabled-gate",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"DEBUG_DISABLED\",\"message\":\"Debug tools are disabled.\",\"recovery\":\"enable_debug_tools\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "DEBUG_DISABLED",
+       "message": "Debug tools are disabled.",
+       "recovery": "enable_debug_tools",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,787 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_launch",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "debug_launch/mode-auto",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-auto",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "auto"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-auto",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"starting\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"auto\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "starting"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "auto",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/mode-net48-exe",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-net48-exe",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "break_kind": "entry"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-net48-exe",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"starting\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "starting"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "net48-exe",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/mode-coreclr-apphost",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-coreclr-apphost",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "coreclr-apphost",
+      "break_kind": "none",
+      "target_argv": [
+       "-t"
+      ]
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-coreclr-apphost",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"starting\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"coreclr-apphost\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "starting"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "coreclr-apphost",
+       "runtime_family": "coreclr",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/mode-coreclr-dotnet",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-coreclr-dotnet",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "coreclr-dotnet",
+      "host_path": "C:\\dotnet\\dotnet.exe",
+      "host_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host_argv": [
+       "exec"
+      ]
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-coreclr-dotnet",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"starting\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"coreclr-dotnet\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"host\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "starting"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "coreclr-dotnet",
+       "runtime_family": "coreclr",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "host",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/mode-harness",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-harness",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "harness",
+      "harness_path": "C:\\samples\\H.dll",
+      "harness_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "harness_argv": [
+       "-v"
+      ],
+      "break_kind": "none"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/mode-harness",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"starting\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"harness\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"harness\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "starting"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "harness",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "harness",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/break-kind-none",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-none",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "break_kind": "none"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-none",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"running\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "running"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "net48-exe",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/break-kind-process",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-process",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "break_kind": "process"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-process",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"paused\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "paused"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "net48-exe",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/break-kind-module_cctor_or_entry",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-module_cctor_or_entry",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "break_kind": "module_cctor_or_entry"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-module_cctor_or_entry",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"paused\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "paused"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "net48-exe",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/break-kind-entry",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-entry",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "break_kind": "entry"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/break-kind-entry",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"paused\"},\"result\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"state\":\"starting\",\"claim_deadline_utc\":\"2026-08-27T08:00:30.000Z\",\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"file_identities\":[{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "paused"
+      },
+      "result": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "state": "starting",
+       "claim_deadline_utc": "2026-08-27T08:00:30.000Z",
+       "launch_mode": "net48-exe",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "file_identities": [
+        {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-dotnet-missing-host",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-missing-host",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "coreclr-dotnet"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-missing-host",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-dotnet-break-kind-process",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-break-kind-process",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "coreclr-dotnet",
+      "host_path": "C:\\dotnet.exe",
+      "host_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "break_kind": "process"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-break-kind-process",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-dotnet-harness-fields",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-harness-fields",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "coreclr-dotnet",
+      "host_path": "C:\\dotnet.exe",
+      "host_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "harness_path": "C:\\h.dll"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-dotnet-harness-fields",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-harness-break-kind-entry",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-harness-break-kind-entry",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "harness",
+      "harness_path": "C:\\h.dll",
+      "harness_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "break_kind": "entry"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-harness-break-kind-entry",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-harness-target-argv",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-harness-target-argv",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "harness",
+      "harness_path": "C:\\h.dll",
+      "harness_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target_argv": [
+       "x"
+      ]
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-harness-target-argv",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  },
+  {
+   "id": "debug_launch/invalid-net48-harness-field",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-net48-harness-field",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_launch",
+     "arguments": {
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "target_path": "C:\\samples\\Sample.exe",
+      "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "architecture": "x64",
+      "launch_mode": "net48-exe",
+      "harness_path": "C:\\h.dll"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_launch/invalid-net48-harness-field",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  }
+ ]
+}

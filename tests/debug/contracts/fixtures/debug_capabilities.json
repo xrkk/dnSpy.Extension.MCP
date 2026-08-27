@@ -1,0 +1,383 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "debug_capabilities",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "debug_capabilities/valid-enabled",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/valid-enabled",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_capabilities",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/valid-enabled",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"result\":{\"debug_enabled\":true,\"schema_version\":\"dnspy.debug.v1\",\"extension_version\":\"1.0.0\",\"dnspy_api\":\"v6.6.0\",\"host_architecture\":\"x64\",\"ownership_model\":\"dedicated_instance_operational_isolation\",\"dedicated_instance_required\":true,\"dedicated_instance_acknowledged\":true,\"attach_supported\":false,\"tools\":[\"debug_capabilities\",\"debug_status\",\"debug_launch\",\"debug_pause\",\"debug_continue\",\"debug_restart\",\"debug_terminate\",\"debug_read_events\",\"debug_wait_event\",\"debug_set_breakpoint\",\"debug_list_breakpoints\",\"debug_set_breakpoint_enabled\",\"debug_remove_breakpoint\",\"debug_list_threads\",\"debug_get_stack\",\"debug_step\",\"debug_get_locals\",\"debug_expand_value\",\"debug_list_modules\",\"debug_read_memory\",\"debug_dump_module\",\"debug_set_exception_policy\"],\"runtime_matrix\":[{\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":false,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":false},{\"launch_mode\":\"coreclr-apphost\",\"runtime_family\":\"coreclr\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":false,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"coreclr-apphost\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":false},{\"launch_mode\":\"coreclr-dotnet\",\"runtime_family\":\"coreclr\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":true,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"coreclr-dotnet\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":true}],\"security\":{\"bind_mode\":\"loopback\",\"auth_required\":false,\"cidr_required\":false,\"sample_output_policy\":\"all_tool_output_is_untrusted_data\"},\"artifact_policy\":{\"retention_scope\":\"current_extension_process\",\"retained_integrity\":\"process_lifetime_no_write_delete_share_handles\",\"external_child_race\":\"current_admission_may_complete_next_admission_fail_closed\",\"cancel_pending\":\"control_proceeds_store_fail_closed_until_final_completion\",\"restart_existing\":\"stale_untrusted_fail_closed\",\"automatic_cleanup\":false},\"limits\":{\"request_body_bytes\":1048576,\"tool_result_bytes\":8388608,\"transport_sessions\":16,\"parallel_short_requests\":16,\"long_connections\":8,\"waits\":8,\"transport_idle_seconds\":600,\"control_operation_seconds\":30,\"event_count\":4096,\"event_bytes\":8388608,\"memory_read_bytes\":65536,\"side_effect_cache_entries\":4096,\"side_effect_cache_bytes\":268435456,\"side_effect_cached_envelope_bytes\":65536,\"command_queue_entries\":64,\"control_queue_entries\":8,\"general_queue_entries\":56,\"value_snapshots_per_pause\":2,\"value_handles_per_pause\":4096,\"artifact_operation_seconds\":30,\"artifact_cancel_grace_ms\":2000,\"artifact_io_chunk_bytes\":1048576,\"artifact_file_bytes\":536870912,\"artifact_session_bytes\":1073741824,\"artifact_store_bytes\":8589934592,\"artifact_sessions\":128,\"artifact_root_children\":128,\"artifact_session_children\":4096,\"artifact_store_children\":4096},\"unsupported\":[\"debug_list_attachable_processes\",\"debug_attach\",\"debug_detach\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "result": {
+       "debug_enabled": true,
+       "schema_version": "dnspy.debug.v1",
+       "extension_version": "1.0.0",
+       "dnspy_api": "v6.6.0",
+       "host_architecture": "x64",
+       "ownership_model": "dedicated_instance_operational_isolation",
+       "dedicated_instance_required": true,
+       "dedicated_instance_acknowledged": true,
+       "attach_supported": false,
+       "tools": [
+        "debug_capabilities",
+        "debug_status",
+        "debug_launch",
+        "debug_pause",
+        "debug_continue",
+        "debug_restart",
+        "debug_terminate",
+        "debug_read_events",
+        "debug_wait_event",
+        "debug_set_breakpoint",
+        "debug_list_breakpoints",
+        "debug_set_breakpoint_enabled",
+        "debug_remove_breakpoint",
+        "debug_list_threads",
+        "debug_get_stack",
+        "debug_step",
+        "debug_get_locals",
+        "debug_expand_value",
+        "debug_list_modules",
+        "debug_read_memory",
+        "debug_dump_module",
+        "debug_set_exception_policy"
+       ],
+       "runtime_matrix": [
+        {
+         "launch_mode": "net48-exe",
+         "runtime_family": "net48",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": false,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "net48-exe",
+         "runtime_family": "net48",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": false
+        },
+        {
+         "launch_mode": "coreclr-apphost",
+         "runtime_family": "coreclr",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": false,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "coreclr-apphost",
+         "runtime_family": "coreclr",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": false
+        },
+        {
+         "launch_mode": "coreclr-dotnet",
+         "runtime_family": "coreclr",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": true,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "coreclr-dotnet",
+         "runtime_family": "coreclr",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": true
+        }
+       ],
+       "security": {
+        "bind_mode": "loopback",
+        "auth_required": false,
+        "cidr_required": false,
+        "sample_output_policy": "all_tool_output_is_untrusted_data"
+       },
+       "artifact_policy": {
+        "retention_scope": "current_extension_process",
+        "retained_integrity": "process_lifetime_no_write_delete_share_handles",
+        "external_child_race": "current_admission_may_complete_next_admission_fail_closed",
+        "cancel_pending": "control_proceeds_store_fail_closed_until_final_completion",
+        "restart_existing": "stale_untrusted_fail_closed",
+        "automatic_cleanup": false
+       },
+       "limits": {
+        "request_body_bytes": 1048576,
+        "tool_result_bytes": 8388608,
+        "transport_sessions": 16,
+        "parallel_short_requests": 16,
+        "long_connections": 8,
+        "waits": 8,
+        "transport_idle_seconds": 600,
+        "control_operation_seconds": 30,
+        "event_count": 4096,
+        "event_bytes": 8388608,
+        "memory_read_bytes": 65536,
+        "side_effect_cache_entries": 4096,
+        "side_effect_cache_bytes": 268435456,
+        "side_effect_cached_envelope_bytes": 65536,
+        "command_queue_entries": 64,
+        "control_queue_entries": 8,
+        "general_queue_entries": 56,
+        "value_snapshots_per_pause": 2,
+        "value_handles_per_pause": 4096,
+        "artifact_operation_seconds": 30,
+        "artifact_cancel_grace_ms": 2000,
+        "artifact_io_chunk_bytes": 1048576,
+        "artifact_file_bytes": 536870912,
+        "artifact_session_bytes": 1073741824,
+        "artifact_store_bytes": 8589934592,
+        "artifact_sessions": 128,
+        "artifact_root_children": 128,
+        "artifact_session_children": 4096,
+        "artifact_store_children": 4096
+       },
+       "unsupported": [
+        "debug_list_attachable_processes",
+        "debug_attach",
+        "debug_detach"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_capabilities/valid-disabled-gate",
+   "kind": "valid",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/valid-disabled-gate",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_capabilities",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/valid-disabled-gate",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"result\":{\"debug_enabled\":false,\"schema_version\":\"dnspy.debug.v1\",\"extension_version\":\"1.0.0\",\"dnspy_api\":\"v6.6.0\",\"host_architecture\":\"x64\",\"ownership_model\":\"dedicated_instance_operational_isolation\",\"dedicated_instance_required\":true,\"dedicated_instance_acknowledged\":false,\"attach_supported\":false,\"tools\":[\"debug_capabilities\"],\"runtime_matrix\":[{\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":false,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"net48-exe\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":false},{\"launch_mode\":\"coreclr-apphost\",\"runtime_family\":\"coreclr\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":false,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"coreclr-apphost\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":false},{\"launch_mode\":\"coreclr-dotnet\",\"runtime_family\":\"coreclr\",\"architecture\":\"x86\",\"product_supported\":true,\"launch\":false,\"attach\":false,\"restart\":false,\"host_path_required\":true,\"unavailable_reason\":\"host_architecture_mismatch\"},{\"launch_mode\":\"coreclr-dotnet\",\"runtime_family\":\"coreclr\",\"architecture\":\"x64\",\"product_supported\":true,\"launch\":true,\"attach\":false,\"restart\":true,\"host_path_required\":true}],\"security\":{\"bind_mode\":\"loopback\",\"auth_required\":false,\"cidr_required\":false,\"sample_output_policy\":\"all_tool_output_is_untrusted_data\"},\"artifact_policy\":{\"retention_scope\":\"current_extension_process\",\"retained_integrity\":\"process_lifetime_no_write_delete_share_handles\",\"external_child_race\":\"current_admission_may_complete_next_admission_fail_closed\",\"cancel_pending\":\"control_proceeds_store_fail_closed_until_final_completion\",\"restart_existing\":\"stale_untrusted_fail_closed\",\"automatic_cleanup\":false},\"limits\":{\"request_body_bytes\":1048576,\"tool_result_bytes\":8388608,\"transport_sessions\":16,\"parallel_short_requests\":16,\"long_connections\":8,\"waits\":8,\"transport_idle_seconds\":600,\"control_operation_seconds\":30,\"event_count\":4096,\"event_bytes\":8388608,\"memory_read_bytes\":65536,\"side_effect_cache_entries\":4096,\"side_effect_cache_bytes\":268435456,\"side_effect_cached_envelope_bytes\":65536,\"command_queue_entries\":64,\"control_queue_entries\":8,\"general_queue_entries\":56,\"value_snapshots_per_pause\":2,\"value_handles_per_pause\":4096,\"artifact_operation_seconds\":30,\"artifact_cancel_grace_ms\":2000,\"artifact_io_chunk_bytes\":1048576,\"artifact_file_bytes\":536870912,\"artifact_session_bytes\":1073741824,\"artifact_store_bytes\":8589934592,\"artifact_sessions\":128,\"artifact_root_children\":128,\"artifact_session_children\":4096,\"artifact_store_children\":4096},\"unsupported\":[\"debug_list_attachable_processes\",\"debug_attach\",\"debug_detach\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "result": {
+       "debug_enabled": false,
+       "schema_version": "dnspy.debug.v1",
+       "extension_version": "1.0.0",
+       "dnspy_api": "v6.6.0",
+       "host_architecture": "x64",
+       "ownership_model": "dedicated_instance_operational_isolation",
+       "dedicated_instance_required": true,
+       "dedicated_instance_acknowledged": false,
+       "attach_supported": false,
+       "tools": [
+        "debug_capabilities"
+       ],
+       "runtime_matrix": [
+        {
+         "launch_mode": "net48-exe",
+         "runtime_family": "net48",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": false,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "net48-exe",
+         "runtime_family": "net48",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": false
+        },
+        {
+         "launch_mode": "coreclr-apphost",
+         "runtime_family": "coreclr",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": false,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "coreclr-apphost",
+         "runtime_family": "coreclr",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": false
+        },
+        {
+         "launch_mode": "coreclr-dotnet",
+         "runtime_family": "coreclr",
+         "architecture": "x86",
+         "product_supported": true,
+         "launch": false,
+         "attach": false,
+         "restart": false,
+         "host_path_required": true,
+         "unavailable_reason": "host_architecture_mismatch"
+        },
+        {
+         "launch_mode": "coreclr-dotnet",
+         "runtime_family": "coreclr",
+         "architecture": "x64",
+         "product_supported": true,
+         "launch": true,
+         "attach": false,
+         "restart": true,
+         "host_path_required": true
+        }
+       ],
+       "security": {
+        "bind_mode": "loopback",
+        "auth_required": false,
+        "cidr_required": false,
+        "sample_output_policy": "all_tool_output_is_untrusted_data"
+       },
+       "artifact_policy": {
+        "retention_scope": "current_extension_process",
+        "retained_integrity": "process_lifetime_no_write_delete_share_handles",
+        "external_child_race": "current_admission_may_complete_next_admission_fail_closed",
+        "cancel_pending": "control_proceeds_store_fail_closed_until_final_completion",
+        "restart_existing": "stale_untrusted_fail_closed",
+        "automatic_cleanup": false
+       },
+       "limits": {
+        "request_body_bytes": 1048576,
+        "tool_result_bytes": 8388608,
+        "transport_sessions": 16,
+        "parallel_short_requests": 16,
+        "long_connections": 8,
+        "waits": 8,
+        "transport_idle_seconds": 600,
+        "control_operation_seconds": 30,
+        "event_count": 4096,
+        "event_bytes": 8388608,
+        "memory_read_bytes": 65536,
+        "side_effect_cache_entries": 4096,
+        "side_effect_cache_bytes": 268435456,
+        "side_effect_cached_envelope_bytes": 65536,
+        "command_queue_entries": 64,
+        "control_queue_entries": 8,
+        "general_queue_entries": 56,
+        "value_snapshots_per_pause": 2,
+        "value_handles_per_pause": 4096,
+        "artifact_operation_seconds": 30,
+        "artifact_cancel_grace_ms": 2000,
+        "artifact_io_chunk_bytes": 1048576,
+        "artifact_file_bytes": 536870912,
+        "artifact_session_bytes": 1073741824,
+        "artifact_store_bytes": 8589934592,
+        "artifact_sessions": 128,
+        "artifact_root_children": 128,
+        "artifact_session_children": 4096,
+        "artifact_store_children": 4096
+       },
+       "unsupported": [
+        "debug_list_attachable_processes",
+        "debug_attach",
+        "debug_detach"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   }
+  },
+  {
+   "id": "debug_capabilities/invalid-fields",
+   "kind": "invalid-fields",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/invalid-fields",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_capabilities",
+     "arguments": {
+      "unexpected": true
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "debug_capabilities/invalid-fields",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   }
+  }
+ ]
+}

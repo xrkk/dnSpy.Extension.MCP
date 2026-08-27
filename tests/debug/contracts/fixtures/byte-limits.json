@@ -1,0 +1,1786 @@
+{
+ "schema_version": "dnspy.debug.fixtures.v1",
+ "api": "byte-limits",
+ "protocol_version": "2025-06-18",
+ "cases": [
+  {
+   "id": "byte/opaque_handle@ascii@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@ascii@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"paused\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"paused\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "paused"
+      },
+      "error": {
+       "code": "INVALID_STATE",
+       "message": "The operation is invalid in the current state.",
+       "recovery": "query_status",
+       "current_state": "paused",
+       "required_states": [
+        "paused"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/opaque_handle@ascii@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@ascii@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/opaque_handle@bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/opaque_handle@bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/opaque_handle@non-bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@non-bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/opaque_handle@non-bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_step",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "kind": "over",
+      "thread_handle": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/opaque_handle@non-bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/opaque_handle",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@ascii@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@ascii@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"result\":{\"state\":\"running\",\"active_session_id\":\"c2Vzc2lvbi0wMDAx\",\"last_session_id\":\"c2Vzc2lvbi0wMDAw\",\"owned_process\":{\"process_handle\":\"cHJvYy0wMDAx\",\"pid\":4242,\"start_time_utc\":\"2026-08-27T08:00:00.000Z\",\"filename\":\"Sample.exe\",\"image_identity\":{\"role\":\"target\",\"object_kind\":\"file\",\"final_path\":\"C:\\\\samples\\\\Sample.exe\",\"volume_serial\":\"0x1a1a1a1a1a1a1a1a\",\"file_id\":\"2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"runtime_identity\":\"clr4-v4.0.30319\",\"runtime_family\":\"net48\",\"architecture\":\"x64\"},\"observed_process_state\":\"running\",\"runtime_family\":\"net48\",\"architecture\":\"x64\",\"start_kind\":\"launch\",\"launch_mode\":\"net48-exe\"},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "result": {
+       "state": "running",
+       "active_session_id": "c2Vzc2lvbi0wMDAx",
+       "last_session_id": "c2Vzc2lvbi0wMDAw",
+       "owned_process": {
+        "process_handle": "cHJvYy0wMDAx",
+        "pid": 4242,
+        "start_time_utc": "2026-08-27T08:00:00.000Z",
+        "filename": "Sample.exe",
+        "image_identity": {
+         "role": "target",
+         "object_kind": "file",
+         "final_path": "C:\\samples\\Sample.exe",
+         "volume_serial": "0x1a1a1a1a1a1a1a1a",
+         "file_id": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "runtime_identity": "clr4-v4.0.30319",
+        "runtime_family": "net48",
+        "architecture": "x64"
+       },
+       "observed_process_state": "running",
+       "runtime_family": "net48",
+       "architecture": "x64",
+       "start_kind": "launch",
+       "launch_mode": "net48-exe"
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@ascii@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@ascii@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@non-bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@non-bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/session_id@non-bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_status",
+     "arguments": {
+      "session_id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/session_id@non-bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/session_id",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@ascii@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@ascii@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"running\"},\"result\":{\"items\":[{\"breakpoint_id\":\"YnBrcC0wMDAx\",\"owned\":true,\"enabled\":true,\"bound\":true,\"module_identity\":{\"module_handle\":\"bW9kdWxlLTAwMDE\",\"runtime_handle\":\"cnVudGltZS0wMDAx\",\"name\":\"Sample.dll\",\"mvid\":\"0a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d\",\"base_address\":\"0x7ff000000000\",\"size\":1048576,\"layout\":\"file\",\"identity_strength\":\"disk_strong\"},\"method_token\":\"0x06000001\",\"il_offset\":0}],\"truncated\":false},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "running"
+      },
+      "result": {
+       "items": [
+        {
+         "breakpoint_id": "YnBrcC0wMDAx",
+         "owned": true,
+         "enabled": true,
+         "bound": true,
+         "module_identity": {
+          "module_handle": "bW9kdWxlLTAwMDE",
+          "runtime_handle": "cnVudGltZS0wMDAx",
+          "name": "Sample.dll",
+          "mvid": "0a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d",
+          "base_address": "0x7ff000000000",
+          "size": 1048576,
+          "layout": "file",
+          "identity_strength": "disk_strong"
+         },
+         "method_token": "0x06000001",
+         "il_offset": 0
+        }
+       ],
+       "truncated": false
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     }
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@ascii@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@ascii@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@non-bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@non-bmp@at-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/page_cursor@non-bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_breakpoints",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "page_cursor": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/page_cursor@non-bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "structure",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/page_cursor",
+   "max_utf8_bytes": 1024
+  },
+  {
+   "id": "byte/name_filter@ascii@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@ascii@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "CAPABILITY_UNAVAILABLE",
+       "message": "The requested capability is unavailable.",
+       "recovery": "choose_supported_workflow",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 256,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/name_filter@ascii@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@ascii@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 257,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/name_filter@bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@bmp@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "CAPABILITY_UNAVAILABLE",
+       "message": "The requested capability is unavailable.",
+       "recovery": "choose_supported_workflow",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 256,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/name_filter@bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 257,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/name_filter@non-bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@non-bmp@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "CAPABILITY_UNAVAILABLE",
+       "message": "The requested capability is unavailable.",
+       "recovery": "choose_supported_workflow",
+       "current_state": "idle",
+       "required_states": []
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 256,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/name_filter@non-bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_list_attachable_processes",
+     "arguments": {
+      "name_filter": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/name_filter@non-bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 257,
+   "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+   "max_utf8_bytes": 256
+  },
+  {
+   "id": "byte/relative_name@ascii@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@ascii@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"idle\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "INVALID_STATE",
+       "message": "The operation is invalid in the current state.",
+       "recovery": "query_status",
+       "current_state": "idle",
+       "required_states": [
+        "paused"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 128,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/relative_name@ascii@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@ascii@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 129,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/relative_name@bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@bmp@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"idle\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "INVALID_STATE",
+       "message": "The operation is invalid in the current state.",
+       "recovery": "query_status",
+       "current_state": "idle",
+       "required_states": [
+        "paused"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 128,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/relative_name@bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 129,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/relative_name@non-bmp@at-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@non-bmp@at-limit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"idle\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      }
+     ],
+     "structuredContent": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": false,
+      "debug_context": {
+       "session_id": "c2Vzc2lvbi0wMDAx",
+       "generation": 1,
+       "pause_epoch": 2,
+       "event_cursor": 10,
+       "state": "idle"
+      },
+      "error": {
+       "code": "INVALID_STATE",
+       "message": "The operation is invalid in the current state.",
+       "recovery": "query_status",
+       "current_state": "idle",
+       "required_states": [
+        "paused"
+       ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+     },
+     "isError": true
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 128,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/relative_name@non-bmp@over-limit",
+   "kind": "byte-input",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_dump_module",
+     "arguments": {
+      "session_id": "c2Vzc2lvbi0wMDAx",
+      "generation": 1,
+      "pause_epoch": 2,
+      "request_id": "01234567-89ab-cdef-0123-456789abcdef",
+      "module_handle": "bW9kdWxlLTAwMDE",
+      "relative_name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a"
+     }
+    }
+   },
+   "expected_response": {
+    "jsonrpc": "2.0",
+    "id": "byte/relative_name@non-bmp@over-limit",
+    "error": {
+     "code": -32602,
+     "message": "Invalid params"
+    }
+   },
+   "stage": "byte",
+   "utf8_bytes": 129,
+   "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+   "max_utf8_bytes": 128
+  },
+  {
+   "id": "byte/warning.warning@ascii@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/warning.warning@ascii@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/warning.warning@bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/warning.warning@bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/warning.warning@non-bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/warning.warning@non-bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/warning.warning@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/warning",
+   "max_utf8_bytes": 1024,
+   "output_target": "warning"
+  },
+  {
+   "id": "byte/value_node.name@ascii@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.name@ascii@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.name@bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.name@bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.name@non-bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.name@non-bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.name@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/name",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@ascii@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@ascii@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@non-bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.type@non-bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.type@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/type",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@ascii@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@ascii@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@non-bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65536,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/value_node.display@non-bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/value_node.display@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "truncated_true_scalar_prefix"
+   },
+   "stage": "byte",
+   "utf8_bytes": 65537,
+   "pointer": "/$defs/value_node/properties/display",
+   "max_utf8_bytes": 65536,
+   "output_target": "value_node"
+  },
+  {
+   "id": "byte/evidence_value.value@ascii@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@ascii@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  },
+  {
+   "id": "byte/evidence_value.value@ascii@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@ascii@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  },
+  {
+   "id": "byte/evidence_value.value@bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  },
+  {
+   "id": "byte/evidence_value.value@bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  },
+  {
+   "id": "byte/evidence_value.value@non-bmp@at-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@non-bmp@at-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "pass"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1024,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  },
+  {
+   "id": "byte/evidence_value.value@non-bmp@over-limit",
+   "kind": "byte-output-rule",
+   "request": {
+    "jsonrpc": "2.0",
+    "id": "byte/evidence_value.value@non-bmp@over-limit",
+    "method": "tools/call",
+    "params": {
+     "name": "debug_get_locals",
+     "arguments": {}
+    }
+   },
+   "expected_response": {
+    "rule": "small_internal_error_envelope"
+   },
+   "stage": "byte",
+   "utf8_bytes": 1025,
+   "pointer": "/$defs/unsupported_target_evidence/properties/value",
+   "max_utf8_bytes": 1024,
+   "output_target": "evidence_value"
+  }
+ ]
+}
