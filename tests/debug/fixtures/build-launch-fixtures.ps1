@@ -1,0 +1,129 @@
+# Builds the six dynamic launch fixtures (IMP-011 ACC-029 matrix) into tests/debug/fixtures/bin.
+# Deterministic: project templates are embedded below, output paths are fixed, no network beyond
+# the dotnet-install step for the isolated x86/x64 CoreCLR runtimes used by the dotnet-host legs.
+param(
+    [string]$OutputRoot = "$PSScriptRoot/bin"
+)
+
+$ErrorActionPreference = 'Stop'
+
+$net48Source = @'
+using System;
+class Fixture {
+    static int Main(string[] args) {
+        Console.WriteLine("net48-fixture: args=" + string.Join(",", args));
+        return 42;
+    }
+}
+'@
+
+$coreclrSource = @'
+using System;
+class Fixture {
+    static int Main(string[] args) {
+        Console.WriteLine("coreclr-fixture: args=" + string.Join(",", args));
+        return 42;
+    }
+}
+'@
+
+# The no-entry library driven by the harness/dotnet-host legs.
+$librarySource = @'
+using System;
+public static class Library {
+    public static int Compute(int x) => x * 2 + 1;
+}
+'@
+
+function Write-LegacyCsproj([string]$dir, [string[]]$sources, [string]$languageVersion, [bool]$x86) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $plat = if ($x86) { '<PlatformTarget>x86</PlatformTarget>' } else { '<PlatformTarget>x64</PlatformTarget>' }
+    $compileItems = ($sources | ForEach-Object { "<Compile Include=`"$([IO.Path]::GetFileName($_))`" />" }) -join "`n      "
+    @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>$languageVersion</LangVersion>
+    $plat
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+      $compileItems
+  </ItemGroup>
+</Project>
+"@ | Set-Content -Path (Join-Path $dir "fixture.csproj") -Encoding UTF8
+}
+
+function Write-SdkCsproj([string]$dir, [string[]]$sources, [string]$outputType, [bool]$x86, [bool]$selfContainedAppHost) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $rid = if ($x86) { "win-x86" } else { "win-x64" }
+    $apphost = if ($selfContainedAppHost) { "<SelfContained>true</SelfContained><RuntimeIdentifier>$rid</RuntimeIdentifier>" } else { "" }
+    $compileItems = ($sources | ForEach-Object { "<Compile Include=`"$([IO.Path]::GetFileName($_))`" />" }) -join "`n      "
+    @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>$outputType</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    $apphost
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+      $compileItems
+  </ItemGroup>
+</Project>
+"@ | Set-Content -Path (Join-Path $dir "fixture.csproj") -Encoding UTF8
+}
+
+function Invoke-DotNetBuild([string]$dir, [string]$logName) {
+    dotnet build (Join-Path $dir "fixture.csproj") -c Release -v quiet "/bl:$(Join-Path $OutputRoot $logName).binlog" | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "fixture build failed: $dir" }
+}
+
+New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
+$work = Join-Path $OutputRoot "src"
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+$net48 = Join-Path $work "net48.cs";   Set-Content -Path $net48 -Value $net48Source -Encoding UTF8
+$coreclr = Join-Path $work "coreclr.cs"; Set-Content -Path $coreclr -Value $coreclrSource -Encoding UTF8
+$library = Join-Path $work "library.cs"; Set-Content -Path $library -Value $librarySource -Encoding UTF8
+
+# net48 legs: single legacy toolchain (compile once per bitness with csc via a net48 csproj).
+Write-LegacyCsproj -dir (Join-Path $work "net48-x64") -sources @($net48) -languageVersion "5" -x86 $false
+Write-LegacyCsproj -dir (Join-Path $work "net48-x86") -sources @($net48) -languageVersion "5" -x86 $true
+Invoke-DotNetBuild (Join-Path $work "net48-x64") "net48-x64"
+Invoke-DotNetBuild (Join-Path $work "net48-x86") "net48-x86"
+Copy-Item (Join-Path $work "net48-x64\bin\Release\fixture.exe") (Join-Path $OutputRoot "net48-x64.exe") -Force
+Copy-Item (Join-Path $work "net48-x86\bin\Release\fixture.exe") (Join-Path $OutputRoot "net48-x86.exe") -Force
+
+# CoreCLR apphost legs.
+Write-SdkCsproj -dir (Join-Path $work "apphost-x64") -sources @($coreclr) -outputType "Exe" -x86 $false -selfContainedAppHost $true
+Write-SdkCsproj -dir (Join-Path $work "apphost-x86") -sources @($coreclr) -outputType "Exe" -x86 $true -selfContainedAppHost $true
+Invoke-DotNetBuild (Join-Path $work "apphost-x64") "apphost-x64"
+Invoke-DotNetBuild (Join-Path $work "apphost-x86") "apphost-x86"
+Copy-Item (Join-Path $work "apphost-x64\bin\Release\fixture.exe") (Join-Path $OutputRoot "coreclr-apphost-x64.exe") -Force
+Copy-Item (Join-Path $work "apphost-x86\bin\Release\fixture.exe") (Join-Path $OutputRoot "coreclr-apphost-x86.exe") -Force
+
+# CoreCLR DLL for the dotnet-host legs (runtimeconfig is generated by the build).
+Write-SdkCsproj -dir (Join-Path $work "dotnet-host") -sources @($library) -outputType "Library" -x86 $false -selfContainedAppHost $false
+Invoke-DotNetBuild (Join-Path $work "dotnet-host") "dotnet-host"
+Copy-Item (Join-Path $work "dotnet-host\bin\Release\fixture.dll") (Join-Path $OutputRoot "coreclr-dotnethost.dll") -Force
+$runtimeconfig = Join-Path $work "dotnet-host\bin\Release\fixture.runtimeconfig.json"
+if (Test-Path $runtimeconfig) {
+    Copy-Item $runtimeconfig (Join-Path $OutputRoot "coreclr-dotnethost.runtimeconfig.json") -Force
+}
+
+# Isolated dotnet hosts for the dotnet-host legs (record resolved versions for the manifest).
+foreach ($arch in @("x86", "x64")) {
+    $dest = Join-Path $OutputRoot "dotnet-$arch"
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    dotnet-install.ps1 -Channel 10.0 -Quality GA -Architecture $arch -InstallDir $dest 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $dest "dotnet.exe"))) {
+        Write-Warning "dotnet-install for $arch unavailable; the E2E driver must locate a host before those legs run"
+    }
+    & (Join-Path $dest "dotnet.exe") --version | Set-Content (Join-Path $dest "resolved-version.txt")
+}
+
+Write-Host "Six launch fixtures built under $OutputRoot"
+Get-ChildItem $OutputRoot -File | Format-Table Name, Length

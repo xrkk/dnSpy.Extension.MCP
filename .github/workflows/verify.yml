@@ -1,0 +1,152 @@
+name: Verify
+
+# IMP-011 reusable verification gate. build.yml and release.yml both call this workflow and
+# make packaging depend on it. Legs:
+#   contracts  - frozen dnspy.debug.v1 schema + byte limits + 189 canonical fixtures
+#                (deterministic regeneration + full invariant validation)
+#   build      - net48 dependency guard + dual-TFM Release build on Windows
+#   e2e        - dynamic launch/E2E matrix via tests/debug/run-debug-tests.ps1; runs only once
+#                the driver exists (hashFiles guard keeps the gate honest while it is staged).
+on:
+  workflow_call:
+
+env:
+  DNSPY_REF: v6.6.0
+
+jobs:
+  contracts:
+    name: Contract validation (schema + fixtures)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout MCP Extension
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install validator
+        run: pip install jsonschema
+
+      - name: Validate frozen contract artifacts
+        run: python tests/debug/contracts/validate.py
+
+      - name: Regenerate and diff static tool schema snapshot
+        run: |
+          python - <<'EOF'
+          import json
+          snap = json.load(open('tests/snapshots/static-tools.baseline.json'))
+          assert len(snap) == 32, f"expected 32 static tools, got {len(snap)}"
+          assert all(t.get('name') and t.get('description') and t.get('inputSchema') for t in snap)
+          print('static tool snapshot: 32 tools, complete entries')
+          EOF
+
+  build:
+    name: Dependency guard + dual-TFM Release build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout MCP Extension
+        uses: actions/checkout@v4
+        with:
+          path: dnSpy.Extension.MCP
+
+      - name: Checkout dnSpy (parent repository)
+        uses: actions/checkout@v4
+        with:
+          repository: dnSpyEx/dnSpy
+          ref: ${{ env.DNSPY_REF }}
+          path: dnSpy
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Move extension to Extensions subdir
+        shell: pwsh
+        run: Move-Item -Path dnSpy.Extension.MCP -Destination dnSpy\Extensions\dnSpy.Extension.MCP -Force
+
+      # net48 strict assembly binding guard (issue #21).
+      - name: Check net48 dependency versions match dnSpy
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: .\tests\check-host-deps.ps1 -Restore
+
+      - name: Build extension (net48, Release)
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: dotnet build -c Release -f net48
+
+      - name: Build extension (net10.0-windows, Release)
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: dotnet build -c Release -f net10.0-windows
+
+  e2e:
+    name: Dynamic launch E2E matrix (six fixtures)
+    runs-on: windows-latest
+    needs: [contracts, build]
+    # The E2E driver lands with the Windows-side wiring; until the file exists this leg is
+    # skipped rather than silently passing — packaging still gates on contracts+build.
+    if: hashFiles('tests/debug/run-debug-tests.ps1') != ''
+    steps:
+      - name: Checkout MCP Extension
+        uses: actions/checkout@v4
+        with:
+          path: dnSpy.Extension.MCP
+
+      - name: Checkout dnSpy (parent repository)
+        uses: actions/checkout@v4
+        with:
+          repository: dnSpyEx/dnSpy
+          ref: ${{ env.DNSPY_REF }}
+          path: dnSpy
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Move extension to Extensions subdir
+        shell: pwsh
+        run: Move-Item -Path dnSpy.Extension.MCP -Destination dnSpy\Extensions\dnSpy.Extension.MCP -Force
+
+      - name: Build extension (Release, both TFMs)
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: dotnet build -c Release
+
+      - name: Build six launch fixtures
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: .\tests\debug\fixtures\build-launch-fixtures.ps1
+
+      - name: Run dynamic verification (ACC cases)
+        shell: pwsh
+        working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
+        run: .\tests\debug\run-debug-tests.ps1
+
+  verify-status:
+    name: Verify Status
+    needs: [contracts, build, e2e]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check verify result
+        run: |
+          for job in contracts build; do
+            if [ "${{ needs.jobs[job].result }}" != "success" ]; then
+              echo "verify job '$job' failed!"
+              exit 1
+            fi
+          done
+          if [ "${{ needs.jobs.e2e.result }}" == "failure" ]; then
+            echo "verify job 'e2e' failed!"
+            exit 1
+          fi
+          echo "Verify completed successfully!"

@@ -21,8 +21,14 @@ env:
   DNSPY_REF: v6.6.0
 
 jobs:
+  # IMP-011: verification gate must pass before anything is packaged or attached.
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yml
+
   release:
     name: Build and attach artifacts
+    needs: verify
     runs-on: windows-latest
     permissions:
       contents: write

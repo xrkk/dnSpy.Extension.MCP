@@ -22,8 +22,15 @@ env:
   DNSPY_REF: v6.6.0
 
 jobs:
+  # IMP-011: the reusable verification gate (contract fixtures, dependency guard, dual-TFM
+  # Release build). Packaging depends on verify.
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yml
+
   build:
     name: Build MCP Extension
+    needs: verify
     runs-on: windows-latest
     strategy:
       matrix:
@@ -92,12 +99,16 @@ jobs:
 
   build-status:
     name: Build Status
-    needs: build
+    needs: [verify, build]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check build result
         run: |
+          if [ "${{ needs.verify.result }}" != "success" ]; then
+            echo "Verify failed!"
+            exit 1
+          fi
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "Build failed!"
             exit 1
