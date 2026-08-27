@@ -1,0 +1,55 @@
+{
+  "schema_version": "dnspy.debug.utf8-limits.v1",
+  "limits": [
+    {
+      "pointer": "/$defs/debug_dump_module_args/properties/relative_name",
+      "direction": "input",
+      "max_utf8_bytes": 128
+    },
+    {
+      "pointer": "/$defs/debug_list_attachable_processes_args/properties/name_filter",
+      "direction": "input",
+      "max_utf8_bytes": 256
+    },
+    {
+      "pointer": "/$defs/opaque_handle",
+      "direction": "both",
+      "max_utf8_bytes": 1024
+    },
+    {
+      "pointer": "/$defs/page_cursor",
+      "direction": "both",
+      "max_utf8_bytes": 1024
+    },
+    {
+      "pointer": "/$defs/session_id",
+      "direction": "both",
+      "max_utf8_bytes": 1024
+    },
+    {
+      "pointer": "/$defs/unsupported_target_evidence/properties/value",
+      "direction": "output",
+      "max_utf8_bytes": 1024
+    },
+    {
+      "pointer": "/$defs/value_node/properties/display",
+      "direction": "output",
+      "max_utf8_bytes": 65536
+    },
+    {
+      "pointer": "/$defs/value_node/properties/name",
+      "direction": "output",
+      "max_utf8_bytes": 65536
+    },
+    {
+      "pointer": "/$defs/value_node/properties/type",
+      "direction": "output",
+      "max_utf8_bytes": 65536
+    },
+    {
+      "pointer": "/$defs/warning",
+      "direction": "output",
+      "max_utf8_bytes": 1024
+    }
+  ]
+}

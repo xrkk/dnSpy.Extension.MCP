@@ -1,0 +1,926 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dnspy:extension:mcp:contracts:dnspy.debug.v1.schema.json",
+  "title": "dnspy.debug.v1 public debug contract (API-DYN-001..025, TYPE-DYN-001..019, EVT-DYN-001..021, 3.4 envelope)",
+  "description": "Structural contract only. UTF-8 byte limits live exclusively in dnspy.debug.utf8-limits.json; JSON Schema maxLength counts characters and must never replace the byte stage (EVD-SCHEMA-001). All request/result/error/event-payload objects are additionalProperties=false (CON-DYN-013).",
+  "anyOf": [
+    { "$ref": "#/$defs/envelope_success" },
+    { "$ref": "#/$defs/envelope_failure" },
+    { "$ref": "#/$defs/event_envelope" }
+  ],
+  "$defs": {
+    "non_negative_int": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "pid": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+    "exit_code": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+    "rfc3339_utc_ms": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "address": { "type": "string", "pattern": "^0x[0-9a-f]{1,16}$" },
+    "sha256_hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "mvid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "method_token": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+    "volume_serial": { "type": "string", "pattern": "^0x[0-9a-f]{16}$" },
+    "file_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "opaque_handle": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,1024}$" },
+    "session_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,1024}$" },
+    "page_cursor": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,1024}$" },
+    "warning": { "type": "string", "minLength": 1 },
+    "runtime_family": { "enum": [ "net48", "coreclr" ] },
+    "architecture": { "enum": [ "x86", "x64" ] },
+    "coordinator_state": { "enum": [ "idle", "starting", "running", "paused", "restarting", "stopping", "faulted" ] },
+    "launch_mode": { "enum": [ "auto", "net48-exe", "coreclr-apphost", "coreclr-dotnet", "harness" ] },
+    "break_kind": { "enum": [ "none", "process", "module_cctor_or_entry", "entry" ] },
+    "event_kind": { "enum": [ "session_start", "start_failed", "process_created", "process_exited", "runtime_created", "module_loaded", "module_unloaded", "thread_created", "thread_exited", "paused", "continued", "breakpoint_bound", "breakpoint_hit", "exception", "step_completed", "output", "ownership_lost", "recovery", "payload_omitted", "session_end", "control_failed" ] },
+
+    "debug_context": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "session_id": { "$ref": "#/$defs/session_id" },
+        "generation": { "$ref": "#/$defs/non_negative_int" },
+        "pause_epoch": { "$ref": "#/$defs/non_negative_int" },
+        "event_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "state": { "$ref": "#/$defs/coordinator_state" }
+      },
+      "required": [ "generation", "pause_epoch", "event_cursor", "state" ]
+    },
+    "page_request": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "page_cursor": { "$ref": "#/$defs/page_cursor" }
+      }
+    },
+    "module_identity": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "module_handle": { "$ref": "#/$defs/opaque_handle" },
+        "runtime_handle": { "$ref": "#/$defs/opaque_handle" },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "mvid": { "$ref": "#/$defs/mvid" },
+        "sha256": { "$ref": "#/$defs/sha256_hex" },
+        "base_address": { "$ref": "#/$defs/address" },
+        "size": { "$ref": "#/$defs/non_negative_int" },
+        "layout": { "enum": [ "file", "memory" ] },
+        "identity_strength": { "enum": [ "disk_strong", "runtime_weak" ] }
+      },
+      "required": [ "module_handle", "runtime_handle", "name", "mvid", "base_address", "size", "layout", "identity_strength" ]
+    },
+    "location": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "module_handle": { "$ref": "#/$defs/opaque_handle" },
+        "method_token": { "$ref": "#/$defs/method_token" },
+        "il_offset": { "$ref": "#/$defs/non_negative_int" },
+        "native_ip": { "$ref": "#/$defs/address" }
+      },
+      "required": [ "module_handle" ],
+      "allOf": [
+        { "if": { "required": [ "method_token" ] }, "then": { "required": [ "il_offset" ] } },
+        { "if": { "required": [ "il_offset" ] }, "then": { "required": [ "method_token" ] } }
+      ]
+    },
+    "exception_policy": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "break_on": { "enum": [ "unhandled", "first_chance_and_unhandled", "none" ] } },
+      "required": [ "break_on" ]
+    },
+    "value_node": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "value_handle": { "$ref": "#/$defs/opaque_handle" },
+        "parent_value_handle": { "$ref": "#/$defs/opaque_handle" },
+        "depth": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "enum": [ "this", "parameter", "local", "field", "array_element" ] },
+        "type": { "type": "string", "minLength": 1 },
+        "display": { "type": "string" },
+        "has_children": { "type": "boolean" },
+        "is_null": { "type": "boolean" },
+        "truncated": { "type": "boolean" },
+        "unavailable_reason": { "enum": [ "requires_function_evaluation", "value_handle_limit" ] }
+      },
+      "required": [ "depth", "name", "kind", "type", "display", "has_children", "is_null", "truncated" ],
+      "allOf": [
+        {
+          "if": { "properties": { "has_children": { "const": true }, "is_null": { "const": false } }, "required": [ "has_children", "is_null" ], "not": { "required": [ "unavailable_reason" ] } },
+          "then": { "required": [ "value_handle" ] }
+        },
+        {
+          "if": { "anyOf": [
+            { "properties": { "has_children": { "const": false } }, "required": [ "has_children" ] },
+            { "properties": { "is_null": { "const": true } }, "required": [ "is_null" ] },
+            { "required": [ "unavailable_reason" ] }
+          ] },
+          "then": { "not": { "required": [ "value_handle" ] } }
+        }
+      ]
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "enum": [ "raw", "reconstructed" ] },
+        "layout": { "enum": [ "file", "memory" ] },
+        "size": { "$ref": "#/$defs/non_negative_int" },
+        "sha256": { "$ref": "#/$defs/sha256_hex" },
+        "source_module": { "$ref": "#/$defs/module_identity" },
+        "manifest_path": { "type": "string", "minLength": 1 }
+      },
+      "required": [ "artifact_id", "path", "kind", "layout", "size", "sha256", "source_module", "manifest_path" ]
+    },
+    "breakpoint": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "breakpoint_id": { "$ref": "#/$defs/opaque_handle" },
+        "owned": { "const": true },
+        "enabled": { "type": "boolean" },
+        "bound": { "type": "boolean" },
+        "module_identity": { "$ref": "#/$defs/module_identity" },
+        "method_token": { "$ref": "#/$defs/method_token" },
+        "il_offset": { "$ref": "#/$defs/non_negative_int" },
+        "last_error": { "$ref": "#/$defs/domain_error" }
+      },
+      "required": [ "breakpoint_id", "owned", "enabled", "bound", "module_identity", "method_token", "il_offset" ]
+    },
+    "runtime_matrix_entry": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "launch_mode": { "enum": [ "net48-exe", "coreclr-apphost", "coreclr-dotnet" ] },
+        "runtime_family": { "$ref": "#/$defs/runtime_family" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "product_supported": { "const": true },
+        "launch": { "type": "boolean" },
+        "attach": { "const": false },
+        "restart": { "type": "boolean" },
+        "host_path_required": { "type": "boolean" },
+        "unavailable_reason": { "const": "host_architecture_mismatch" }
+      },
+      "required": [ "launch_mode", "runtime_family", "architecture", "product_supported", "launch", "attach", "restart", "host_path_required" ],
+      "allOf": [
+        { "if": { "properties": { "launch": { "const": false } }, "required": [ "launch" ] }, "then": { "required": [ "unavailable_reason" ] } },
+        { "if": { "properties": { "launch": { "const": true } }, "required": [ "launch" ] }, "then": { "not": { "required": [ "unavailable_reason" ] } } }
+      ]
+    },
+    "domain_error": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "code": { "enum": [ "DEBUG_DISABLED", "CAPABILITY_UNAVAILABLE", "INVALID_STATE", "STALE_HANDLE", "TARGET_MISMATCH", "NOT_FOUND", "ALREADY_EXISTS", "LIMIT_EXCEEDED", "TIMEOUT", "OWNERSHIP_LOST", "REQUEST_ID_REUSE", "INTERNAL_ERROR" ] },
+        "message": { "type": "string", "minLength": 1 },
+        "recovery": { "type": "string", "minLength": 1 },
+        "current_state": { "$ref": "#/$defs/coordinator_state" },
+        "required_states": { "type": "array", "items": { "$ref": "#/$defs/coordinator_state" }, "uniqueItems": true, "maxItems": 7 },
+        "retry_after_ms": { "type": "integer", "minimum": 0, "maximum": 30000 },
+        "details": { "$ref": "#/$defs/unsupported_target_details" }
+      },
+      "required": [ "code", "message", "recovery", "current_state", "required_states" ],
+      "allOf": [
+        { "if": { "properties": { "code": { "const": "LIMIT_EXCEEDED" } }, "required": [ "code" ] }, "then": { "properties": { "retry_after_ms": { "const": 1000 } }, "required": [ "retry_after_ms" ] } },
+        { "if": { "properties": { "code": { "const": "TIMEOUT" } }, "required": [ "code" ] }, "then": { "properties": { "retry_after_ms": { "const": 0 } }, "required": [ "retry_after_ms" ] } },
+        { "if": { "properties": { "code": { "enum": [ "DEBUG_DISABLED", "CAPABILITY_UNAVAILABLE", "INVALID_STATE", "STALE_HANDLE", "TARGET_MISMATCH", "NOT_FOUND", "ALREADY_EXISTS", "OWNERSHIP_LOST", "REQUEST_ID_REUSE", "INTERNAL_ERROR" ] } }, "required": [ "code" ] }, "then": { "not": { "required": [ "retry_after_ms" ] } } },
+        { "if": { "properties": { "code": { "const": "INVALID_STATE" } }, "required": [ "code" ] }, "then": { "properties": { "required_states": { "minItems": 1 } } } },
+        { "if": { "not": { "properties": { "code": { "const": "INVALID_STATE" } }, "required": [ "code" ] } }, "then": { "properties": { "required_states": { "maxItems": 0 } } } }
+      ]
+    },
+    "file_identity": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "role": { "enum": [ "target", "host", "harness", "working_directory" ] },
+        "object_kind": { "enum": [ "file", "directory" ] },
+        "final_path": { "type": "string", "minLength": 1 },
+        "volume_serial": { "$ref": "#/$defs/volume_serial" },
+        "file_id": { "$ref": "#/$defs/file_id" },
+        "sha256": { "$ref": "#/$defs/sha256_hex" }
+      },
+      "required": [ "role", "object_kind", "final_path", "volume_serial", "file_id" ],
+      "allOf": [
+        { "if": { "properties": { "object_kind": { "const": "file" } }, "required": [ "object_kind" ] }, "then": { "required": [ "sha256" ] } },
+        { "if": { "properties": { "object_kind": { "const": "directory" } }, "required": [ "object_kind" ] }, "then": { "not": { "required": [ "sha256" ] } } }
+      ]
+    },
+    "owned_process": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "process_handle": { "$ref": "#/$defs/opaque_handle" },
+        "pid": { "$ref": "#/$defs/pid" },
+        "start_time_utc": { "$ref": "#/$defs/rfc3339_utc_ms" },
+        "filename": { "type": "string", "minLength": 1 },
+        "image_identity": { "$ref": "#/$defs/file_identity" },
+        "runtime_identity": { "type": "string", "minLength": 1 },
+        "runtime_family": { "$ref": "#/$defs/runtime_family" },
+        "architecture": { "$ref": "#/$defs/architecture" }
+      },
+      "required": [ "process_handle", "pid", "start_time_utc", "filename", "image_identity", "runtime_identity", "runtime_family", "architecture" ]
+    },
+    "attachable_process": {
+      "description": "Reserved disabled type (TYPE-DYN-014): a v1 handler must never instantiate or return this object.",
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "pid": { "$ref": "#/$defs/pid" },
+        "start_time_utc": { "$ref": "#/$defs/rfc3339_utc_ms" },
+        "runtime_identity": { "type": "string", "minLength": 1 },
+        "runtime_family": { "$ref": "#/$defs/runtime_family" },
+        "runtime_name": { "type": "string", "minLength": 1 },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "filename": { "type": "string", "minLength": 1 },
+        "attach_nonce": { "type": "string", "minLength": 1 },
+        "nonce_expires_utc": { "$ref": "#/$defs/rfc3339_utc_ms" }
+      },
+      "required": [ "pid", "start_time_utc", "runtime_identity", "runtime_family", "runtime_name", "architecture", "filename", "attach_nonce", "nonce_expires_utc" ]
+    },
+    "thread_info": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "thread_handle": { "$ref": "#/$defs/opaque_handle" },
+        "managed_id": { "type": "integer" },
+        "os_id": { "$ref": "#/$defs/non_negative_int" },
+        "name": { "type": "string" },
+        "state": { "enum": [ "running", "paused", "exited", "unknown" ] },
+        "is_current": { "type": "boolean" }
+      },
+      "required": [ "thread_handle", "state", "is_current" ]
+    },
+    "frame_info": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "frame_handle": { "$ref": "#/$defs/opaque_handle" },
+        "index": { "$ref": "#/$defs/non_negative_int" },
+        "location": { "$ref": "#/$defs/location" },
+        "display_name": { "type": "string", "minLength": 1 }
+      },
+      "required": [ "frame_handle", "index", "location", "display_name" ]
+    },
+    "value_budgets": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "depth_limit": { "const": 4 },
+        "node_limit": { "const": 1024 },
+        "value_handle_limit": { "const": 4096 },
+        "string_utf8_limit": { "const": 65536 },
+        "response_utf8_limit": { "const": 8388608 },
+        "depth_used": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "nodes_used": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "value_handles_used": { "type": "integer", "minimum": 0, "maximum": 4096 },
+        "truncated": { "type": "boolean" }
+      },
+      "required": [ "depth_limit", "node_limit", "value_handle_limit", "string_utf8_limit", "response_utf8_limit", "depth_used", "nodes_used", "value_handles_used", "truncated" ]
+    },
+    "unsupported_target_evidence": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": [ "pe_headers", "clr_metadata", "runtime_contract", "module_identity" ] },
+        "value": { "type": "string", "minLength": 1 }
+      },
+      "required": [ "kind", "value" ]
+    },
+    "unsupported_target_details": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "detected_target_kind": { "enum": [ "unity_mono", "mixed_mode", "pure_native", "unsupported_managed_runtime" ] },
+        "evidence": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/unsupported_target_evidence" } },
+        "recommended_workflow": { "enum": [ "mono_dynamic_analysis", "pe_x64dbg_ida_dynamic_analysis", "managed_static_analysis" ] }
+      },
+      "required": [ "detected_target_kind", "evidence", "recommended_workflow" ]
+    },
+
+    "debug_capabilities_args": { "type": "object", "additionalProperties": false, "properties": {}, "maxProperties": 0 },
+    "debug_status_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" } }
+    },
+    "debug_launch_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "request_id": { "$ref": "#/$defs/uuid" },
+        "target_path": { "type": "string", "minLength": 1 },
+        "expected_sha256": { "$ref": "#/$defs/sha256_hex" },
+        "launch_mode": { "$ref": "#/$defs/launch_mode" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "target_argv": { "type": "array", "items": { "type": "string" } },
+        "working_directory": { "type": "string", "minLength": 1 },
+        "break_kind": { "$ref": "#/$defs/break_kind" },
+        "host_path": { "type": "string", "minLength": 1 },
+        "host_sha256": { "$ref": "#/$defs/sha256_hex" },
+        "host_argv": { "type": "array", "items": { "type": "string" } },
+        "harness_path": { "type": "string", "minLength": 1 },
+        "harness_sha256": { "$ref": "#/$defs/sha256_hex" },
+        "harness_argv": { "type": "array", "items": { "type": "string" } },
+        "exception_policy": { "$ref": "#/$defs/exception_policy" }
+      },
+      "required": [ "request_id", "target_path", "expected_sha256", "launch_mode", "architecture" ],
+      "allOf": [
+        { "if": { "properties": { "launch_mode": { "const": "coreclr-dotnet" } }, "required": [ "launch_mode" ] },
+          "then": { "required": [ "host_path", "host_sha256" ], "not": { "anyOf": [ { "required": [ "harness_path" ] }, { "required": [ "harness_sha256" ] }, { "required": [ "harness_argv" ] } ] },
+            "properties": { "break_kind": { "enum": [ "none", "module_cctor_or_entry", "entry" ] } } } },
+        { "if": { "properties": { "launch_mode": { "const": "harness" } }, "required": [ "launch_mode" ] },
+          "then": { "required": [ "harness_path", "harness_sha256" ], "not": { "anyOf": [ { "required": [ "target_argv" ] }, { "required": [ "host_path" ] }, { "required": [ "host_sha256" ] }, { "required": [ "host_argv" ] } ] },
+            "properties": { "break_kind": { "const": "none" } } } },
+        { "if": { "properties": { "launch_mode": { "enum": [ "auto", "net48-exe", "coreclr-apphost" ] } }, "required": [ "launch_mode" ] },
+          "then": { "not": { "anyOf": [ { "required": [ "harness_path" ] }, { "required": [ "harness_sha256" ] }, { "required": [ "harness_argv" ] } ] } } }
+      ]
+    },
+    "debug_pause_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" } },
+      "required": [ "session_id", "generation", "request_id" ]
+    },
+    "debug_continue_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" } },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id" ]
+    },
+    "debug_restart_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" } },
+      "required": [ "session_id", "generation", "request_id" ]
+    },
+    "debug_terminate_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" } },
+      "required": [ "session_id", "generation", "request_id" ]
+    },
+    "debug_read_events_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "session_id": { "$ref": "#/$defs/session_id" },
+        "after_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "kinds": { "type": "array", "minItems": 0, "maxItems": 21, "uniqueItems": true, "items": { "$ref": "#/$defs/event_kind" } }
+      },
+      "required": [ "session_id" ]
+    },
+    "debug_wait_event_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "session_id": { "$ref": "#/$defs/session_id" },
+        "after_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "kinds": { "type": "array", "minItems": 0, "maxItems": 21, "uniqueItems": true, "items": { "$ref": "#/$defs/event_kind" } },
+        "timeout_ms": { "type": "integer", "minimum": 0, "maximum": 30000 }
+      },
+      "required": [ "session_id" ]
+    },
+    "debug_set_breakpoint_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" },
+        "module_handle": { "$ref": "#/$defs/opaque_handle" },
+        "module_sha256": { "$ref": "#/$defs/sha256_hex" },
+        "mvid": { "$ref": "#/$defs/mvid" },
+        "method_token": { "$ref": "#/$defs/method_token" },
+        "il_offset": { "$ref": "#/$defs/non_negative_int" },
+        "enabled": { "type": "boolean" }
+      },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id", "module_handle", "mvid", "method_token", "il_offset" ]
+    },
+    "debug_list_breakpoints_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" }, "enabled": { "type": "boolean" } },
+      "required": [ "session_id", "generation" ]
+    },
+    "debug_set_breakpoint_enabled_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "breakpoint_id": { "$ref": "#/$defs/opaque_handle" }, "enabled": { "type": "boolean" } },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id", "breakpoint_id", "enabled" ]
+    },
+    "debug_remove_breakpoint_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "breakpoint_id": { "$ref": "#/$defs/opaque_handle" } },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id", "breakpoint_id" ]
+    },
+    "debug_list_threads_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" } },
+      "required": [ "session_id", "generation", "pause_epoch" ]
+    },
+    "debug_get_stack_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" } },
+      "required": [ "session_id", "generation", "pause_epoch", "thread_handle" ]
+    },
+    "debug_step_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "kind": { "enum": [ "into", "over", "out" ] } },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id", "thread_handle", "kind" ]
+    },
+    "debug_get_locals_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "frame_handle": { "$ref": "#/$defs/opaque_handle" }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" } },
+      "required": [ "session_id", "generation", "pause_epoch", "frame_handle" ]
+    },
+    "debug_expand_value_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "value_handle": { "$ref": "#/$defs/opaque_handle" }, "depth": { "type": "integer", "minimum": 1, "maximum": 4 }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" } },
+      "required": [ "session_id", "generation", "pause_epoch", "value_handle" ]
+    },
+    "debug_list_modules_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" } },
+      "required": [ "session_id", "generation" ]
+    },
+    "debug_read_memory_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "module_handle": { "$ref": "#/$defs/opaque_handle" }, "address": { "$ref": "#/$defs/address" }, "length": { "type": "integer", "minimum": 1, "maximum": 65536 }, "encoding": { "enum": [ "base64", "hex" ] } },
+      "required": [ "session_id", "generation", "pause_epoch", "module_handle", "address", "length" ]
+    },
+    "debug_dump_module_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "module_handle": { "$ref": "#/$defs/opaque_handle" }, "relative_name": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\:\\\\s]+$" } },
+      "required": [ "session_id", "generation", "pause_epoch", "request_id", "module_handle" ]
+    },
+    "debug_set_exception_policy_args": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "policy": { "$ref": "#/$defs/exception_policy" } },
+      "required": [ "session_id", "generation", "request_id", "policy" ]
+    },
+    "debug_list_attachable_processes_args": {
+      "description": "Reserved disabled API (API-DYN-004): never advertised; schema-valid direct calls must fail with CAPABILITY_UNAVAILABLE and zero side effects.",
+      "type": "object", "additionalProperties": false,
+      "properties": { "page_size": { "type": "integer", "minimum": 1, "maximum": 100 }, "page_cursor": { "$ref": "#/$defs/page_cursor" }, "runtime_family": { "$ref": "#/$defs/runtime_family" }, "architecture": { "$ref": "#/$defs/architecture" }, "name_filter": { "type": "string" } }
+    },
+    "debug_attach_args": {
+      "description": "Reserved disabled API (API-DYN-005).",
+      "type": "object", "additionalProperties": false,
+      "properties": { "request_id": { "$ref": "#/$defs/uuid" }, "pid": { "$ref": "#/$defs/pid" }, "runtime_identity": { "type": "string", "minLength": 1 }, "runtime_family": { "$ref": "#/$defs/runtime_family" }, "architecture": { "$ref": "#/$defs/architecture" }, "attach_nonce": { "type": "string", "minLength": 1 }, "exception_policy": { "$ref": "#/$defs/exception_policy" } },
+      "required": [ "request_id", "pid", "runtime_identity", "runtime_family", "architecture", "attach_nonce" ]
+    },
+    "debug_detach_args": {
+      "description": "Reserved disabled API (API-DYN-010).",
+      "type": "object", "additionalProperties": false,
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" } },
+      "required": [ "session_id", "generation", "request_id" ]
+    },
+
+    "debug_capabilities_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "debug_enabled": { "type": "boolean" },
+        "schema_version": { "const": "dnspy.debug.v1" },
+        "extension_version": { "type": "string", "minLength": 1 },
+        "dnspy_api": { "const": "v6.6.0" },
+        "host_architecture": { "$ref": "#/$defs/architecture" },
+        "ownership_model": { "const": "dedicated_instance_operational_isolation" },
+        "dedicated_instance_required": { "const": true },
+        "dedicated_instance_acknowledged": { "type": "boolean" },
+        "attach_supported": { "const": false },
+        "tools": { "type": "array", "items": { "enum": [ "debug_capabilities", "debug_status", "debug_launch", "debug_pause", "debug_continue", "debug_restart", "debug_terminate", "debug_read_events", "debug_wait_event", "debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug_remove_breakpoint", "debug_list_threads", "debug_get_stack", "debug_step", "debug_get_locals", "debug_expand_value", "debug_list_modules", "debug_read_memory", "debug_dump_module", "debug_set_exception_policy" ] } },
+        "runtime_matrix": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "$ref": "#/$defs/runtime_matrix_entry" } },
+        "security": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "bind_mode": { "enum": [ "loopback", "remote_host_only" ] },
+            "auth_required": { "type": "boolean" },
+            "cidr_required": { "type": "boolean" },
+            "sample_output_policy": { "const": "all_tool_output_is_untrusted_data" }
+          },
+          "required": [ "bind_mode", "auth_required", "cidr_required", "sample_output_policy" ]
+        },
+        "artifact_policy": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "retention_scope": { "const": "current_extension_process" },
+            "retained_integrity": { "const": "process_lifetime_no_write_delete_share_handles" },
+            "external_child_race": { "const": "current_admission_may_complete_next_admission_fail_closed" },
+            "cancel_pending": { "const": "control_proceeds_store_fail_closed_until_final_completion" },
+            "restart_existing": { "const": "stale_untrusted_fail_closed" },
+            "automatic_cleanup": { "const": false }
+          },
+          "required": [ "retention_scope", "retained_integrity", "external_child_race", "cancel_pending", "restart_existing", "automatic_cleanup" ]
+        },
+        "limits": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "request_body_bytes": { "const": 1048576 },
+            "tool_result_bytes": { "const": 8388608 },
+            "transport_sessions": { "const": 16 },
+            "parallel_short_requests": { "const": 16 },
+            "long_connections": { "const": 8 },
+            "waits": { "const": 8 },
+            "transport_idle_seconds": { "const": 600 },
+            "control_operation_seconds": { "const": 30 },
+            "event_count": { "const": 4096 },
+            "event_bytes": { "const": 8388608 },
+            "memory_read_bytes": { "const": 65536 },
+            "side_effect_cache_entries": { "const": 4096 },
+            "side_effect_cache_bytes": { "const": 268435456 },
+            "side_effect_cached_envelope_bytes": { "const": 65536 },
+            "command_queue_entries": { "const": 64 },
+            "control_queue_entries": { "const": 8 },
+            "general_queue_entries": { "const": 56 },
+            "value_snapshots_per_pause": { "const": 2 },
+            "value_handles_per_pause": { "const": 4096 },
+            "artifact_operation_seconds": { "const": 30 },
+            "artifact_cancel_grace_ms": { "const": 2000 },
+            "artifact_io_chunk_bytes": { "const": 1048576 },
+            "artifact_file_bytes": { "const": 536870912 },
+            "artifact_session_bytes": { "const": 1073741824 },
+            "artifact_store_bytes": { "const": 8589934592 },
+            "artifact_sessions": { "const": 128 },
+            "artifact_root_children": { "const": 128 },
+            "artifact_session_children": { "const": 4096 },
+            "artifact_store_children": { "const": 4096 }
+          },
+          "required": [ "request_body_bytes", "tool_result_bytes", "transport_sessions", "parallel_short_requests", "long_connections", "waits", "transport_idle_seconds", "control_operation_seconds", "event_count", "event_bytes", "memory_read_bytes", "side_effect_cache_entries", "side_effect_cache_bytes", "side_effect_cached_envelope_bytes", "command_queue_entries", "control_queue_entries", "general_queue_entries", "value_snapshots_per_pause", "value_handles_per_pause", "artifact_operation_seconds", "artifact_cancel_grace_ms", "artifact_io_chunk_bytes", "artifact_file_bytes", "artifact_session_bytes", "artifact_store_bytes", "artifact_sessions", "artifact_root_children", "artifact_session_children", "artifact_store_children" ]
+        },
+        "unsupported": { "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": { "enum": [ "debug_list_attachable_processes", "debug_attach", "debug_detach" ] } }
+      },
+      "required": [ "debug_enabled", "schema_version", "extension_version", "dnspy_api", "host_architecture", "ownership_model", "dedicated_instance_required", "dedicated_instance_acknowledged", "attach_supported", "tools", "runtime_matrix", "security", "artifact_policy", "limits", "unsupported" ]
+    },
+    "debug_status_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "state": { "$ref": "#/$defs/coordinator_state" },
+        "active_session_id": { "$ref": "#/$defs/session_id" },
+        "last_session_id": { "$ref": "#/$defs/session_id" },
+        "owned_process": { "$ref": "#/$defs/owned_process" },
+        "observed_process_state": { "enum": [ "running", "paused", "unknown" ] },
+        "runtime_family": { "$ref": "#/$defs/runtime_family" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "start_kind": { "const": "launch" },
+        "launch_mode": { "$ref": "#/$defs/launch_mode" },
+        "fault": { "$ref": "#/$defs/domain_error" }
+      },
+      "required": [ "state" ],
+      "allOf": [
+        { "if": { "required": [ "owned_process" ] }, "then": { "required": [ "observed_process_state" ] } }
+      ]
+    },
+    "debug_launch_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "session_id": { "$ref": "#/$defs/session_id" },
+        "generation": { "$ref": "#/$defs/non_negative_int" },
+        "state": { "$ref": "#/$defs/coordinator_state" },
+        "claim_deadline_utc": { "$ref": "#/$defs/rfc3339_utc_ms" },
+        "launch_mode": { "$ref": "#/$defs/launch_mode" },
+        "runtime_family": { "$ref": "#/$defs/runtime_family" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "file_identities": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/file_identity" } }
+      },
+      "required": [ "session_id", "generation", "state", "claim_deadline_utc", "launch_mode", "runtime_family", "architecture", "file_identities" ]
+    },
+    "debug_pause_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "state": { "const": "paused" },
+        "pause_epoch": { "$ref": "#/$defs/non_negative_int" },
+        "reason": { "enum": [ "manual", "process", "entry", "breakpoint", "exception", "step", "unknown" ] },
+        "request_effect": { "const": "state_satisfied" },
+        "thread_handle": { "$ref": "#/$defs/opaque_handle" },
+        "location": { "$ref": "#/$defs/location" },
+        "breakpoint_id": { "$ref": "#/$defs/opaque_handle" },
+        "step_id": { "$ref": "#/$defs/opaque_handle" }
+      },
+      "required": [ "state", "pause_epoch", "reason", "request_effect" ]
+    },
+    "debug_continue_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "state": { "const": "running" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" } },
+      "required": [ "state", "pause_epoch" ]
+    },
+    "debug_restart_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "state": { "$ref": "#/$defs/coordinator_state" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "claim_deadline_utc": { "$ref": "#/$defs/rfc3339_utc_ms" } },
+      "required": [ "state", "generation", "claim_deadline_utc" ]
+    },
+    "debug_terminate_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "state": { "const": "idle" }, "exit_code": { "$ref": "#/$defs/exit_code" }, "terminal_cursor": { "$ref": "#/$defs/non_negative_int" } },
+      "required": [ "state", "terminal_cursor" ]
+    },
+    "debug_read_events_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event_envelope" } },
+        "next_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "earliest_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "events_lost": { "$ref": "#/$defs/non_negative_int" }
+      },
+      "required": [ "events", "next_cursor", "earliest_cursor", "events_lost" ]
+    },
+    "debug_wait_event_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event_envelope" } },
+        "next_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "earliest_cursor": { "$ref": "#/$defs/non_negative_int" },
+        "events_lost": { "$ref": "#/$defs/non_negative_int" },
+        "timed_out": { "type": "boolean" }
+      },
+      "required": [ "events", "next_cursor", "earliest_cursor", "events_lost", "timed_out" ]
+    },
+    "debug_set_breakpoint_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "breakpoint": { "$ref": "#/$defs/breakpoint" } },
+      "required": [ "breakpoint" ]
+    },
+    "debug_list_breakpoints_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/breakpoint" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" }
+      },
+      "required": [ "items", "truncated" ]
+    },
+    "debug_set_breakpoint_enabled_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "breakpoint": { "$ref": "#/$defs/breakpoint" } },
+      "required": [ "breakpoint" ]
+    },
+    "debug_remove_breakpoint_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "removed": { "const": true }, "breakpoint_id": { "$ref": "#/$defs/opaque_handle" } },
+      "required": [ "removed", "breakpoint_id" ]
+    },
+    "debug_list_threads_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/thread_info" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" }
+      },
+      "required": [ "items", "truncated" ]
+    },
+    "debug_get_stack_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/frame_info" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" }
+      },
+      "required": [ "items", "truncated" ]
+    },
+    "debug_step_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "step_id": { "$ref": "#/$defs/opaque_handle" }, "state": { "const": "running" } },
+      "required": [ "step_id", "state" ]
+    },
+    "debug_get_locals_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/value_node" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" },
+        "evaluation_mode": { "const": "no_func_eval_raw" },
+        "budgets": { "$ref": "#/$defs/value_budgets" }
+      },
+      "required": [ "items", "truncated", "evaluation_mode", "budgets" ]
+    },
+    "debug_expand_value_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/value_node" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" },
+        "evaluation_mode": { "const": "no_func_eval_raw" },
+        "budgets": { "$ref": "#/$defs/value_budgets" }
+      },
+      "required": [ "items", "truncated", "evaluation_mode", "budgets" ]
+    },
+    "debug_list_modules_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/module_identity" } },
+        "next_page_cursor": { "$ref": "#/$defs/page_cursor" },
+        "truncated": { "type": "boolean" },
+        "total_known": { "$ref": "#/$defs/non_negative_int" }
+      },
+      "required": [ "items", "truncated" ]
+    },
+    "debug_read_memory_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "module_handle": { "$ref": "#/$defs/opaque_handle" },
+        "address": { "$ref": "#/$defs/address" },
+        "length": { "$ref": "#/$defs/non_negative_int" },
+        "encoding": { "enum": [ "base64", "hex" ] },
+        "data": { "type": "string", "minLength": 1 },
+        "read_semantics": { "const": "dnspy-zero-fill" }
+      },
+      "required": [ "module_handle", "address", "length", "encoding", "data", "read_semantics" ]
+    },
+    "debug_dump_module_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "artifact": { "$ref": "#/$defs/artifact" } },
+      "required": [ "artifact" ]
+    },
+    "debug_set_exception_policy_result": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "previous": { "$ref": "#/$defs/exception_policy" }, "current": { "$ref": "#/$defs/exception_policy" } },
+      "required": [ "previous", "current" ]
+    },
+
+    "envelope_success": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "dnspy.debug.v1" },
+        "ok": { "const": true },
+        "debug_context": { "$ref": "#/$defs/debug_context" },
+        "result": { "type": "object" },
+        "warnings": { "type": "array", "minItems": 0, "maxItems": 32, "items": { "$ref": "#/$defs/warning" } },
+        "untrusted_sample_data": { "type": "boolean" }
+      },
+      "required": [ "schema_version", "ok", "debug_context", "result", "warnings", "untrusted_sample_data" ],
+      "not": { "required": [ "error" ] }
+    },
+    "envelope_failure": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "dnspy.debug.v1" },
+        "ok": { "const": false },
+        "debug_context": { "$ref": "#/$defs/debug_context" },
+        "error": { "$ref": "#/$defs/domain_error" },
+        "warnings": { "type": "array", "minItems": 0, "maxItems": 32, "items": { "$ref": "#/$defs/warning" } },
+        "untrusted_sample_data": { "type": "boolean" }
+      },
+      "required": [ "schema_version", "ok", "debug_context", "error", "warnings", "untrusted_sample_data" ],
+      "not": { "required": [ "result" ] }
+    },
+
+    "event_envelope": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "dnspy.debug.v1" },
+        "cursor": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "timestamp_utc": { "$ref": "#/$defs/rfc3339_utc_ms" },
+        "kind": { "$ref": "#/$defs/event_kind" },
+        "debug_context": { "$ref": "#/$defs/debug_context" },
+        "payload": { "type": "object" },
+        "untrusted_sample_data": { "type": "boolean" }
+      },
+      "required": [ "schema_version", "cursor", "timestamp_utc", "kind", "debug_context", "payload", "untrusted_sample_data" ],
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "session_start" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_session_start" } } } },
+        { "if": { "properties": { "kind": { "const": "start_failed" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_start_failed" } } } },
+        { "if": { "properties": { "kind": { "const": "process_created" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_process_created" } } } },
+        { "if": { "properties": { "kind": { "const": "process_exited" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_process_exited" } } } },
+        { "if": { "properties": { "kind": { "const": "runtime_created" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_runtime_created" } } } },
+        { "if": { "properties": { "kind": { "const": "module_loaded" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_module_loaded" } } } },
+        { "if": { "properties": { "kind": { "const": "module_unloaded" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_module_unloaded" } } } },
+        { "if": { "properties": { "kind": { "const": "thread_created" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_thread_created" } } } },
+        { "if": { "properties": { "kind": { "const": "thread_exited" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_thread_exited" } } } },
+        { "if": { "properties": { "kind": { "const": "paused" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_paused" } } } },
+        { "if": { "properties": { "kind": { "const": "continued" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_continued" } } } },
+        { "if": { "properties": { "kind": { "const": "breakpoint_bound" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_breakpoint_bound" } } } },
+        { "if": { "properties": { "kind": { "const": "breakpoint_hit" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_breakpoint_hit" } } } },
+        { "if": { "properties": { "kind": { "const": "exception" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_exception" } } } },
+        { "if": { "properties": { "kind": { "const": "step_completed" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_step_completed" } } } },
+        { "if": { "properties": { "kind": { "const": "output" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_output" } } } },
+        { "if": { "properties": { "kind": { "const": "ownership_lost" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_ownership_lost" } } } },
+        { "if": { "properties": { "kind": { "const": "recovery" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_recovery" } } } },
+        { "if": { "properties": { "kind": { "const": "payload_omitted" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_payload_omitted" } } } },
+        { "if": { "properties": { "kind": { "const": "session_end" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_session_end" } } } },
+        { "if": { "properties": { "kind": { "const": "control_failed" } }, "required": [ "kind" ] }, "then": { "properties": { "payload": { "$ref": "#/$defs/event_control_failed" } } } }
+      ]
+    },
+    "event_session_start": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "operation": { "enum": [ "launch", "restart" ] }, "runtime_family": { "$ref": "#/$defs/runtime_family" }, "architecture": { "$ref": "#/$defs/architecture" }, "launch_mode": { "$ref": "#/$defs/launch_mode" } },
+      "required": [ "operation", "runtime_family", "architecture", "launch_mode" ]
+    },
+    "event_start_failed": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "operation": { "enum": [ "launch", "restart" ] }, "error": { "$ref": "#/$defs/domain_error" } },
+      "required": [ "operation", "error" ]
+    },
+    "event_process_created": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "process_handle": { "$ref": "#/$defs/opaque_handle" }, "pid": { "$ref": "#/$defs/pid" }, "filename": { "type": "string", "minLength": 1 } },
+      "required": [ "process_handle", "pid", "filename" ]
+    },
+    "event_process_exited": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "process_handle": { "$ref": "#/$defs/opaque_handle" }, "exit_code": { "$ref": "#/$defs/exit_code" } },
+      "required": [ "process_handle", "exit_code" ]
+    },
+    "event_runtime_created": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "runtime_handle": { "$ref": "#/$defs/opaque_handle" }, "runtime_identity": { "type": "string", "minLength": 1 }, "runtime_family": { "$ref": "#/$defs/runtime_family" }, "version": { "type": "string", "minLength": 1 } },
+      "required": [ "runtime_handle", "runtime_identity", "runtime_family" ]
+    },
+    "event_module_loaded": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "module": { "$ref": "#/$defs/module_identity" } },
+      "required": [ "module" ]
+    },
+    "event_module_unloaded": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "module_handle": { "$ref": "#/$defs/opaque_handle" }, "mvid": { "$ref": "#/$defs/mvid" } },
+      "required": [ "module_handle", "mvid" ]
+    },
+    "event_thread_created": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "managed_id": { "type": "integer" }, "os_id": { "$ref": "#/$defs/non_negative_int" } },
+      "required": [ "thread_handle" ]
+    },
+    "event_thread_exited": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "exit_code": { "$ref": "#/$defs/exit_code" } },
+      "required": [ "thread_handle" ]
+    },
+    "event_paused": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "reason": { "enum": [ "manual", "process", "module_cctor_or_entry", "entry", "breakpoint", "exception", "step", "unknown" ] },
+        "thread_handle": { "$ref": "#/$defs/opaque_handle" },
+        "location": { "$ref": "#/$defs/location" },
+        "breakpoint_id": { "$ref": "#/$defs/opaque_handle" }
+      },
+      "required": [ "reason" ]
+    },
+    "event_continued": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "reason": { "enum": [ "manual", "step", "restart" ] } },
+      "required": [ "reason" ]
+    },
+    "event_breakpoint_bound": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "breakpoint_id": { "$ref": "#/$defs/opaque_handle" },
+        "bound": { "type": "boolean" },
+        "module_handle": { "$ref": "#/$defs/opaque_handle" },
+        "error": { "$ref": "#/$defs/domain_error" }
+      },
+      "required": [ "breakpoint_id", "bound" ],
+      "allOf": [
+        { "if": { "properties": { "bound": { "const": true } }, "required": [ "bound" ] }, "then": { "required": [ "module_handle" ], "not": { "required": [ "error" ] } } },
+        { "if": { "properties": { "bound": { "const": false } }, "required": [ "bound" ] }, "then": { "required": [ "error" ] } }
+      ]
+    },
+    "event_breakpoint_hit": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "breakpoint_id": { "$ref": "#/$defs/opaque_handle" }, "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "location": { "$ref": "#/$defs/location" } },
+      "required": [ "breakpoint_id", "thread_handle", "location" ]
+    },
+    "event_exception": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "first_chance": { "type": "boolean" }, "unhandled": { "type": "boolean" }, "type": { "type": "string", "minLength": 1 }, "message": { "type": "string" }, "thread_handle": { "$ref": "#/$defs/opaque_handle" } },
+      "required": [ "first_chance", "unhandled", "type", "message" ]
+    },
+    "event_step_completed": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "step_id": { "$ref": "#/$defs/opaque_handle" }, "kind": { "enum": [ "into", "over", "out" ] }, "thread_handle": { "$ref": "#/$defs/opaque_handle" }, "location": { "$ref": "#/$defs/location" } },
+      "required": [ "step_id", "kind", "thread_handle", "location" ]
+    },
+    "event_output": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "category": { "type": "string", "minLength": 1 }, "text": { "type": "string" } },
+      "required": [ "category", "text" ]
+    },
+    "event_ownership_lost": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "claim_request_id": { "$ref": "#/$defs/uuid" },
+        "observed_processes": { "type": "array", "minItems": 0, "maxItems": 16, "items": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "pid": { "$ref": "#/$defs/pid" }, "runtime_identity": { "type": "string", "minLength": 1 }, "runtime_family": { "$ref": "#/$defs/runtime_family" }, "architecture": { "$ref": "#/$defs/architecture" } },
+          "required": [ "pid", "runtime_identity", "runtime_family", "architecture" ]
+        } },
+        "observed_processes_truncated": { "type": "boolean" },
+        "recovery": { "const": "manual_resolve_then_wait_idle" }
+      },
+      "required": [ "claim_request_id", "observed_processes", "observed_processes_truncated", "recovery" ]
+    },
+    "event_recovery": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "reason": { "enum": [ "owned_process_exited", "manager_became_idle_without_new_objects" ] }, "terminal_state": { "const": "idle" } },
+      "required": [ "reason", "terminal_state" ]
+    },
+    "event_payload_omitted": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "original_kind": { "$ref": "#/$defs/event_kind" }, "original_utf8_bytes": { "$ref": "#/$defs/non_negative_int" }, "sha256": { "$ref": "#/$defs/sha256_hex" }, "payload_omitted": { "const": true } },
+      "required": [ "original_kind", "original_utf8_bytes", "sha256", "payload_omitted" ]
+    },
+    "event_session_end": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "reason": { "enum": [ "terminated", "target_exited", "start_failed", "restart_failed", "ownership_recovered" ] }, "exit_code": { "$ref": "#/$defs/exit_code" }, "terminal_state": { "const": "idle" } },
+      "required": [ "reason", "terminal_state" ],
+      "allOf": [
+        { "if": { "properties": { "reason": { "enum": [ "start_failed", "restart_failed", "ownership_recovered" ] } }, "required": [ "reason" ] }, "then": { "not": { "required": [ "exit_code" ] } } }
+      ]
+    },
+    "event_control_failed": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "operation": { "enum": [ "pause", "terminate", "restart" ] },
+        "request_id": { "$ref": "#/$defs/uuid" },
+        "control_epoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "phase": { "enum": [ "scheduled", "issued" ] },
+        "error": {
+          "allOf": [
+            { "$ref": "#/$defs/domain_error" },
+            { "properties": { "code": { "enum": [ "TIMEOUT", "INTERNAL_ERROR" ] } } }
+          ]
+        },
+        "late_completion_policy": { "enum": [ "reconcile_owned_pause", "finish_owned_termination_only", "finish_restart_as_failed" ] }
+      },
+      "required": [ "operation", "request_id", "control_epoch", "phase", "error", "late_completion_policy" ]
+    }
+  }
+}

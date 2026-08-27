@@ -1,6 +1,8 @@
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
+# tests/debug is tracked source (debug-contract fixtures), not build output
+!tests/debug/
 [Rr]elease/
 [Rr]eleases/
 x64/
