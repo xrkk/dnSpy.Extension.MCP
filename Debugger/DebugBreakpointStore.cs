@@ -54,7 +54,7 @@ public sealed class DebugBreakpointStore {
 	public DebugBreakpointStore(Func<string>? newId = null) {
 		this.newId = newId ?? DefaultNewId;
 		static string DefaultNewId() {
-			var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+			var bytes = System.Security.Cryptography.RandomNumberGeneratorShim.GetBytes(12);
 			return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 		}
 	}

@@ -31,9 +31,9 @@ public sealed class SideEffectRequestCache {
 	}
 
 	sealed class Entry {
-		public required string RequestId;
-		public required string Method;
-		public required string CanonicalArgs;
+		public string RequestId = string.Empty;
+		public string Method = string.Empty;
+		public string CanonicalArgs = string.Empty;
 		public string? Envelope;           // settled envelope (null while in flight)
 		public int ReservedBytes;          // method + args + 65536 until settled
 		public DateTime? CompletedAtUtc;

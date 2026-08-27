@@ -65,7 +65,7 @@ public sealed class DebugSessionCoordinator {
 		this.newSessionId = newSessionId ?? DefaultSessionId;
 		this.utcNow = utcNow ?? DefaultUtcNow;
 		this.wallClock = wallClock ?? (() => DateTime.UtcNow);
-		static string DefaultSessionId() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12)).ToLowerInvariant();
+		static string DefaultSessionId() => System.ConvertHexShim.ToHexString(System.Security.Cryptography.RandomNumberGeneratorShim.GetBytes(12)).ToLowerInvariant();
 		static string DefaultUtcNow() => DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
 	}
 

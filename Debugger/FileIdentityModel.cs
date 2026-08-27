@@ -114,7 +114,9 @@ public sealed class FileIdentityLeaseBook {
 		if (error != null)
 			throw new ArgumentException(error);
 		lock (leased)
-			return leased.TryAdd(identity.Role, identity);
+			if (leased.ContainsKey(identity.Role)) return false;
+				leased[identity.Role] = identity;
+				return true;
 	}
 
 	public enum ObserveResult { NoLease, Match, Mismatch }

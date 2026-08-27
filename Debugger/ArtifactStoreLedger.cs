@@ -213,7 +213,9 @@ public sealed class ArtifactStoreLedger {
 		var known = new HashSet<string>(ledgerSessions.Keys.Concat(retainedSessions).Concat(staleNames), StringComparer.Ordinal);
 		if (!rootChildren.All(known.Contains))
 			return AdmitResult.TargetMismatch;
-		foreach (var (sessionId, children) in ledgerSessions) {
+		foreach (var pair in ledgerSessions) {
+			var sessionId = pair.Key;
+			var children = pair.Value;
 			var observed = fs.EnumerateSessionChildren(sessionId);
 			if (observed.Count != children.Count)
 				return AdmitResult.TargetMismatch;

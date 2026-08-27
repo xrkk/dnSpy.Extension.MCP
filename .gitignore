@@ -60,3 +60,6 @@ Thumbs.db
 *.suo
 *.user
 *.sln.docstates
+
+# Local build artifacts (authoritative builds run in CI; dist/ holds hand-copied DLLs)
+dist/

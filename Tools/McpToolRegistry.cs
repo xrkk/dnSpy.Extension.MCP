@@ -59,8 +59,9 @@ internal sealed class McpToolRegistry
         {
             foreach (var tool in provider.GetTools())
             {
-                if (!table.TryAdd(tool.Name, provider))
+                if (table.ContainsKey(tool.Name))
                     throw new InvalidOperationException($"Duplicate MCP tool name across providers: {tool.Name} ({table[tool.Name].Name}, {provider.Name})");
+                table[tool.Name] = provider;
             }
         }
         routeTable = table;

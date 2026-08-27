@@ -112,8 +112,12 @@ public static class CidrFilter {
 	public static IPAddress? NormalizePeer(IPAddress? peer) {
 		if (peer is null)
 			return null;
-		if (peer.IsIPv4MappedToIPv6)
-			return new IPAddress(peer.GetAddressBytes()[^4..]);
+		if (peer.IsIPv4MappedToIPv6) {
+			var all = peer.GetAddressBytes();
+			var v4 = new byte[4];
+			System.Array.Copy(all, all.Length - 4, v4, 0, 4);
+			return new IPAddress(v4);
+		}
 		return peer;
 	}
 

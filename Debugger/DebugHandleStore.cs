@@ -36,7 +36,7 @@ public sealed class DebugHandleStore {
 	}
 
 	static string DefaultNewHandle() {
-		var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(15);
+		var bytes = System.Security.Cryptography.RandomNumberGeneratorShim.GetBytes(15);
 		return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 	}
 

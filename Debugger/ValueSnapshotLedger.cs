@@ -83,7 +83,7 @@ public sealed class ValueSnapshotLedger {
 		this.nodesPerSnapshot = nodesPerSnapshot;
 		this.handlesPerEpoch = handlesPerEpoch;
 		static string DefaultNewHandle() {
-			var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+			var bytes = System.Security.Cryptography.RandomNumberGeneratorShim.GetBytes(12);
 			return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 		}
 	}

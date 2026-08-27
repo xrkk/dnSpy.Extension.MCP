@@ -104,7 +104,7 @@ public sealed class DebugEventBuffer {
 		catch (JsonException) { /* keep null context */ }
 		string sha;
 		using (var sha256 = SHA256.Create())
-			sha = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(originalJson))).ToLowerInvariant();
+			sha = System.ConvertHexShim.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(originalJson))).ToLowerInvariant();
 		var envelope = new {
 			schema_version = DebugWire.SchemaVersion,
 			cursor,

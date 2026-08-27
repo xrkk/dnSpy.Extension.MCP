@@ -330,7 +330,7 @@ namespace dnSpy.Extension.MCP {
 			if (!isLoopback) {
 				// A non-loopback host is a validated unicast IP literal (snapshot validation
 				// rejects hostnames and wildcards); IPv6 literals need brackets in a URL.
-				var h = host.Contains(':') ? $"[{host}]" : host;
+				var h = host.IndexOf(':') >= 0 ? $"[{host}]" : host;
 				yield return new List<string> { $"http://{h}:{port}/" };
 				yield break;
 			}
