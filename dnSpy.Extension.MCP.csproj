@@ -15,6 +15,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.DnSpy\dnSpy.Contracts.DnSpy.csproj" />
     <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Logic\dnSpy.Contracts.Logic.csproj" />
+    <!-- Debugger contracts (IMP-005): DbgManager/DbgProcess/DbgDispatcher, managed runtime
+         (DotNet) and CorDebug engine contracts. -->
+    <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger\dnSpy.Contracts.Debugger.csproj" />
+    <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger.DotNet\dnSpy.Contracts.Debugger.DotNet.csproj" />
+    <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger.DotNet.CorDebug\dnSpy.Contracts.Debugger.DotNet.CorDebug.csproj" />
   </ItemGroup>
 
   <ItemGroup>

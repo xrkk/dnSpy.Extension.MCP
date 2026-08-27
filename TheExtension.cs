@@ -11,14 +11,16 @@ namespace dnSpy.Extension.MCP {
 	sealed class TheExtension : IExtension {
 		readonly McpServer mcpServer;
 		readonly McpSettings settings;
+		readonly Debugger.DebugGateService debugGate;
 
 		/// <summary>
 		/// Initializes the MCP extension and links the settings with the server.
 		/// </summary>
 		[ImportingConstructor]
-		public TheExtension(McpServer mcpServer, McpSettings settings) {
+		public TheExtension(McpServer mcpServer, McpSettings settings, Debugger.DebugGateService debugGate) {
 			this.mcpServer = mcpServer;
 			this.settings = settings;
+			this.debugGate = debugGate;
 
 			// Allow settings to control the server dynamically
 			if (settings is McpSettingsImpl settingsImpl)
@@ -51,6 +53,9 @@ namespace dnSpy.Extension.MCP {
 		public void OnEvent(ExtensionEvent @event, object? obj) {
 			if (@event == ExtensionEvent.Loaded) {
 				settings.Log("MCP Extension loaded");
+				// CON-DYN-014: capture the startup snapshot and post the single IsDebugging
+				// sample through DbgManager.Dispatcher BEFORE the server starts.
+				debugGate.CaptureStartup(settings.CurrentSnapshot ?? McpSettingsSnapshot.SafeDefaults());
 				mcpServer.Start();
 			}
 			else if (@event == ExtensionEvent.AppExit) {

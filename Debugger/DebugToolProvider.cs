@@ -19,28 +19,21 @@ namespace dnSpy.Extension.MCP.Debugger;
 [Export(typeof(IMcpToolProvider))]
 internal sealed class DebugToolProvider : IMcpToolProvider {
 	readonly McpSettings settings;
-	DebugFeatureGate.FrozenGate? frozenGate;
-	readonly object gateLock = new object();
+	readonly DebugGateService gateService;
+	readonly object schemaLock = new object();
 	JsonDocument? schemaDoc;
 
 	[ImportingConstructor]
-	public DebugToolProvider(McpSettings settings) {
+	public DebugToolProvider(McpSettings settings, DebugGateService gateService) {
 		this.settings = settings;
+		this.gateService = gateService;
 	}
 
 	public string Name => "debug";
 
-	/// <summary>The per-process frozen gate (CON-DYN-014); computed on first use, never recomputed.</summary>
-	public DebugFeatureGate.FrozenGate Gate {
-		get {
-			lock (gateLock) {
-				frozenGate ??= DebugFeatureGate.Freeze(
-					settings.CurrentSnapshot ?? McpSettingsSnapshot.SafeDefaults(),
-					startupDbgWasIdle: null); // IMP-005 wires the DbgManager dispatcher sample
-				return frozenGate;
-			}
-		}
-	}
+	/// <summary>The per-process frozen gate owned by DebugGateService (CON-DYN-014): the
+	/// dispatcher-sampled value once it lands, otherwise the unsampleable gate (always false).</summary>
+	public DebugFeatureGate.FrozenGate Gate => gateService.Current;
 
 	static string HostArchitecture => IntPtr.Size == 8 ? Architectures.X64 : Architectures.X86;
 
@@ -120,7 +113,7 @@ internal sealed class DebugToolProvider : IMcpToolProvider {
 	/// advertised inputSchema can never drift from the contract fixtures.
 	/// </summary>
 	Dictionary<string, object> ArgsSchema(string toolName) {
-		lock (gateLock) {
+		lock (schemaLock) {
 			schemaDoc ??= LoadEmbeddedSchema();
 			var defs = schemaDoc.RootElement.GetProperty("$defs");
 			if (defs.TryGetProperty(toolName + "_args", out var args)) {
