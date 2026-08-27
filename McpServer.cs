@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using dnSpy.Extension.MCP.Tools;
 
 namespace dnSpy.Extension.MCP {
 	/// <summary>
@@ -20,7 +21,7 @@ namespace dnSpy.Extension.MCP {
 	[Export(typeof(McpServer))]
 	sealed class McpServer : IDisposable {
 		readonly McpSettings settings;
-		readonly McpTools tools;
+		readonly McpToolRegistry toolRegistry;
 		readonly BepInExResources bepinexResources;
 		HttpListener? httpListener;
 		CancellationTokenSource? cts;
@@ -82,9 +83,9 @@ namespace dnSpy.Extension.MCP {
 		/// Initializes the MCP server with the specified settings, tools, and documentation.
 		/// </summary>
 		[ImportingConstructor]
-		public McpServer(McpSettings settings, McpTools tools, BepInExResources bepinexResources) {
+		public McpServer(McpSettings settings, McpToolRegistry toolRegistry, BepInExResources bepinexResources) {
 			this.settings = settings;
-			this.tools = tools;
+			this.toolRegistry = toolRegistry;
 			this.bepinexResources = bepinexResources;
 		}
 
@@ -738,7 +739,7 @@ namespace dnSpy.Extension.MCP {
 
 		object HandleListTools() {
 			return new ListToolsResult {
-				Tools = tools.GetAvailableTools()
+				Tools = toolRegistry.GetAvailableTools()
 			};
 		}
 
@@ -752,7 +753,7 @@ namespace dnSpy.Extension.MCP {
 			if (toolCall == null)
 				throw new ArgumentException("Invalid tool call parameters");
 
-			return tools.ExecuteTool(toolCall.Name, toolCall.Arguments);
+			return toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments);
 		}
 
 		object HandleListResources() {

@@ -1,0 +1,1236 @@
+[
+  {
+    "name": "open_files",
+    "description": "Load .NET assemblies/modules into dnSpy from disk so the other tools can analyze them \u2014 like dnSpy\u0027s File \u2192 Open, but driven by the AI. Use this when the assembly you need isn\u0027t loaded yet. Each entry in \u0027paths\u0027 may be a FILE (loaded directly) or a DIRECTORY (every file matching \u0027pattern\u0027, default \u0027*.dll\u0027, optionally \u0027recursive\u0027) \u2014 so you can open several DLLs at once or a whole folder (e.g. a Unity game\u0027s \u0027Managed\u0027 directory). Only reads metadata; does not execute the assembly. Returns loaded_count / already_loaded_count / failed_count, a \u0027loaded\u0027 list ({name, path, already_loaded}) and a \u0027failed\u0027 list ({path, error}). Then use list_assemblies / search_types to work with them.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "File and/or directory paths (absolute recommended). A file is loaded directly; a directory loads every file matching \u0027pattern\u0027."
+        },
+        "recursive": {
+          "type": "boolean",
+          "description": "Default false. For directory entries, also descend into subdirectories."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Default \u0027*.dll\u0027. Glob applied to directory entries (e.g. \u0027*.exe\u0027). Ignored for file entries."
+        }
+      },
+      "required": [
+        "paths"
+      ]
+    }
+  },
+  {
+    "name": "list_assemblies",
+    "description": "List all loaded assemblies in dnSpy. Unity titles load hundreds of framework modules; pass name_filter (substring or \u0027*\u0027 wildcard) to narrow, e.g. \u0027Assembly-CSharp\u0027.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name_filter": {
+          "type": "string",
+          "description": "Optional. Case-insensitive substring, or \u0027*\u0027 wildcard anchored to the whole name (e.g. \u0027Assembly-CSharp\u0027, \u0027*Firstpass\u0027)."
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "get_assembly_info",
+    "description": "Get detailed information about a specific assembly. Supports pagination of namespaces with default page size of 10.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination of namespaces (opaque token from previous response). Default page size: 10 namespaces."
+        }
+      },
+      "required": [
+        "assembly_name"
+      ]
+    }
+  },
+  {
+    "name": "list_types",
+    "description": "List all types in an assembly or namespace. Metadata rows include each TypeDef token so they can feed rename_symbol_by_token / decompile_by_token. Paginated (default page size 10; override with page_size). Use names_only for a compact list of FullName strings, and base_type to list only (transitive) subclasses of a base \u2014 e.g. base_type=\u0027MonoBehaviour\u0027 lists all Unity components.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Optional namespace filter"
+        },
+        "base_type": {
+          "type": "string",
+          "description": "Optional. Only include types whose base chain contains this (case-insensitive substring of a base type FullName), e.g. \u0027MonoBehaviour\u0027, \u0027UnityEngine.MonoBehaviour\u0027, \u0027ScriptableObject\u0027."
+        },
+        "names_only": {
+          "type": "boolean",
+          "description": "Default false. Return a flat list of type FullName strings instead of per-type metadata \u2014 much cheaper in tokens."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for the first request (default 10, max 1000). Follow-up pages keep it via the cursor."
+        },
+        "include_nested": {
+          "type": "boolean",
+          "description": "Default true. Include nested types \u2014 including compiler-generated async/iterator state machines (e.g. GameOver/\u003CAwake\u003Ed__63). Set false for top-level types only. Each entry carries is_nested / is_compiler_generated / declaring_type."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "assembly_name"
+      ]
+    }
+  },
+  {
+    "name": "get_type_info",
+    "description": "Get detailed information about a specific type including its TypeDef token, generic-parameter tokens, and members. Fields/properties/events carry their metadata token; full method rows include MethodDef, parameter, and method-generic-parameter tokens. First request returns fields/properties/events and paginated methods; cursor requests return methods only. Use compact=true and members_filter to reduce output. Field rows also carry Offset/OffsetSource/Il2CppToken when discoverable.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type including namespace"
+        },
+        "compact": {
+          "type": "boolean",
+          "description": "Default false. Return only name \u002B signature \u002B token per method, and name \u002B type per field/property. Much cheaper than the full per-member detail."
+        },
+        "members_filter": {
+          "type": "string",
+          "description": "Optional. Only include methods/fields/properties whose name matches (case-insensitive substring, or \u0027*\u0027 wildcard anchored to the whole name), e.g. \u0027*Save*\u0027."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for methods on the first request (default 10, max 1000)."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination of methods (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name"
+      ]
+    }
+  },
+  {
+    "name": "decompile_method",
+    "description": "Decompile a specific method to C# code. For overloaded methods, pass parameter_types (array of fully-qualified type names from list_methods) or method_token (uint MDToken) to disambiguate.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the method"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names (e.g. [\u0022System.Int32\u0022,\u0022System.String\u0022]) to disambiguate overloads. Matches MethodSig.Params, not including \u0027this\u0027."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw (from get_type_info or list_methods) \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Unambiguous \u2014 takes precedence over parameter_types."
+        },
+        "include_state_machine": {
+          "type": "boolean",
+          "description": "Default true. For async / iterator methods, if the decompiler can\u0027t inline the state machine back into await/yield (common on Unity/Mono output), append the raw compiler-generated MoveNext body so the real logic isn\u0027t lost. Set false to get only the kickoff."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "search_types",
+    "description": "Search for types by name. Metadata rows include each TypeDef token so they can feed rename_symbol_by_token / decompile_by_token. Defaults to all loaded assemblies \u2014 pass assembly_name to scope to one (e.g. \u0027Assembly-CSharp\u0027) so framework types don\u0027t drown game types. Matches nested compiler-generated types too. Paginated (default page size 10; override with page_size). Use names_only for a compact FullName-string list.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query. Wildcards (*) match against FullName (namespace \u002B type name). Recommended patterns: \u0027*TypeName\u0027 for suffix (e.g., \u0027*Controller\u0027 finds MyNamespace.PlayerController), \u0027*.Keyword*\u0027 for types containing keyword, \u0027Full.Namespace.Path.*\u0027 for specific namespace. Without wildcards, performs case-insensitive substring matching (e.g., \u0027Controller\u0027 finds all types with \u0027Controller\u0027 in name)."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Restrict the search to a single assembly. Omit to search all loaded assemblies."
+        },
+        "names_only": {
+          "type": "boolean",
+          "description": "Default false. Return a flat list of type FullName strings instead of per-type metadata \u2014 much cheaper in tokens."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for the first request (default 10, max 1000)."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "search_members",
+    "description": "Search for MEMBERS (methods / fields / properties / events) by name across all loaded assemblies (or one via assembly_name) \u2014 the member counterpart of search_types, together covering dnSpy\u0027s Ctrl\u002BShift\u002BK \u0027Search Assemblies\u0027. Use this when you have a bare member name (e.g. from decompiled code) but DON\u0027T know its declaring type: each hit returns assembly, declaring_type, member_kind, name, full signature, the MDToken (uint), is_static and is_public. Field hits additionally carry offset/offset_source/il2cpp_token when discoverable (real FieldLayout or Il2CppDumper synthetic [FieldOffset]/[Token] attributes on Unity IL2CPP dumps); omitted otherwise. Feed a renameable token straight into rename_symbol_by_token, or a method/type token into decompile_by_token. Paginated (default page size 10; override with page_size); names_only returns a compact list of signatures.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Member name to search for. Without \u0027*\u0027, case-insensitive substring (e.g. \u0027Save\u0027 finds SaveGame, LoadSaveData). With \u0027*\u0027, a wildcard anchored to the whole member name (e.g. \u0027get_*\u0027 finds property getters, \u0027*Health\u0027 for a suffix)."
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Which member kinds to include \u2014 any of: method, field, property, event. Omit for all four. (Property/event accessor methods like get_X also appear under \u0027method\u0027.)"
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Restrict the search to a single assembly (e.g. \u0027Assembly-CSharp\u0027). Omit to search all loaded assemblies \u2014 recommended for common names that would otherwise match thousands of framework members."
+        },
+        "names_only": {
+          "type": "boolean",
+          "description": "Default false. Return a flat list of member signature strings instead of per-member metadata \u2014 much cheaper in tokens."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for the first request (default 10, max 1000)."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "decompile_type",
+    "description": "Decompile a whole TYPE to C# (all members) \u2014 the dnSpy \u0027click the class and read its source\u0027 view. Use it to understand a class in one shot, instead of decompiling members one by one. Nested / compiler-generated types are addressable (separator-tolerant: \u0027.\u0027, \u0027\u002B\u0027, \u0027/\u0027). For very large types the output can be big \u2014 prefer get_type_info (compact=true) for an overview, or decompile_method for a single member.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type (namespace \u002B name; nested types may use \u0027.\u0027, \u0027\u002B\u0027, or \u0027/\u0027)."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name"
+      ]
+    }
+  },
+  {
+    "name": "decompile_by_token",
+    "description": "Decompile a method (or type) to C# by MDToken alone \u2014 no type name needed. Ideal when you have a token from find_callers / find_references / search_string_literals / list_methods but not the declaring type (also the simplest way to reach nested compiler-generated state machines). Tokens are per-module: pass assembly_name to be exact; without it the token must be unambiguous across loaded assemblies. Method tokens get the same async/iterator state-machine rescue as decompile_method.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "MDToken.Raw \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows); e.g. the method_token / caller_token returned by other tools."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Module the token belongs to. Recommended \u2014 tokens are only unique within a module."
+        },
+        "include_state_machine": {
+          "type": "boolean",
+          "description": "Default true. For async/iterator methods, append the raw MoveNext body when the kickoff can\u0027t be reconstructed (same behavior as decompile_method)."
+        }
+      },
+      "required": [
+        "token"
+      ]
+    }
+  },
+  {
+    "name": "find_callers",
+    "description": "Cross-reference: find every method that CALLS a given method (call / callvirt / newobj / ldftn / ldvirtftn), across ALL loaded assemblies \u2014 callers routinely live in a different assembly than the target. Identify the target by assembly_name \u002B type_full_name \u002B method_name (with parameter_types or method_token to disambiguate overloads). Each hit returns the caller\u0027s type, method, MDToken (uint), signature, the call opcode, the resolved reference, and IL index/offset. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the target method"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the target method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the target method"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded target."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the target method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "find_callees",
+    "description": "Cross-reference (inverse of find_callers): list what a single method USES \u2014 the methods it calls, the fields it reads/writes, and the types it touches in its own body (dnSpy Analyze\u0027s \u0027Uses\u0027 node). Identify the method by assembly_name \u002B type_full_name \u002B method_name (with parameter_types or method_token for overloads). Results are deduplicated per referenced member: each row has ref_kind (method/field/type), the full signature, the resolved MDToken (uint) paired with target_assembly (pass both to decompile_by_token \u2014 the callee may live in a different assembly than the caller), the set of opcodes, an occurrences count, and first_il_index. token/target_assembly are null for references into assemblies that aren\u0027t loaded. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the method to analyze"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the method whose outgoing references to list"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "find_references",
+    "description": "Cross-reference: find every IL site that references a target across ALL loaded assemblies. target_kind selects what to look for: \u0027method\u0027 (any call / ldftn / ldtoken of the method), \u0027field\u0027 (any ldfld/stfld/ldsfld/stsfld/ldflda \u002B ldtoken), \u0027type\u0027 (newarr / castclass / isinst / box / ldtoken / etc.), or \u0027string\u0027 (ldstr matching a query). Provide the identity fields for the chosen kind (see properties). Each hit returns the referencing type, method, MDToken (uint), signature, opcode, the resolved reference, and IL index/offset. Paginated (default page size 10). For methods, find_callers is the call-only specialization.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "method",
+            "field",
+            "type",
+            "string"
+          ],
+          "description": "What to look for: method | field | type | string."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly declaring the target (required for method/field/type)."
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the target type (for target_kind=type) or the type declaring the target member (method/field)."
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Target method name (target_kind=method)."
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Disambiguate an overloaded target method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the target method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        },
+        "field_name": {
+          "type": "string",
+          "description": "Target field name (target_kind=field)."
+        },
+        "query": {
+          "type": "string",
+          "description": "String to match (target_kind=string). Case-insensitive substring, or \u0027*\u0027 wildcard anchored to the whole literal."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "target_kind"
+      ]
+    }
+  },
+  {
+    "name": "find_overrides",
+    "description": "Cross-reference for virtual / interface methods (dnSpy Analyze \u0027Overridden By\u0027 / \u0027Overrides\u0027). direction=\u0027overridden_by\u0027 (default): list every type across ALL loaded assemblies that overrides or implements the target \u2014 i.e. the concrete bodies that actually run on a callvirt (find_callers only finds the literal call site to the base/interface slot, never these implementations). If the target is a CLASS virtual/abstract method, this lists overriding subclasses; if it\u0027s an INTERFACE method, it lists implementing types (implicit or explicit impls), with is_interface_impl=true on each hit. direction=\u0027overrides\u0027: given a method, list the base-class virtual(s) it overrides, walking up the base chain (plus explicit interface overrides). Identify the method by assembly_name \u002B type_full_name \u002B method_name (parameter_types / method_token for overloads). Each hit returns type, method, signature, MDToken (uint), assembly, is_abstract, is_interface_impl. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "overridden_by",
+            "overrides"
+          ],
+          "description": "overridden_by (default): subclasses that override this method. overrides: base-class virtuals this method overrides."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the target method"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the target method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the target (virtual) method"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the target method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "find_unity_messages",
+    "description": "List the Unity lifecycle / message methods (Awake / Start / Update / FixedUpdate / OnEnable / OnTriggerEnter / OnCollisionEnter / OnGUI / OnDestroy / \u2026) declared on a type, or across a whole assembly. Unity invokes these by name via reflection, so they have NO IL call site \u2014 find_callers / find_references can\u0027t surface them, yet they\u0027re the entry points you hook in a MonoBehaviour. Pass type_full_name for one type, or omit it to sweep the assembly (e.g. \u0027which classes have an Update()?\u0027). Each hit returns type, message (method name), parameter_types (so you see e.g. OnTriggerEnter(UnityEngine.Collider)), signature, MDToken, is_static \u2014 feed token into generate_harmony_patch / decompile_by_token. These only actually fire on MonoBehaviour subclasses. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly (e.g. \u0027Assembly-CSharp\u0027)"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Optional. A single type to inspect. Omit to sweep every type in the assembly."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for the first request (default 10, max 1000)."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "assembly_name"
+      ]
+    }
+  },
+  {
+    "name": "find_by_attribute",
+    "description": "Find types and/or members decorated with a given custom attribute, across all assemblies (or one). The \u0027locate by convention\u0027 tool: \u0027[SerializeField]\u0027 fields (Unity-serialized private state), \u0027[BepInPlugin]\u0027 classes (plugin entry points), \u0027[Serializable]\u0027 types, \u0027[CompilerGenerated]\u0027 members, etc. attribute_name is a case-insensitive substring (or \u0027*\u0027 wildcard) matched against the attribute type\u0027s short name and FullName, so \u0027SerializeField\u0027 / \u0027BepInPlugin\u0027 / \u0027Serializable\u0027 all work without the \u0027Attribute\u0027 suffix. \u0027targets\u0027 restricts which declaration kinds to scan (type/method/field/property/event; default all). Each hit returns target_kind, declaring_type, name, signature, MDToken, and the matched attribute\u0027s FullName. Note: a few \u0027pseudo\u0027 attributes ([Serializable], [NonSerialized], [DllImport], [StructLayout]) compile to metadata flags rather than real custom attributes and are therefore NOT findable here. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "attribute_name": {
+          "type": "string",
+          "description": "Attribute to match (case-insensitive substring or \u0027*\u0027 wildcard), e.g. \u0027SerializeField\u0027, \u0027BepInPlugin\u0027, \u0027Serializable\u0027. The \u0027Attribute\u0027 suffix is optional."
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Which declaration kinds to scan \u2014 any of: type, method, field, property, event. Omit for all."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Restrict to a single assembly. Omit to sweep all loaded assemblies."
+        },
+        "page_size": {
+          "type": "integer",
+          "description": "Optional page size for the first request (default 10, max 1000)."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response)."
+        }
+      },
+      "required": [
+        "attribute_name"
+      ]
+    }
+  },
+  {
+    "name": "search_string_literals",
+    "description": "Reverse-lookup: find every method that emits a given string literal (ldstr) across loaded assemblies. Answers \u0022which method uses this string?\u0022 \u2014 the #1 question in game/Unity RE where logic is wired by string keys (PlayerPrefs keys, scene names, save tokens). Query is a case-insensitive substring by default; use * for wildcards anchored to the whole string (e.g. \u0027SAVE*\u0027). Optionally restrict to one assembly. Each hit returns the string value, declaring type, method name \u002B MDToken (uint), full signature, and IL index/offset. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "String to search for. Case-insensitive substring by default; \u0027*\u0027 is a wildcard matching the whole literal (e.g. \u0027Player*Score\u0027, \u0027*SAVEFILE*\u0027)."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Restrict the search to a single assembly. Omit to sweep all loaded assemblies."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "list_string_constants",
+    "description": "List all string literals (ldstr) in a type, or in a single method. Type scope includes nested types (compiler-generated closures often hold the interesting keys). Pass method_name (with parameter_types or method_token to disambiguate overloads) to narrow to one method. Each entry returns the string value, declaring type, method name \u002B MDToken (uint), full signature, and IL index/offset. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Optional. Restrict to a single method. If omitted, lists ldstr across the type and its nested types."
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method_name."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw to disambiguate an overloaded method_name \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name"
+      ]
+    }
+  },
+  {
+    "name": "search_constants",
+    "description": "Find where a NUMERIC constant is used in code (ldc.i4* / ldc.i8 / ldc.r4 / ldc.r8) \u2014 the number counterpart of search_string_literals, completing dnSpy\u0027s Search Assemblies set (types / members / strings / numbers). For magic numbers, item IDs, damage values, thresholds. An integer query (e.g. 1337) matches integer constants; a query with a decimal point (e.g. 0.5) matches floating-point constants (r4 compared at float precision). Pass assembly_name to scope \u2014 common values like 0 or 1 are everywhere, so scoping to e.g. \u0027Assembly-CSharp\u0027 is strongly recommended. Each hit returns the matched value, opcode, declaring type, method \u002B MDToken, signature, and IL index/offset. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "description": "The numeric constant to find. A whole number matches integer constants; a number with a \u0027.\u0027 matches floating-point constants. May also be given as a string."
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional. Restrict to a single assembly (strongly recommended). Omit to sweep all loaded modules."
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination (opaque token from previous response). Default page size: 10 results."
+        }
+      },
+      "required": [
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "generate_bepinex_plugin",
+    "description": "Generate a complete BepInEx plugin: the BaseUnityPlugin shell (Awake wiring Harmony.PatchAll, OnDestroy unpatch) plus a [HarmonyPatch] class per hook. Each hook is resolved against target_assembly so its patch carries the method\u0027s REAL signature (__instance, ref \u003Cret\u003E __result, original params by name) \u2014 the same signature-aware output as generate_harmony_patch, not an empty stub. An unresolved/overloaded hook degrades to a commented stub (pin it with generate_harmony_patch). For a single patch, prefer generate_harmony_patch; use this to scaffold the whole plugin at once.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "plugin_name": {
+          "type": "string",
+          "description": "Name of the plugin"
+        },
+        "plugin_guid": {
+          "type": "string",
+          "description": "GUID for the plugin"
+        },
+        "target_assembly": {
+          "type": "string",
+          "description": "Assembly whose methods the hooks target (must be loaded so signatures can be read), e.g. \u0027Assembly-CSharp\u0027"
+        },
+        "hooks": {
+          "type": "array",
+          "description": "Array of methods to hook. Each patch is generated from the resolved method\u0027s signature.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type_name": {
+                "type": "string",
+                "description": "Full name of the declaring type"
+              },
+              "method_name": {
+                "type": "string",
+                "description": "Method to hook"
+              },
+              "patch_type": {
+                "type": "string",
+                "description": "postfix (default) / prefix / transpiler"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "plugin_name",
+        "plugin_guid",
+        "target_assembly"
+      ]
+    }
+  },
+  {
+    "name": "generate_harmony_patch",
+    "description": "Generate a compile-ready HarmonyX patch class for a REAL method, with the correct injected parameters read from its actual signature \u2014 unlike the empty stubs from generate_bepinex_plugin. Resolves the method (assembly \u002B type \u002B name, with parameter_types / method_token for overloads) and emits: the [HarmonyPatch(typeof(T), \u0022M\u0022)] attribute (adding a new Type[]{...} array when the name is overloaded), \u0060__instance\u0060 for instance methods, \u0060ref \u003CReturnType\u003E __result\u0060 for a non-void postfix, and the original parameters by name (positional __0/__1 if names were stripped). patch_type = postfix (default, for reading/altering the return value), prefix (returns bool \u2014 return false to skip the original), or transpiler (IL-rewrite skeleton). Non-primitive types are fully qualified so it compiles as-is.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the method to patch"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the method to patch (.ctor for a constructor)"
+        },
+        "patch_type": {
+          "type": "string",
+          "enum": [
+            "postfix",
+            "prefix",
+            "transpiler"
+          ],
+          "description": "postfix (default): run after, modify __result. prefix: run before, return false to skip the original. transpiler: IL-rewrite skeleton."
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "get_type_fields",
+    "description": "Get fields from a type matching a name pattern (supports wildcards like *Bonus*). Supports pagination with default page size of 10 fields. Each field row also carries an Offset when one is discoverable \u2014 either a real [StructLayout(Explicit)] FieldLayout row (OffsetSource=\u0027field-layout\u0027) or an Il2CppDumper \u0027dummy DLL\u0027 synthetic [FieldOffset(Offset=\u00220x330\u0022)] attribute (OffsetSource=\u0027il2cpp\u0027, typical of Unity IL2CPP dumps). The paired Il2CppDumper [Token(Token=\u00220x4000B02\u0022)] surfaces as Il2CppToken. All three keys are omitted on normal managed fields with no offset info.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Field name pattern (supports * wildcard)"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Optional cursor for pagination of fields (opaque token from previous response). Default page size: 10 fields."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "pattern"
+      ]
+    }
+  },
+  {
+    "name": "get_type_property",
+    "description": "Get detailed information about a specific property from a type",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type"
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Name of the property"
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "property_name"
+      ]
+    }
+  },
+  {
+    "name": "find_path_to_type",
+    "description": "Find property/field chains connecting two types through their members. (e.g., PlayerState -\u003E RpBonus)",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "from_type": {
+          "type": "string",
+          "description": "Starting type full name"
+        },
+        "to_type": {
+          "type": "string",
+          "description": "Target type full name or partial name"
+        },
+        "max_depth": {
+          "type": "number",
+          "description": "Maximum search depth (default: 5)"
+        }
+      },
+      "required": [
+        "assembly_name",
+        "from_type",
+        "to_type"
+      ]
+    }
+  },
+  {
+    "name": "list_methods",
+    "description": "List methods of a type with unambiguous identifiers. Each entry includes the MethodDef token, parameter rows with Param tokens, method generic-parameter rows with GenericParam tokens, and parameter_types for overload disambiguation. Feed any renameable token to rename_symbol_by_token. Paginated (default page size 10).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Fully qualified type name"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque pagination cursor from a previous response."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name"
+      ]
+    }
+  },
+  {
+    "name": "get_method_il",
+    "description": "Return the IL body of a method: instructions (index, offset, opcode, operand), locals, exception handlers, and body flags. Operand format is tagged and round-trips with patch_method_il (e.g. \u0027int:42\u0027, \u0027str:\u0022hello\u0022\u0027, \u0027method:Ns.T::M(System.Int32):System.Void\u0027, \u0027label:7\u0027). For overloaded methods, pass parameter_types or method_token to disambiguate.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Fully qualified type name"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Method name"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names for overload disambiguation."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw from list_methods / get_type_info \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "patch_method_il",
+    "description": "Apply an ordered list of IL edits to a method body in memory. Ops: {op:\u0022replace\u0022,index,opcode,operand}, {op:\u0022insert\u0022,index,opcode,operand} (insert BEFORE index), {op:\u0022delete\u0022,index}, {op:\u0022set_init_locals\u0022,value:bool}. Indices in later ops refer to the state BEFORE the whole batch. Operand grammar matches get_method_il output. Set optimize_macros=true to auto-shorten after edits. Changes are NOT written to disk \u2014 call save_assembly to persist. First patch to a method is snapshotted so revert_method_il can restore it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string"
+        },
+        "type_full_name": {
+          "type": "string"
+        },
+        "method_name": {
+          "type": "string"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "properties": {
+                  "op": {
+                    "const": "replace"
+                  },
+                  "index": {
+                    "type": "integer"
+                  },
+                  "opcode": {
+                    "type": "string"
+                  },
+                  "operand": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "index",
+                  "opcode",
+                  "operand"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "properties": {
+                  "op": {
+                    "const": "insert"
+                  },
+                  "index": {
+                    "type": "integer"
+                  },
+                  "opcode": {
+                    "type": "string"
+                  },
+                  "operand": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "op",
+                  "index",
+                  "opcode",
+                  "operand"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "properties": {
+                  "op": {
+                    "const": "delete"
+                  },
+                  "index": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "op",
+                  "index"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "properties": {
+                  "op": {
+                    "const": "set_init_locals"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "op",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "description": "Ordered edit ops. See tool description for shape."
+        },
+        "optimize_macros": {
+          "type": "boolean",
+          "description": "Call body.OptimizeMacros() after edits to auto-shorten ldarg/ldloc/branches. Default false."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name",
+        "edits"
+      ]
+    }
+  },
+  {
+    "name": "force_return",
+    "description": "Patch a method so it immediately returns a given value \u2014 the high-level alternative to hand-assembling IL with patch_method_il for the most common game-patching move (e.g. make IsPremium() return true, or a damage check return 0). Replaces the whole body with \u0027load value; ret\u0027. \u0027value\u0027 accepts: true/false, a number, null, or \u0027default\u0027 (zero/null/empty-struct for the return type); omit it for default. Void methods are turned into a no-op (an immediate ret) \u2014 passing a value then is an error (use nop_method). Reference-return methods only accept null/default; structs only accept default. Shares the snapshot mechanism with patch_method_il: revert_method_il undoes it and save_assembly persists it. Disambiguate overloads with parameter_types / method_token.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the method"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the method to rewrite"
+        },
+        "value": {
+          "description": "Value to return: a boolean, a number, null, or the string \u0027default\u0027. Omit for the return type\u0027s default. Ignored/invalid for void methods."
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "nop_method",
+    "description": "Empty out a method so it does nothing: a void method becomes a single \u0027ret\u0027; a value-returning method returns its default (zero/null/empty-struct). Equivalent to force_return with value=\u0027default\u0027. Use it to neutralize a method (e.g. disable an anti-cheat tick or a telemetry call). Shares the snapshot mechanism with patch_method_il \u2014 revert_method_il undoes it, save_assembly persists it. Disambiguate overloads with parameter_types / method_token.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Assembly that declares the method"
+        },
+        "type_full_name": {
+          "type": "string",
+          "description": "Full name of the type that declares the method"
+        },
+        "method_name": {
+          "type": "string",
+          "description": "Name of the method to empty out"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional. Fully-qualified parameter type names to disambiguate an overloaded method."
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Optional. MDToken.Raw of the method \u2014 decimal uint or hex string (\u00270x06000001\u0027, as dnSpy shows). Takes precedence over parameter_types."
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "revert_method_il",
+    "description": "Restore the method body that was captured on first patch_method_il. Fails with -32602 if no pending snapshot exists for the method.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string"
+        },
+        "type_full_name": {
+          "type": "string"
+        },
+        "method_name": {
+          "type": "string"
+        },
+        "parameter_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "method_token": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "assembly_name",
+        "type_full_name",
+        "method_name"
+      ]
+    }
+  },
+  {
+    "name": "rename_symbol_by_token",
+    "description": "Unified metadata rename tool. target_kind selects type/class/enum/interface/struct/delegate, method, field, enum_member, enum_members, property, event, parameter, or generic_parameter. token is the matching metadata token copied from dnSpy (decimal uint or 0x hex); assembly_name is recommended for module disambiguation. Singular targets require new_name; enum_members requires a complete value-mapped members array. Matching same-module TypeRef/MemberRef rows and open decompiler tabs are refreshed where applicable. Call save_assembly afterwards to persist changes. Two caveats: there is no revert for renames (unlike revert_method_il) \u2014 rename back to the old name to undo; and only references inside the target\u0027s own module are rewritten, so other loaded assemblies that reference the old name will no longer bind once this one is saved.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "type",
+            "class",
+            "enum",
+            "interface",
+            "struct",
+            "delegate",
+            "method",
+            "field",
+            "enum_member",
+            "enum_members",
+            "property",
+            "event",
+            "parameter",
+            "generic_parameter"
+          ],
+          "description": "Metadata symbol kind. Use enum_members for complete value-mapped enum-member batch rename."
+        },
+        "token": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Matching metadata token \u2014 decimal uint or hex string copied from dnSpy (for example 0x02000001, 0x04000001, or 0x06000001)."
+        },
+        "new_name": {
+          "type": "string",
+          "description": "Required for every singular target_kind. New simple metadata name."
+        },
+        "members": {
+          "type": "array",
+          "description": "Required only for target_kind=enum_members. Complete desired enum mapping by existing numeric value.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          }
+        },
+        "assembly_name": {
+          "type": "string",
+          "description": "Optional but recommended. Assembly/module the token belongs to."
+        }
+      },
+      "required": [
+        "target_kind",
+        "token"
+      ]
+    }
+  },
+  {
+    "name": "save_assembly",
+    "description": "Write the (possibly patched) module of an assembly back to disk. When output_path is omitted, the original file is overwritten after a timestamped backup (\u003Cpath\u003E.\u003CyyyyMMdd-HHmmss\u003E.bak) is created. GAC paths are refused. Memory-mapped I/O is disabled before writing so the live dnSpy process releases the file. Note: dnSpy\u0027s in-memory tree is NOT refreshed \u2014 reopen the assembly to see the saved state inside this instance.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "assembly_name": {
+          "type": "string",
+          "description": "Name of the assembly to save"
+        },
+        "output_path": {
+          "type": "string",
+          "description": "Optional. Target file path. If absent, overwrite original with a timestamped backup."
+        }
+      },
+      "required": [
+        "assembly_name"
+      ]
+    }
+  }
+]
