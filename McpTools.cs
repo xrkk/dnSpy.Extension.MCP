@@ -34,12 +34,48 @@ namespace dnSpy.Extension.MCP
             IDocumentTreeView documentTreeView,
             IDocumentTabService documentTabService,
             IDecompilerService decompilerService,
-            McpSettings settings)
+            McpSettings settings,
+            Debugger.StaticWriteGate writeGate)
         {
             this.documentTreeView = documentTreeView;
             this.documentTabService = documentTabService;
             this.decompilerService = decompilerService;
             this.settings = settings;
+            this.writeGate = writeGate;
+        }
+
+        readonly Debugger.StaticWriteGate? writeGate;
+
+        /// <summary>
+        /// IMP-010: the six static write tools are blocked with INVALID_STATE and zero side
+        /// effects when the MCP coordinator is not idle or any debugging is active in this
+        /// dnSpy process. The check runs inside the same WPF Dispatcher callback as the mutation
+        /// (ExecuteTool marshals), atomically before any handler dispatch.
+        /// </summary>
+        /// <summary>
+        /// IMP-010 gate check, invoked inside the WPF marshal callback before any handler
+        /// dispatch. Returns the INVALID_STATE result for a blocked gated tool, null otherwise
+        /// (read tools are never gated). Static so the decision is testable without a WPF
+        /// dispatcher; zero side effects by construction.
+        /// </summary>
+        internal static CallToolResult? CheckWriteGate(Debugger.StaticWriteGate? gate, string toolName)
+        {
+            if (gate is null || !Debugger.StaticWriteGate.IsGatedTool(toolName) || !gate.IsBlocked)
+                return null;
+            var state = gate.CurrentCoordinatorState;
+            var envelope = new Debugger.DebugFailureEnvelope {
+                DebugContext = new Debugger.DebugContextDto { State = state },
+                Error = Debugger.DomainErrorDto.Create(Debugger.DomainErrorCodes.InvalidState, state,
+                    new List<string> { Debugger.DebugStates.Idle }),
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(envelope,
+                new System.Text.Json.JsonSerializerOptions {
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                });
+            return new CallToolResult {
+                Content = new List<ToolContent> { new ToolContent { Text = json } },
+                IsError = true,
+            };
         }
 
         /// <summary>
@@ -1037,6 +1073,11 @@ namespace dnSpy.Extension.MCP
             // thread, so the double-wrap is a no-op.
             return InvokeOnUiThread(() =>
             {
+                // IMP-010: gate the six write tools atomically inside this same WPF callback,
+                // before any handler dispatch — blocked means INVALID_STATE, zero side effects.
+                var blocked = CheckWriteGate(writeGate, toolName);
+                if (blocked != null)
+                    return blocked;
                 try
                 {
                     return toolName switch
