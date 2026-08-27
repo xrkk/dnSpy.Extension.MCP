@@ -44,4 +44,14 @@
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>
 
+  <!--
+    The frozen debug contract schema (tests/debug/contracts/dnspy.debug.v1.schema.json, frozen by
+    the audited plan) is embedded verbatim so the advertised debug tool inputSchemas come from the
+    same single source as the canonical fixtures and can never drift. Explicit Include overrides
+    the tests/** DefaultItemExcludes, which only affects default globs.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="tests/debug/contracts/dnspy.debug.v1.schema.json" />
+  </ItemGroup>
+
 </Project>

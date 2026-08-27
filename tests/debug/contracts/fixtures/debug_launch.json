@@ -175,17 +175,16 @@
      "content": [
       {
        "type": "text",
-       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"c2Vzc2lvbi0wMDAx\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":10,\"state\":\"idle\"},\"error\":{\"code\":\"DEBUG_DISABLED\",\"message\":\"Debug tools are disabled.\",\"recovery\":\"enable_debug_tools\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
+       "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"error\":{\"code\":\"DEBUG_DISABLED\",\"message\":\"Debug tools are disabled.\",\"recovery\":\"enable_debug_tools\",\"current_state\":\"idle\",\"required_states\":[]},\"warnings\":[],\"untrusted_sample_data\":false}"
       }
      ],
      "structuredContent": {
       "schema_version": "dnspy.debug.v1",
       "ok": false,
       "debug_context": {
-       "session_id": "c2Vzc2lvbi0wMDAx",
-       "generation": 1,
-       "pause_epoch": 2,
-       "event_cursor": 10,
+       "generation": 0,
+       "pause_epoch": 0,
+       "event_cursor": 0,
        "state": "idle"
       },
       "error": {

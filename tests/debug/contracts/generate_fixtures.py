@@ -93,8 +93,12 @@ def ctx(state, session=True):
     c.update({"generation": GEN, "pause_epoch": EPOCH, "event_cursor": CURSOR, "state": state})
     return c
 
+def ctx_no_session(state):
+    return {"generation": 0, "pause_epoch": 0, "event_cursor": 0, "state": state}
+
 def env_ok(result, state, session=True, warnings=None, untrusted=False):
-    return {"schema_version": "dnspy.debug.v1", "ok": True, "debug_context": ctx(state, session),
+    context = ctx_no_session(state) if session is None else ctx(state, session)
+    return {"schema_version": "dnspy.debug.v1", "ok": True, "debug_context": context,
             "result": result, "warnings": warnings or [], "untrusted_sample_data": untrusted}
 
 def err_obj(code, current_state, required_states=None):
@@ -108,7 +112,8 @@ def err_obj(code, current_state, required_states=None):
     return e
 
 def env_err(code, current_state, required_states=None, session=True):
-    return {"schema_version": "dnspy.debug.v1", "ok": False, "debug_context": ctx(current_state, session),
+    context = ctx_no_session(current_state) if session is None else ctx(current_state, session)
+    return {"schema_version": "dnspy.debug.v1", "ok": False, "debug_context": context,
             "error": err_obj(code, current_state, required_states), "warnings": [],
             "untrusted_sample_data": False}
 
@@ -329,7 +334,7 @@ def gen_api_fixtures():
                           resp_rpc_error(-32602, "Invalid params", f"{api}/invalid-fields")))
         # disabled-gate
         cases.append(case(f"{api}/disabled-gate", "disabled-gate", api, A[api],
-                          resp_tool(env_err("DEBUG_DISABLED", "idle"), PV_NEW, f"{api}/disabled-gate", True)))
+                          resp_tool(env_err("DEBUG_DISABLED", "idle", session=None), PV_NEW, f"{api}/disabled-gate", True)))
         files[f"{api}.json"] = {"schema_version": "dnspy.debug.fixtures.v1", "api": api,
                                 "protocol_version": PV_NEW, "cases": cases}
     return files
@@ -375,9 +380,9 @@ def gen_capabilities_fixtures():
     api = "debug_capabilities"
     cases = [
         case(f"{api}/valid-enabled", "valid", api, {},
-             resp_tool(env_ok(cap_res(True, True, "x64"), "idle", session=False), PV_NEW, f"{api}/valid-enabled", False)),
+             resp_tool(env_ok(cap_res(True, True, "x64"), "idle", session=None), PV_NEW, f"{api}/valid-enabled", False)),
         case(f"{api}/valid-disabled-gate", "valid", api, {},
-             resp_tool(env_ok(cap_res(False, False, "x64"), "idle", session=False), PV_NEW, f"{api}/valid-disabled-gate", False)),
+             resp_tool(env_ok(cap_res(False, False, "x64"), "idle", session=None), PV_NEW, f"{api}/valid-disabled-gate", False)),
         case(f"{api}/invalid-fields", "invalid-fields", api, {"unexpected": True},
              resp_rpc_error(-32602, "Invalid params", f"{api}/invalid-fields")),
     ]
@@ -401,7 +406,7 @@ def gen_disabled_api_fixtures():
         for api in sorted(args_map):
             cid = f"{api}/fixed-capability-unavailable@{pv}"
             c1 = case(cid, "fixed-capability-unavailable", api, args_map[api],
-                      resp_tool(env_err("CAPABILITY_UNAVAILABLE", "idle"), pv, cid, True))
+                      resp_tool(env_err("CAPABILITY_UNAVAILABLE", "idle", session=None), pv, cid, True))
             iid = f"{api}/invalid-fields@{pv}"
             c2 = case(iid, "invalid-fields", api, invalid_map[api],
                       resp_rpc_error(-32602, "Invalid params", iid))
@@ -577,7 +582,7 @@ def gen_byte_fixtures():
                     if at_kind == "valid":
                         expected = resp_tool(env_ok(R[api], at_state), PV_NEW, cid, False)
                     elif at_kind == "fixed-capability-unavailable":
-                        expected = resp_tool(env_err("CAPABILITY_UNAVAILABLE", "idle"), PV_NEW, cid, True)
+                        expected = resp_tool(env_err("CAPABILITY_UNAVAILABLE", "idle", session=None), PV_NEW, cid, True)
                     else:
                         expected = resp_tool(env_err("INVALID_STATE", at_state, ALLOWED[api]), PV_NEW, cid, True)
                     cases.append(case(cid, "byte-input", api, args, expected, stage="byte", utf8_bytes=u(val),
