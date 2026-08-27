@@ -2,7 +2,7 @@
 
 - 对象:`dnSpy.Extension.MCP`(含动态调试增强,方案 v16)
 - 构建产物:`dist/dnSpy.Extension.MCP-net48.x.dll`、`dist/dnSpy.Extension.MCP-net10.0-windows.x.dll`
-- 权威构建:CI(`verify.yml` → `build.yml`,含 net48 依赖守卫);本机/Linux 构建仅用于开发验证
+- 权威构建:CI(`verify.yml` → `build.yml`);**无 CI 环境用 `tests/run-verify-local.sh` 单机等价入口**(依赖守卫为 pwsh 版的 Python 等价)
 - 方案契约:ACC-001..036(§6),运行规程见 `docs/deployment-dynamic-debugging.zh-CN.md`
 
 ## 分层总览
@@ -90,6 +90,19 @@ New-NetFirewallRule -DisplayName "dnspy-mcp-hostonly" -Direction Inbound `
 | 协议 | 027,028 | transport 重连;schema/状态矩阵/幂等 fixture 对账 |
 
 **退出判据**:36 项 ACC 全通过→方案完整落地;任一项失败→修复后回归该组与 L0-L3。
+
+## 无 CI 的单机等价入口(L0+L1+依赖守卫+双 TFM 构建,一键)
+
+CI 不可用时,verify.yml 的 contracts+build 两个 job 在本机等价执行:
+
+```bash
+# 一次性:准备 dnSpyEx v6.6.0 检出(含子模块)+ jsonschema venv(脚本自动创建)
+DNSPY_DIR=/path/to/dnSpyEx tests/run-verify-local.sh
+```
+
+输出 = 契约 189 例 + 32 工具快照断言 + net48 依赖守卫(`tests/check-host-deps.py`,
+pwsh 版的 Python 等价)+ 双 TFM Release 构建,并把产物写入 `dist/`(附 SHA-256)。
+已在本机验证全绿;e2e job 的单机等价即 L3/L4(需 Windows)。
 
 ## L5 发布门禁(已接线)
 
