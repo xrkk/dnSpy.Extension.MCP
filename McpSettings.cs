@@ -90,7 +90,7 @@ namespace dnSpy.Extension.MCP {
 		/// collection for the settings UI.
 		/// </summary>
 		/// <param name="message">The log message to add.</param>
-		public void Log(string message) {
+		public virtual void Log(string message) {
 			var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
 			var logEntry = $"[{timestamp}] {message}";
 
@@ -142,6 +142,23 @@ namespace dnSpy.Extension.MCP {
 			other.Port = Port;
 			return other;
 		}
+
+		/// <summary>
+		/// The authoritative settings snapshot backing this instance, or null before the store
+		/// is wired. The server reads this instead of the mutable UI properties.
+		/// </summary>
+		public virtual McpSettingsSnapshot? CurrentSnapshot => null;
+
+		/// <summary>
+		/// Applies an edited clone. The store-backed implementation routes this through the
+		/// CON-DYN-014 ApplySnapshot transaction (staged/committed persistence plus one server
+		/// transition); the base fallback just copies the legacy properties.
+		/// </summary>
+		public virtual void ApplyEdited(McpSettings edited) {
+			EnableServer = edited.EnableServer;
+			Host = edited.Host;
+			Port = edited.Port;
+		}
 	}
 
 	/// <summary>
@@ -151,20 +168,38 @@ namespace dnSpy.Extension.MCP {
 	sealed class McpSettingsImpl : McpSettings {
 		static readonly Guid SETTINGS_GUID = new Guid("352907A0-9DF5-4B2B-B47B-95E504CAC301");
 
-		readonly ISettingsService settingsService;
+		readonly McpSettingsStore store;
 		McpServer? mcpServer;
 
 		[ImportingConstructor]
-		McpSettingsImpl(ISettingsService settingsService) {
-			this.settingsService = settingsService;
+		McpSettingsImpl(dnSpy.Contracts.Settings.ISettingsService settingsService) {
+			// Authoritative load: two-key staged/committed recovery with the one-shot legacy
+			// fallback (CON-DYN-014). UI fields mirror the snapshot without persistence events.
+			store = new McpSettingsStore(
+				new SettingsSectionSnapshotIO(settingsService, SETTINGS_GUID),
+				() => {
+					var sect = settingsService.GetOrCreateSection(SETTINGS_GUID);
+					return (sect.Attribute<bool?>(nameof(EnableServer)),
+						sect.Attribute<string>(nameof(Host)),
+						sect.Attribute<int?>(nameof(Port)));
+				});
+			LoadFieldsFromSnapshot();
+			if (store.StartupWarning != null)
+				Log(store.StartupWarning);
+		}
 
-			// Load settings from persistent storage
-			var sect = settingsService.GetOrCreateSection(SETTINGS_GUID);
-			EnableServer = sect.Attribute<bool?>(nameof(EnableServer)) ?? EnableServer;
-			Host = sect.Attribute<string>(nameof(Host)) ?? Host;
-			Port = sect.Attribute<int?>(nameof(Port)) ?? Port;
+		public override McpSettingsSnapshot? CurrentSnapshot => store.Current;
 
-			PropertyChanged += McpSettingsImpl_PropertyChanged;
+		void LoadFieldsFromSnapshot() {
+			var s = store.Current;
+			// Property setters raise PropertyChanged for the UI; there is no persistence
+			// subscriber anymore — all writes go through ApplyEdited's transaction.
+			EnableServer = s.EnableServer;
+			Host = s.Host;
+			Port = s.Port;
+			OnPropertyChanged(nameof(EnableServer));
+			OnPropertyChanged(nameof(Host));
+			OnPropertyChanged(nameof(Port));
 		}
 
 		/// <summary>
@@ -174,23 +209,35 @@ namespace dnSpy.Extension.MCP {
 			mcpServer = server;
 		}
 
-		void McpSettingsImpl_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
-			// Save settings to persistent storage
-			var sect = settingsService.RecreateSection(SETTINGS_GUID);
-			sect.Attribute(nameof(EnableServer), EnableServer);
-			sect.Attribute(nameof(Host), Host);
-			sect.Attribute(nameof(Port), Port);
-
-			// Handle server enable/disable dynamically (no restart required)
-			if (e.PropertyName == nameof(EnableServer) && mcpServer != null) {
-				if (EnableServer) {
-					Log("Starting MCP server");
-					mcpServer.Start();
-				} else {
-					Log("Stopping MCP server");
-					mcpServer.Stop();
-				}
+		/// <summary>
+		/// Single Apply entry point: builds a candidate from the edited legacy fields plus the
+		/// eight non-UI snapshot fields, then runs the five-step ApplySnapshot transaction.
+		/// Failure and gate rejection keep the authoritative snapshot and re-sync the UI fields.
+		/// </summary>
+		public override void ApplyEdited(McpSettings edited) {
+			var current = store.Current;
+			var candidate = McpSettingsSnapshot.TryCreate(
+				edited.EnableServer, edited.Host, edited.Port,
+				current.DebugToolsEnabled, current.DedicatedDebugInstanceAcknowledged,
+				current.AllowedSampleRoot, current.ArtifactRoot,
+				current.RemoteAllowedCidrs, current.RemoteTokenVerifier,
+				current.RemoteHostOnlyAcknowledged, out var error);
+			if (candidate == null) {
+				Log($"Settings rejected: {error}");
+				LoadFieldsFromSnapshot();
+				return;
 			}
+			var result = store.Apply(candidate,
+				s => mcpServer != null && mcpServer.ApplySnapshot(s),
+				() => mcpServer?.Stop());
+			if (result.RejectedByActiveSession || !result.Success) {
+				Log(result.FixedMessage ?? McpSettingsPersistence.ApplyErrorBody);
+				LoadFieldsFromSnapshot();
+				return;
+			}
+			if (result.FixedMessage != null)
+				Log(result.FixedMessage);
+			LoadFieldsFromSnapshot();
 		}
 	}
 }

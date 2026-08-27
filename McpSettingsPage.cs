@@ -84,10 +84,10 @@ namespace dnSpy.Extension.MCP {
 		}
 
 		/// <summary>
-		/// Applies the settings when user clicks OK.
+		/// Applies the settings when user clicks OK: one snapshot transaction, never per-setter writes.
 		/// </summary>
 		public override void OnApply() =>
-			newSettings.CopyTo(globalSettings);
+			globalSettings.ApplyEdited(newSettings);
 
 		/// <summary>
 		/// Called when the settings dialog is closed.

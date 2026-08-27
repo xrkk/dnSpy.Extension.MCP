@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using dnSpy.Extension.MCP.Tools;
+using dnSpy.Extension.MCP.Transport;
 
 namespace dnSpy.Extension.MCP {
 	/// <summary>
@@ -28,6 +29,17 @@ namespace dnSpy.Extension.MCP {
 		int actualPort;
 		readonly ConcurrentDictionary<string, SseSession> sseSessions = new ConcurrentDictionary<string, SseSession>();
 		readonly ConcurrentDictionary<string, StreamableHttpSession> streamableSessions = new ConcurrentDictionary<string, StreamableHttpSession>();
+		// Snapshot the current listener runs on (null while stopped). CON-DYN-006/009 security
+		// and limit decisions are made against this snapshot, never against live UI properties.
+		McpSettingsSnapshot? activeSnapshot;
+		// CON-DYN-009 admission gates: 16 parallel short requests / 8 long connections. Reserved
+		// non-blocking in the accept loop BEFORE any worker thread is created; workers release in
+		// a finally block.
+		readonly AdmissionGate shortRequestGate = new AdmissionGate(16);
+		readonly AdmissionGate longConnectionGate = new AdmissionGate(8);
+		const int MaxTransportSessions = 16;
+		// CON-DYN-009: fixed -32700 wire object; error carries no data (§3.4).
+		const string ParseErrorResponseJson = "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
 
 		/// <summary>
 		/// The port the server is actually listening on. May differ from <see cref="McpSettings.Port"/>
@@ -90,80 +102,188 @@ namespace dnSpy.Extension.MCP {
 		}
 
 		/// <summary>
-		/// Starts the MCP server if enabled in settings.
+		/// Starts the MCP server if enabled in the authoritative settings snapshot.
 		/// </summary>
 		public void Start() {
-			if (!settings.EnableServer) {
-				settings.Log("Start() called but EnableServer is false; nothing to do.");
+			var snapshot = settings.CurrentSnapshot ?? SnapshotFromProperties();
+			if (!snapshot.EnableServer) {
+				settings.Log("Start() called but the server is disabled in settings; nothing to do.");
 				return;
 			}
-
 			if (httpListener != null) {
 				settings.Log("Start() called but httpListener is already running; ignoring.");
 				return;
 			}
+			StartListener(snapshot);
+		}
 
+		/// <summary>Fallback snapshot built from the legacy UI properties (pre-store wiring only).</summary>
+		McpSettingsSnapshot SnapshotFromProperties() =>
+			McpSettingsSnapshot.TryCreate(settings.EnableServer, settings.Host, settings.Port, false, false, "",
+				System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dnspy-mcp"), Array.Empty<string>(), null, false, out _)
+			?? McpSettingsSnapshot.SafeDefaults();
+
+		/// <summary>
+		/// Snapshot-driven transition (CON-DYN-014 Apply step ②). Stops any running listener, then
+		/// binds per the candidate. Returns true only when the end state matches the candidate's
+		/// EnableServer intent; a failed start restores the old snapshot or forces a stop.
+		/// </summary>
+		public bool ApplySnapshot(McpSettingsSnapshot candidate) {
+			var old = activeSnapshot;
+			Stop();
+			if (!candidate.EnableServer) {
+				activeSnapshot = null;
+				return true;
+			}
+			if (StartListener(candidate))
+				return true;
+			if (old != null && old.EnableServer && StartListener(old))
+				return false; // restored old server
+			Stop(); // restore failed: force stop
+			return false;
+		}
+
+		/// <summary>Binds synchronously so callers can observe success, then runs the accept loop.</summary>
+		bool StartListener(McpSettingsSnapshot snapshot) {
 			try {
-				actualPort = FindAvailablePort(settings.Port, portSearchAttempts);
-				if (actualPort != settings.Port)
-					settings.Log($"Port {settings.Port} is in use; falling back to {actualPort}");
-
-				settings.Log($"Starting MCP server on {settings.Host}:{actualPort}");
+				// CON-DYN-006: remote mode rejects port drift; loopback keeps the legacy fallback.
+				bool remote = snapshot.RemoteTokenVerifier != null;
+				int port = snapshot.Port;
+				if (!remote) {
+					try {
+						port = FindAvailablePort(snapshot.Port, portSearchAttempts);
+					}
+					catch {
+						settings.Log($"ERROR: no free port in {snapshot.Port}..{snapshot.Port + portSearchAttempts - 1}");
+						return false;
+					}
+					if (port != snapshot.Port)
+						settings.Log($"Port {snapshot.Port} is in use; falling back to {port}");
+				}
+				settings.Log($"Starting MCP server on {snapshot.Host}:{port}");
 				cts = new CancellationTokenSource();
-				StartHttpListenerServer();
+				var listener = StartBoundListener(snapshot.Host, port);
+				if (listener == null) {
+					cts.Dispose();
+					cts = null;
+					return false;
+				}
+				httpListener = listener;
+				activeSnapshot = snapshot;
+				actualPort = port;
+				// Run the accept loop on a dedicated background thread, not a ThreadPool task:
+				// the loop blocks forever in GetContext(), so on the pool it would permanently
+				// consume a worker thread.
+				var acceptThread = new Thread(AcceptLoop) {
+					IsBackground = true,
+					Name = "McpServer.Accept",
+				};
+				acceptThread.Start();
+				return true;
 			}
 			catch (Exception ex) {
 				settings.Log($"ERROR starting server: {ex.GetType().Name}: {ex.Message}");
+				return false;
 			}
-		}
-
-		void StartHttpListenerServer() {
-			// Run the accept loop on a dedicated background thread, not a ThreadPool task:
-			// the loop blocks forever in GetContext(), so on the pool it would permanently
-			// consume a worker thread.
-			var acceptThread = new Thread(AcceptLoop) {
-				IsBackground = true,
-				Name = "McpServer.Accept",
-			};
-			acceptThread.Start();
 		}
 
 		void AcceptLoop() {
 			try {
-				httpListener = StartBoundListener(actualPort);
-				if (httpListener == null) {
-					settings.Log("ERROR: HttpListener could not bind any loopback prefix.");
-					return;
-				}
-
 				while (!cts!.Token.IsCancellationRequested) {
+					HttpListenerContext context;
 					try {
-						var context = httpListener.GetContext();
-						// Handle each request on its own dedicated background thread rather than
-						// the shared ThreadPool. The SSE / Streamable-HTTP GET handlers block for
-						// the entire lifetime of the stream; dispatched onto the ThreadPool they
-						// tie up worker threads, and on low-core machines (or across a client's
-						// handshake retries) that starves short requests like
-						// notifications/initialized, which then never get a thread and time out
-						// client-side with "context deadline exceeded". A thread per request keeps
-						// long-lived streams from competing with quick request/response calls.
-						var worker = new Thread(() => HandleHttpRequest(context)) {
-							IsBackground = true,
-							Name = "McpServer.Request",
-						};
-						worker.Start();
+						context = httpListener!.GetContext();
 					}
-					catch (HttpListenerException) {
-						break; // Listener was stopped
+					catch (HttpListenerException ex) {
+						// Listener was stopped (or fatally broken); log which and exit the loop.
+						settings.Log($"Accept loop exiting: HttpListenerException: {ex.Message}");
+						break;
 					}
-					catch (Exception ex) {
-						settings.Log($"ERROR accepting request: {ex.GetType().Name}: {ex.Message}");
+					catch (ObjectDisposedException) {
+						settings.Log("Accept loop exiting: listener disposed.");
+						break;
 					}
+					// CON-DYN-006: authenticate and CIDR-check EVERY endpoint before anything else;
+					// 401/403 responses carry no CORS headers, no MCP content and an empty body.
+					var verifier = activeSnapshot?.RemoteTokenVerifier;
+					if (verifier != null) {
+						if (!RemoteTokenAuth.Verify(context.Request.Headers["Authorization"], verifier)) {
+							WritePreParseReject(context, HttpRejectShapes.StatusUnauthorized, addWwwAuthenticate: true);
+							continue;
+						}
+						if (!CidrFilter.IsAllowed(context.Request.RemoteEndPoint?.Address, activeSnapshot!.RemoteAllowedCidrs)) {
+							WritePreParseReject(context, HttpRejectShapes.StatusForbidden, addWwwAuthenticate: false);
+							continue;
+						}
+					}
+					// CON-DYN-009: classify by method/path/headers only, reserve the slot, and only
+					// then create the worker thread. The 17th short request / 9th long connection
+					// gets HTTP 429 with an empty body and no worker at all.
+					bool isLong = IsLongConnectionRequest(context);
+					var gate = isLong ? longConnectionGate : shortRequestGate;
+					if (!gate.TryEnter()) {
+						WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+						continue;
+					}
+					// Handle each request on its own dedicated background thread rather than
+					// the shared ThreadPool. The SSE / Streamable-HTTP GET handlers block for
+					// the entire lifetime of the stream; dispatched onto the ThreadPool they
+					// tie up worker threads, and on low-core machines (or across a client's
+					// handshake retries) that starves short requests like
+					// notifications/initialized, which then never get a thread and time out
+					// client-side with "context deadline exceeded". A thread per request keeps
+					// long-lived streams from competing with quick request/response calls.
+					var worker = new Thread(() => {
+						try {
+							HandleHttpRequest(context);
+						}
+						finally {
+							gate.Release();
+						}
+					}) {
+						IsBackground = true,
+						Name = "McpServer.Request",
+					};
+					worker.Start();
 				}
 			}
 			catch (Exception ex) {
 				settings.Log($"ERROR starting HttpListener: {ex.GetType().Name}: {ex.Message}");
 				httpListener = null;
+			}
+		}
+
+		/// <summary>Long connections are the legacy SSE GET and the Streamable-HTTP GET stream.</summary>
+		static bool IsLongConnectionRequest(HttpListenerContext context) {
+			if (context.Request.HttpMethod != "GET")
+				return false;
+			var path = context.Request.Url?.AbsolutePath ?? string.Empty;
+			if (path == "/sse")
+				return true;
+			if (path == "/" || path == "/mcp") {
+				var accept = context.Request.Headers["Accept"] ?? string.Empty;
+				return accept.IndexOf("text/event-stream", StringComparison.OrdinalIgnoreCase) >= 0;
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// CON-DYN-006/009 pre-parse rejections: fixed status, empty body, Content-Length: 0, no
+		/// CORS and no MCP content. 401 additionally carries the fixed WWW-Authenticate; 429 the
+		/// fixed Retry-After.
+		/// </summary>
+		void WritePreParseReject(HttpListenerContext context, int statusCode, bool addWwwAuthenticate, string? retryAfter = null) {
+			try {
+				context.Response.StatusCode = statusCode;
+				if (addWwwAuthenticate)
+					context.Response.AddHeader("WWW-Authenticate", HttpRejectShapes.WwwAuthenticate);
+				if (retryAfter != null)
+					context.Response.AddHeader("Retry-After", retryAfter);
+				context.Response.ContentLength64 = 0;
+				context.Response.Close();
+			}
+			catch {
+				// Client went away mid-reject; nothing to do.
 			}
 		}
 
@@ -176,8 +296,8 @@ namespace dnSpy.Extension.MCP {
 		/// our code ever runs. All three loopback prefixes bind without admin; only the <c>+</c>/<c>*</c>
 		/// wildcards need elevation. Falls back to fewer prefixes if a bind fails (e.g. IPv6 disabled).
 		/// </summary>
-		HttpListener? StartBoundListener(int port) {
-			foreach (var prefixes in BuildLoopbackPrefixSets(settings.Host, port)) {
+		HttpListener? StartBoundListener(string host, int port) {
+			foreach (var prefixes in BuildPrefixSets(host, port)) {
 				var listener = new HttpListener();
 				foreach (var p in prefixes)
 					listener.Prefixes.Add(p);
@@ -200,7 +320,7 @@ namespace dnSpy.Extension.MCP {
 		/// IP. A non-loopback host (an explicit IP, or <c>+</c>/<c>*</c> for LAN access) is honored
 		/// verbatim and may require admin.
 		/// </summary>
-		static IEnumerable<List<string>> BuildLoopbackPrefixSets(string host, int port) {
+		static IEnumerable<List<string>> BuildPrefixSets(string host, int port) {
 			bool isLoopback =
 				string.IsNullOrEmpty(host) ||
 				host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
@@ -208,7 +328,10 @@ namespace dnSpy.Extension.MCP {
 				host == "::1" || host == "[::1]";
 
 			if (!isLoopback) {
-				yield return new List<string> { $"http://{host}:{port}/" };
+				// A non-loopback host is a validated unicast IP literal (snapshot validation
+				// rejects hostnames and wildcards); IPv6 literals need brackets in a URL.
+				var h = host.Contains(':') ? $"[{host}]" : host;
+				yield return new List<string> { $"http://{h}:{port}/" };
 				yield break;
 			}
 
@@ -228,13 +351,16 @@ namespace dnSpy.Extension.MCP {
 
 		void HandleHttpRequest(HttpListenerContext context) {
 			try {
-				// Enable CORS. `Mcp-Session-Id` must be both accepted on requests and exposed on
+				// Enable CORS in loopback mode only — remote mode never returns the wildcard
+				// (CON-DYN-006). `Mcp-Session-Id` must be both accepted on requests and exposed on
 				// responses so Streamable HTTP clients (codex, MCP Inspector, ...) can read the
 				// session ID that the server allocates on `initialize`.
-				context.Response.AddHeader("Access-Control-Allow-Origin", "*");
-				context.Response.AddHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-				context.Response.AddHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version");
-				context.Response.AddHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+				if (activeSnapshot?.RemoteTokenVerifier == null) {
+					context.Response.AddHeader("Access-Control-Allow-Origin", "*");
+					context.Response.AddHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+					context.Response.AddHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version");
+					context.Response.AddHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+				}
 
 				if (context.Request.HttpMethod == "OPTIONS") {
 					context.Response.StatusCode = 200;
@@ -356,7 +482,62 @@ namespace dnSpy.Extension.MCP {
 		/// the server shuts down. Responses to posted messages are written back over this
 		/// same stream as `message` events.
 		/// </summary>
+		/// <summary>
+		/// Reads a request body under the CON-DYN-009 hard limits: header precheck, bounded raw
+		/// read (at most one byte past the limit), strict UTF-8 decode. On rejection the fixed
+		/// 413 (empty body) or -32700 JSON-RPC object is written and false is returned.
+		/// </summary>
+		bool TryReadRequestBody(HttpListenerContext context, out string body) {
+			body = string.Empty;
+			var (data, decision) = BoundedBodyReader.Read(context.Request.InputStream, context.Request.ContentLength64);
+			if (decision != BoundedBodyReader.BodyDecision.WithinLimit) {
+				WritePreParseReject(context, HttpRejectShapes.StatusPayloadTooLarge, addWwwAuthenticate: false);
+				return false;
+			}
+			if (!BoundedBodyReader.TryStrictUtf8Decode(data, out body)) {
+				WriteParseError(context);
+				return false;
+			}
+			return true;
+		}
+
+		/// <summary>Writes the fixed -32700 object (no data) along the current HTTP response.</summary>
+		void WriteParseError(HttpListenerContext context) {
+			var bytes = Encoding.UTF8.GetBytes(ParseErrorResponseJson);
+			context.Response.StatusCode = 200;
+			context.Response.ContentType = "application/json";
+			context.Response.ContentLength64 = bytes.Length;
+			context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+			context.Response.Close();
+		}
+
+		/// <summary>
+		/// CON-DYN-009 response budget: the fully rendered response message must fit 8388608
+		/// strict UTF-8 bytes before the first write. Oversized non-dynamic responses are replaced
+		/// by the fixed small -32603 error; the replacement is re-rendered and re-checked.
+		/// </summary>
+		string RenderBoundedResponse(McpResponse response) {
+			var json = JsonSerializer.Serialize(response, jsonOptions);
+			if (ResponseBudget.Fits(json))
+				return json;
+			var small = new McpResponse {
+				JsonRpc = "2.0",
+				Id = response.Id,
+				Error = new McpError {
+					Code = -32603,
+					Message = "Response exceeds the fixed transport limit.",
+				},
+			};
+			return JsonSerializer.Serialize(small, jsonOptions);
+		}
+
 		void HandleLegacySseGet(HttpListenerContext context) {
+			// CON-DYN-009: the 17th transport session on this transport is rejected before
+			// allocation; the check-and-add is atomic so racing opens cannot exceed the cap.
+			if (sseSessions.Count >= MaxTransportSessions) {
+				WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+				return;
+			}
 			context.Response.ContentType = "text/event-stream";
 			context.Response.Headers["Cache-Control"] = "no-cache";
 			context.Response.SendChunked = true;
@@ -364,7 +545,14 @@ namespace dnSpy.Extension.MCP {
 
 			var sessionId = Guid.NewGuid().ToString("N");
 			var session = new SseSession(sessionId, context.Response.OutputStream);
-			sseSessions[sessionId] = session;
+			lock (sseSessions) {
+				if (sseSessions.Count >= MaxTransportSessions) {
+					WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+					try { context.Response.OutputStream.Close(); } catch { /* ignore */ }
+					return;
+				}
+				sseSessions[sessionId] = session;
+			}
 			settings.Log($"SSE session opened: {sessionId}");
 
 			try {
@@ -401,13 +589,19 @@ namespace dnSpy.Extension.MCP {
 				return;
 			}
 
-			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
-			var body = reader.ReadToEnd();
+			if (!TryReadRequestBody(context, out var body))
+				return;
 
-			var request = JsonSerializer.Deserialize<McpRequest>(body);
+			McpRequest? request;
+			try {
+				request = JsonSerializer.Deserialize<McpRequest>(body);
+			}
+			catch (JsonException) {
+				WriteParseError(context);
+				return;
+			}
 			if (request == null) {
-				context.Response.StatusCode = 400;
-				context.Response.Close();
+				WriteParseError(context);
 				return;
 			}
 
@@ -421,8 +615,7 @@ namespace dnSpy.Extension.MCP {
 				bool isNotification = request.Method?.StartsWith("notifications/", StringComparison.Ordinal) ?? false;
 				var response = HandleRequest(request);
 				if (!isNotification) {
-					var responseJson = JsonSerializer.Serialize(response, jsonOptions);
-					session.WriteEvent("message", responseJson);
+					session.WriteEvent("message", RenderBoundedResponse(response));
 				}
 			}
 			catch (Exception ex) {
@@ -431,20 +624,24 @@ namespace dnSpy.Extension.MCP {
 		}
 
 		void HandleLegacyPlainPost(HttpListenerContext context) {
-			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
-			var body = reader.ReadToEnd();
+			if (!TryReadRequestBody(context, out var body))
+				return;
 
-			var request = JsonSerializer.Deserialize<McpRequest>(body);
+			McpRequest? request;
+			try {
+				request = JsonSerializer.Deserialize<McpRequest>(body);
+			}
+			catch (JsonException) {
+				WriteParseError(context);
+				return;
+			}
 			if (request == null) {
-				context.Response.StatusCode = 400;
-				var errorBytes = Encoding.UTF8.GetBytes("Invalid request");
-				context.Response.OutputStream.Write(errorBytes, 0, errorBytes.Length);
-				context.Response.Close();
+				WriteParseError(context);
 				return;
 			}
 
 			var response = HandleRequest(request);
-			var responseJson = JsonSerializer.Serialize(response, jsonOptions);
+			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 
 			context.Response.ContentType = "application/json";
@@ -460,8 +657,8 @@ namespace dnSpy.Extension.MCP {
 		/// by the spec as an alternative to an SSE stream). Notifications get `202 Accepted`.
 		/// </summary>
 		void HandleStreamableHttpPost(HttpListenerContext context) {
-			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
-			var body = reader.ReadToEnd();
+			if (!TryReadRequestBody(context, out var body))
+				return;
 
 			McpRequest? request;
 			try {
@@ -469,18 +666,12 @@ namespace dnSpy.Extension.MCP {
 			}
 			catch (JsonException ex) {
 				settings.Log($"Streamable HTTP parse error: {ex.Message}");
-				context.Response.StatusCode = 400;
-				var bytes = Encoding.UTF8.GetBytes("Parse error");
-				context.Response.OutputStream.Write(bytes, 0, bytes.Length);
-				context.Response.Close();
+				WriteParseError(context);
 				return;
 			}
 
 			if (request == null || string.IsNullOrEmpty(request.Method)) {
-				context.Response.StatusCode = 400;
-				var bytes = Encoding.UTF8.GetBytes("Invalid request");
-				context.Response.OutputStream.Write(bytes, 0, bytes.Length);
-				context.Response.Close();
+				WriteParseError(context);
 				return;
 			}
 
@@ -488,10 +679,17 @@ namespace dnSpy.Extension.MCP {
 			bool isInitialize = string.Equals(request.Method, "initialize", StringComparison.Ordinal);
 
 			if (isInitialize) {
-				var newId = Guid.NewGuid().ToString("N");
-				streamableSessions[newId] = new StreamableHttpSession(newId);
-				context.Response.Headers["Mcp-Session-Id"] = newId;
-				settings.Log($"Streamable HTTP session opened: {newId}");
+				// CON-DYN-009: the 17th session is rejected after parse, before allocation.
+				lock (streamableSessions) {
+					if (streamableSessions.Count >= MaxTransportSessions) {
+						WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+						return;
+					}
+					var newId = Guid.NewGuid().ToString("N");
+					streamableSessions[newId] = new StreamableHttpSession(newId);
+					context.Response.Headers["Mcp-Session-Id"] = newId;
+				}
+				settings.Log($"Streamable HTTP session opened");
 			}
 			else if (!string.IsNullOrEmpty(headerSessionId) && !streamableSessions.ContainsKey(headerSessionId!)) {
 				// If the client presents a session ID we don't recognise, reject — the client
@@ -514,7 +712,7 @@ namespace dnSpy.Extension.MCP {
 			}
 
 			var response = HandleRequest(request);
-			var responseJson = JsonSerializer.Serialize(response, jsonOptions);
+			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 			context.Response.StatusCode = 200;
 			context.Response.ContentType = "application/json";
