@@ -17,7 +17,7 @@ namespace dnSpy.Extension.MCP.Debugger;
 /// gate stays false and an unsampleable gate must never enable debug tools.
 /// </summary>
 [Export(typeof(IMcpToolProvider))]
-internal sealed class DebugToolProvider : IMcpToolProvider {
+public sealed class DebugToolProvider : IMcpToolProvider {
 	readonly McpSettings settings;
 	readonly DebugGateService gateService;
 	readonly object schemaLock = new object();
@@ -55,9 +55,19 @@ internal sealed class DebugToolProvider : IMcpToolProvider {
 		return tools;
 	}
 
+	public static readonly IReadOnlyList<string> DisabledApiNames = new[] {
+		"debug_list_attachable_processes", "debug_attach", "debug_detach",
+	};
+
 	public CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments) {
-		if (toolName != "debug_capabilities")
+		if (toolName != "debug_capabilities") {
+			// The three reserved disabled APIs are never advertised, but a schema-valid direct
+			// call gets the fixed zero-side-effect CAPABILITY_UNAVAILABLE envelope (§3.3) —
+			// never an "unknown tool" error and never a details object.
+			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
+				return FixedDisabledResult();
 			return null; // session tools dispatch here as their handlers land (IMP-004..009)
+		}
 		var gate = Gate;
 		var cap = new DebugCapabilitiesResultDto {
 			DebugEnabled = gate.EffectiveDebugLaunch,
@@ -80,6 +90,22 @@ internal sealed class DebugToolProvider : IMcpToolProvider {
 	static readonly JsonSerializerOptions CanonicalOptions = new JsonSerializerOptions {
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
 	};
+
+	/// <summary>
+	/// Fixed failure envelope for the three v1-disabled attach APIs: loopback-style no-session
+	/// context (idle, zero counters), CAPABILITY_UNAVAILABLE with the §3.4 message/recovery and
+	/// no details; identical in every state and protocol version, zero side effects.
+	/// </summary>
+	static CallToolResult FixedDisabledResult() {
+		var envelope = new DebugFailureEnvelope {
+			DebugContext = new DebugContextDto { State = DebugStates.Idle },
+			Error = DomainErrorDto.Create(DomainErrorCodes.CapabilityUnavailable, DebugStates.Idle),
+		};
+		return new CallToolResult {
+			Content = new List<ToolContent> { new ToolContent { Text = JsonSerializer.Serialize(envelope, CanonicalOptions) } },
+			IsError = true,
+		};
+	}
 
 	ToolInfo CapabilitiesTool() => new ToolInfo {
 		Name = "debug_capabilities",
