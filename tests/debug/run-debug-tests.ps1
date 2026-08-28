@@ -297,6 +297,26 @@ function Get-SpyDelta([object]$Before, [object]$After, [string]$Name) {
     return $a - $b
 }
 
+
+function Test-Adapter([string]$ArgsJson) {
+    return Invoke-ToolNoInit 'debug_test_adapter' (ConvertFrom-Json $ArgsJson)
+}
+function Test-Clock([long]$AdvanceMs) {
+    return Invoke-ToolNoInit 'debug_test_clock' @{ advance_ms = $AdvanceMs }
+}
+function Assert-CtrlFail {
+    param($Call, [string]$ExpectCode, [string]$Id, [string]$Extra = '')
+    $code = Get-DomainError $Call
+    Assert-Cond $Id "control failure settles $ExpectCode" "code=$code $Extra" ("$code" -eq $ExpectCode) @($Call.rpc.resp)
+}
+function Read-EventKinds {
+    param([string]$Sid, [int]$Gen, [long]$AfterCursor)
+    $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = $AfterCursor; limit = 1000 }
+    $ev = @()
+    if ($r.domain -and $r.domain.result.events) { $ev = @($r.domain.result.events) }
+    return @{ kinds = @($ev | ForEach-Object { $_.kind }); raw = ($ev | ConvertTo-Json -Depth 10 -Compress); next = $r.domain.result.next_cursor; call = $r }
+}
+
 function Get-MaxEventCursor {
     param([string]$Sid, [int]$Gen)
     $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = 0; limit = 1000 }
@@ -1257,6 +1277,102 @@ function Run-ACC026 {
     }
 }
 
+
+# ---------------------------------------------------------------- case: ACC-007 ----
+function Run-ACC007 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $spy = Invoke-ToolNoInit 'debug_test_spy' @{ reset = $true }
+    if (-not ($spy.domain -and $spy.domain.ok)) {
+        Fail-Precondition 'injection-surface' 'debug_test_* reachable (DNMCP_TEST=1 dnSpy)'
+        return
+    }
+
+    # ---- P1 matrix: control-failure settlement via the scriptable adapter ----
+    # [P1-a] pause with explicit_failure post -> INTERNAL_ERROR + control_failed event.
+    $sha = Get-Sha256File $exe
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc7-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'p1-launch' 'session running' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
+    $cur0 = Get-MaxEventCursor $sid $gen
+
+    $null = Test-Adapter '{"install":true}'
+    $null = Test-Adapter '{"fail_next":"explicit_failure"}'
+    $t0 = Get-Date
+    $Pf = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc7-p1a' }
+    $ms = [int](((Get-Date) - $t0).TotalMilliseconds)
+    Assert-CtrlFail $Pf 'INTERNAL_ERROR' 'p1a-explicit-failure' "elapsed=${ms}ms"
+    Assert-Cond 'p1a-fast' 'explicit failure settles fast (<5s)' "elapsed=${ms}ms" ($ms -lt 5000) @($Pf.rpc.resp)
+    $ev = Read-EventKinds $sid $gen $cur0
+    Assert-Cond 'p1a-control-failed-event' 'control_failed event written' "kinds=$($ev.kinds -join ',')" (($ev.kinds -contains 'control_failed')) @($ev.call.rpc.resp)
+
+    # [P1-b] pause with delivered post + NO observation, clock advanced past 30s -> TIMEOUT.
+    $null = Test-Adapter '{"fail_next":"none"}'
+    $curB = Get-MaxEventCursor $sid $gen
+    $Pw = $null
+    $pauseJob = [System.Threading.Tasks.Task]::Run([Func[object]]{ Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc7-p1b' } })
+    Start-Sleep -Milliseconds 800
+    $null = Test-Clock 35000
+    $Pw = $pauseJob.Result
+    Assert-CtrlFail $Pw 'TIMEOUT' 'p1b-timeout' 'clock-advanced'
+    $evB = Read-EventKinds $sid $gen $curB
+    Assert-Cond 'p1b-timeout-event' 'control_failed (timeout) event written' "kinds=$($evB.kinds -join ',')" (($evB.kinds -contains 'control_failed')) @($evB.call.rpc.resp)
+
+    # ---- cause-matrix: synthetic paused observations with classified BreakInfos ----
+    # The fake still holds control; state machine is faulted/idle after TIMEOUT? Re-launch fresh.
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc7-t1' } 
+    Start-Sleep -Milliseconds 800
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 400
+
+    $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc7-lb'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sid2 = $L2.domain.result.session_id; $gen2 = [int]$L2.domain.result.generation
+    Assert-Cond 'cause-launch' 'second session running' "ok=$($L2.domain.ok)" ($L2.domain.ok) @($L2.rpc.resp)
+    $null = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid2; generation = $gen2; request_id = 'acc7-p2' }
+    $wp = Wait-StablePaused $sid2
+    Assert-Cond 'cause-paused' 'paused before cause matrix' "ok=$($wp.ok)" $wp.ok
+    $ep2 = $wp.epoch
+    $curC = Get-MaxEventCursor $sid2 $gen2
+    $cur2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid2; generation = $gen2; pause_epoch = $ep2; request_id = 'acc7-c1' }
+    Assert-Cond 'cause-continue' 'continued' "ok=$($cur2.domain.ok)" $cur2.domain.ok @($cur2.rpc.resp)
+
+    # Emit a breakpoint-classified observation (breakpoint must win the cause arbiter).
+    $null = Test-Adapter '{"install":true}'
+    $em = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc7-bp-1"},{"type":"step","ordinal":1,"step_id":"step-99","step_kind":"into"}]}}'
+    Assert-Cond 'cause-emit-ok' 'emit accepted' "ok=$($em.domain.ok)" ($em.domain.ok) @($em.rpc.resp)
+    Start-Sleep -Milliseconds 600
+    $stC = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
+    Assert-Cond 'cause-paused-state' 'emit settles paused' "state=$($stC.domain.result.state)" ("$($stC.domain.result.state)" -eq 'paused') @($stC.rpc.resp)
+    $evC = Read-EventKinds $sid2 $gen2 $curC
+    $rawC = $evC.raw
+    Assert-Cond 'cause-breakpoint-primary' 'breakpoint outranks step: paused(reason=breakpoint) before breakpoint_hit' "kinds=$($evC.kinds -join ',')" (($evC.kinds -contains 'paused') -and ($evC.kinds -contains 'breakpoint_hit') -and ($rawC -match '"reason":"breakpoint"')) @($evC.call.rpc.resp)
+
+    # Emit an exception-classified observation (unhandled/policy) -> reason=exception.
+    $curD = [long]$evC.next; if ($curD -le 0) { $curD = Get-MaxEventCursor $sid2 $gen2 }
+    $ep3 = $stC.domain.debug_context.pause_epoch
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid2; generation = $gen2; pause_epoch = $ep3; request_id = 'acc7-c2' }
+    Start-Sleep -Milliseconds 400
+    $em2 = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true},{"type":"breakpoint","ordinal":1,"owned_breakpoint_id":"acc7-bp-2"}]}}'
+    Start-Sleep -Milliseconds 600
+    $evD = Read-EventKinds $sid2 $gen2 $curD
+    Assert-Cond 'cause-exception-primary' 'exception outranks breakpoint: reason=exception' "kinds=$($evD.kinds -join ',')" (($evD.raw -match '"reason":"exception"') -and ($evD.kinds -contains 'paused')) @($evD.call.rpc.resp)
+
+    # Uninstall and terminate cleanly.
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 400
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid2; generation = $gen2; request_id = 'acc7-t2' }
+    Start-Sleep -Milliseconds 800
+    $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
+    Assert-Cond 'post-terminate-idle' 'coordinator returns idle' "state=$($stZ.domain.result.state)" ("$($stZ.domain.result.state)" -ne 'paused') @($stZ.rpc.resp)
+
+    # Boundary matrix (29.999 vs 30.000) and the full P1-late/P2/T1/T2 barrier set need the
+    # remaining injection increments (crash barriers, control-phase spies).
+    Fail-Precondition 'acc007-full-barriers' 'P1-late/P2 barrier matrix + T1/T2 retry matrix (injection increment 3)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -1266,6 +1382,7 @@ $handlers = @{
     'ACC-013' = ${function:Run-ACC013}; 'ACC-015' = ${function:Run-ACC015}
     'ACC-017' = ${function:Run-ACC017}; 'ACC-020' = ${function:Run-ACC020}
     'ACC-021' = ${function:Run-ACC021}; 'ACC-026' = ${function:Run-ACC026}
+    'ACC-007' = ${function:Run-ACC007}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
