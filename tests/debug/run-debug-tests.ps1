@@ -1486,6 +1486,78 @@ function Run-ACC012 {
     Fail-Precondition 'acc012-global-and-barriers' 'dnSpy global exception-settings snapshot diff + P2 scheduled/issued collisions (injection increment 3)'
 }
 
+
+# ---------------------------------------------------------------- case: ACC-014 ----
+function Run-ACC014 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc14-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a14-launch' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond 'a14-held-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+    $ep = $wp.epoch
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+    $th = $tl.domain.result.items[0].thread_handle
+
+    # [1] Real step into via the API (registration path), settle via synthetic StepComplete.
+    $curA = Get-MaxEventCursor $sid $gen
+    $ST = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc14-s1'; thread_handle = $th; kind = 'into' }
+    Assert-Cond 'a14-step-accepted' 'debug_step accepted (step_id issued, state running)' "ok=$($ST.domain.ok) step=$($ST.domain.result.step_id)" ($ST.domain.ok -and $ST.domain.result.step_id) @($ST.rpc.resp)
+    $regStepId = $ST.domain.result.step_id
+    Start-Sleep -Milliseconds 700
+    $curB = Get-MaxEventCursor $sid $gen
+    $null = Test-Adapter ('{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"' + $regStepId + '","step_kind":"into"}]}}')
+    Start-Sleep -Milliseconds 600
+    $evA = Read-EventKinds $sid $gen $curB
+    $idxP = [array]::IndexOf($evA.kinds, 'paused')
+    $idxS = [array]::IndexOf($evA.kinds, 'step_completed')
+    $stepOk = ($idxP -ge 0) -and ($idxS -gt $idxP) -and ($evA.raw -match '"reason":"step"') -and ($evA.raw -match $regStepId) -and ($evA.raw -match '"kind":"into"')
+    Assert-Cond 'a14-step-complete' 'paused(reason=step) precedes step_completed with matching step_id/kind' "p=$idxP s=$idxS id=$regStepId" $stepOk @($evA.call.rpc.resp)
+
+    # [2] breakpoint + step collision: breakpoint wins primary; both detail events once.
+    $ep2 = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep2; request_id = 'acc14-c1' }
+    Start-Sleep -Milliseconds 500
+    $curC = Get-MaxEventCursor $sid $gen
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc14-bp-1"},{"type":"step","ordinal":1,"step_id":"step-acc14","step_kind":"over"}]}}'
+    Start-Sleep -Milliseconds 600
+    $evC = Read-EventKinds $sid $gen $curC
+    $bpStep = ($evC.raw -match '"reason":"breakpoint"') -and ($evC.kinds -contains 'breakpoint_hit') -and ($evC.kinds -contains 'step_completed')
+    Assert-Cond 'a14-bp-outranks-step' 'breakpoint+step: reason=breakpoint, both detail events present' "kinds=$($evC.kinds -join ',')" $bpStep @($evC.call.rpc.resp)
+
+    # [3] exception + step collision: exception wins primary; detail order exception then step.
+    $ep3 = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc14-c2' }
+    Start-Sleep -Milliseconds 500
+    $curD = Get-MaxEventCursor $sid $gen
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true},{"type":"step","ordinal":1,"step_id":"step-acc14b","step_kind":"out"}]}}'
+    Start-Sleep -Milliseconds 600
+    $evD = Read-EventKinds $sid $gen $curD
+    $iE = [array]::IndexOf($evD.kinds, 'exception')
+    $iS = [array]::IndexOf($evD.kinds, 'step_completed')
+    $exStep = ($evD.raw -match '"reason":"exception"') -and ($iE -ge 0) -and ($iS -gt $iE)
+    Assert-Cond 'a14-exception-outranks-step' 'exception+step: reason=exception, exception detail precedes step_completed' "e=$iE s=$iS" $exStep @($evD.call.rpc.resp)
+
+    # Cleanup.
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 400
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc14-t1' }
+    Start-Sleep -Milliseconds 900
+    $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a14-terminate' 'terminated to idle' "state=$($stZ.domain.result.state)" ("$($stZ.domain.result.state)" -ne 'paused') @($stZ.rpc.resp)
+
+    # Foreign StepComplete filtering is enforced by the production matcher (registered
+    # currentStep consumed exactly once); into/over/out position assertions on a real
+    # fixture plus P2 barrier collisions need injection increment 3.
+    Fail-Precondition 'acc014-position-and-barriers' 'into/over/out position assertions + P2 scheduled/issued collisions (injection increment 3)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -1497,6 +1569,7 @@ $handlers = @{
     'ACC-021' = ${function:Run-ACC021}; 'ACC-026' = ${function:Run-ACC026}
     'ACC-007' = ${function:Run-ACC007}
     'ACC-012' = ${function:Run-ACC012}
+    'ACC-014' = ${function:Run-ACC014}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
