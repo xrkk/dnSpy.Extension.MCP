@@ -2319,7 +2319,27 @@ function Run-ACC027 {
     $names = @($tlv.tools | ForEach-Object { $_.name })
     Assert-Cond 'a27-no-global-restart' 'no global restart/detach-all tool advertised' "has=$($names -contains 'debug_restart_all')" (-not ($names -contains 'debug_restart_all')) @(Save-Json 'a27-tools.json' $names)
 
-    Fail-Precondition 'acc027-start-injection' 'Start-error / pre-claim exit injections (in-process Start seam)'
+    # [5] Start-error: armed failure -> INTERNAL_ERROR + start_failed event, coordinator idle.
+    $arm1 = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'fail_start' }
+    Assert-Cond 'a27-arm-failstart' 'fail_start armed' "ok=$($arm1.domain.ok)" $arm1.domain.ok @($arm1.rpc.resp)
+    $Lf = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a27-lf'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    Assert-Cond 'a27-start-error-code' 'Start-error launch = INTERNAL_ERROR' "code=$(Get-DomainError $Lf)" ("$(Get-DomainError $Lf)" -eq 'INTERNAL_ERROR') @($Lf.rpc.resp)
+    $stF = Invoke-ToolNoInit 'debug_status' @{ session_id = 'x' }
+    Assert-Cond 'a27-start-error-idle' 'coordinator back to idle, no reservation/session' "state=$($stF.domain.result.state) active=$($stF.domain.result.active_session_id)" ("$($stF.domain.result.state)" -eq 'idle') @($stF.rpc.resp)
+
+    # [6] Pre-claim exit: process vanishes before claim -> launch TIMEOUT + start_failed, idle.
+    $arm2 = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'exit_before_claim' }
+    Assert-Cond 'a27-arm-exitpre' 'exit_before_claim armed' "ok=$($arm2.domain.ok)" $arm2.domain.ok @($arm2.rpc.resp)
+    $bq = '{"jsonrpc":"2.0","id":795,"method":"tools/call","params":{"name":"debug_launch","arguments":{"request_id":"a27-lp","target_path":"' + ($exe -replace '\','\') + '","expected_sha256":"' + $sha + '","launch_mode":"net48-exe","architecture":"x64","break_kind":"none"}}}'
+    $rf = Invoke-Detached $bq 'a27lp'
+    Start-Sleep -Milliseconds 900
+    $null = Test-Clock 35000
+    $domP = Read-DetachedResp $rf
+    $pcCode = if ($domP) { "$($domP.error.code)" } else { '' }
+    Assert-Cond 'a27-preclaim-timeout' 'pre-claim exit: claim times out -> TIMEOUT' "code=$pcCode" ("$pcCode" -eq 'TIMEOUT') @($rf)
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
+    $stP = Invoke-ToolNoInit 'debug_status' @{ session_id = 'x' }
+    Assert-Cond 'a27-preclaim-idle' 'pre-claim exit: coordinator idle, no active session' "state=$($stP.domain.result.state) active=$($stP.domain.result.active_session_id)" ("$($stP.domain.result.state)" -eq 'idle') @($stP.rpc.resp)
 }
 
 # ---------------------------------------------------------------- dispatch + finalize ----

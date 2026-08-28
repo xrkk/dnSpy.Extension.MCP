@@ -287,6 +287,24 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
+	/// <summary>DNMCP_TEST-only: arm the next launch's Start failure or pre-claim exit.</summary>
+	string TestStart(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var mode = args is not null && args.TryGetValue("mode", out var m) && m is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } mj ? mj.GetString() : null;
+		switch (mode) {
+			case "fail_start":
+				testFailNextStart = true;
+				break;
+			case "exit_before_claim":
+				testExitBeforeClaim = true;
+				break;
+			default:
+				throw new ArgumentException("mode must be fail_start or exit_before_claim", "mode");
+		}
+		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode });
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -327,6 +345,7 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_test_clock" => TestClock(arguments),
 				"debug_test_adapter" => TestAdapter(arguments),
 				"debug_test_flood" => TestFlood(arguments),
+				"debug_test_start" => TestStart(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -548,9 +567,19 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
+	// DNMCP_TEST-only: armed by debug_test_start; the next Start callback throws
+	// synchronously (Start-error path: EVT start_failed + MarkLaunchFailed).
+	volatile bool testFailNextStart;
+	volatile bool testExitBeforeClaim;
+
 	string? StartViaWpf(LaunchPlan plan) {
 		if (dbgManager is null)
 			return "DbgManager is not available";
+		if (testFailNextStart) {
+			testFailNextStart = false;
+			SpyInc("test_start_failures");
+			return "test-injected Start failure";
+		}
 		DebugProgramOptions options = BuildOptions(plan);
 		var uiDispatcher = Application.Current?.Dispatcher;
 		Func<string?> start = () => {
@@ -1944,6 +1973,21 @@ public sealed class DebugSessionService : IDisposable {
 				// table is registered so events and list_modules share identity.
 				SubscribeModuleEvents(process);
 				process.RuntimesChanged += OnOwnedRuntimesChanged;
+				if (testExitBeforeClaim) {
+					// Simulated pre-claim exit: the process vanished before ownership settled.
+					// Tear down the half-claimed process without settling the claim; the
+					// launch caller times out into start_failed while no session is created.
+					testExitBeforeClaim = false;
+					SpyInc("test_preclaim_exits");
+					process.IsRunningChanged -= OnOwnedIsRunningChanged;
+					_ = coordinator.ObserveProcessRemoved(coordinator.ActiveSessionId, coordinator.Generation, ownedIdentityMatch: false, exitCode: 0);
+					lock (sessionLock) {
+						adapter?.Dispose();
+						adapter = null;
+						ownedProcess = null;
+					}
+					continue;
+				}
 				coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
 				claimTcs.TrySetResult(true);
 				}

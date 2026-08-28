@@ -45,7 +45,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
-				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter", "debug_test_flood" });
+				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter", "debug_test_flood", "debug_test_start" });
 			return names;
 		}
 	}
@@ -89,6 +89,17 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 					["properties"] = new Dictionary<string, object> {
 						["count"] = new Dictionary<string, object> { ["type"] = "integer" },
 						["bytes_per_event"] = new Dictionary<string, object> { ["type"] = "integer" },
+					},
+					["additionalProperties"] = false,
+				},
+			});
+			tools.Add(new ToolInfo {
+				Name = "debug_test_start",
+				Description = "DNMCP_TEST-only: arm the NEXT launch with fail_start (synchronous Start error) or exit_before_claim (process vanishes pre-claim).",
+				InputSchema = new Dictionary<string, object> {
+					["type"] = "object",
+					["properties"] = new Dictionary<string, object> {
+						["mode"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "fail_start", "exit_before_claim" } },
 					},
 					["additionalProperties"] = false,
 				},
@@ -154,7 +165,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood")
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);
