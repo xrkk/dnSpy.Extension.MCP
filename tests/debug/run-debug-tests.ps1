@@ -495,15 +495,24 @@ function Run-ACC002 {
         $shaProv = [Security.Cryptography.SHA256]::Create()
         $verifierHex = ([BitConverter]::ToString($shaProv.ComputeHash($tokenBytes))).Replace('-', '').ToLower()
         $remoteUrl = "http://$($m.env.vm_ip):15100/"
-        & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
-        & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
+        # Remote binding needs a one-time elevated urlacl+firewall provisioning (deploy runbook,
+        # same step ACC-023 prescribes); a non-elevated driver records it as a precondition.
+        $windowsIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $windowsPrincipal = New-Object Security.Principal.WindowsPrincipal($windowsIdentity)
+        $elevated = $windowsPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($elevated) {
+            & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
+            & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
+        }
         $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.vm_ip + '/32","' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
         $script:RemoteUp = $false
         Stop-DnSpyAndTargets
         Set-SnapshotJson $snapR
         $script:RemoteUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
         $upR = $script:RemoteUp
-        if ($upR) {
+        if (-not $elevated) {
+            Fail-Precondition 'remote-admin-provisioning' 'elevated one-time urlacl+firewall provisioning (deploy runbook / ACC-023 reversible script)'
+        } elseif ($upR) {
             $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
             $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Bearer $b64" -BaseUrlOverride $remoteUrl
             $rdom = $null
