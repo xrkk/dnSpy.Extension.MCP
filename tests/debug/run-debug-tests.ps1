@@ -1658,6 +1658,112 @@ function Run-ACC008 {
     Fail-Precondition 'acc008-barriers' 'P2/T1/T2 barriers + clock boundary matrix per runtime (injection increment 3)'
 }
 
+
+# ---------------------------------------------------------------- case: ACC-034 ----
+function Run-ACC034 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] Normal restart on the real adapter: pending-restart path, generation increments.
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a34-la1'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a34-launch1' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+    $curA = Get-MaxEventCursor $sid $gen
+    $R = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid; generation = $gen; request_id = 'a34-r1' }
+    $gen2 = [int]$R.domain.result.generation
+    Assert-Cond 'a34-normal-restart' 'restart settles with generation+1 on the real adapter' "ok=$($R.domain.ok) gen=$gen2" ($R.domain.ok -and ($gen2 -eq ($gen + 1))) @($R.rpc.resp)
+    $evA = Read-EventKinds $sid $gen2 $curA
+    $normalOk = ($evA.kinds -contains 'process_exited') -and (-not ($evA.kinds -contains 'control_failed')) -and (-not ($evA.kinds -contains 'session_end'))
+    Assert-Cond 'a34-normal-no-fault' 'normal restart: process_exited event, no control_failed, no session_end' "kinds=$($evA.kinds -join ',')" $normalOk @($evA.call.rpc.resp)
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen2; request_id = 'a34-t1' }
+    Start-Sleep -Milliseconds 900
+
+    # [2] T1 issued TIMEOUT: the fake swallows the terminate post, no removal arrives.
+    $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a34-la2'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sid2 = $L2.domain.result.session_id; $gen2b = [int]$L2.domain.result.generation
+    Assert-Cond 'a34-launch2' 'second session running' "ok=$($L2.domain.ok)" ($L2.domain.ok) @($L2.rpc.resp)
+    $null = Test-Adapter '{"install":true}'
+    $null = Test-Adapter '{"fail_next":"none"}'
+    $curB = Get-MaxEventCursor $sid2 $gen2b
+    $rReq = '{"jsonrpc":"2.0","id":781,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid2 + '","generation":' + $gen2b + ',"request_id":"a34-r2"}}}'
+    Set-Content C:\Tools\a34-req.json $rReq -Encoding ascii
+    Remove-Item C:\Tools\a34-resp.txt -Force -ErrorAction SilentlyContinue
+    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-req.json','-o','C:\Tools\a34-resp.txt' -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 900
+    $null = Test-Clock 35000
+    $dl = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $dl -and -not (Test-Path C:\Tools\a34-resp.txt)) { Start-Sleep -Milliseconds 400 }
+    if (Test-Path C:\Tools\a34-resp.txt) {
+        $lines = [IO.File]::ReadAllLines('C:\Tools\a34-resp.txt')
+        $dom = (($lines | Select-Object -First ($lines.Count - 1)) -join "`n" | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+        Assert-Cond 'a34-t1-timeout' 'issued restart TIMEOUT' "ok=$($dom.ok) code=$($dom.error.code)" (-not $dom.ok -and ("$($dom.error.code)" -eq 'TIMEOUT')) @('a34-resp.txt')
+    } else { Assert-Cond 'a34-t1-timeout' 'detached restart returned' 'no response' $false @() }
+    Start-Sleep -Milliseconds 600
+    $stF = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
+    $evB = Read-EventKinds $sid2 $gen2b $curB
+    $t1Ok = ("$($stF.domain.result.state)" -eq 'faulted') -and ($evB.kinds -contains 'control_failed') -and ($evB.raw -match '"operation":"restart"') -and ($evB.raw -match '"phase":"issued"') -and (-not ($evB.kinds -contains 'session_end'))
+    Assert-Cond 'a34-t1-faulted' 'issued failure: control-faulted session, restart control_failed(issued), no session_end' "state=$($stF.domain.result.state) kinds=$($evB.kinds -join ',')" $t1Ok @($stF.rpc.resp, $evB.call.rpc.resp)
+
+    # T1 leaves abandoned restart: new restart must be refused (INVALID_STATE from faulted).
+    $R3 = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid2; generation = $gen2b; request_id = 'a34-r3' }
+    Assert-Cond 'a34-abandoned-no-restart' 'restart refused after abandoned restart' "code=$(Get-DomainError $R3)" ("$(Get-DomainError $R3)" -eq 'INVALID_STATE') @($R3.rpc.resp)
+
+    # [3] T2 terminate retry on the same owned process: emit removed settles it as terminated.
+    $curC = Get-MaxEventCursor $sid2 $gen2b
+    $T2 = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid2; generation = $gen2b; request_id = 'a34-t2' }
+    $t2ok = $T2.domain.ok
+    if (-not $t2ok) {
+        # terminate admitted but settlement waits on removal (fake swallows the post) — emit it.
+        Start-Sleep -Milliseconds 500
+        $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
+        Start-Sleep -Milliseconds 700
+        $stT = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
+        $t2ok = "$($stT.domain.result.state)" -ne 'faulted'
+    }
+    $evC = Read-EventKinds $sid2 $gen2b $curC
+    $ends = @($evC.kinds | Where-Object { $_ -eq 'session_end' }).Count
+    $t2Ok = $t2ok -and ($ends -eq 1) -and ($evC.raw -match '"reason":"terminated"') -and (-not ($evC.raw -match '"reason":"restart_failed"'))
+    Assert-Cond 'a34-t2-settled' 'T2 settles once as terminated; restart never revives' "ok=$t2ok ends=$ends" $t2Ok @($evC.call.rpc.resp)
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 500
+
+    # [4] Pending-restart relaunch: emit removed while restart waits -> generation+1, no fault.
+    $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a34-la3'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sid3 = $L3.domain.result.session_id; $gen3 = [int]$L3.domain.result.generation
+    Assert-Cond 'a34-launch3' 'third session running' "ok=$($L3.domain.ok)" ($L3.domain.ok) @($L3.rpc.resp)
+    $null = Test-Adapter '{"install":true}'
+    $null = Test-Adapter '{"fail_next":"none"}'
+    $rReq3 = '{"jsonrpc":"2.0","id":782,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid3 + '","generation":' + $gen3 + ',"request_id":"a34-r4"}}}'
+    Set-Content C:\Tools\a34-req3.json $rReq3 -Encoding ascii
+    Remove-Item C:\Tools\a34-resp3.txt -Force -ErrorAction SilentlyContinue
+    $cp3 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-req3.json','-o','C:\Tools\a34-resp3.txt' -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 900
+    $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
+    $dl3 = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $dl3 -and -not (Test-Path C:\Tools\a34-resp3.txt)) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path C:\Tools\a34-resp3.txt) {
+        $l3 = [IO.File]::ReadAllLines('C:\Tools\a34-resp3.txt')
+        $dom3 = (($l3 | Select-Object -First ($l3.Count - 1)) -join "`n" | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+        $gen4 = [int]$dom3.result.generation
+        Assert-Cond 'a34-pending-restart-relaunch' 'removal while waiting: restart relaunches, generation+1, no fault' "ok=$($dom3.ok) gen=$gen4" ($dom3.ok -and ($gen4 -eq ($gen3 + 1))) @('a34-resp3.txt')
+        $null = Test-Adapter '{"install":false}'
+        Start-Sleep -Milliseconds 500
+        $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid3; generation = ($gen3 + 1); request_id = 'a34-t3' }
+    } else {
+        Assert-Cond 'a34-pending-restart-relaunch' 'detached restart returned' 'no response' $false @()
+        $null = Test-Adapter '{"install":false}'
+    }
+    Start-Sleep -Milliseconds 900
+
+    # Scheduled-phase failures (post never delivered, clock at 29.999) and claim-injection
+    # matrices need the remaining injection increments.
+    Fail-Precondition 'acc034-scheduled-and-claim' 'scheduled-phase 29.999/30.000 boundaries + claim 0/2/1 injection (injection increment 3)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -1671,6 +1777,7 @@ $handlers = @{
     'ACC-012' = ${function:Run-ACC012}
     'ACC-014' = ${function:Run-ACC014}
     'ACC-008' = ${function:Run-ACC008}
+    'ACC-034' = ${function:Run-ACC034}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
