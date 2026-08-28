@@ -220,12 +220,13 @@ function Set-SnapshotJson {
     $d.Save($xmlPath)
 }
 function Start-DnSpyAndWait {
-    param([int]$TimeoutSec = 60)
+    param([int]$TimeoutSec = 60, [string]$HealthUrl = $null)
     Start-Process -FilePath $script:Manifest.env.dnspy_exe -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $probe = if ($HealthUrl) { $HealthUrl } else { $script:BaseUrl }
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 700
-        $code = Get-HealthCode $script:BaseUrl
+        $code = Get-HealthCode $probe
         if ($code -eq '200') { return $true }
     }
     return $false
@@ -374,7 +375,7 @@ function Invoke-ComboSequence {
         $ev = @(Save-Json "tools-$Label-$($v -replace '[.-]','').json" ($tl.tools | Select-Object name))
         $capOk = ($names -contains 'debug_capabilities')
         $launchOk = ($names -contains 'debug_launch')
-        Assert-Cond "combo-$Label-$v-tools" "count=$($Expect.tools_count), capabilities advertised=$($Expect.debug_enabled), launch advertised=$($Expect.debug_enabled)" "count=$($names.Count), cap=$capOk, launch=$launchOk" (($names.Count -eq $Expect.tools_count) -and ($capOk -eq $Expect.debug_enabled) -and ($launchOk -eq [bool]$Expect.debug_enabled)) $ev
+        Assert-Cond "combo-$Label-$v-tools" "count=$($Expect.tools_count), capabilities advertised=true, launch advertised=$($Expect.debug_enabled)" "count=$($names.Count), cap=$capOk, launch=$launchOk" (($names.Count -eq $Expect.tools_count) -and $capOk -and ($launchOk -eq [bool]$Expect.debug_enabled)) $ev
 
         $cap = Invoke-Tool $v 'debug_capabilities' @{}
         $dev = if ($cap.domain) { $cap.domain.result.debug_enabled } else { $null }
@@ -492,7 +493,11 @@ function Run-ACC002 {
         $remoteUrl = "http://$($m.env.vm_ip):15100/"
         & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
         $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.vm_ip + '/32","' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
-        $upR = Restart-WithSnapshot $snapR
+        $script:RemoteUp = $false
+        Stop-DnSpyAndTargets
+        Set-SnapshotJson $snapR
+        $script:RemoteUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
+        $upR = $script:RemoteUp
         if ($upR) {
             $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
             $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Bearer $b64" -BaseUrlOverride $remoteUrl
