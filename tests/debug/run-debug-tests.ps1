@@ -270,6 +270,9 @@ function Ensure-CanonicalDnSpy {
     }
     $st = Invoke-ToolNoInit 'debug_status' @{ session_id = 'driver-sweep' }
     $state = if ($st.domain) { "$($st.domain.result.state)" } else { '' }
+    # A previously aborted case may have left the virtual clock advanced — a stale offset
+    # makes every new control deadline trip instantly. Reset it on every sweep.
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     if ($state -and $state -ne 'idle') {
         $sid = $st.domain.result.active_session_id
         if (-not $sid) { $sid = $st.domain.debug_context.session_id }
