@@ -1,0 +1,23 @@
+{
+  "base_url": "http://localhost:3000/",
+  "protocol_versions": [
+    "2024-11-05",
+    "2025-03-26",
+    "2025-06-18"
+  ],
+  "env": {
+    "dnspy_exe": "C:\\Tools\\dnSpy\\dnSpy.exe",
+    "extension_dll": "C:\\Tools\\dnSpy\\bin\\Extensions\\dnSpy.Extension.MCP\\dnSpy.Extension.MCP.x.dll",
+    "settings_xml": "%APPDATA%\\dnSpy\\dnSpy.xml",
+    "sample_root": "C:\\Tools\\MefCheck",
+    "artifact_root": "C:\\dnspy-mcp-artifacts",
+    "fixture_src": "tests\\debug\\fixtures-src\\AccFixture.cs",
+    "fixture_exe": "C:\\Tools\\MefCheck\\AccFixture.exe",
+    "csc": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+    "vm_ip": "192.168.204.149",
+    "host_ip": "192.168.204.1",
+    "dotnet10_root": "C:\\Tools\\MefCheck\\dotnet10-x64"
+  },
+  "case_id": "ACC-027",
+  "schema_version": "dnspy.debug.case.v1"
+}

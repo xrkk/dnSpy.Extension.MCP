@@ -2251,6 +2251,77 @@ function Run-ACC010 {
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a10-t1' } | Out-Null
 }
 
+
+# ---------------------------------------------------------------- case: ACC-027 ----
+function Run-ACC027 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] Transport reconnect on a RUNNING session: a brand-new protocol session (fresh
+    # initialize) queries and controls the SAME session_id — the target lives on.
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a27-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a27-launch' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond 'a27-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+    # Fresh transport: new initialize, then query + continue with the ORIGINAL session id.
+    Initialize-Protocol $v | Out-Null
+    $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a27-reconnect-query' 'new transport queries the original session' "ok=$($st2.domain.ok) state=$($st2.domain.result.state) active=$($st2.domain.result.active_session_id)" ($st2.domain.ok -and ("$($st2.domain.result.active_session_id)" -eq "$sid")) @($st2.rpc.resp)
+    $c2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; request_id = 'a27-c1' }
+    $runningOk = $c2.domain.ok
+    if (-not $runningOk) {
+        $stR = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+        if ("$($stR.domain.result.state)" -eq 'running') { $runningOk = $true }
+    }
+    Assert-Cond 'a27-reconnect-continue' 'new transport continues the original session' "ok=$runningOk" $runningOk @($c2.rpc.resp)
+    $pidAlive = [bool](Get-Process ArgvFixture -ErrorAction SilentlyContinue)
+    Assert-Cond 'a27-target-alive' 'target process survives the transport swap' "alive=$pidAlive" $pidAlive
+
+    # [2] Wrong session_id on control: TARGET_MISMATCH.
+    $bad = Invoke-ToolNoInit 'debug_pause' @{ session_id = 'sess-nonexistent-27'; generation = 1; request_id = 'a27-bad' }
+    Assert-Cond 'a27-wrong-session' 'wrong session_id control = TARGET_MISMATCH' "code=$(Get-DomainError $bad)" ("$(Get-DomainError $bad)" -eq 'TARGET_MISMATCH') @($bad.rpc.resp)
+
+    # [3] Post-claim unexpected exit: kill the fixture externally -> session_end(target_exited),
+    # handles invalid, coordinator returns idle.
+    Start-Sleep -Milliseconds 500
+    $curE = Get-MaxEventCursor $sid $gen
+    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    $dl = (Get-Date).AddSeconds(10)
+    $exitOk = $false
+    while ((Get-Date) -lt $dl -and -not $exitOk) {
+        Start-Sleep -Milliseconds 500
+        $stE = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+        if ("$($stE.domain.result.state)" -eq 'idle') { $exitOk = $true }
+    }
+    Assert-Cond 'a27-exit-to-idle' 'unexpected exit returns coordinator to idle' "ok=$exitOk" $exitOk
+    $evE = Read-EventKinds $sid $gen $curE
+    $endsOk = ($evE.kinds -contains 'session_end') -and ($evE.raw -match '"reason":"target_exited"')
+    Assert-Cond 'a27-exit-events' 'session_end(target_exited) written exactly once' "ends=$(@($evE.events | Where-Object kind -eq 'session_end').Count) reason=$(($evE.events | Where-Object kind -eq 'session_end' | Select-Object -First 1).payload.reason)" $endsOk @($evE.call.rpc.resp)
+    Start-Sleep -Milliseconds 800
+    $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a27-idle-terminal' 'coordinator idle (terminal)' "state=$($stZ.domain.result.state)" ("$($stZ.domain.result.state)" -eq 'idle') @($stZ.rpc.resp)
+
+    # [4] Post-idle new launch works (store recycled) — start-error and pre-claim exit
+    # scenarios need in-process Start injection (injection increments).
+    $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a27-la2'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    Assert-Cond 'a27-relaunch' 'new launch after exit-recycle accepted' "ok=$($L2.domain.ok)" ($L2.domain.ok) @($L2.rpc.resp)
+    if ($L2.domain.ok) {
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $L2.domain.result.session_id; generation = [int]$L2.domain.result.generation; request_id = 'a27-t2' } | Out-Null
+        Start-Sleep -Milliseconds 900
+    }
+    # No global Restart API exists (contract bans it) — verified by advertisement absence.
+    $tlv = Get-ToolList $v
+    $names = @($tlv.tools | ForEach-Object { $_.name })
+    Assert-Cond 'a27-no-global-restart' 'no global restart/detach-all tool advertised' "has=$($names -contains 'debug_restart_all')" (-not ($names -contains 'debug_restart_all')) @(Save-Json 'a27-tools.json' $names)
+
+    Fail-Precondition 'acc027-start-injection' 'Start-error / pre-claim exit injections (in-process Start seam)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2267,6 +2338,7 @@ $handlers = @{
     'ACC-034' = ${function:Run-ACC034}
     'ACC-005' = ${function:Run-ACC005}
     'ACC-010' = ${function:Run-ACC010}
+    'ACC-027' = ${function:Run-ACC027}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
