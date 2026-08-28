@@ -346,7 +346,8 @@ function Run-ACC001 {
         New-Item -ItemType Directory -Force -Path $extDest | Out-Null
         Copy-Item $m.env.extension_dll -Destination (Join-Path $extDest 'dnSpy.Extension.MCP.x.dll') -Force
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Repo 'tests\fixtures\bin') | Out-Null
-        $fixOut = & $m.env.csc /nologo /target:library /out:"$(Join-Path $script:Repo 'tests\fixtures\bin\TestIL.dll')" (Join-Path $script:Repo 'tests\fixtures\TestIL.cs') 2>&1
+        Copy-Item $m.env.testil_dll -Destination (Join-Path $script:Repo 'tests\fixtures\bin\TestIL.dll') -Force
+        $fixOut = "fixture staged from $($m.env.testil_dll)" 
         $fixOut | Set-Content (Join-Path $script:OutDir 'testil-build.log')
         $static = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 2>&1
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
