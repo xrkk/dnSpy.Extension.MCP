@@ -150,13 +150,13 @@ function Get-ToolList {
     return @{ tools = $tools; raw = $r }
 }
 function Invoke-Tool {
-    param([string]$Version, [string]$Name, $Args)
+    param([string]$Version, [string]$Name, $ToolArgs)
     Initialize-Protocol $Version | Out-Null
-    return Invoke-ToolNoInit $Name $Args
+    return Invoke-ToolNoInit $Name $ToolArgs
 }
 function Invoke-ToolNoInit {
-    param([string]$Name, $Args)
-    $r = Send-Rpc 'tools/call' @{ name = $Name; arguments = $Args }
+    param([string]$Name, $ToolArgs)
+    $r = Send-Rpc 'tools/call' @{ name = $Name; arguments = $ToolArgs }
     $domain = $null
     if ($r.json -and $r.json.result -and $r.json.result.content) {
         try { $domain = ($r.json.result.content | Where-Object { $_.type -eq 'text' } | Select-Object -First 1).text | ConvertFrom-Json } catch { }
@@ -578,8 +578,8 @@ function Run-ACC011 {
     $before = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = 1 }
     $beforeCount = @($before.domain.result.items).Count
 
-    function Try-Bp([string]$Id, $Args, [string]$ExpectKind, [string]$ExpectCode) {
-        $c = Invoke-ToolNoInit 'debug_set_breakpoint' $Args
+    function Try-Bp([string]$Id, $ToolArgs, [string]$ExpectKind, [string]$ExpectCode) {
+        $c = Invoke-ToolNoInit 'debug_set_breakpoint' $ToolArgs
         $code = Get-DomainError $c
         $rpcErr = if ($c.rpc.json -and $c.rpc.json.error) { $c.rpc.json.error.code } else { $null }
         $ok = $false
