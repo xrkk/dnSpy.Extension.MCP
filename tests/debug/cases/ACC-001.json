@@ -17,7 +17,7 @@
     "vm_ip": "192.168.204.149",
     "host_ip": "192.168.204.1",
     "testil_dll": "C:\\Tools\\MefCheck\\TestIL.dll",
-    "dotnet10_root": "C:\\Tools\\dotnet10-x64"
+    "dotnet10_root": "C:\\Tools\\MefCheck\\dotnet10-x64"
   },
   "case_id": "ACC-001",
   "schema_version": "dnspy.debug.case.v1"

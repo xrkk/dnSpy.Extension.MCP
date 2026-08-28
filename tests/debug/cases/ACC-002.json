@@ -16,7 +16,7 @@
     "csc": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
     "vm_ip": "192.168.204.149",
     "host_ip": "192.168.204.1",
-    "dotnet10_root": "C:\\Tools\\dotnet10-x64"
+    "dotnet10_root": "C:\\Tools\\MefCheck\\dotnet10-x64"
   },
   "case_id": "ACC-002",
   "schema_version": "dnspy.debug.case.v1"
