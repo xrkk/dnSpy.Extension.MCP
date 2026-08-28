@@ -1740,9 +1740,11 @@ function Run-ACC014 {
     # into crosses into a NEW method token, out returns to the previous token. The
     # registered currentStep matcher consumes exactly one StepComplete (foreign ids never
     # produce EVT step_completed — verified by the synthetic matrix above).
-    $LT = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a14-lt'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    # break_kind=entry pins the first pause to Main entry (the proven ACC-031 stepping start);
+    # with none the pause lands in arbitrary framework code where stepping is unreliable.
+    $LT = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a14-lt'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'entry' }
     $sidT = $LT.domain.result.session_id; $genT = [int]$LT.domain.result.generation
-    Assert-Cond 'a14-pos-launch' 'step session running' "ok=$($LT.domain.ok)" ($LT.domain.ok) @($LT.rpc.resp)
+    Assert-Cond 'a14-pos-launch' 'step session launched (entry pause)' "ok=$($LT.domain.ok) state=$($LT.domain.result.state)" ($LT.domain.ok) @($LT.rpc.resp)
     $wpT = Wait-HeldPause $sidT $genT
     if ($wpT.ok) {
         $tlT = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $wpT.epoch }
