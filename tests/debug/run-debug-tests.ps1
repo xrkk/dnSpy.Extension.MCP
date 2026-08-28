@@ -424,6 +424,24 @@ function Wait-DetachedOrMissing {
     while ((Get-Date) -lt $dl) { if (Test-Path $RespFile) { return $true }; Start-Sleep -Milliseconds 200 }
     return (Test-Path $RespFile)
 }
+
+function Resume-FromPaused {
+    # After a synthetic P2 collision the coordinator is PAUSED while the real process runs;
+    # an explicit continue (per epoch) clears it so the next control can be admitted.
+    param([string]$Sid, [int]$Gen, [int]$TimeoutSec = 10)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+        if ("$($st.domain.result.state)" -eq 'paused') {
+            $ep = $st.domain.debug_context.pause_epoch
+            $c = Invoke-ToolNoInit 'debug_continue' @{ session_id = $Sid; generation = $Gen; pause_epoch = $ep; request_id = 'rfp-c' }
+            Start-Sleep -Milliseconds 400
+        } elseif ("$($st.domain.result.state)" -eq 'running') { return $true }
+        else { Start-Sleep -Milliseconds 300 }
+    }
+    return $false
+}
+
 function Wait-StableRunning {
     param([string]$Sid, [int]$TimeoutSec = 12)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -1558,12 +1576,12 @@ function Run-ACC007 {
     Assert-Cond 'p2-launch' 'third session running' "ok=$($L3.domain.ok)" ($L3.domain.ok) @($L3.rpc.resp)
     $null = Wait-StableRunning $sid3
     Assert-P2Collision $sid3 $gen3 'acc7-p2bp' '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc7-bp-9"}]}}' 'breakpoint' 'p2-issued-breakpoint'
-    $null = Wait-StableRunning $sid3
+    $null = Resume-FromPaused $sid3 $gen3
     Assert-P2Collision $sid3 $gen3 'acc7-p2ex' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'p2-issued-exception'
 
     # P1-late: a pause settled by MANUAL observation; a LATE caused observation afterwards
     # settles as a new pause_epoch with the real cause — it never rewrites the first response.
-    $null = Wait-StableRunning $sid3
+    $null = Resume-FromPaused $sid3 $gen3
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $curLate = Get-MaxEventCursor $sid3 $gen3
     $bodyP1 = '{"jsonrpc":"2.0","id":793,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $sid3 + '","generation":' + $gen3 + ',"request_id":"acc7-p1late"}}}'
@@ -1579,7 +1597,7 @@ function Run-ACC007 {
     Assert-Cond 'p1-late-not-rewritten' 'manual-settled response intact; late breakpoint settles as a NEW pause (epoch advances)' "reason=$($domP1.result.reason) p1ep=$p1Epoch lateBp=$($evLate.kinds -contains 'breakpoint_hit')" $lateOk @($rfP1, $evLate.call.rpc.resp)
 
     # 29.999/30.000 deadline boundary on the virtual clock.
-    $null = Wait-StableRunning $sid3
+    $null = Resume-FromPaused $sid3 $gen3
     Assert-DeadlineBoundary $sid3 $gen3 'acc7-bnd'
 
     $null = Test-Adapter '{"install":false}'
@@ -1865,7 +1883,7 @@ function Run-ACC008 {
     if ($L4.domain.ok) {
         $null = Wait-StableRunning $sid4
         Assert-P2Collision $sid4 $gen4 'a08-p2bp' '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"a08-bp-9"}]}}' 'breakpoint' 'a08-p2-issued-breakpoint'
-        $null = Wait-StableRunning $sid4
+        $null = Resume-FromPaused $sid4 $gen4
         Assert-DeadlineBoundary $sid4 $gen4 'a08-bnd'
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid4; generation = $gen4; request_id = 'a08-tz' }
         Start-Sleep -Milliseconds 900
