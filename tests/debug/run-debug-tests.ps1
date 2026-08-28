@@ -625,12 +625,12 @@ function Run-ACC011 {
     $th = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
     $frame = $S.domain.result.items[0]
-    $mod = $frame.module_handle
+    $mod = "$($frame.location.module_handle)"
     $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mod)[0]
     $mvid = "$($modEntry.mvid)"
-    $token = "$($frame.method_token)"
-    $off = "$($frame.il_offset)"
+    $token = "$($frame.location.method_token)"
+    $off = "$($frame.location.il_offset)"
     Assert-Cond 'frame-identity' 'frame carries module/token/offset; module list carries mvid' "mod=$mod mvid=$mvid token=$token off=$off" (($mod) -and ($mvid) -and ($token)) @($S.rpc.resp, $MODS.rpc.resp)
 
     $before = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
@@ -753,13 +753,13 @@ function Run-ACC031 {
     $th = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
     $mainFrame = $S.domain.result.items[0]
-    $mainToken = "$($mainFrame.method_token)"
+    $mainToken = "$($mainFrame.location.method_token)"
     $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-    $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.module_handle)[0]
+    $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.location.module_handle)[0]
     $mvid = "$($modEntry.mvid)"
 
     # Step-into until the current method is no longer Main (enter Hot); epochs come from status.
-    $hotToken = $null; $hotOff = $null; $mod = "$($mainFrame.module_handle)"
+    $hotToken = $null; $hotOff = $null; $mod = "$($mainFrame.location.module_handle)"
     for ($i = 0; $i -lt 14 -and -not $hotToken; $i++) {
         $curEp = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
         $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $th; kind = 'into' }
@@ -775,7 +775,7 @@ function Run-ACC031 {
         $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $th }
         if ($s2.domain.ok) {
             $f0 = $s2.domain.result.items[0]
-            if ("$($f0.method_token)" -ne $mainToken) { $hotToken = "$($f0.method_token)"; $hotOff = [int]$f0.il_offset; $mod = "$($f0.module_handle)" }
+            if ("$($f0.location.method_token)" -ne $mainToken) { $hotToken = "$($f0.location.method_token)"; $hotOff = [int]$f0.location.il_offset; $mod = "$($f0.location.module_handle)" }
         }
     }
     Assert-Cond 'entered-hot' 'stepped from Main into Hot (frame token changed)' "hot_token=$hotToken off=$hotOff" ([bool]$hotToken) @($S.rpc.resp)
