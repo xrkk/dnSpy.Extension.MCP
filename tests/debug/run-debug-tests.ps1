@@ -370,6 +370,9 @@ function Invoke-CoreClrMatrix {
     $sid = $li.session_id; $gen = [int]$li.generation
     $wp = Wait-HeldPause $sid $gen
     Assert-Cond "$Label-held-pause" 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+    # Back to running before arming the adapter (pause requires running).
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; request_id = "$Label-c0" }
+    Start-Sleep -Milliseconds 500
     # P1-a: explicit failure settles identically.
     $null = Test-Adapter '{"install":true}'
     $null = Test-Adapter '{"fail_next":"explicit_failure"}'
