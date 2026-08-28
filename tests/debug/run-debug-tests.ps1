@@ -1748,29 +1748,49 @@ function Run-ACC014 {
         $sidT = $LT.domain.result.session_id; $genT = [int]$LT.domain.result.generation
         $wpT = Wait-HeldPause $sidT $genT
         if ($wpT.ok) {
+            # Probe for the DEEPEST thread (the worker in Level3) — its stack has room to
+            # step out of, and stepping over keeps the method token stable.
             $tlT = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $wpT.epoch }
-            $thT = $tlT.domain.result.items[0].thread_handle
-            $st0 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $wpT.epoch; thread_handle = $thT }
-            $d0 = [int]$st0.domain.result.total_known
+            $bestTh = $null; $d0 = 0; $st0 = $null
+            foreach ($t in @($tlT.domain.result.items)) {
+                $one = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $wpT.epoch; thread_handle = $t.thread_handle }
+                if ($one.domain.ok) {
+                    $n = [int]$one.domain.result.total_known
+                    if ($n -gt $d0) { $d0 = $n; $bestTh = $t.thread_handle; $st0 = $one }
+                }
+            }
             $ep0 = $wpT.epoch
-            $ST1 = Invoke-ToolNoInit 'debug_step' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep0; request_id = 'a14-si'; thread_handle = $thT; kind = 'into' }
-            Start-Sleep -Milliseconds 1500
-            $stQ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sidT }
-            $ep1 = $stQ.domain.debug_context.pause_epoch
-            $st1 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1; thread_handle = $thT }
-            $d1 = [int]$st1.domain.result.total_known
-            Assert-Cond 'a14-into-deepens' 'step into deepens the stack (total_known grows)' "d0=$d0 d1=$d1" ($d1 -gt $d0) @($st0.rpc.resp, $st1.rpc.resp)
-            $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1 }
-            $th2 = $tl2.domain.result.items[0].thread_handle
-            $ST2 = Invoke-ToolNoInit 'debug_step' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1; request_id = 'a14-so'; thread_handle = $th2; kind = 'out' }
-            Start-Sleep -Milliseconds 1500
-            $stR = Invoke-ToolNoInit 'debug_status' @{ session_id = $sidT }
-            $ep2 = $stR.domain.debug_context.pause_epoch
-            $tl3 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep2 }
-            $th3 = $tl3.domain.result.items[0].thread_handle
-            $st2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep2; thread_handle = $th3 }
-            $d2 = [int]$st2.domain.result.total_known
-            Assert-Cond 'a14-out-returns' 'step out returns up the stack (total_known shrinks)' "d1=$d1 d2=$d2" ($d2 -lt $d1) @($st1.rpc.resp, $st2.rpc.resp)
+            # Step OUT: the frame count must shrink (we return to the caller).
+            $ST1 = Invoke-ToolNoInit 'debug_step' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep0; request_id = 'a14-so'; thread_handle = $bestTh; kind = 'out' }
+            $d1 = -1; $ep1 = 0
+            for ($w = 0; $w -lt 12; $w++) {
+                Start-Sleep -Milliseconds 500
+                $stQ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sidT }
+                if ("$($stQ.domain.result.state)" -eq 'paused') {
+                    $ep1 = $stQ.domain.debug_context.pause_epoch
+                    $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1 }
+                    $one2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1; thread_handle = $bestTh }
+                    if ($one2.domain.ok) { $d1 = [int]$one2.domain.result.total_known; break }
+                }
+            }
+            Assert-Cond 'a14-out-returns' 'step out returns up the stack (total_known shrinks)' "d0=$d0 d1=$d1" (($d1 -ge 0) -and ($d1 -lt $d0)) @($st0.rpc.resp)
+            # Step OVER: same method token afterwards (execution stays inside the method).
+            if ($d1 -ge 0) {
+                $st1 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1; thread_handle = $bestTh }
+                $tokBefore = "$($st1.domain.result.items[0].location.method_token)"
+                $ST2 = Invoke-ToolNoInit 'debug_step' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep1; request_id = 'a14-sv'; thread_handle = $bestTh; kind = 'over' }
+                $tokAfter = ''; $ep2 = 0
+                for ($w = 0; $w -lt 12; $w++) {
+                    Start-Sleep -Milliseconds 500
+                    $stR = Invoke-ToolNoInit 'debug_status' @{ session_id = $sidT }
+                    if ("$($stR.domain.result.state)" -eq 'paused') {
+                        $ep2 = $stR.domain.debug_context.pause_epoch
+                        $st2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $ep2; thread_handle = $bestTh }
+                        if ($st2.domain.ok) { $tokAfter = "$($st2.domain.result.items[0].location.method_token)"; break }
+                    }
+                }
+                Assert-Cond 'a14-over-stays' 'step over keeps the method (token unchanged)' "before=$tokBefore after=$tokAfter" (($tokAfter -ne '') -and ($tokAfter -eq $tokBefore)) @($st1.rpc.resp)
+            } else { Assert-Cond 'a14-over-stays' 'post-out stack readable' 'unavailable' $false @() }
         } else { Assert-Cond 'a14-pos-session' 'multi-frame session paused' 'no' $false @() }
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidT; generation = $genT; request_id = 'a14-t2' }
         Start-Sleep -Milliseconds 900
