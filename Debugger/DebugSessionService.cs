@@ -2000,7 +2000,7 @@ public sealed class DebugSessionService : IDisposable {
 		// Observations flow through the adapter seam (production raises here; the DNMCP_TEST
 		// fake raises identical ones from debug_test_adapter emit).
 		IDbgProcessControlAdapter? raiseTarget;
-		lock (sessionLock) raiseTarget = testAdapter ?? adapter;
+		lock (sessionLock) raiseTarget = (IDbgProcessControlAdapter?)testAdapter ?? adapter;
 		if (raiseTarget is DbgProcessControlAdapter production)
 			production.RaiseObservation(new ProcessObservation {
 				Kind = ProcessObservation.ObservationKind.Paused,
