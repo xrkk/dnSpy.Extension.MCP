@@ -407,10 +407,8 @@ function Read-DetachedResp {
     for ($i = 0; $i -lt $Retries; $i++) {
         if (Test-Path $RespFile) {
             try {
-                $lines = [IO.File]::ReadAllLines($RespFile)
-                if ($lines.Count -ge 1) {
-                    $body = ($lines | Select-Object -First ($lines.Count - 1)) -join "`n"
-                    if (-not $body) { $body = $lines[0] }
+                $body = ([IO.File]::ReadAllText($RespFile)).Trim()
+                if ($body) {
                     $dom = ($body | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
                     if ($dom) { return $dom }
                 }
@@ -447,11 +445,15 @@ function Assert-P2Collision {
     # deadline before the observation can settle it.
     param([string]$Sid, [int]$Gen, [string]$RequestId, [string]$EmitJson, [string]$ExpectCause, [string]$Id)
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
+    # Install the fake FIRST: otherwise the pause post reaches the REAL adapter and the real
+    # Break() observation (reason=manual) settles the record before our synthetic cause lands.
+    $null = Test-Adapter '{"install":true}'
     $body = '{"jsonrpc":"2.0","id":791,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
     Start-Sleep -Milliseconds 900
     $null = Test-Adapter $EmitJson
     $dom = Read-DetachedResp $rf
+    $null = Test-Adapter '{"install":false}'
     if ($dom) {
         $ok = ($dom.ok) -and ("$($dom.result.reason)" -eq $ExpectCause) -and ("$($dom.result.request_effect)" -eq 'state_satisfied')
         Assert-Cond $Id "pause settles with reason=$ExpectCause request_effect=state_satisfied" "ok=$($dom.ok) reason=$($dom.result.reason) eff=$($dom.result.request_effect)" $ok @($rf)
@@ -462,6 +464,7 @@ function Assert-DeadlineBoundary {
     # waiting; the final millisecond trips TIMEOUT.
     param([string]$Sid, [int]$Gen, [string]$RequestId)
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
+    $null = Test-Adapter '{"install":true}'
     $body = '{"jsonrpc":"2.0","id":792,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
     Start-Sleep -Milliseconds 900
@@ -470,6 +473,7 @@ function Assert-DeadlineBoundary {
     $stillWaiting = -not (Test-Path $rf)
     $null = Test-Clock 2
     $dom = Read-DetachedResp $rf
+    $null = Test-Adapter '{"install":false}'
     $code = if ($dom) { "$($dom.error.code)" } else { '' }
     $ok = $stillWaiting -and ($code -eq 'TIMEOUT')
     Assert-Cond "$RequestId-boundary" '29.999s: still waiting; +2ms: TIMEOUT' "waiting29999=$stillWaiting code=$code" $ok @($rf)
