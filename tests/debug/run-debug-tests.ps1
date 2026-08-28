@@ -1154,17 +1154,25 @@ function Run-ACC026 {
     $argv = @('', 'plain', 'two words', 'he said "hi"', 'C:\dir\file.exe', 'tab`tsep')
     Remove-Item $out -Force -ErrorAction SilentlyContinue
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-argv'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none'; target_argv = $argv }
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S1-launch-done`r`n')
     $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
     Assert-Cond 'argv-launch-ok' 'launch accepted with argv matrix' "ok=$($L.domain.ok)" $L.domain.ok @($L.rpc.resp)
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S2-assert-done`r`n')
     Start-Sleep -Milliseconds 900
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S3-sleep-done`r`n')
     $lines = @()
     if (Test-Path $out) { $lines = @(Get-Content $out) }
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', "S4-read-$($lines.Count)`r`n")
     $expected = @(); for ($i = 0; $i -lt $argv.Count; $i++) { $expected += ("$($argv[$i].Length):$($argv[$i])") }
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S5-expected-done`r`n')
     $mismatches = @()
     if ($lines.Count -ne $expected.Count) { $mismatches += "count $($lines.Count) vs $($expected.Count)" }
     for ($i = 0; $i -lt [Math]::Min($lines.Count, $expected.Count); $i++) { if ($lines[$i] -ne $expected[$i]) { $mismatches += "[$i] '$($lines[$i])' vs '$($expected[$i])'" } }
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6-compare-done`r`n')
     Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @(Save-Json 'argv-observed.json' $lines)
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S7-save-done`r`n')
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc26-t1' } | Out-Null
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S8-terminate-done`r`n')
     Start-Sleep -Milliseconds 800
 
     # [2] wrong sha rejected before Start.
