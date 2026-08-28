@@ -185,8 +185,13 @@ public sealed class DebugSessionService : IDisposable {
 		// emit: synthetic observation through the same OnAdapterObservation path as production.
 		if (args.TryGetValue("emit", out var emitEl) && emitEl is System.Text.Json.JsonElement em && em.ValueKind == System.Text.Json.JsonValueKind.Object) {
 			FakeDbgProcessControlAdapter source;
-			lock (sessionLock)
-				source = testAdapter ?? new FakeDbgProcessControlAdapter();
+			lock (sessionLock) {
+				if (testAdapter is null) {
+					testAdapter = new FakeDbgProcessControlAdapter();
+					testAdapter.Observation += OnAdapterObservation;
+				}
+				source = testAdapter;
+			}
 			int pid; DateTime started;
 			lock (sessionLock) { pid = ownedProcess?.Id ?? 0; started = sessionStartedUtc == default ? DateTime.UtcNow : sessionStartedUtc; }
 			if (em.TryGetProperty("pid", out var pidEl) && pidEl.ValueKind == System.Text.Json.JsonValueKind.Number)
