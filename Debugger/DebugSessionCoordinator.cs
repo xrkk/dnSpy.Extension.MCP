@@ -130,7 +130,14 @@ public sealed class DebugSessionCoordinator {
 			if (state != DebugStates.Idle)
 				return false;
 			ExpireRetainedLog();
+			// ACC-005: the next launch's start reservation releases the retained terminal log —
+			// reads of the old session_id answer NOT_FOUND from this point on.
+			retainedBuffer = null;
+			lastSessionId = null;
+			terminalAtUtc = null;
 			activeSessionId = newSessionId();
+			// Cursors are session-scoped (start at 1, strictly increasing within the session).
+			eventCursorCounter = 0;
 			generation = 1;
 			pauseEpoch = 0;
 			fault = FaultKind.None;
