@@ -351,8 +351,11 @@ function Run-ACC001 {
         $fixOut | Set-Content (Join-Path $script:OutDir 'testil-build.log')
         # In-process invocation: deeply nested powershell children occasionally fail to
         # autoload Microsoft.PowerShell.Utility (Get-FileHash) on this host. run-tests.ps1
-        # deploys the extension DLL itself, so dnSpy must be down before it starts.
+        # deploys the extension DLL itself, so dnSpy must be down before it starts; it also
+        # probes ports 3100..3119, so the committed snapshot's port is staged to 3100 for the
+        # run and restored afterwards by Ensure-CanonicalDnSpy.
         Stop-DnSpyAndTargets
+        Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' 3100 $m.env.sample_root $m.env.artifact_root)
         $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 2>&1
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')
