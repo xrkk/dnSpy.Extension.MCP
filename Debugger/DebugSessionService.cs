@@ -1933,6 +1933,9 @@ public sealed class DebugSessionService : IDisposable {
 					adapter?.Dispose();
 					adapter = null;
 					ownedProcess = null;
+					// A step pending at removal never gets its StepComplete; a stale registration
+					// would block every future step in this process ("a step is already pending").
+					currentStep = null;
 				}
 				TaskCompletionSource<string>? controlTcs;
 				lock (sessionLock) controlTcs = controlOutcomeTcs;
