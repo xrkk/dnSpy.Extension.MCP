@@ -1183,7 +1183,7 @@ function Run-ACC026 {
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a3-small-save-after-launch`r`n')
     $null = ConvertTo-Json @('a','b') -Depth 40 -Compress
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a4-inline-convert-after-launch`r`n')
-    $savedName = Save-Json 'argv-observed.json' $lines
+    $savedName = Save-Json 'argv-observed.json' @($lines | ForEach-Object { [string]$_ })
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6b-save-json-done`r`n')
     Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @($savedName)
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S7-assert-done`r`n')
