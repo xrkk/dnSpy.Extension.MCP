@@ -33,6 +33,12 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 
 	public string Name => "debug";
 
+	/// <summary>Fixed-disabled APIs (API-DYN-004/005/010): never advertised, always answered
+	/// with the domain CAPABILITY_UNAVAILABLE envelope by DebugSessionService.Execute.</summary>
+	public IReadOnlyCollection<string> UnadvertisedTools { get; } = new[] {
+		"debug_attach", "debug_detach", "debug_list_attachable_processes",
+	};
+
 	/// <summary>The per-process frozen gate owned by DebugGateService (CON-DYN-014): the
 	/// dispatcher-sampled value once it lands, otherwise the unsampleable gate (always false).</summary>
 	public DebugFeatureGate.FrozenGate Gate => gateService.Current;

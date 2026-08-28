@@ -39,7 +39,16 @@ internal sealed class McpToolRegistry
     public CallToolResult ExecuteTool(string toolName, Dictionary<string, object>? arguments)
     {
         var route = routeTable ?? BuildRouteTable();
-        if (route.TryGetValue(toolName, out var provider))
+        if (!route.TryGetValue(toolName, out var provider))
+        {
+            foreach (var candidate in providers)
+                if (candidate.UnadvertisedTools.Contains(toolName))
+                {
+                    provider = candidate;
+                    break;
+                }
+        }
+        if (provider != null)
         {
             var result = provider.ExecuteTool(toolName, arguments);
             if (result != null)

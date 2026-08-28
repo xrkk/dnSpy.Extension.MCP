@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
@@ -23,6 +24,8 @@ internal sealed class StaticToolProvider : IMcpToolProvider
     }
 
     public string Name => "static";
+
+    public IReadOnlyCollection<string> UnadvertisedTools { get; } = Array.Empty<string>();
 
     public IReadOnlyList<ToolInfo> GetTools() => tools.GetAvailableTools();
 

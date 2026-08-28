@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace dnSpy.Extension.MCP.Tools;
@@ -22,4 +23,12 @@ internal interface IMcpToolProvider
     /// canonical unknown-tool error.
     /// </summary>
     CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments);
+
+    /// <summary>
+    /// Tool names this provider answers without advertising: the fixed-disabled debug APIs
+    /// (API-DYN-004/005/010) stay out of tools/list yet must answer direct calls with the
+    /// domain CAPABILITY_UNAVAILABLE envelope instead of an unknown-tool text. Providers
+    /// without such names return an empty collection.
+    /// </summary>
+    IReadOnlyCollection<string> UnadvertisedTools { get; }
 }
