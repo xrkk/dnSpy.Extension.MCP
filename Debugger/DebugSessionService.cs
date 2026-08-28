@@ -12,7 +12,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using dnSpy.Contracts.Debugger;
 using dnSpy.Contracts.Debugger.Breakpoints.Code;
+using dnSpy.Contracts.Debugger.CallStack;
 using dnSpy.Contracts.Debugger.DotNet;
+using dnSpy.Contracts.Debugger.Steppers;
 using dnSpy.Contracts.Debugger.DotNet.Code;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
 using dnSpy.Contracts.Metadata;
@@ -60,6 +62,7 @@ public sealed class DebugSessionService : IDisposable {
 		"debug_restart", "debug_read_events", "debug_wait_event",
 		"debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled",
 		"debug_remove_breakpoint", "debug_set_exception_policy",
+		"debug_list_threads", "debug_get_stack", "debug_step",
 	};
 
 	public bool Handles(string toolName) => HandledTools.Contains(toolName);
@@ -126,6 +129,9 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_set_breakpoint_enabled" => SetBreakpointEnabled(arguments),
 				"debug_remove_breakpoint" => RemoveBreakpoint(arguments),
 				"debug_set_exception_policy" => SetExceptionPolicy(arguments),
+				"debug_list_threads" => ListThreads(arguments),
+				"debug_get_stack" => GetStack(arguments),
+				"debug_step" => Step(arguments),
 				_ => null,
 			};
 		}
@@ -823,6 +829,163 @@ public sealed class DebugSessionService : IDisposable {
 		dbgManager?.Dispatcher.BeginInvoke(new Action(action));
 	}
 
+	// ---- IMP-007: threads, stack, stepping ----
+
+	sealed class StepRegistration {
+		public string Id = string.Empty;
+		public string Kind = string.Empty;
+		public string ThreadHandle = string.Empty;
+	}
+	StepRegistration? currentStep;
+	int stepSeq;
+	readonly Dictionary<string, ulong> threadIdsByHandle = new();
+
+	static string ThreadHandleOf(DbgThread thread) => $"th-{thread.Id}";
+
+	DbgThread? FindThreadByHandle(string threadHandle) {
+		DbgProcess? process;
+		lock (sessionLock) process = ownedProcess;
+		if (process is null)
+			return null;
+		foreach (var thread in process.Threads)
+			if (ThreadHandleOf(thread) == threadHandle)
+				return thread;
+		return null;
+	}
+
+	string ListThreads(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
+		string? cursor = ArgString(args, "page_cursor");
+		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var s) ? s : 0;
+		DbgThread[] threads = Array.Empty<DbgThread>();
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is not null)
+				threads = process.Threads;
+		});
+		lock (sessionLock) {
+			threadIdsByHandle.Clear();
+			foreach (var t in threads)
+				threadIdsByHandle[ThreadHandleOf(t)] = t.Id;
+		}
+		var page = threads.Skip(start).Take(pageSize).ToList();
+		var dto = new PagedItemsDto {
+			Items = page.Select((t, i) => (object)new ThreadInfoDto {
+				ThreadHandle = ThreadHandleOf(t),
+				ManagedId = t.ManagedId?.ToString(),
+				OsId = t.Id.ToString(),
+				Name = t.HasName() ? t.Name : null,
+				State = "paused",
+				IsCurrent = start + i == 0,
+			}).ToList(),
+			Truncated = false,
+			TotalKnown = threads.Length,
+		};
+		if (start + page.Count < threads.Length)
+			dto.NextPageCursor = (start + page.Count).ToString();
+		return Ok(coordinator, dto);
+	}
+
+	string GetStack(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var threadHandle = ArgString(args, "thread_handle", required: true);
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 20));
+		string? cursor = ArgString(args, "page_cursor");
+		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var s) ? s : 0;
+		var frames = new List<(string module, uint token, uint offset)>();
+		PostVoidToDispatcherSync(() => {
+			var thread = FindThreadByHandle(threadHandle);
+			if (thread is null)
+				return;
+			var walker = thread.CreateStackWalker();
+			try {
+				foreach (var frame in walker.GetNextStackFrames(start + pageSize)) {
+					var module = frame.Module?.Name ?? frame.Module?.Filename ?? string.Empty;
+					frames.Add((module, frame.FunctionToken, frame.FunctionOffset));
+				}
+			}
+			finally {
+				walker.Close();
+			}
+		});
+		var page = frames.Skip(start).Take(pageSize).ToList();
+		var dto = new PagedItemsDto {
+			Items = page.Select((f, i) => (object)new FrameInfoDto {
+				FrameHandle = $"fr-{start + i}",
+				Index = start + i,
+				Location = new LocationDto {
+					ModuleHandle = $"mod:{f.module}",
+					MethodToken = $"0x{f.token:x8}",
+					IlOffset = (int)f.offset,
+				},
+				DisplayName = $"{f.module}!0x{f.token:x8}+0x{f.offset:x}",
+			}).ToList(),
+			Truncated = false,
+			TotalKnown = frames.Count,
+		};
+		if (start + page.Count < frames.Count)
+			dto.NextPageCursor = (start + page.Count).ToString();
+		return Ok(coordinator, dto);
+	}
+
+	string Step(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var requestId = ArgString(args, "request_id", required: true);
+		var threadHandle = ArgString(args, "thread_handle", required: true);
+		var kind = ArgString(args, "kind", required: true);
+		var upstreamKind = kind switch {
+			"into" => DbgStepKind.StepInto,
+			"over" => DbgStepKind.StepOver,
+			"out" => DbgStepKind.StepOut,
+			_ => (DbgStepKind?)null,
+		};
+		if (upstreamKind is null)
+			return Fail(coordinator, DomainErrorCodes.InternalError, message: "kind must be into, over or out");
+		lock (sessionLock) {
+			if (currentStep is not null)
+				return Fail(coordinator, DomainErrorCodes.InvalidState, message: "a step is already pending for this session");
+		}
+		string stepId = $"step-{Interlocked.Increment(ref stepSeq)}";
+		lock (sessionLock)
+			currentStep = new StepRegistration { Id = stepId, Kind = kind, ThreadHandle = threadHandle };
+		bool stepped = false;
+		PostVoidToDispatcherSync(() => {
+			var thread = FindThreadByHandle(threadHandle);
+			if (thread is null)
+				return;
+			var stepper = thread.CreateStepper();
+			stepper.Step(upstreamKind.Value, autoClose: true);
+			stepped = true;
+		});
+		if (!stepped) {
+			lock (sessionLock) currentStep = null;
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown thread_handle");
+		}
+		coordinator.MarkResumed("step");
+		return Ok(coordinator, new StepResultDto {
+			StepId = stepId,
+			State = DebugStates.Running,
+		});
+	}
+
+	void PostVoidToDispatcherSync(Action action) {
+		if (dbgManager is null)
+			return;
+		var done = new ManualResetEventSlim();
+		dbgManager.Dispatcher.BeginInvoke(new Action(() => {
+			try { action(); }
+			finally { done.Set(); }
+		}));
+		done.Wait(ControlOperationRecord.DefaultDeadline);
+	}
+
 	// ---- observation pump (DbgManager dispatcher thread) ----
 
 	void OnProcessesChanged(object? sender, DbgCollectionChangedEventArgs<DbgProcess> e) {
@@ -936,7 +1099,12 @@ public sealed class DebugSessionService : IDisposable {
 							break;
 						case DbgMessageKind.StepComplete:
 							kind = "step";
-							stepId = "step-current";
+							lock (sessionLock) {
+								if (currentStep is { } pending) {
+									stepId = pending.Id;
+									currentStep = null; // only the registered step generates EVT-DYN-015
+								}
+							}
 							break;
 						case DbgMessageKind.EntryPointBreak:
 							kind = "entry";
@@ -1224,6 +1392,40 @@ public sealed class DebugSessionService : IDisposable {
 		[System.Text.Json.Serialization.JsonPropertyName("method_token")] public string MethodToken { get; set; } = string.Empty;
 		[System.Text.Json.Serialization.JsonPropertyName("il_offset")] public int IlOffset { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("last_error")] public string? LastError { get; set; }
+	}
+
+	public sealed class PagedItemsDto {
+		[System.Text.Json.Serialization.JsonPropertyName("items")] public List<object> Items { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("next_page_cursor")] public string? NextPageCursor { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("total_known")] public int TotalKnown { get; set; }
+	}
+
+	public sealed class ThreadInfoDto {
+		[System.Text.Json.Serialization.JsonPropertyName("thread_handle")] public string ThreadHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("managed_id")] public string? ManagedId { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("os_id")] public string? OsId { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("name")] public string? Name { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("state")] public string State { get; set; } = "paused";
+		[System.Text.Json.Serialization.JsonPropertyName("is_current")] public bool IsCurrent { get; set; }
+	}
+
+	public sealed class FrameInfoDto {
+		[System.Text.Json.Serialization.JsonPropertyName("frame_handle")] public string FrameHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("index")] public int Index { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("location")] public LocationDto Location { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("display_name")] public string DisplayName { get; set; } = string.Empty;
+	}
+
+	public sealed class LocationDto {
+		[System.Text.Json.Serialization.JsonPropertyName("module_handle")] public string ModuleHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("method_token")] public string? MethodToken { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("il_offset")] public int? IlOffset { get; set; }
+	}
+
+	public sealed class StepResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("step_id")] public string StepId { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("state")] public string State { get; set; } = string.Empty;
 	}
 
 	public sealed class ModuleIdentityDto {
