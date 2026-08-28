@@ -482,9 +482,8 @@ function Run-ACC002 {
         $txt = ($cap.rpc.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json
         $eq = $false
         if ($sc) {
-            # structuredContent arrives as a boxed JsonElement; round-trip for PS property access
-            $scRound = (ConvertTo-Json $sc -Depth 40 -Compress) | ConvertFrom-Json
-            $eq = Test-JsonEqual $scRound $txt
+            # Deterministic comparison: canonical-ish re-serialization of both sides.
+            $eq = ((ConvertTo-Json $sc -Depth 40 -Compress) -eq (ConvertTo-Json $txt -Depth 40 -Compress))
         }
         Assert-Cond 'structuredcontent-deepequal' 'structuredContent deep-equals parsed text' "equal=$eq" $eq $evc
 
