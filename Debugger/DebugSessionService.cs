@@ -242,10 +242,13 @@ public sealed class DebugSessionService : IDisposable {
 		}
 		if (args.TryGetValue("fail_next", out var fEl) && fEl is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } fs) {
 			FakeDbgProcessControlAdapter fake;
-			lock (sessionLock)
-				testAdapter ??= fake = new FakeDbgProcessControlAdapter();
-			lock (sessionLock)
-				fake = testAdapter!;
+			lock (sessionLock) {
+				if (testAdapter is null) {
+					testAdapter = new FakeDbgProcessControlAdapter();
+					testAdapter.Observation += OnAdapterObservation;
+				}
+				fake = testAdapter;
+			}
 			fake.FailOnPost = fs.GetString() == "explicit_failure";
 			return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["fail_next"] = fs.GetString() });
 		}
