@@ -106,6 +106,18 @@ public sealed class DebugSessionCoordinator {
 			WriteEvent(EventKinds.ModuleUnloaded, payload, untrusted: true);
 	}
 
+	/// <summary>
+	/// Exception observation the session policy did NOT convert into a pause (e.g. a
+	/// first-chance exception under break_on=unhandled): the EVT exception is written, the
+	/// process is not stopped and no paused event exists (ACC-012 captured-exception path).
+	/// </summary>
+	public void WriteObservedException(bool firstChance, bool unhandled, string type, string message) {
+		lock (gate)
+			WriteEvent(EventKinds.Exception, new {
+				first_chance = firstChance, unhandled, type, message, thread_handle = (string?)null,
+			}, untrusted: true);
+	}
+
 	public bool BeginLaunch(string requestId, string launchMode, string runtimeFamily, string architecture) {
 		lock (gate) {
 			if (state != DebugStates.Idle)

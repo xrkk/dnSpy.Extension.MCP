@@ -1411,6 +1411,81 @@ function Run-ACC007 {
     Fail-Precondition 'acc007-full-barriers' 'P1-late/P2 barrier matrix + T1/T2 retry matrix (injection increment 3)'
 }
 
+
+# ---------------------------------------------------------------- case: ACC-012 ----
+function Run-ACC012 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # Policy is session-scoped: default unhandled.
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc12-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a12-launch' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond 'a12-held-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+    $ep = $wp.epoch
+
+    # [1] Policy read/switch round-trip: unhandled -> first_chance_and_unhandled -> unhandled.
+    $P1 = Invoke-ToolNoInit 'debug_set_exception_policy' @{ session_id = $sid; generation = $gen; request_id = 'acc12-p1'; policy = 'first_chance_and_unhandled' }
+    $p1 = $P1.domain.result
+    Assert-Cond 'a12-policy-switch' 'previous=unhandled current=first_chance_and_unhandled' "prev=$($p1.previous.break_on) cur=$($p1.current.break_on)" (("$($p1.previous.break_on)" -eq 'unhandled') -and ("$($p1.current.break_on)" -eq 'first_chance_and_unhandled')) @($P1.rpc.resp)
+    $P2 = Invoke-ToolNoInit 'debug_set_exception_policy' @{ session_id = $sid; generation = $gen; request_id = 'acc12-p2'; policy = 'unhandled' }
+    $p2 = $P2.domain.result
+    Assert-Cond 'a12-policy-roundtrip' 'policy switches back with correct previous' "prev=$($p2.previous.break_on)" ("$($p2.previous.break_on)" -eq 'first_chance_and_unhandled') @($P2.rpc.resp)
+
+    # [2] Captured (first-chance) exception under unhandled policy: event only, NO pause.
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc12-c1' }
+    Start-Sleep -Milliseconds 500
+    $curA = Get-MaxEventCursor $sid $gen
+    $E1 = Test-Adapter '{"emit":{"kind":"paused","no_pause":true,"first_chance":true,"unhandled":false,"exception_type":"System.InvalidOperationException","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":false}]}}'
+    Assert-Cond 'a12-captured-emit' 'captured-exception emit accepted' "ok=$($E1.domain.ok)" ($E1.domain.ok) @($E1.rpc.resp)
+    Start-Sleep -Milliseconds 500
+    $stA = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    $evA = Read-EventKinds $sid $gen $curA
+    $rawA = $evA.raw
+    $capturedOk = ("$($stA.domain.result.state)" -eq 'running') -and ($evA.kinds -contains 'exception') -and (-not ($evA.kinds -contains 'paused')) -and ($rawA -match 'System.InvalidOperationException')
+    Assert-Cond 'a12-captured-no-pause' 'captured exception writes EVT exception only; state stays running; no paused event' "state=$($stA.domain.result.state) kinds=$($evA.kinds -join ',')" $capturedOk @($stA.rpc.resp, $evA.call.rpc.resp)
+
+    # [3] Unhandled exception: paused(reason=exception) BEFORE the exception detail event.
+    $curB = Get-MaxEventCursor $sid $gen
+    $E2 = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true,"exception_type":"System.AccessViolationException"}]}}'
+    Start-Sleep -Milliseconds 600
+    $stB = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    $evB = Read-EventKinds $sid $gen $curB
+    $idxPause = [array]::IndexOf($evB.kinds, 'paused')
+    $idxExc = [array]::IndexOf($evB.kinds, 'exception')
+    $unhandledOk = ("$($stB.domain.result.state)" -eq 'paused') -and ($idxPause -ge 0) -and ($idxExc -gt $idxPause) -and ($evB.raw -match '"reason":"exception"')
+    Assert-Cond 'a12-unhandled-pauses' 'unhandled exception: paused(reason=exception) precedes exception event; state paused' "state=$($stB.domain.result.state) p=$idxPause e=$idxExc" $unhandledOk @($stB.rpc.resp, $evB.call.rpc.resp)
+
+    # [4] Exception outranks breakpoint even when both present (arbiter priority).
+    $ep2 = $stB.domain.debug_context.pause_epoch
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep2; request_id = 'acc12-c2' }
+    Start-Sleep -Milliseconds 500
+    $curC = Get-MaxEventCursor $sid $gen
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true},{"type":"breakpoint","ordinal":1,"owned_breakpoint_id":"acc12-bp-1"}]}}'
+    Start-Sleep -Milliseconds 600
+    $evC = Read-EventKinds $sid $gen $curC
+    $mixedOk = ($evC.raw -match '"reason":"exception"') -and ($evC.kinds -contains 'exception') -and ($evC.kinds -contains 'breakpoint_hit')
+    Assert-Cond 'a12-exception-outranks-bp' 'exception+breakpoint: reason=exception, both detail events present' "kinds=$($evC.kinds -join ',')" $mixedOk @($evC.call.rpc.resp)
+
+    # Cleanup: uninstall fake (never installed for pauses here — emit used the lazy path), terminate.
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 400
+    $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc12-t1' }
+    Start-Sleep -Milliseconds 900
+    $stZ2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a12-terminate' 'terminated to idle' "state=$($stZ2.domain.result.state)" ("$($stZ2.domain.result.state)" -ne 'paused') @($stZ2.rpc.resp)
+
+    # dnSpy-global exception settings diff and P2 barrier collisions need the remaining
+    # injection increments (UIA global snapshot, control-phase barriers).
+    Fail-Precondition 'acc012-global-and-barriers' 'dnSpy global exception-settings snapshot diff + P2 scheduled/issued collisions (injection increment 3)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -1421,6 +1496,7 @@ $handlers = @{
     'ACC-017' = ${function:Run-ACC017}; 'ACC-020' = ${function:Run-ACC020}
     'ACC-021' = ${function:Run-ACC021}; 'ACC-026' = ${function:Run-ACC026}
     'ACC-007' = ${function:Run-ACC007}
+    'ACC-012' = ${function:Run-ACC012}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {

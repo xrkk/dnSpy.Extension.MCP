@@ -212,6 +212,14 @@ public sealed class DebugSessionService : IDisposable {
 				var exit = em.TryGetProperty("exit_code", out var eEl) && eEl.ValueKind == System.Text.Json.JsonValueKind.Number ? (int)eEl.GetDouble() : 0;
 				source.EmitRemoved(pid, started, exit);
 			}
+			else if (em.TryGetProperty("no_pause", out var npEl) && npEl.ValueKind == System.Text.Json.JsonValueKind.True) {
+				// Policy-filtered exceptions (ACC-012): the exception event is written but the
+				// process is not stopped — no paused observation, no state transition.
+				bool firstChance = em.TryGetProperty("first_chance", out var fcEl) && fcEl.ValueKind == System.Text.Json.JsonValueKind.True;
+				bool unhandled = em.TryGetProperty("unhandled", out var uhEl) && uhEl.ValueKind == System.Text.Json.JsonValueKind.True;
+				var extype = em.TryGetProperty("exception_type", out var txEl) && txEl.ValueKind == System.Text.Json.JsonValueKind.String ? txEl.GetString() ?? "exception" : "exception";
+				coordinator.WriteObservedException(firstChance, unhandled, extype, "");
+			}
 			else {
 				source.EmitPaused(pid, started, infos);
 			}
