@@ -1143,12 +1143,6 @@ function Run-ACC017 {
 # ---------------------------------------------------------------- case: ACC-026 ----
 function Run-ACC026 {
     $m = $script:Manifest
-    $sj0 = Save-Json 'argv-bisect0.json' @('a','b')
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B0-savejson-small`r`n')
-    $null = ConvertTo-Json @('a','b') -Depth 40 -Compress
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B1-convertjson-inline`r`n')
-    $sj1 = Save-Json 'argv-bisect1.json' $null
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B2-savejson-null`r`n')
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
@@ -1160,35 +1154,17 @@ function Run-ACC026 {
     $argv = @('', 'plain', 'two words', 'he said "hi"', 'C:\dir\file.exe', 'tab`tsep')
     Remove-Item $out -Force -ErrorAction SilentlyContinue
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-argv'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none'; target_argv = $argv }
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S1-launch-done`r`n')
     $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
     Assert-Cond 'argv-launch-ok' 'launch accepted with argv matrix' "ok=$($L.domain.ok)" $L.domain.ok @($L.rpc.resp)
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S2-assert-done`r`n')
     Start-Sleep -Milliseconds 900
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S3-sleep-done`r`n')
     $lines = @()
     if (Test-Path $out) { $lines = @(Get-Content $out) }
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', "S4-read-$($lines.Count)`r`n")
     $expected = @(); for ($i = 0; $i -lt $argv.Count; $i++) { $expected += ("$($argv[$i].Length):$($argv[$i])") }
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S5-expected-done`r`n')
     $mismatches = @()
     if ($lines.Count -ne $expected.Count) { $mismatches += "count $($lines.Count) vs $($expected.Count)" }
     for ($i = 0; $i -lt [Math]::Min($lines.Count, $expected.Count); $i++) { if ($lines[$i] -ne $expected[$i]) { $mismatches += "[$i] '$($lines[$i])' vs '$($expected[$i])'" } }
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6-compare-done`r`n')
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a-pre-save`r`n')
-    $probeJson = ($lines -join '|')
-    [IO.File]::WriteAllText((Join-Path $script:OutDir 'argv-probe.txt'), $probeJson, (New-Object Text.UTF8Encoding($false)))
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a2-inline-write-done`r`n')
-    $sj3 = Save-Json 'argv-bisect3.json' @('a','b')
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a3-small-save-after-launch`r`n')
-    $null = ConvertTo-Json @('a','b') -Depth 40 -Compress
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a4-inline-convert-after-launch`r`n')
-    $savedName = Save-Json 'argv-observed.json' @($lines | ForEach-Object { [string]$_ })
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6b-save-json-done`r`n')
-    Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @($savedName)
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S7-assert-done`r`n')
+    Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @(Save-Json 'argv-observed.json' @($lines | ForEach-Object { [string]$_ }))
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc26-t1' } | Out-Null
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S8-terminate-done`r`n')
     Start-Sleep -Milliseconds 800
 
     # [2] wrong sha rejected before Start.
@@ -1208,7 +1184,7 @@ function Run-ACC026 {
     # [5] reparse (junction) path: create a junction inside the root and launch through it.
     $junction = Join-Path $m.env.sample_root 'argv-junction.exe'
     if (Test-Path $junction) { Remove-Item $junction -Force }
-    try { New-Item -ItemType Junction -Path $junction -Target $exe | Out-Null } catch { }
+    try { New-Item -ItemType Junction -Path $junction -Target $exe | Out-Null } catch { $_.Exception.Message | Set-Content (Join-Path $script:OutDir 'junction-error.log') }
     if (Test-Path $junction) {
         $rp = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-reparse'; target_path = $junction; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
         $rpCode = Get-DomainError $rp

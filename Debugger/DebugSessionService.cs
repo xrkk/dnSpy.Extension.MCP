@@ -277,6 +277,23 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
 
 		var breakKind = ArgString(args, "break_kind") ?? BreakKinds.None;
+		// CON-DYN-011 / ACC-026: every filesystem input must live under the configured
+		// AllowedSampleRoot (when set); anything outside is TARGET_MISMATCH before Start.
+		var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
+		if (!string.IsNullOrEmpty(sampleRoot)) {
+			var rootFull = System.IO.Path.GetFullPath(sampleRoot);
+			if (!rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+				rootFull += System.IO.Path.DirectorySeparatorChar;
+			foreach (var candidate in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
+				if (string.IsNullOrEmpty(candidate))
+					continue;
+				string candidateFull;
+				try { candidateFull = System.IO.Path.GetFullPath(candidate); }
+				catch (Exception) { candidateFull = candidate; }
+				if (!candidateFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase) && !string.Equals(candidateFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), rootFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+					return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path is outside AllowedSampleRoot: {candidate}");
+			}
+		}
 		var detected = launchMode is LaunchModes.Auto or LaunchModes.Harness
 			? DetectRuntimeFamily(harnessPath ?? targetPath)
 			: null;
