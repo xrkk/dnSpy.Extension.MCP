@@ -242,7 +242,7 @@ function New-SnapshotJson {
     $dt = if ($DebugTools) { 'true' } else { 'false' }
     $dd = if ($Dedicated) { 'true' } else { 'false' }
     $ra = if ($RemoteAck) { 'true' } else { 'false' }
-    return '{"AllowedSampleRoot":"' + ($SampleRoot -replace '\\','\\') + '","ArtifactRoot":"' + ($ArtifactRoot -replace '\\','\\') + '","DebugToolsEnabled":' + $dt + ',"DedicatedDebugInstanceAcknowledged":' + $dd + ',"EnableServer":true,"Host":"' + $Host_ + '","Port":' + $Port_ + ',"RemoteAllowedCidrs":' + $CidrsJson + ',"RemoteHostOnlyAcknowledged":' + $ra + ',"RemoteTokenVerifier":' + $Verifier + '}'
+    return '{"AllowedSampleRoot":"' + ($SampleRoot -replace '\\','\\') + '","ArtifactRoot":"' + ($ArtifactRoot -replace '\\','\\') + '","DebugToolsEnabled":' + $dt + ',"DedicatedDebugInstanceAcknowledged":' + $dd + ',"EnableServer":true,"Host":"' + $Host_ + '","Port":' + $Port_ + ',"RemoteAllowedCidrs":' + $CidrsJson + ',"RemoteHostOnlyAcknowledged":' + $ra + ',"RemoteTokenVerifier":' + $Verifier + ',"SchemaVersion":"dnspy.mcp.settings.v1"}'
 }
 function Ensure-CanonicalDnSpy {
     # Leave/ensure the VM in the canonical gate-on loopback state, and sweep any session a
