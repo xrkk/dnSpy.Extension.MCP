@@ -2330,7 +2330,8 @@ function Run-ACC027 {
     # [6] Pre-claim exit: process vanishes before claim -> launch TIMEOUT + start_failed, idle.
     $arm2 = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'exit_before_claim' }
     Assert-Cond 'a27-arm-exitpre' 'exit_before_claim armed' "ok=$($arm2.domain.ok)" $arm2.domain.ok @($arm2.rpc.resp)
-    $bq = '{"jsonrpc":"2.0","id":795,"method":"tools/call","params":{"name":"debug_launch","arguments":{"request_id":"a27-lp","target_path":"' + ($exe -replace '\','\') + '","expected_sha256":"' + $sha + '","launch_mode":"net48-exe","architecture":"x64","break_kind":"none"}}}'
+    $exeJson = $exe.Replace('\', '\\')
+    $bq = '{"jsonrpc":"2.0","id":795,"method":"tools/call","params":{"name":"debug_launch","arguments":{"request_id":"a27-lp","target_path":"' + $exeJson + '","expected_sha256":"' + $sha + '","launch_mode":"net48-exe","architecture":"x64","break_kind":"none"}}}'
     $rf = Invoke-Detached $bq 'a27lp'
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
