@@ -683,7 +683,11 @@ public sealed class DebugSessionService : IDisposable {
 		var methodToken = ArgString(args, "method_token", required: true);
 		var ilOffset = ArgInt(args, "il_offset", required: true);
 		var moduleSha = ArgString(args, "module_sha256");
-		var identityStrength = ArgString(args, "identity_strength") ?? "disk_strong";
+		var identityStrength = ArgString(args, "identity_strength");
+		if (identityStrength.Length == 0)
+			identityStrength = "disk_strong";
+		if (identityStrength != "disk_strong" && identityStrength != "runtime_weak")
+			throw new ArgumentException("identity_strength must be disk_strong or runtime_weak", nameof(identityStrength));
 		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
 
 		// Metadata/shape rejections are -32602 (ArgumentException): a non-MethodDef token, a
