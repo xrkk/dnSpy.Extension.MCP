@@ -1341,13 +1341,20 @@ function Run-ACC007 {
     $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc7-lb'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sid2 = $L2.domain.result.session_id; $gen2 = [int]$L2.domain.result.generation
     Assert-Cond 'cause-launch' 'second session running' "ok=$($L2.domain.ok)" ($L2.domain.ok) @($L2.rpc.resp)
+    # The transient create-break auto-pauses then auto-continues; an explicit pause may race it
+    # (INVALID_STATE either way) — what matters for the cause matrix is a HELD pause.
     $null = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid2; generation = $gen2; request_id = 'acc7-p2' }
     $wp = Wait-StablePaused $sid2
-    Assert-Cond 'cause-paused' 'paused before cause matrix' "ok=$($wp.ok)" $wp.ok
+    Assert-Cond 'cause-paused' 'paused before cause matrix (explicit pause or held transient)' "ok=$($wp.ok)" $wp.ok
     $ep2 = $wp.epoch
     $curC = Get-MaxEventCursor $sid2 $gen2
     $cur2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid2; generation = $gen2; pause_epoch = $ep2; request_id = 'acc7-c1' }
-    Assert-Cond 'cause-continue' 'continued' "ok=$($cur2.domain.ok)" $cur2.domain.ok @($cur2.rpc.resp)
+    $runningOk = $cur2.domain.ok
+    if (-not $runningOk) {
+        $stRun = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
+        if ("$($stRun.domain.result.state)" -eq 'running') { $runningOk = $true }   # transient already resumed
+    }
+    Assert-Cond 'cause-continue' 'running before cause matrix (explicit continue or transient resume)' "ok=$runningOk" $runningOk @($cur2.rpc.resp)
 
     # Emit a breakpoint-classified observation (breakpoint must win the cause arbiter).
     $null = Test-Adapter '{"install":true}'
