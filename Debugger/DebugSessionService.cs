@@ -1680,11 +1680,12 @@ public sealed class DebugSessionService : IDisposable {
 					}
 				process.IsRunningChanged += OnOwnedIsRunningChanged;
 				RegisterModules(process);
-				// Module load/unload events (EVT-DYN-006/007): every runtime of the owned
-				// process reports collection changes on the DbgManager dispatcher; the fresh
-				// module table is registered so the event and list_modules share identity.
-				foreach (var runtime in process.Runtimes)
-					runtime.ModulesChanged += OnOwnedModulesChanged;
+				// Module load/unload events (EVT-DYN-006/007): runtimes may not exist yet at
+				// claim time, so subscribe to the runtime collection as well — each runtime's
+				// module changes then flow on the DbgManager dispatcher and the fresh module
+				// table is registered so events and list_modules share identity.
+				SubscribeModuleEvents(process);
+				process.RuntimesChanged += OnOwnedRuntimesChanged;
 				coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
 				claimTcs.TrySetResult(true);
 				}
@@ -1720,6 +1721,17 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
+
+	void SubscribeModuleEvents(DbgProcess process) {
+		foreach (var runtime in process.Runtimes)
+			runtime.ModulesChanged += OnOwnedModulesChanged;
+	}
+
+	void OnOwnedRuntimesChanged(object? sender, DbgCollectionChangedEventArgs<DbgRuntime> e) {
+		if (sender is not DbgProcess process)
+			return;
+		SubscribeModuleEvents(process);
+	}
 
 	// DbgManager dispatcher: a module appeared/vanished in the owned process. The live table
 	// re-registers first so the event can carry the same module_handle list_modules mints.

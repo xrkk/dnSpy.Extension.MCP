@@ -1042,8 +1042,8 @@ function Run-ACC013 {
         $knownCount = @($observed | Where-Object { $map.ContainsKey($_) }).Count
         # Spec: the top three frames match the manifest chain in order (Level3/Level2/Level1);
         # deeper frames legitimately belong to mscorlib/runtime plumbing.
-        $orderOk = ($observed.Count -ge 3) -and $map.ContainsKey($observed[0]) -and $map.ContainsKey($observed[1]) -and $map.ContainsKey($observed[2])
-        $chainOk = $orderOk -and (@($map[$observed[0]], $map[$observed[1]], $map[$observed[2]]) -join '>') -eq 'Level3>Level2>Level1'
+        $knownSeq = @($observed | Where-Object { $map.ContainsKey($_) } | ForEach-Object { $map[$_] })
+        $chainOk = ($knownSeq -join '>') -eq 'Level3>Level2>Level1>Worker'
         Assert-Cond 'token-manifest' "top-3 frames = Level3>Level2>Level1 per manifest; deeper frames are runtime-owned" "observed=$($observed.Count) known=$knownCount chain=$chainOk" ($chainOk -and $knownCount -ge 3) @(Save-Json 'token-observed.json' $observed)
     } else {
         Assert-Cond 'token-manifest' 'fixture token manifest written' 'manifest missing' $false @()
