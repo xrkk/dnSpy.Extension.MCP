@@ -45,10 +45,20 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
-				names.Add("debug_test_spy");
+				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter" });
 			return names;
 		}
 	}
+
+	static ToolInfo TestToolInfo(string name, string description) => new ToolInfo {
+		Name = name,
+		Description = description,
+		InputSchema = new Dictionary<string, object> {
+			["type"] = "object",
+			["properties"] = new Dictionary<string, object>(),
+			["additionalProperties"] = false,
+		},
+	};
 
 	ToolInfo TestSpyTool() => new ToolInfo {
 		Name = "debug_test_spy",
@@ -79,8 +89,11 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		var tools = new List<ToolInfo> { CapabilitiesTool() };
 		// The in-proc injection surface (DNMCP_TEST=1): diagnostic tools are advertised only in
 		// test mode; they always answer (CAPABILITY_UNAVAILABLE outside it) via UnadvertisedTools.
-		if (DebugSessionService.TestModeEnabled)
+		if (DebugSessionService.TestModeEnabled) {
 			tools.Add(TestSpyTool());
+			tools.Add(TestToolInfo("debug_test_clock", "DNMCP_TEST-only: advance the virtual clock that control-operation deadlines run on (advance_ms), or read the virtual elapsed/offset."));
+			tools.Add(TestToolInfo("debug_test_adapter", "DNMCP_TEST-only: install/uninstall the scriptable fake control adapter, arm fail_next=explicit_failure, or emit synthetic paused/removed observations with classified BreakInfos through the production observation path."));
+		}
 		// The 21 session-scoped tools are advertised only when the frozen gate is active AND
 		// their handlers exist (staged with IMP-004..009); never advertise what cannot answer.
 		if (Gate.EffectiveDebugLaunch) {
@@ -104,7 +117,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy")
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);
