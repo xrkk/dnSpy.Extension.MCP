@@ -82,6 +82,18 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		if (DebugSessionService.TestModeEnabled) {
 			tools.Add(TestSpyTool());
 			tools.Add(new ToolInfo {
+				Name = "debug_test_flood",
+				Description = "DNMCP_TEST-only: append N synthetic events to the active session buffer (eviction/payload_omitted observability).",
+				InputSchema = new Dictionary<string, object> {
+					["type"] = "object",
+					["properties"] = new Dictionary<string, object> {
+						["count"] = new Dictionary<string, object> { ["type"] = "integer" },
+						["bytes_per_event"] = new Dictionary<string, object> { ["type"] = "integer" },
+					},
+					["additionalProperties"] = false,
+				},
+			});
+			tools.Add(new ToolInfo {
 				Name = "debug_test_clock",
 				Description = "DNMCP_TEST-only: advance the virtual clock that control-operation deadlines run on (advance_ms), or read the virtual elapsed/offset.",
 				InputSchema = new Dictionary<string, object> {
