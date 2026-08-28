@@ -336,6 +336,50 @@ function Test-BreakpointHitSince {
 }
 
 
+
+function Build-AccCore {
+    # net10.0 x64 apphost + DLL fixture via the isolated .NET 10 host (no global SDK needed).
+    $envm = $script:Manifest.env
+    $dir = Join-Path $envm.sample_root 'acccore'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Copy-Item (Join-Path $script:Repo 'tests\debug\fixtures-src\AccCore.cs') (Join-Path $dir 'AccCore.cs') -Force
+    Copy-Item (Join-Path $script:Repo 'tests\debug\fixtures-src\AccCore.csproj.txt') (Join-Path $dir 'AccCore.csproj') -Force
+    $log = Join-Path $script:OutDir 'acccore-build.log'
+    & $envm.dotnet10_x64 build (Join-Path $dir 'AccCore.csproj') -c Release *>> $log
+    $exe = Join-Path $dir 'bin\Release\net10.0\AccCore.exe'
+    $dll = Join-Path $dir 'bin\Release\net10.0\AccCore.dll'
+    return @{ exe = $exe; dll = $dll; ok = ((Test-Path $exe) -and (Test-Path $dll)) }
+}
+
+function Invoke-CoreClrMatrix {
+    param([string]$Label, [hashtable]$LaunchArgs, [string]$Exe, [string]$Sha)
+    $v = $script:Manifest.protocol_versions[2]
+    $L = Invoke-Tool $v 'debug_launch' $LaunchArgs
+    $li = $L.domain.result
+    Assert-Cond "$Label-launch" 'launch ok, family=coreclr' "ok=$($L.domain.ok) fam=$($li.runtime_family) mode=$($li.launch_mode)" ($L.domain.ok -and ("$($li.runtime_family)" -eq 'coreclr')) @($L.rpc.resp)
+    if (-not $L.domain.ok) { return $null }
+    $sid = $li.session_id; $gen = [int]$li.generation
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond "$Label-held-pause" 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+    # P1-a: explicit failure settles identically.
+    $null = Test-Adapter '{"install":true}'
+    $null = Test-Adapter '{"fail_next":"explicit_failure"}'
+    $cur = Get-MaxEventCursor $sid $gen
+    $t0 = Get-Date
+    $Pf = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = "$Label-p1a" }
+    $ms = [int](((Get-Date) - $t0).TotalMilliseconds)
+    Assert-CtrlFail $Pf 'INTERNAL_ERROR' "$Label-p1a" "${ms}ms"
+    # cause: exception primary via emit.
+    $null = Test-Adapter '{"fail_next":"none"}'
+    $null = Test-Adapter '{"install":false}'
+    Start-Sleep -Milliseconds 500
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = "$Label-t" }
+    Start-Sleep -Milliseconds 900
+    $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond "$Label-terminate" 'terminated to idle' "state=$($stZ.domain.result.state)" ("$($stZ.domain.result.state)" -ne 'paused') @($stZ.rpc.resp)
+    return @{ sid = $sid; gen = $gen }
+}
+
 function Wait-HeldPause {
     # Acquire a pause that actually sticks: the launch transient (create-break pause that
     # auto-continues) races an immediate explicit pause, so retry until a pause holds.
@@ -1554,6 +1598,54 @@ function Run-ACC014 {
     Fail-Precondition 'acc014-position-and-barriers' 'into/over/out position assertions + P2 scheduled/issued collisions (injection increment 3)'
 }
 
+
+# ---------------------------------------------------------------- case: ACC-008 ----
+function Run-ACC008 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    $fx = Build-AccCore
+    Assert-Cond 'a08-fixture' 'AccCore apphost+DLL built with .NET 10 x64' "ok=$($fx.ok) exe=$(Test-Path $fx.exe) dll=$(Test-Path $fx.dll)" ($fx.ok) @('acccore-build.log')
+    if (-not $fx.ok) { return }
+    $v = $m.protocol_versions[2]
+    $exeSha = Get-Sha256File $fx.exe
+    $dllSha = Get-Sha256File $fx.dll
+    $hostSha = Get-Sha256File $m.env.dotnet10_x64
+
+    # [1] coreclr-apphost: launch the apphost EXE directly.
+    $null = Invoke-CoreClrMatrix 'a08-apphost' @{
+        request_id = 'a08-ah'; target_path = $fx.exe; expected_sha256 = $exeSha
+        launch_mode = 'coreclr-apphost'; architecture = 'x64'; break_kind = 'none'
+    } $fx.exe $exeSha
+
+    # [2] coreclr-dotnet: framework DLL + .NET 10 host (host_path/host_sha256).
+    $null = Invoke-CoreClrMatrix 'a08-dotnet' @{
+        request_id = 'a08-dh'; target_path = $fx.dll; expected_sha256 = $dllSha
+        launch_mode = 'coreclr-dotnet'; architecture = 'x64'; break_kind = 'none'
+        host_path = $m.env.dotnet10_x64; host_sha256 = $hostSha
+    } $fx.dll $dllSha
+
+    # [3] DLL without host: CAPABILITY_UNAVAILABLE before Start.
+    $noHost = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a08-nohost'; target_path = $fx.dll; expected_sha256 = $dllSha; launch_mode = 'coreclr-dotnet'; architecture = 'x64'; break_kind = 'none' }
+    $nhCode = Get-DomainError $noHost
+    Assert-Cond 'a08-dll-no-host' 'DLL without host rejected (CAPABILITY_UNAVAILABLE)' "code=$nhCode" ("$nhCode" -eq 'CAPABILITY_UNAVAILABLE') @($noHost.rpc.resp)
+
+    # [4] Architecture mismatch: rejected before Start on both modes.
+    $x86 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a08-x86'; target_path = $fx.exe; expected_sha256 = $exeSha; launch_mode = 'coreclr-apphost'; architecture = 'x86'; break_kind = 'none' }
+    $x86Code = Get-DomainError $x86
+    Assert-Cond 'a08-arch-mismatch' 'x86 on x64 host rejected (CAPABILITY_UNAVAILABLE)' "code=$x86Code" ("$x86Code" -eq 'CAPABILITY_UNAVAILABLE') @($x86.rpc.resp)
+
+    # [5] dbg_start_calls spy: the two rejected launches never reached Start.
+    $spyB = Get-SpyCounters
+    $spyA = Get-SpyCounters
+    if ($spyB -and $spyA) {
+        $d = Get-SpyDelta $spyB $spyA 'dbg_start_calls'
+        Assert-Cond 'a08-no-start-on-reject' 'rejected launches: dbg_start_calls delta 0' "delta=$d" ($d -eq 0) @(Save-Json 'spy-008.json' $spyA)
+    }
+
+    # P2/T1/T2 barrier and 29.999/30.000 boundary matrices per runtime need increment 3.
+    Fail-Precondition 'acc008-barriers' 'P2/T1/T2 barriers + clock boundary matrix per runtime (injection increment 3)'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -1566,6 +1658,7 @@ $handlers = @{
     'ACC-007' = ${function:Run-ACC007}
     'ACC-012' = ${function:Run-ACC012}
     'ACC-014' = ${function:Run-ACC014}
+    'ACC-008' = ${function:Run-ACC008}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
