@@ -63,3 +63,6 @@ Thumbs.db
 
 # Local build artifacts (authoritative builds run in CI; dist/ holds hand-copied DLLs)
 dist/
+
+# ACC evidence trees (plan 6: CI artifact, not committed)
+tests/debug/results/
