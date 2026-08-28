@@ -64,10 +64,12 @@ public sealed class DebugSessionService : IDisposable {
 		"debug_remove_breakpoint", "debug_set_exception_policy",
 		"debug_list_threads", "debug_get_stack", "debug_step",
 		"debug_get_locals", "debug_expand_value",
+		"debug_list_modules", "debug_read_memory", "debug_dump_module",
 	};
 
 	public bool Handles(string toolName) => HandledTools.Contains(toolName);
 
+	readonly McpSettings settings;
 	readonly DbgCodeBreakpointsService? breakpointsService;
 	readonly DbgDotNetCodeLocationFactory? locationFactory;
 	readonly dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService;
@@ -84,6 +86,10 @@ public sealed class DebugSessionService : IDisposable {
 		public string Mvid = string.Empty;
 		public string? Sha256;
 		public string Filename = string.Empty;
+		public string Name = string.Empty;
+		public ulong Address;
+		public uint Size;
+		public string Layout = "file";
 		public ModuleId UpstreamId;
 	}
 
@@ -92,12 +98,14 @@ public sealed class DebugSessionService : IDisposable {
 		[Import(AllowDefault = true)] DbgCodeBreakpointsService? breakpointsService,
 		[Import(AllowDefault = true)] DbgDotNetCodeLocationFactory? locationFactory,
 		[Import(AllowDefault = true)] dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService,
-		DebugGateService gateService) {
+		DebugGateService gateService,
+		McpSettings settings) {
 		this.dbgManager = dbgManager;
 		this.breakpointsService = breakpointsService;
 		this.locationFactory = locationFactory;
 		this.languageService = languageService;
 		this.gateService = gateService;
+		this.settings = settings;
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
 			dbgManager.IsDebuggingChanged += OnIsDebuggingChanged;
@@ -138,6 +146,9 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_step" => Step(arguments),
 				"debug_get_locals" => GetLocals(arguments),
 				"debug_expand_value" => ExpandValue(arguments),
+				"debug_list_modules" => ListModules(arguments),
+				"debug_read_memory" => ReadMemory(arguments),
+				"debug_dump_module" => DumpModule(arguments),
 				_ => null,
 			};
 		}
@@ -576,7 +587,12 @@ public sealed class DebugSessionService : IDisposable {
 					modulesByHandle[handle] = new RegisteredModuleRecord {
 						ModuleHandle = handle,
 						RuntimeHandle = runtimeHandle,
-						Filename = module.Filename ?? module.Name,
+						Filename = module.Filename ?? string.Empty,
+						Name = module.Name,
+						Address = module.Address,
+						Size = module.Size,
+						Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+						Mvid = "00000000-0000-0000-0000-000000000000", // real MVID lands with DmdModule wiring (IMP-009 note)
 						UpstreamId = (ModuleId)(module.Filename ?? module.Name),
 					};
 				}
@@ -1091,14 +1107,32 @@ public sealed class DebugSessionService : IDisposable {
 		if (roots.Count == 0)
 			return Fail(coordinator, DomainErrorCodes.NotFound, message: "frame not found or has no locals");
 		var items = new List<object>();
-		foreach (var entry in roots.Take(pageSize)) {
-			lock (sessionLock) valueHandles[entry.Handle] = entry;
+		foreach (var entry in roots.Take(pageSize))
 			items.Add(ValueNodeDtoOf(entry));
-		}
 		var dto = new LocalsResultDto { Items = items, Truncated = truncated, TotalKnown = roots.Count };
 		if (pageSize < roots.Count)
 			dto.NextPageCursor = pageSize.ToString();
+		dto.Budgets = BudgetsUsed();
 		return Ok(coordinator, dto);
+	}
+
+	object BudgetsUsed() {
+		int handles, nodes;
+		int maxDepth = 0;
+		lock (sessionLock) {
+			int epoch = coordinator.PauseEpoch;
+			handles = valueHandles.Count(kv => kv.Value.Epoch == epoch);
+			nodes = handles;
+			foreach (var kv in valueHandles) {
+				if (kv.Value.Epoch == epoch && kv.Value.Depth > maxDepth)
+					maxDepth = kv.Value.Depth;
+			}
+		}
+		return new {
+			depth_limit = 4, node_limit = 1024, value_handle_limit = 4096,
+			string_utf8_limit = 65536, response_utf8_limit = 8388608,
+			depth_used = maxDepth, nodes_used = nodes, value_handles_used = handles,
+		};
 	}
 
 	ValueHandleEntry NewSnapshotEntry(string name, string kind, ValueHandleEntry? parent, int depth) {
@@ -1138,6 +1172,7 @@ public sealed class DebugSessionService : IDisposable {
 		};
 		if (startAt + page.Count < children.Count)
 			dto.NextPageCursor = (startAt + page.Count).ToString();
+		dto.Budgets = BudgetsUsed();
 		return Ok(coordinator, dto);
 	}
 
@@ -1194,6 +1229,280 @@ public sealed class DebugSessionService : IDisposable {
 			UnavailableReason = unavailable,
 		};
 	}
+
+	// ---- IMP-009: modules, memory, artifacts ----
+
+	ArtifactStoreLedger? artifactLedger;
+	readonly Dictionary<string, FileStream> artifactSessionHandles = new();
+	string? ArtifactRootPath => settings.CurrentSnapshot?.ArtifactRoot is { Length: > 0 } root ? root : null;
+
+	sealed class ProductionArtifactFs : IArtifactStoreFs {
+		readonly string root;
+		public ProductionArtifactFs(string root) => this.root = root;
+		string SessionDir(string sessionId) => Path.Combine(root, sessionId);
+		public IReadOnlyList<string> EnumerateRootChildren() =>
+			Directory.Exists(root) ? Directory.GetDirectories(root).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
+		public IReadOnlyList<string> EnumerateSessionChildren(string sessionId) {
+			var dir = SessionDir(sessionId);
+			return Directory.Exists(dir) ? Directory.GetFiles(dir).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
+		}
+		public bool SessionDirectoryExists(string sessionId) => Directory.Exists(SessionDir(sessionId));
+		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) {
+			try {
+				var path = Path.Combine(SessionDir(sessionId), relativeName);
+				using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+				var info = GetFileIdentity(lease);
+				return ($"0x{info.VolumeSerial:x8}", $"{info.FileIndexHigh:x16}{info.FileIndexLow:x16}".Substring(0, 32), lease.Length);
+			}
+			catch { return null; }
+		}
+		public void CreateSessionDirectory(string sessionId) => Directory.CreateDirectory(SessionDir(sessionId));
+		public void CreateChildFile(string sessionId, string relativeName, long length) {
+			var path = Path.Combine(SessionDir(sessionId), relativeName);
+			using var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+			if (length > 0)
+				fs.SetLength(length);
+		}
+	}
+
+	ArtifactStoreLedger ArtifactLedger() {
+		if (artifactLedger is null) {
+			var root = ArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
+			artifactLedger = new ArtifactStoreLedger(new ProductionArtifactFs(root));
+			artifactLedger.Initialize();
+		}
+		return artifactLedger;
+	}
+
+	string ListModules(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState);
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
+		string? cursor = ArgString(args, "page_cursor");
+		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var c) ? c : 0;
+		var modules = new List<RegisteredModuleRecord>();
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is null)
+				return;
+			lock (sessionLock) {
+				int index = 0;
+				foreach (var runtime in process.Runtimes) {
+					var runtimeHandle = $"rt-{index++}";
+					foreach (var module in runtime.Modules) {
+						string handle = $"mod-{modules.Count}";
+						var record = new RegisteredModuleRecord {
+							ModuleHandle = handle,
+							RuntimeHandle = runtimeHandle,
+							Filename = module.Filename ?? string.Empty,
+							Name = module.Name,
+							Address = module.Address,
+							Size = module.Size,
+							Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+							Mvid = "00000000-0000-0000-0000-000000000000",
+							UpstreamId = (ModuleId)(module.Filename ?? module.Name),
+						};
+						// Preserve identity data registered by earlier set_breakpoint calls on the same handle.
+						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
+							record.Mvid = existing.Mvid;
+							record.Sha256 = existing.Sha256;
+						}
+						modules.Add(record);
+					}
+				}
+				// The enumeration refreshes the handle registry so dump/memory/breakpoints see
+				// the live module table (RegisterModules at claim time runs before module loads).
+				modulesByHandle.Clear();
+				foreach (var m in modules)
+					modulesByHandle[m.ModuleHandle] = m;
+			}
+		});
+		var page = modules.Skip(start).Take(pageSize).ToList();
+		var dto = new PagedItemsDto {
+			Items = page.Select(m => (object)ModuleDtoOf(m)).ToList(),
+			Truncated = false,
+			TotalKnown = modules.Count,
+		};
+		if (start + page.Count < modules.Count)
+			dto.NextPageCursor = (start + page.Count).ToString();
+		return Ok(coordinator, dto);
+	}
+
+	ModuleIdentityDto ModuleDtoOf(RegisteredModuleRecord m) => new() {
+		ModuleHandle = m.ModuleHandle,
+		RuntimeHandle = m.RuntimeHandle,
+		Name = m.Name,
+		Path = string.IsNullOrEmpty(m.Filename) ? null : m.Filename,
+		Mvid = m.Mvid,
+		Sha256 = m.Sha256,
+		BaseAddress = (long)m.Address,
+		Size = m.Size,
+		Layout = m.Layout,
+		IdentityStrength = string.IsNullOrEmpty(m.Filename) ? "runtime_weak" : "disk_strong",
+	};
+
+	string ReadMemory(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var moduleHandle = ArgString(args, "module_handle", required: true);
+		var address = ParseUlong(ArgString(args, "address", required: true));
+		var length = (int)ArgLong(args, "length", 0);
+		var encoding = ArgString(args, "encoding");
+		if (encoding.Length == 0)
+			encoding = "hex";
+		if (length <= 0 || length > 65536)
+			return Fail(coordinator, DomainErrorCodes.LimitExceeded, message: "length must be within 1..65536");
+		// API-DYN-023: overflow-safe range predicate only — never compute address+length.
+		if (address > ulong.MaxValue - (ulong)length)
+			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "address range overflows the address space");
+		byte[]? data = null;
+		string? error = null;
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is null)
+				return;
+			try {
+				data = process.ReadMemory(address, length);
+			}
+			catch (Exception ex) {
+				error = ex.Message;
+			}
+		});
+		if (data is null)
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: error ?? "the address range is not readable");
+		return Ok(coordinator, new ReadMemoryResultDto {
+			ModuleHandle = moduleHandle,
+			Address = $"0x{address:x}",
+			Length = data.Length,
+			Encoding = encoding,
+			Data = encoding == "base64" ? Convert.ToBase64String(data) : ConvertHexShim.ToHexString(data).ToLowerInvariant(),
+			ReadSemantics = "dnspy-zero-fill",
+		});
+	}
+
+	static ulong ParseUlong(string text) {
+		var t = text.Trim();
+		if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+			return Convert.ToUInt64(t.Substring(2), 16);
+		return Convert.ToUInt64(t);
+	}
+
+	string DumpModule(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var requestId = ArgString(args, "request_id", required: true);
+		var moduleHandle = ArgString(args, "module_handle", required: true);
+		var relativeName = ArgString(args, "relative_name");
+		var root = ArtifactRootPath;
+		if (string.IsNullOrEmpty(root))
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "ArtifactRoot is not configured");
+
+		RegisteredModuleRecord module;
+		lock (sessionLock) {
+			if (!modulesByHandle.TryGetValue(moduleHandle, out module!))
+				return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown module_handle");
+		}
+		// IRawModuleBytesSource, raw state: a disk-backed module dumps its on-disk image bytes.
+		// In-memory/dynamic modules are raw_unavailable: v1 production returns the closed
+		// CAPABILITY_UNAVAILABLE state (the reconstructed path stays out of v1 wiring).
+		if (module.Layout != "file" || !File.Exists(module.Filename))
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "module has no on-disk raw image (dynamic/in-memory)");
+		var sourceBytes = File.ReadAllBytes(module.Filename);
+		if (sourceBytes.Length > ArtifactStoreLedger.MaxFileBytes)
+			return Fail(coordinator, DomainErrorCodes.LimitExceeded, message: "module exceeds the 512 MiB artifact file cap");
+
+		var sessionId = coordinator.ActiveSessionId!;
+		if (string.IsNullOrEmpty(relativeName))
+			relativeName = Path.GetFileName(module.Filename);
+		relativeName = relativeName.Replace("..", "_").Replace('/', '_').Replace('\\', '_');
+		var childName = relativeName + ".bin";
+
+		ArtifactStoreLedger ledger;
+		try {
+			ledger = ArtifactLedger();
+		}
+		catch (Exception ex) {
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: ex.Message);
+		}
+		var admitSession = ledger.AdmitNewSession(sessionId);
+		if (admitSession == ArtifactStoreLedger.AdmitResult.AlreadyExists || admitSession == ArtifactStoreLedger.AdmitResult.Ok) {
+			// Hold the no-delete lease on the session marker for the process lifetime.
+			lock (artifactSessionHandles) {
+				if (!artifactSessionHandles.ContainsKey(sessionId)) {
+					var markerPath = Path.Combine(root, sessionId, ".session-marker");
+					if (!File.Exists(markerPath)) {
+						using (var created = new FileStream(markerPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { }
+					}
+					// The no-delete lease: a read handle held for the process lifetime.
+					artifactSessionHandles[sessionId] = new FileStream(markerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+				}
+			}
+		}
+		else if (admitSession != ArtifactStoreLedger.AdmitResult.Ok) {
+			return Fail(coordinator, MapAdmit(admitSession));
+		}
+
+		var fs = new ProductionArtifactFs(root);
+		var tempName = childName + ".partial";
+		try {
+			fs.CreateChildFile(sessionId, tempName, sourceBytes.Length);
+			File.WriteAllBytes(Path.Combine(root, sessionId, tempName), sourceBytes);
+			var observed = fs.ObserveChild(sessionId, tempName);
+			if (observed is null)
+				return Fail(coordinator, DomainErrorCodes.InternalError, message: "written artifact could not be observed");
+			string sha256;
+			using (var sha = SHA256.Create())
+				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(sourceBytes)).ToLowerInvariant();
+			var record = new ArtifactStoreLedger.ChildRecord(tempName, observed.Value.VolumeSerial, observed.Value.FileId, observed.Value.Length, sha256);
+			var admit = ledger.AdmitArtifactWrite(sessionId, childName, sourceBytes.Length, record);
+			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
+				return Fail(coordinator, MapAdmit(admit));
+			var finalPath = Path.Combine(root, sessionId, childName);
+			File.Move(Path.Combine(root, sessionId, tempName), finalPath);
+			var manifestName = childName + ".manifest.json";
+			var manifest = System.Text.Json.JsonSerializer.Serialize(new {
+				schema_version = "dnspy.mcp.artifact.v1",
+				session_id = sessionId,
+				module = module.Name,
+				module_path = module.Filename,
+				kind = "raw",
+				layout = "file",
+				size = sourceBytes.Length,
+				sha256,
+				created_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+			});
+			File.WriteAllText(Path.Combine(root, sessionId, manifestName), manifest);
+			var finalObserved = fs.ObserveChild(sessionId, childName);
+			var manifestRecord = new ArtifactStoreLedger.ChildRecord(manifestName, finalObserved?.VolumeSerial ?? "0x0", finalObserved?.FileId ?? new string('0', 32), System.Text.Encoding.UTF8.GetByteCount(manifest), sha256);
+			ledger.AdmitArtifactWrite(sessionId, manifestName, manifestRecord.Length, manifestRecord);
+			return Ok(coordinator, new DumpModuleResultDto {
+				Artifact = new ArtifactDto {
+					ArtifactId = sessionId + "/" + childName,
+					Path = finalPath,
+					Kind = "raw",
+					Layout = "file",
+					Size = sourceBytes.Length,
+					Sha256 = sha256,
+					SourceModule = ModuleDtoOf(module),
+					ManifestPath = Path.Combine(root, sessionId, manifestName),
+				},
+			});
+		}
+		catch (Exception ex) {
+			return Fail(coordinator, DomainErrorCodes.InternalError, message: ex.GetType().Name + ": " + ex.Message);
+		}
+	}
+
+	static string MapAdmit(ArtifactStoreLedger.AdmitResult result) => result switch {
+		ArtifactStoreLedger.AdmitResult.AlreadyExists => DomainErrorCodes.AlreadyExists,
+		ArtifactStoreLedger.AdmitResult.LimitExceeded => DomainErrorCodes.LimitExceeded,
+		ArtifactStoreLedger.AdmitResult.TargetMismatch => DomainErrorCodes.TargetMismatch,
+		_ => DomainErrorCodes.InternalError,
+	};
 
 	// ---- observation pump (DbgManager dispatcher thread) ----
 
@@ -1294,6 +1603,7 @@ public sealed class DebugSessionService : IDisposable {
 				string kind = "other";
 				string? ownedId = null;
 				string? stepId = null;
+				string? stepKind = null;
 				bool policyPause = false;
 				if (info.Kind == DbgBreakInfoKind.Message && info.Data is DbgMessageEventArgs msg) {
 					switch (msg.Kind) {
@@ -1311,6 +1621,7 @@ public sealed class DebugSessionService : IDisposable {
 							lock (sessionLock) {
 								if (currentStep is { } pending) {
 									stepId = pending.Id;
+									stepKind = pending.Kind; // EVT-DYN-015 reports the registered kind
 									currentStep = null; // only the registered step generates EVT-DYN-015
 								}
 							}
@@ -1333,7 +1644,7 @@ public sealed class DebugSessionService : IDisposable {
 							break;
 					}
 				}
-				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause));
+				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause, stepKind));
 			}
 		}
 		return list;
@@ -1661,6 +1972,30 @@ public sealed class DebugSessionService : IDisposable {
 		[System.Text.Json.Serialization.JsonPropertyName("is_null")] public bool IsNull { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("unavailable_reason")] public string? UnavailableReason { get; set; }
+	}
+
+	public sealed class ReadMemoryResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("module_handle")] public string ModuleHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("address")] public string Address { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("length")] public int Length { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("encoding")] public string Encoding { get; set; } = "hex";
+		[System.Text.Json.Serialization.JsonPropertyName("data")] public string Data { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("read_semantics")] public string ReadSemantics { get; set; } = "dnspy-zero-fill";
+	}
+
+	public sealed class DumpModuleResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("artifact")] public ArtifactDto Artifact { get; set; } = new();
+	}
+
+	public sealed class ArtifactDto {
+		[System.Text.Json.Serialization.JsonPropertyName("artifact_id")] public string ArtifactId { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("path")] public string Path { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("kind")] public string Kind { get; set; } = "raw";
+		[System.Text.Json.Serialization.JsonPropertyName("layout")] public string Layout { get; set; } = "file";
+		[System.Text.Json.Serialization.JsonPropertyName("size")] public int Size { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("sha256")] public string Sha256 { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("source_module")] public ModuleIdentityDto SourceModule { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("manifest_path")] public string ManifestPath { get; set; } = string.Empty;
 	}
 
 	public sealed class ModuleIdentityDto {

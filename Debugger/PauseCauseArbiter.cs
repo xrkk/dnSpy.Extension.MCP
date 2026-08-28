@@ -17,15 +17,18 @@ public sealed class BreakInfoObservation {
 	public string? OwnedBreakpointId { get; }
 	/// <summary>Current MCP step id when a StepComplete matches the outstanding step.</summary>
 	public string? StepId { get; }
+	/// <summary>The registered step kind (into/over/out) reported on StepComplete; null otherwise.</summary>
+	public string? StepKind { get; }
 	/// <summary>True when the session exception policy requests a pause for this exception.</summary>
 	public bool PolicyRequestedPause { get; }
 
 	public BreakInfoObservation(string kind, int ordinal, string? ownedBreakpointId = null,
-		string? stepId = null, bool policyRequestedPause = false) {
+		string? stepId = null, bool policyRequestedPause = false, string? stepKind = null) {
 		Kind = kind;
 		Ordinal = ordinal;
 		OwnedBreakpointId = ownedBreakpointId;
 		StepId = stepId;
+		StepKind = stepKind;
 		PolicyRequestedPause = policyRequestedPause;
 	}
 }

@@ -326,7 +326,7 @@ public sealed class DebugSessionCoordinator {
 					break;
 				case PauseCauseArbiter.Step:
 					if (info.StepId != null)
-						WriteEvent(EventKinds.StepCompleted, new { step_id = info.StepId, kind = "into", thread_handle = (string?)"", location = new { module_handle = (string?)"" } }, untrusted: false);
+						WriteEvent(EventKinds.StepCompleted, new { step_id = info.StepId, kind = info.StepKind ?? "into", thread_handle = (string?)"", location = new { module_handle = (string?)"" } }, untrusted: false);
 					break;
 			}
 		}
