@@ -545,7 +545,12 @@ function Run-ACC002 {
         $windowsIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $windowsPrincipal = New-Object Security.Principal.WindowsPrincipal($windowsIdentity)
         $elevated = $windowsPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if ($elevated) {
+        # Deploy-runbook provisioning (tests/debug/provision-remote.ps1, run once elevated)
+        # makes the reservation persistent; the driver only needs it to exist.
+        $urlaclPresent = ((& netsh http show urlacl) -join ' ') -match [regex]::Escape("$($m.env.vm_ip):15100/")
+        if ($urlaclPresent) {
+            'pre-provisioned urlacl detected' | Set-Content (Join-Path $script:OutDir 'urlacl-preprovisioned.log')
+        } elseif ($elevated) {
             & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
             & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
         }
@@ -555,7 +560,7 @@ function Run-ACC002 {
         Set-SnapshotJson $snapR
         $script:RemoteUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
         $upR = $script:RemoteUp
-        if (-not $elevated) {
+        if (-not ($urlaclPresent -or $elevated)) {
             Fail-Precondition 'remote-admin-provisioning' 'elevated one-time urlacl+firewall provisioning (deploy runbook / ACC-023 reversible script)'
         } elseif ($upR) {
             $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
