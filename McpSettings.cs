@@ -131,17 +131,15 @@ namespace dnSpy.Extension.MCP {
 			}
 		}
 
-#if DEBUG
 		/// <summary>
 		/// Path of the on-disk fallback log used only in debug builds. Writes here always succeed
 		/// and do not depend on the WPF dispatcher being alive or on a settings dialog being open,
 		/// which makes this the authoritative record of what the extension did at startup during
 		/// development. Release builds do not write to disk.
 		/// </summary>
-		public static readonly string LogFilePath = @"D:\dnspy-mcp.log";
+		public static readonly string LogFilePath = @"E:\dnspy-mcp.log";
 
 		static readonly object logFileLock = new object();
-#endif
 
 		/// <summary>
 		/// Adds a log message with timestamp to the log collection. In DEBUG builds the entry is
@@ -154,9 +152,7 @@ namespace dnSpy.Extension.MCP {
 			var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
 			var logEntry = $"[{timestamp}] {message}";
 
-#if DEBUG
-			// Debug-only: mirror to disk. UI writes can fail silently if the dispatcher is unavailable,
-			// so the on-disk log is the authoritative record during development.
+			// Diagnostic build: always mirror to disk (E:\dnspy-mcp.log).
 			try {
 				lock (logFileLock)
 					System.IO.File.AppendAllText(LogFilePath, logEntry + Environment.NewLine);
@@ -164,7 +160,6 @@ namespace dnSpy.Extension.MCP {
 			catch {
 				// If we can't write the log file, there is nowhere sensible to report that failure.
 			}
-#endif
 
 			void addToCollection() {
 				LogMessages.Add(logEntry);

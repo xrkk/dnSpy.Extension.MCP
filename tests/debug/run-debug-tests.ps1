@@ -234,7 +234,8 @@ function Start-DnSpyAndWait {
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 700
         $code = Get-HealthCode $probe
-        if ($code -eq '200') { return $true }
+        # Remote mode answers unauthenticated health with 401 — that still proves the listener is up.
+        if ($code -eq '200' -or $code -eq '401') { return $true }
     }
     return $false
 }

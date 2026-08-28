@@ -335,6 +335,11 @@ public static class McpSettingsPersistence {
 	/// </summary>
 	public static RecoveryResult Recover(string? committedJson, string? pendingJson,
 		(bool? enableServer, string? host, int? port)? legacy) {
+		{
+			var diagOk = TryParseEffective(committedJson, out var diagErr);
+			var diagLine = "Recover: committed=" + (committedJson is null ? "null" : committedJson.Length.ToString() + "B") + " parse=" + (diagOk is null ? ("INVALID: " + (diagErr ?? "?")) : "valid") + "\r\n";
+			try { System.IO.File.AppendAllText(@"E:\dnspy-mcp-settings.log", diagLine); } catch { }
+		}
 		bool hasCommitted = !string.IsNullOrEmpty(committedJson);
 		bool hasPending = !string.IsNullOrEmpty(pendingJson);
 		var committedValid = TryParseEffective(committedJson, out _);
