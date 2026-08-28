@@ -1985,6 +1985,10 @@ public sealed class DebugSessionService : IDisposable {
 						adapter?.Dispose();
 						adapter = null;
 						ownedProcess = null;
+						// Settle the claim negatively so the waiting launch caller takes its
+						// TIMEOUT path (MarkLaunchFailed + start_failed + idle) instead of
+						// hanging on the real 30s claim wait.
+						claimTcs?.TrySetResult(false);
 					}
 					continue;
 				}
