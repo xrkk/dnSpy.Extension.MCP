@@ -1181,19 +1181,20 @@ function Run-ACC026 {
     $x86 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-x86'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x86'; break_kind = 'none' }
     Assert-Cond 'arch-mismatch' 'CAPABILITY_UNAVAILABLE before Start' "code=$(Get-DomainError $x86)" ("$(Get-DomainError $x86)" -eq 'CAPABILITY_UNAVAILABLE') @($x86.rpc.resp)
 
-    # [5] reparse (junction) path: create a junction inside the root and launch through it.
-    $junction = Join-Path $m.env.sample_root 'argv-junction.exe'
+    # [5] reparse path: a junction to the sample root directory, target addressed through it.
+    $junction = Join-Path $m.env.sample_root 'junction-dir'
     if (Test-Path $junction) { Remove-Item $junction -Force }
-    try { New-Item -ItemType Junction -Path $junction -Target $exe | Out-Null } catch { $_.Exception.Message | Set-Content (Join-Path $script:OutDir 'junction-error.log') }
+    try { New-Item -ItemType Junction -Path $junction -Target $m.env.sample_root | Out-Null } catch { $_.Exception.Message | Set-Content (Join-Path $script:OutDir 'junction-error.log') }
     if (Test-Path $junction) {
-        $rp = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-reparse'; target_path = $junction; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+        $rpTarget = Join-Path $junction 'ArgvFixture.exe'
+        $rp = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-reparse'; target_path = $rpTarget; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
         $rpCode = Get-DomainError $rp
         $rpLaunched = $rp.domain.ok
-        if ($rpLaunched) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $rp.domain.result.session_id; generation = $rp.domain.result.generation; request_id = 'acc26-t2' } | Out-Null }
-        Assert-Cond 'reparse-rejected' 'reparse path rejected (TARGET_MISMATCH) or identity-resolved to the target' "code=$rpCode ok=$rpLaunched" ($rpCode -eq 'TARGET_MISMATCH') @($rp.rpc.resp)
+        if ($rpLaunched) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $rp.domain.result.session_id; generation = $rp.domain.result.generation; request_id = 'acc26-t2' } | Out-Null; Start-Sleep -Milliseconds 600 }
+        Assert-Cond 'reparse-rejected' 'reparse path rejected before Start (TARGET_MISMATCH)' "code=$rpCode ok=$rpLaunched" ($rpCode -eq 'TARGET_MISMATCH') @($rp.rpc.resp)
         Remove-Item $junction -Force
     } else {
-        Assert-Cond 'reparse-rejected' 'junction fixture created' 'junction creation failed' $false @()
+        Assert-Cond 'reparse-rejected' 'junction fixture created' 'junction creation failed' $false @('junction-error.log')
     }
 
     # Shell-invocation spy and empty/nonexistent-root ApplySnapshot rejections are in-process/
