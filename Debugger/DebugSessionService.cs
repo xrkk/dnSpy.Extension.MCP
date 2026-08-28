@@ -860,17 +860,83 @@ public sealed class DebugSessionService : IDisposable {
 	}
 	StepRegistration? currentStep;
 	int stepSeq;
-	readonly Dictionary<string, ulong> threadIdsByHandle = new();
+
+	// Pause-epoch-scoped handle mints (ACC-006): a handle is only valid for the exact
+	// (generation, pause_epoch) it was minted in — older mints resolve to STALE_HANDLE,
+	// unknown strings to NOT_FOUND. Handles carry a process-lifetime sequence, never the
+	// raw OS thread id (ids get reused by later processes) or a bare stack position.
+	sealed class ThreadHandleMint { public int Generation; public int PauseEpoch; public ulong Tid; }
+	sealed class FrameHandleMint { public int Generation; public int PauseEpoch; public string ThreadHandle = string.Empty; public int FrameIndex; }
+	int threadHandleSeq;
+	int frameHandleSeq;
+	readonly Dictionary<string, ThreadHandleMint> threadsByHandleMint = new();
+	readonly Dictionary<string, FrameHandleMint> framesByHandleMint = new();
 
 	static string ThreadHandleOf(DbgThread thread) => $"th-{thread.Id}";
 
-	DbgThread? FindThreadByHandle(string threadHandle) {
+	/// <summary>Classifies a thread handle against the current pause: null error = valid.</summary>
+	string? ClassifyThreadHandle(string threadHandle, out ulong tid) {
+		tid = 0;
+		lock (sessionLock) {
+			if (!threadsByHandleMint.TryGetValue(threadHandle, out var mint))
+				return DomainErrorCodes.NotFound;
+			if (mint.Generation != coordinator.Generation || mint.PauseEpoch != coordinator.PauseEpoch)
+				return DomainErrorCodes.StaleHandle;
+			tid = mint.Tid;
+			return null;
+		}
+	}
+
+	/// <summary>Mints (or reuses) the handle for one live thread in the current pause.</summary>
+	string MintThreadHandle(DbgThread thread) {
+		lock (sessionLock) {
+			foreach (var kv in threadsByHandleMint) {
+				if (kv.Value.Generation == coordinator.Generation && kv.Value.PauseEpoch == coordinator.PauseEpoch && kv.Value.Tid == thread.Id)
+					return kv.Key;
+			}
+			if (threadsByHandleMint.Count > 4096)
+				threadsByHandleMint.Clear();
+			var handle = $"th-{Interlocked.Increment(ref threadHandleSeq)}";
+			threadsByHandleMint[handle] = new ThreadHandleMint { Generation = coordinator.Generation, PauseEpoch = coordinator.PauseEpoch, Tid = thread.Id };
+			return handle;
+		}
+	}
+
+	/// <summary>Classifies a frame handle against the current pause; null error = valid.</summary>
+	string? ClassifyFrameHandle(string frameHandle, out int frameIndex) {
+		frameIndex = 0;
+		lock (sessionLock) {
+			if (!framesByHandleMint.TryGetValue(frameHandle, out var mint))
+				return DomainErrorCodes.NotFound;
+			if (mint.Generation != coordinator.Generation || mint.PauseEpoch != coordinator.PauseEpoch)
+				return DomainErrorCodes.StaleHandle;
+			frameIndex = mint.FrameIndex;
+			return null;
+		}
+	}
+
+	string MintFrameHandle(string threadHandle, int index) {
+		lock (sessionLock) {
+			foreach (var kv in framesByHandleMint) {
+				if (kv.Value.Generation == coordinator.Generation && kv.Value.PauseEpoch == coordinator.PauseEpoch
+					&& kv.Value.ThreadHandle == threadHandle && kv.Value.FrameIndex == index)
+					return kv.Key;
+			}
+			if (framesByHandleMint.Count > 16384)
+				framesByHandleMint.Clear();
+			var handle = $"fr-{Interlocked.Increment(ref frameHandleSeq)}";
+			framesByHandleMint[handle] = new FrameHandleMint { Generation = coordinator.Generation, PauseEpoch = coordinator.PauseEpoch, ThreadHandle = threadHandle, FrameIndex = index };
+			return handle;
+		}
+	}
+
+	DbgThread? FindThreadByTid(ulong tid) {
 		DbgProcess? process;
 		lock (sessionLock) process = ownedProcess;
 		if (process is null)
 			return null;
 		foreach (var thread in process.Threads)
-			if (ThreadHandleOf(thread) == threadHandle)
+			if ((ulong)thread.Id == tid)
 				return thread;
 		return null;
 	}
@@ -888,18 +954,16 @@ public sealed class DebugSessionService : IDisposable {
 			if (process is not null)
 				threads = process.Threads;
 		});
-		lock (sessionLock) {
-			threadIdsByHandle.Clear();
-			foreach (var t in threads)
-				threadIdsByHandle[ThreadHandleOf(t)] = t.Id;
-		}
-		var page = threads.Skip(start).Take(pageSize).ToList();
+		var mapped = new List<(DbgThread thread, string handle)>();
+		foreach (var t in threads)
+			mapped.Add((t, MintThreadHandle(t)));
+		var page = mapped.Skip(start).Take(pageSize).ToList();
 		var dto = new PagedItemsDto {
 			Items = page.Select((t, i) => (object)new ThreadInfoDto {
-				ThreadHandle = ThreadHandleOf(t),
-				ManagedId = t.ManagedId?.ToString(),
-				OsId = t.Id.ToString(),
-				Name = t.HasName() ? t.Name : null,
+				ThreadHandle = t.handle,
+				ManagedId = t.thread.ManagedId?.ToString(),
+				OsId = t.thread.Id.ToString(),
+				Name = t.thread.HasName() ? t.thread.Name : null,
 				State = "paused",
 				IsCurrent = start + i == 0,
 			}).ToList(),
@@ -918,9 +982,12 @@ public sealed class DebugSessionService : IDisposable {
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 20));
 		string? cursor = ArgString(args, "page_cursor");
 		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var s) ? s : 0;
+		var classifyError = ClassifyThreadHandle(threadHandle, out var tid);
+		if (classifyError is not null)
+			return Fail(coordinator, classifyError, message: classifyError == DomainErrorCodes.StaleHandle ? "thread_handle belongs to an earlier pause" : "unknown thread_handle");
 		var frames = new List<(string module, uint token, uint offset)>();
 		PostVoidToDispatcherSync(() => {
-			var thread = FindThreadByHandle(threadHandle);
+			var thread = FindThreadByTid(tid);
 			if (thread is null)
 				return;
 			var walker = thread.CreateStackWalker();
@@ -937,7 +1004,7 @@ public sealed class DebugSessionService : IDisposable {
 		var page = frames.Skip(start).Take(pageSize).ToList();
 		var dto = new PagedItemsDto {
 			Items = page.Select((f, i) => (object)new FrameInfoDto {
-				FrameHandle = $"fr-{start + i}",
+				FrameHandle = MintFrameHandle(threadHandle, start + i),
 				Index = start + i,
 				Location = new LocationDto {
 					ModuleHandle = $"mod:{f.module}",
@@ -974,12 +1041,15 @@ public sealed class DebugSessionService : IDisposable {
 			if (currentStep is not null)
 				return Fail(coordinator, DomainErrorCodes.InvalidState, message: "a step is already pending for this session");
 		}
+		var stepThreadError = ClassifyThreadHandle(threadHandle, out var stepTid);
+		if (stepThreadError is not null)
+			return Fail(coordinator, stepThreadError, message: stepThreadError == DomainErrorCodes.StaleHandle ? "thread_handle belongs to an earlier pause" : "unknown thread_handle");
 		string stepId = $"step-{Interlocked.Increment(ref stepSeq)}";
 		lock (sessionLock)
 			currentStep = new StepRegistration { Id = stepId, Kind = kind, ThreadHandle = threadHandle };
 		bool stepped = false;
 		PostVoidToDispatcherSync(() => {
-			var thread = FindThreadByHandle(threadHandle);
+			var thread = FindThreadByTid(stepTid);
 			if (thread is null)
 				return;
 			var stepper = thread.CreateStepper();
@@ -988,7 +1058,7 @@ public sealed class DebugSessionService : IDisposable {
 		});
 		if (!stepped) {
 			lock (sessionLock) currentStep = null;
-			return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown thread_handle");
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "thread vanished from the owned process");
 		}
 		coordinator.MarkResumed("step");
 		return Ok(coordinator, new StepResultDto {
@@ -1045,8 +1115,9 @@ public sealed class DebugSessionService : IDisposable {
 		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
 		var frameHandle = ArgString(args, "frame_handle", required: true);
-		if (!int.TryParse(frameHandle.Substring(frameHandle.IndexOf('-') + 1), out var frameIndex))
-			frameIndex = 0;
+		var frameError = ClassifyFrameHandle(frameHandle, out var frameIndex);
+		if (frameError is not null)
+			return Fail(coordinator, frameError, message: frameError == DomainErrorCodes.StaleHandle ? "frame_handle belongs to an earlier pause" : "unknown frame_handle");
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
 		// The pause-epoch-bound immutable snapshot (CON-DYN-007/§3.5): evaluation objects do
 		// not survive the dispatcher callback, so the whole breadth-first expansion (depth<=4,

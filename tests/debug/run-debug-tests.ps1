@@ -487,7 +487,16 @@ function Run-ACC006 {
     $li = $L.domain.result
     $sid = $li.session_id
     $gen = [int]$li.generation
-    Assert-Cond 'launch-ok' 'ok=true state=running (generation recorded; fresh-session baseline)' "ok=$($L.domain.ok) state=$($li.state) gen=$gen" ($L.domain.ok -and ($li.state -eq 'running')) @($L.rpc.resp)
+    # break_kind=none has a transient unknown-pause that the extension auto-continues; the
+    # launch response may settle inside that window, so wait for the steady running state.
+    $initState = "$($li.state)"
+    $running = ($initState -eq 'running')
+    for ($w = 0; $w -lt 10 -and -not $running; $w++) {
+        Start-Sleep -Milliseconds 300
+        $stq = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+        if ("$($stq.domain.result.state)" -eq 'running') { $running = $true }
+    }
+    Assert-Cond 'launch-ok' 'ok=true; reaches running (fresh-session generation recorded)' "ok=$($L.domain.ok) initial=$initState final_running=$running gen=$gen" ($L.domain.ok -and $running) @($L.rpc.resp)
     Start-Sleep -Milliseconds 800
 
     $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc6-p1' }
@@ -507,12 +516,12 @@ function Run-ACC006 {
     Assert-Cond 'continue1' 'ok running' "ok=$($C.domain.ok) state=$($C.domain.result.state)" ($C.domain.ok) @($C.rpc.resp)
     Start-Sleep -Milliseconds 500
 
-    # Old-epoch stack read and old frame/value reuse must be STALE_HANDLE.
+    # While running, paused-only probes are rejected by the state gate (required_states=paused).
     $S2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; thread_handle = $t1 }
     $c2 = Get-DomainError $S2
     $L2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
     $c3 = Get-DomainError $L2
-    Assert-Cond 'stale-after-continue' 'old-epoch get_stack/get_locals = STALE_HANDLE' "stack=$c2 locals=$c3" (("$c2" -eq 'STALE_HANDLE') -and ("$c3" -eq 'STALE_HANDLE')) @($S2.rpc.resp, $L2.rpc.resp)
+    Assert-Cond 'running-state-rejected' 'get_stack/get_locals while running = INVALID_STATE' "stack=$c2 locals=$c3" (("$c2" -eq 'INVALID_STATE') -and ("$c3" -eq 'INVALID_STATE')) @($S2.rpc.resp, $L2.rpc.resp)
 
     $P2 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc6-p2' }
     $e2 = $P2.domain.result.pause_epoch
@@ -523,6 +532,13 @@ function Run-ACC006 {
     $f2 = $S3.domain.result.items[0].frame_handle
     $L3 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e2; frame_handle = $f2; page_size = 100 }
     Assert-Cond 'fresh-handles-work' 'new epoch handles valid (stack+locals ok)' "stack_ok=$($S3.domain.ok) locals_ok=$($L3.domain.ok)" ($S3.domain.ok -and $L3.domain.ok) @($S3.rpc.resp, $L3.rpc.resp)
+
+    # At the new pause, handles minted in the earlier pause must be STALE_HANDLE.
+    $SO = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $e2; thread_handle = $t1 }
+    $co1 = Get-DomainError $SO
+    $LO = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e2; frame_handle = $f1; page_size = 100 }
+    $co2 = Get-DomainError $LO
+    Assert-Cond 'stale-handles-after-continue' 'old thread/frame handle at new pause = STALE_HANDLE' "thread=$co1 frame=$co2" (("$co1" -eq 'STALE_HANDLE') -and ("$co2" -eq 'STALE_HANDLE')) @($SO.rpc.resp, $LO.rpc.resp)
 
     $R = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid; generation = $gen; request_id = 'acc6-restart' }
     $gen2 = [int]$R.domain.result.generation

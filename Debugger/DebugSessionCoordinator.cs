@@ -100,7 +100,7 @@ public sealed class DebugSessionCoordinator {
 				return false;
 			ExpireRetainedLog();
 			activeSessionId = newSessionId();
-			generation++;
+			generation = 1;
 			pauseEpoch = 0;
 			fault = FaultKind.None;
 			abandonedRestart = false;
