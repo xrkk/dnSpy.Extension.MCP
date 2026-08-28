@@ -46,6 +46,14 @@ public sealed class DebugSessionService : IDisposable {
 	static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> SpyCounters = new();
 	static void SpyInc(string name) => SpyCounters.AddOrUpdate(name, 1, (_, v) => v + 1);
 	public static bool TestModeEnabled => Environment.GetEnvironmentVariable("DNMCP_TEST") == "1";
+
+	// Injection surface increment 2: virtual clock offset (ms) and the installed fake control
+	// adapter. Both live only for the DNMCP_TEST diagnostic tools; production paths never
+	// touch the offset and never see the fake once uninstalled.
+	static long testClockOffsetMs;
+	public static void TestClockAdvance(long ms) => System.Threading.Interlocked.Add(ref testClockOffsetMs, ms);
+	public static long TestClockVirtualElapsedMs() => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency + System.Threading.Interlocked.Read(ref testClockOffsetMs);
+	FakeDbgProcessControlAdapter? testAdapter;
 	public static IReadOnlyDictionary<string, long> SpySnapshot() =>
 		(IReadOnlyDictionary<string, long>)SpyCounters.ToDictionary(kv => kv.Key, kv => kv.Value);
 	public static void SpyReset() => SpyCounters.Clear();
@@ -151,6 +159,99 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
+	/// <summary>DNMCP_TEST-only: advance/reset the virtual clock used by control deadlines.</summary>
+	string TestClock(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var advance = args is not null && args.TryGetValue("advance_ms", out var a) && a is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } je
+			? (long)je.GetDouble() : 0;
+		if (advance != 0)
+			TestClockAdvance(advance);
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true,
+			["virtual_elapsed_ms"] = TestClockVirtualElapsedMs(),
+			["clock_offset_ms"] = System.Threading.Interlocked.Read(ref testClockOffsetMs),
+		});
+	}
+
+	/// <summary>
+	/// DNMCP_TEST-only: install/uninstall the scriptable fake control adapter (post-failure and
+	/// synthetic paused/removed observations with classified BreakInfos), and emit observations.
+	/// </summary>
+	string TestAdapter(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		args ??= new Dictionary<string, object>();
+		// emit: synthetic observation through the same OnAdapterObservation path as production.
+		if (args.TryGetValue("emit", out var emitEl) && emitEl is System.Text.Json.JsonElement em && em.ValueKind == System.Text.Json.JsonValueKind.Object) {
+			FakeDbgProcessControlAdapter source;
+			lock (sessionLock)
+				source = testAdapter ?? new FakeDbgProcessControlAdapter();
+			int pid; DateTime started;
+			lock (sessionLock) { pid = ownedProcess?.Id ?? 0; started = sessionStartedUtc == default ? DateTime.UtcNow : sessionStartedUtc; }
+			if (em.TryGetProperty("pid", out var pidEl) && pidEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+				pid = (int)pidEl.GetDouble();
+			var kind = em.TryGetProperty("kind", out var kEl) ? kEl.GetString() : "paused";
+			var infos = new List<BreakInfoObservation>();
+			if (em.TryGetProperty("break_infos", out var biEl) && biEl.ValueKind == System.Text.Json.JsonValueKind.Array) {
+				int ordinal = 0;
+				foreach (var bi in biEl.EnumerateArray()) {
+					if (bi.ValueKind != System.Text.Json.JsonValueKind.Object)
+						continue;
+					var type = bi.TryGetProperty("type", out var tEl) ? tEl.GetString() ?? "other" : "other";
+					var ord = bi.TryGetProperty("ordinal", out var oEl) && oEl.ValueKind == System.Text.Json.JsonValueKind.Number ? (int)oEl.GetDouble() : ordinal;
+					string? ownedId = bi.TryGetProperty("owned_breakpoint_id", out var obEl) && obEl.ValueKind == System.Text.Json.JsonValueKind.String ? obEl.GetString() : null;
+					string? stepId = bi.TryGetProperty("step_id", out var stEl) && stEl.ValueKind == System.Text.Json.JsonValueKind.String ? stEl.GetString() : null;
+					string? stepKind = bi.TryGetProperty("step_kind", out var skEl) && skEl.ValueKind == System.Text.Json.JsonValueKind.String ? skEl.GetString() : null;
+					bool policy = bi.TryGetProperty("policy_requested_pause", out var pEl) && pEl.ValueKind == System.Text.Json.JsonValueKind.True;
+					infos.Add(new BreakInfoObservation(type, ord, ownedId, stepId, policy, stepKind));
+					ordinal++;
+				}
+			}
+			if (kind == "removed") {
+				var exit = em.TryGetProperty("exit_code", out var eEl) && eEl.ValueKind == System.Text.Json.JsonValueKind.Number ? (int)eEl.GetDouble() : 0;
+				source.EmitRemoved(pid, started, exit);
+			}
+			else {
+				source.EmitPaused(pid, started, infos);
+			}
+			SpyInc("test_emitted_observations");
+			return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["emitted"] = kind });
+		}
+		// install/uninstall/fail_next controls.
+		var install = args.TryGetValue("install", out var iEl) && iEl is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+		var uninstall = args.TryGetValue("install", out var uEl) && uEl is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.False };
+		if (install) {
+			var fake = new FakeDbgProcessControlAdapter();
+			fake.Observation += OnAdapterObservation;
+			lock (sessionLock)
+				testAdapter = fake;
+			return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["installed"] = true });
+		}
+		if (uninstall) {
+			FakeDbgProcessControlAdapter? old;
+			lock (sessionLock) {
+				old = testAdapter;
+				testAdapter = null;
+				if (ownedProcess is not null)
+					adapter = new DbgProcessControlAdapter(ownedProcess);
+			}
+			if (old is not null)
+				old.Observation -= OnAdapterObservation;
+			return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["installed"] = false });
+		}
+		if (args.TryGetValue("fail_next", out var fEl) && fEl is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } fs) {
+			FakeDbgProcessControlAdapter fake;
+			lock (sessionLock)
+				testAdapter ??= fake = new FakeDbgProcessControlAdapter();
+			lock (sessionLock)
+				fake = testAdapter!;
+			fake.FailOnPost = fs.GetString() == "explicit_failure";
+			return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["fail_next"] = fs.GetString() });
+		}
+		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["hint"] = "install/fail_next/emit" });
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -188,6 +289,8 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_read_memory" => ReadMemory(arguments),
 				"debug_dump_module" => DumpModule(arguments),
 				"debug_test_spy" => TestSpy(arguments),
+				"debug_test_clock" => TestClock(arguments),
+				"debug_test_adapter" => TestAdapter(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -455,6 +558,19 @@ public sealed class DebugSessionService : IDisposable {
 		};
 	}
 
+	async Task VirtualDeadlineImpl(TaskCompletionSource<bool> done, TimeSpan deadline) {
+		var startVirtual = TestClockVirtualElapsedMs();
+		while (TestClockVirtualElapsedMs() - startVirtual < deadline.TotalMilliseconds)
+			await Task.Delay(20).ConfigureAwait(false);
+		done.TrySetResult(true);
+	}
+
+	Task VirtualDeadline(TimeSpan deadline) {
+		var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var _ = VirtualDeadlineImpl(done, deadline);
+		return done.Task;
+	}
+
 	async Task<string> Control(Dictionary<string, object>? args, ControlOperation operation) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
@@ -477,7 +593,9 @@ public sealed class DebugSessionService : IDisposable {
 			controlOutcomeTcs = tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
 		dbgManager?.Dispatcher.BeginInvoke(new Action(() => {
-			var localAdapter = adapter;
+			FakeDbgProcessControlAdapter? localFake;
+			lock (sessionLock) localFake = testAdapter;
+			var localAdapter = (IDbgProcessControlAdapter?)localFake ?? adapter;
 			var result = localAdapter is null ? IDbgProcessControlAdapter.PostResult.ExplicitFailure
 				: operation == ControlOperation.Pause ? localAdapter.PostBreak(record)
 				: localAdapter.PostTerminate(record);
@@ -490,7 +608,8 @@ public sealed class DebugSessionService : IDisposable {
 			}
 		}));
 
-		var done = await Task.WhenAny(tcs.Task, Task.Delay(ControlOperationRecord.DefaultDeadline)).ConfigureAwait(false);
+		var deadlineTask = TestModeEnabled ? VirtualDeadline(ControlOperationRecord.DefaultDeadline) : Task.Delay(ControlOperationRecord.DefaultDeadline);
+		var done = await Task.WhenAny(tcs.Task, deadlineTask).ConfigureAwait(false);
 		ticket?.TryRelease();
 		if (done != tcs.Task) {
 			coordinator.SettleControlFailure(record, DomainErrorCodes.Timeout);
