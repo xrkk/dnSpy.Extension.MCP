@@ -182,6 +182,12 @@ public static class LaunchPlanner {
 					BreakKind = request.BreakKind, UpstreamBreakKind = UpstreamBreakKind(request.BreakKind),
 				};
 			case LaunchModes.CoreClrDotnet:
+				if (string.IsNullOrEmpty(request.HostPath)) {
+					// ACC-008: a framework-dependent DLL without an explicit host can never
+					// start; reject before any lease or Start (CAPABILITY_UNAVAILABLE).
+					error = "coreclr-dotnet requires an explicit host_path";
+					return null;
+				}
 				return new LaunchPlan {
 					LaunchMode = mode, RuntimeFamily = family,
 					Filename = request.TargetPath,

@@ -17,7 +17,8 @@
     "vm_ip": "192.168.204.149",
     "host_ip": "192.168.204.1",
     "dotnet10_x64": "C:\\Tools\\dotnet10-x64\\dotnet.exe",
-    "dotnet10_x86": "C:\\Tools\\dotnet10-x86\\dotnet.exe"
+    "dotnet10_x86": "C:\\Tools\\dotnet10-x86\\dotnet.exe",
+    "dotnet10_root": "C:\\Tools\\dotnet10-x64"
   },
   "case_id": "ACC-008",
   "schema_version": "dnspy.debug.case.v1"

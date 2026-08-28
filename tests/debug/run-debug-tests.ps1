@@ -228,8 +228,14 @@ function Set-SnapshotJson {
 }
 function Start-DnSpyAndWait {
     param([int]$TimeoutSec = 60, [string]$HealthUrl = $null)
-    # The driver's dnSpy runs in test mode so the in-proc spy surface is live (DNMCP_TEST=1).
+    # The driver's dnSpy runs in test mode so the in-proc spy surface is live (DNMCP_TEST=1),
+    # and with DOTNET_ROOT pointing at the isolated .NET 10 install so CoreCLR apphosts the
+    # debugger launches can resolve their runtime.
     $env:DNMCP_TEST = '1'
+    if ($script:Manifest.env.dotnet10_root) {
+        $env:DOTNET_ROOT = $script:Manifest.env.dotnet10_root
+        Set-Item -Path 'Env:DOTNET_ROOT(x64)' -Value $script:Manifest.env.dotnet10_root
+    }
     Start-Process -FilePath $script:Manifest.env.dnspy_exe -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $probe = if ($HealthUrl) { $HealthUrl } else { $script:BaseUrl }
