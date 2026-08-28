@@ -2132,11 +2132,11 @@ function Run-ACC005 {
         $evictionOk = ($f.written -eq 4500) -and ([long]$f.events_lost -gt 0) -and ([long]$f.earliest_cursor -gt 1) -and (@($evAfter.events).Count -gt 0)
         Assert-Cond 'a5-eviction' '>4096 entries: oldest evicted (events_lost>0, earliest advances, log readable)' "written=$($f.written) lost=$($f.events_lost) earliest=$($f.earliest_cursor) readback=$(@($evAfter.events).Count)" $evictionOk @($F.rpc.resp, $evAfter.call.rpc.resp)
         # [6] Oversize single event: >8MiB payload becomes payload_omitted (kind rewritten).
-        $curPreBig = Get-MaxEventCursor $sid3 $gen3
         $F2 = Invoke-ToolNoInit 'debug_test_flood' @{ count = 1; bytes_per_event = 8500000 }
-        Start-Sleep -Milliseconds 400
-        # The rewritten payload_omitted event is the NEWEST entry; read the tail directly.
-        $evBig = Read-EventKinds $sid3 $gen3 $curPreBig
+        $f2 = $F2.domain.result
+        # The rewritten payload_omitted event is the NEWEST entry; the flood tool reports the
+        # true last cursor (Get-MaxEventCursor under eviction only sees the first page).
+        $evBig = Read-EventKinds $sid3 $gen3 ([long]$f2.last_cursor - 2)
         $bigKinds = @($evBig.kinds | Where-Object { $_ -eq 'payload_omitted' }).Count
         Assert-Cond 'a5-payload-omitted' '>8MiB single event rewritten as payload_omitted; log stays readable' "omitted=$bigKinds tail=$($evBig.kinds -join ',')" ($bigKinds -ge 1) @($F2.rpc.resp, $evBig.call.rpc.resp)
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid3; generation = $gen3; request_id = 'a5-t3' }

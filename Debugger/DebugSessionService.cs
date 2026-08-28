@@ -279,10 +279,11 @@ public sealed class DebugSessionService : IDisposable {
 		var bytesPer = args is not null && args.TryGetValue("bytes_per_event", out var b) && b is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } bj ? (int)bj.GetDouble() : 64;
 		if (count is < 1 or > 20000)
 			throw new ArgumentException("count must be within 1..20000", "count");
-		var (written, lost, earliest) = coordinator.WriteTestFlood(count, bytesPer);
+		var (written, lost, earliest, last) = coordinator.WriteTestFlood(count, bytesPer);
 		SpyInc("test_flood_events");
 		return Ok(coordinator, new Dictionary<string, object?> {
-			["test_mode"] = true, ["written"] = written, ["events_lost"] = lost, ["earliest_cursor"] = earliest,
+			["test_mode"] = true, ["written"] = written, ["events_lost"] = lost,
+			["earliest_cursor"] = earliest, ["last_cursor"] = last,
 		});
 	}
 

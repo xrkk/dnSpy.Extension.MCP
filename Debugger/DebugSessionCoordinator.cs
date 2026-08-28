@@ -120,17 +120,17 @@ public sealed class DebugSessionCoordinator {
 	/// </summary>
 	/// <summary>DNMCP_TEST-only: appends N synthetic events to the ACTIVE buffer (eviction
 	/// and payload_omitted semantics become observable without thousands of HTTP calls).</summary>
-	public (long written, long lost, long earliest) WriteTestFlood(int count, int bytesPerEvent) {
+	public (long written, long lost, long earliest, long lastCursor) WriteTestFlood(int count, int bytesPerEvent) {
 		long written = 0;
 		lock (gate) {
 			if (activeBuffer is null)
-				return (0, 0, 0);
+				return (0, 0, 0, 0);
 			for (int i = 0; i < count; i++) {
 				WriteEvent("test_flood", new { seq = i, pad = new string('x', Math.Max(0, bytesPerEvent)) }, untrusted: false);
 				written++;
 			}
 			var read = activeBuffer.Read(0, 1, null);
-			return (written, activeBuffer.EventsLost, read.EarliestCursor);
+			return (written, activeBuffer.EventsLost, read.EarliestCursor, activeBuffer.LastCursor);
 		}
 	}
 
