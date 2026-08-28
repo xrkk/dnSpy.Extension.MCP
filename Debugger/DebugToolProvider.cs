@@ -91,6 +91,8 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			return null; // session tools dispatch here as their handlers land (IMP-004..009)
 		}
 		var gate = Gate;
+		var snapshot = settings.CurrentSnapshot;
+		bool remote = snapshot is not null && snapshot.Host != "localhost";
 		var cap = new DebugCapabilitiesResultDto {
 			DebugEnabled = gate.EffectiveDebugLaunch,
 			ExtensionVersion = ExtensionVersion,
@@ -98,6 +100,13 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			DedicatedInstanceAcknowledged = gate.DedicatedInstanceAcknowledged,
 			Tools = DebugCapabilitiesResultDto.ToolsFor(gate.EffectiveDebugLaunch),
 			RuntimeMatrix = DebugCapabilitiesResultDto.MatrixFor(HostArchitecture),
+			// Security posture reflects the ACTIVE snapshot: loopback vs remote_host_only with
+			// its token/CIDR requirements (the DTO defaults describe loopback only).
+			Security = new DebugCapabilitiesResultDto.SecurityDto {
+				BindMode = remote ? "remote_host_only" : "loopback",
+				AuthRequired = remote,
+				CidrRequired = remote,
+			},
 		};
 		var envelope = new DebugSuccessEnvelope {
 			DebugContext = new DebugContextDto { State = DebugStates.Idle },
