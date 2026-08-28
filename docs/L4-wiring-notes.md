@@ -51,3 +51,18 @@ Linux `build-check.sh`(net48)→ http.server → VM 拉 DLL 部署 `bin\Extensio
 - dnSpy PID 见现场;设置 committed JSON:debug_enabled=true、ack=true、Port 3000、ArtifactRoot=C:\dnspy-mcp-artifacts(空目录);
 - 54 工具广告中,21 个 debug_* 会话工具 handler 未接(返回 Unknown tool);
 - MefCheck/CacheRead 法医工具在 C:\Tools\MefCheck(收尾阶段清理);诊断扩展 DiagExtension.x.dll 在 bin\(排障保留)。
+
+## 增量 2(API 测绘,IMP-006 断点,已核实待实现)
+
+- `DbgCodeBreakpointsService`(Contracts.Debugger/Breakpoints/Code,MEF 导出):
+  `DbgCodeBreakpoint? Add(DbgCodeBreakpointInfo)`、`Remove(DbgCodeBreakpoint[])`、`DbgCodeBreakpoint[] Breakpoints`、
+  `Modify(DbgCodeBreakpointAndSettings[])`(enabled=false 由此改)、`BreakpointsChanged/Modified` 事件;
+- `DbgDotNetCodeLocationFactory`(Contracts.Debugger.DotNet,MEF):`Create(ModuleId module, uint token, uint offset[, DbgILOffsetMapping])` → `DbgDotNetCodeLocation{Module,Token,Offset,DbgModule}`;
+- `ModuleId`(Contracts.Logic/Metadata):`(string asmFullName, string moduleName, bool isDynamic, bool isInMemory, bool nameOnly)`,隐式 `string moduleFilename` → 磁盘强身份按文件名;`DbgModule` 有 Runtime/进程内模块映射;
+- 暂停真实明细:`DbgRuntime.BreakInfos : ReadOnlyCollection<DbgBreakInfo{Kind,Data}>`,Kind ∈ {Unknown, Connected, Message},Message.Data = `DbgMessageEventArgs`(步进完成/断点命中等 reason 明细;实现时读其 Message/Kind 字段映射 arbiter 的 exception/breakpoint/step/entry/process/break);
+- 断点绑定事件:bound = `DbgCodeBreakpoint` 的 bound 状态/`DbgBoundCodeBreakpoint`(Modules 命中时)→ bound=true + EVT-DYN-013;
+- 线程/栈(IMP-007):`DbgProcess.Threads : DbgThread[]`(有 UIHashName/ManagedId 等),栈走 `DbgThread.StackTrace`(实现时核字段);步进 `DbgThread`/runtime stepper(Contracts.Debugger.DotNet/Steppers)。
+
+## 已实车验证的增量 1 补充(第 27 轮后)
+
+wait_event 超时路径(timed_out=true)与投递路径(pause→wait 返回 cursor 4 paused 事件)均通过;诊断堆栈 catch 已收敛为常规 INTERNAL_ERROR 消息(构建 d98f3055,已实测部署)。VM 现状:dnSpy 运行中,会话已 terminate(干净 idle)。
