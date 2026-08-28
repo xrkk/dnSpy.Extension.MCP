@@ -345,7 +345,10 @@ function Build-AccCore {
     Copy-Item (Join-Path $script:Repo 'tests\debug\fixtures-src\AccCore.cs') (Join-Path $dir 'AccCore.cs') -Force
     Copy-Item (Join-Path $script:Repo 'tests\debug\fixtures-src\AccCore.csproj.txt') (Join-Path $dir 'AccCore.csproj') -Force
     $log = Join-Path $script:OutDir 'acccore-build.log'
-    & $envm.dotnet10_x64 build (Join-Path $dir 'AccCore.csproj') -c Release *>> $log
+    # cmd wrapper: dotnet/MSBuild writes progress to stderr, which PowerShell turns into a
+    # terminating NativeCommandError under $ErrorActionPreference=Stop.
+    $cmd = '"' + $envm.dotnet10_x64 + '" build "' + (Join-Path $dir 'AccCore.csproj') + '" -c Release > "' + $log + '" 2>&1'
+    cmd /c $cmd | Out-Null
     $exe = Join-Path $dir 'bin\Release\net10.0\AccCore.exe'
     $dll = Join-Path $dir 'bin\Release\net10.0\AccCore.dll'
     return @{ exe = $exe; dll = $dll; ok = ((Test-Path $exe) -and (Test-Path $dll)) }
