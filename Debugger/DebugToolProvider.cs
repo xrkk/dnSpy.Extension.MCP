@@ -88,6 +88,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 					["type"] = "object",
 					["properties"] = new Dictionary<string, object> {
 						["advance_ms"] = new Dictionary<string, object> { ["type"] = "integer" },
+						["reset"] = new Dictionary<string, object> { ["type"] = "boolean" },
 					},
 					["additionalProperties"] = false,
 				},

@@ -165,6 +165,9 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
 		var advance = args is not null && args.TryGetValue("advance_ms", out var a) && a is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } je
 			? (long)je.GetDouble() : 0;
+		var resetClock = args is not null && args.TryGetValue("reset", out var rEl) && rEl is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+		if (resetClock)
+			System.Threading.Interlocked.Exchange(ref testClockOffsetMs, 0);
 		if (advance != 0)
 			TestClockAdvance(advance);
 		return Ok(coordinator, new Dictionary<string, object?> {

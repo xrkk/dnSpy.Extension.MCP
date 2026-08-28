@@ -426,10 +426,27 @@ function Wait-DetachedOrMissing {
     while ((Get-Date) -lt $dl) { if (Test-Path $RespFile) { return $true }; Start-Sleep -Milliseconds 200 }
     return (Test-Path $RespFile)
 }
+function Wait-StableRunning {
+    param([string]$Sid, [int]$TimeoutSec = 12)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $run1 = $false
+    while ((Get-Date) -lt $deadline) {
+        $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+        if ("$($st.domain.result.state)" -eq 'running') {
+            if ($run1) { return $true }
+            $run1 = $true
+            Start-Sleep -Milliseconds 400
+        } else { $run1 = $false; Start-Sleep -Milliseconds 300 }
+    }
+    return $false
+}
 function Assert-P2Collision {
     # P2 issued barrier: pause in flight, a caused paused observation settles it — the
-    # response must carry the REAL cause with request_effect=state_satisfied.
+    # response must carry the REAL cause with request_effect=state_satisfied. The clock is
+    # RESET first: earlier boundary tests advanced it, which would trip this pause's own
+    # deadline before the observation can settle it.
     param([string]$Sid, [int]$Gen, [string]$RequestId, [string]$EmitJson, [string]$ExpectCause, [string]$Id)
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $body = '{"jsonrpc":"2.0","id":791,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
     Start-Sleep -Milliseconds 900
@@ -444,6 +461,7 @@ function Assert-DeadlineBoundary {
     # 29.999/30.000 virtual-clock boundary: just below the deadline the call is still
     # waiting; the final millisecond trips TIMEOUT.
     param([string]$Sid, [int]$Gen, [string]$RequestId)
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $body = '{"jsonrpc":"2.0","id":792,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
     Start-Sleep -Milliseconds 900
@@ -1534,17 +1552,15 @@ function Run-ACC007 {
     $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc7-lc'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sid3 = $L3.domain.result.session_id; $gen3 = [int]$L3.domain.result.generation
     Assert-Cond 'p2-launch' 'third session running' "ok=$($L3.domain.ok)" ($L3.domain.ok) @($L3.rpc.resp)
+    $null = Wait-StableRunning $sid3
     Assert-P2Collision $sid3 $gen3 'acc7-p2bp' '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc7-bp-9"}]}}' 'breakpoint' 'p2-issued-breakpoint'
-    $wp3 = Wait-HeldPause $sid3 $gen3
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid3; generation = $gen3; pause_epoch = $wp3.epoch; request_id = 'acc7-c3' }
-    Start-Sleep -Milliseconds 500
+    $null = Wait-StableRunning $sid3
     Assert-P2Collision $sid3 $gen3 'acc7-p2ex' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'p2-issued-exception'
 
     # P1-late: a pause settled by MANUAL observation; a LATE caused observation afterwards
     # settles as a new pause_epoch with the real cause — it never rewrites the first response.
-    $wp4 = Wait-HeldPause $sid3 $gen3
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid3; generation = $gen3; pause_epoch = $wp4.epoch; request_id = 'acc7-c4' }
-    Start-Sleep -Milliseconds 500
+    $null = Wait-StableRunning $sid3
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $curLate = Get-MaxEventCursor $sid3 $gen3
     $bodyP1 = '{"jsonrpc":"2.0","id":793,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $sid3 + '","generation":' + $gen3 + ',"request_id":"acc7-p1late"}}}'
     $rfP1 = Invoke-Detached $bodyP1 'acc7p1late'
@@ -1559,9 +1575,7 @@ function Run-ACC007 {
     Assert-Cond 'p1-late-not-rewritten' 'manual-settled response intact; late breakpoint settles as a NEW pause (epoch advances)' "reason=$($domP1.result.reason) p1ep=$p1Epoch lateBp=$($evLate.kinds -contains 'breakpoint_hit')" $lateOk @($rfP1, $evLate.call.rpc.resp)
 
     # 29.999/30.000 deadline boundary on the virtual clock.
-    $wp5 = Wait-HeldPause $sid3 $gen3
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid3; generation = $gen3; pause_epoch = $wp5.epoch; request_id = 'acc7-c5' }
-    Start-Sleep -Milliseconds 500
+    $null = Wait-StableRunning $sid3
     Assert-DeadlineBoundary $sid3 $gen3 'acc7-bnd'
 
     $null = Test-Adapter '{"install":false}'
@@ -1644,9 +1658,7 @@ function Run-ACC012 {
     $LP = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc12-lp'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidP = $LP.domain.result.session_id; $genP = [int]$LP.domain.result.generation
     Assert-Cond 'acc12-p2-launch' 'fresh session for P2' "ok=$($LP.domain.ok)" ($LP.domain.ok) @($LP.rpc.resp)
-    $wp5 = Wait-HeldPause $sidP $genP
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sidP; generation = $genP; pause_epoch = $wp5.epoch; request_id = 'acc12-c3' }
-    Start-Sleep -Milliseconds 500
+    $null = Wait-StableRunning $sidP
     Assert-P2Collision $sidP $genP 'acc12-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'acc12-p2-exception-response'
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 400
@@ -1763,9 +1775,7 @@ function Run-ACC014 {
     $LP = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc14-lp'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidP = $LP.domain.result.session_id; $genP = [int]$LP.domain.result.generation
     Assert-Cond 'acc14-p2-launch' 'fresh session for P2' "ok=$($LP.domain.ok)" ($LP.domain.ok) @($LP.rpc.resp)
-    $wp6 = Wait-HeldPause $sidP $genP
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sidP; generation = $genP; pause_epoch = $wp6.epoch; request_id = 'acc14-c3' }
-    Start-Sleep -Milliseconds 500
+    $null = Wait-StableRunning $sidP
     Assert-P2Collision $sidP $genP 'acc14-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"step-p2","step_kind":"into"}]}}' 'step' 'acc14-p2-step-response'
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 400
@@ -1822,10 +1832,9 @@ function Run-ACC008 {
     $sid4 = $L4.domain.result.session_id; $gen4 = [int]$L4.domain.result.generation
     Assert-Cond 'a08-p2-launch' 'coreclr session for barriers' "ok=$($L4.domain.ok)" ($L4.domain.ok) @($L4.rpc.resp)
     if ($L4.domain.ok) {
+        $null = Wait-StableRunning $sid4
         Assert-P2Collision $sid4 $gen4 'a08-p2bp' '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"a08-bp-9"}]}}' 'breakpoint' 'a08-p2-issued-breakpoint'
-        $wp4 = Wait-HeldPause $sid4 $gen4
-        $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid4; generation = $gen4; pause_epoch = $wp4.epoch; request_id = 'a08-c1z' }
-        Start-Sleep -Milliseconds 500
+        $null = Wait-StableRunning $sid4
         Assert-DeadlineBoundary $sid4 $gen4 'a08-bnd'
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid4; generation = $gen4; request_id = 'a08-tz' }
         Start-Sleep -Milliseconds 900
@@ -1965,6 +1974,7 @@ function Run-ACC034 {
     $null = Test-Adapter '{"install":true}'
     $null = Test-Adapter '{"fail_next":"none"}'
     $body4 = '{"jsonrpc":"2.0","id":784,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid4 + '","generation":' + $gen4 + ',"request_id":"a34-rb"}}}'
+    $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $rf4 = Invoke-Detached $body4 'a34rb'
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 29999
