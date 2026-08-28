@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using dnSpy.Contracts.Debugger;
 
 namespace dnSpy.Extension.MCP.Debugger;
 
@@ -106,10 +107,10 @@ public static class LaunchPlanner {
 
 	/// <summary>Fixed MCP break_kind → PredefinedBreakKinds mapping (EVD-API-008): literal or null is never passed upstream.</summary>
 	public static string UpstreamBreakKind(string breakKind) => breakKind switch {
-		BreakKinds.None => "PredefinedBreakKinds.DontBreak",
-		BreakKinds.Process => "PredefinedBreakKinds.CreateProcess",
-		BreakKinds.ModuleCctorOrEntryPoint => "PredefinedBreakKinds.ModuleCctorOrEntryPoint",
-		BreakKinds.EntryPoint => "PredefinedBreakKinds.EntryPoint",
+		BreakKinds.None => PredefinedBreakKinds.DontBreak,
+		BreakKinds.Process => PredefinedBreakKinds.CreateProcess,
+		BreakKinds.ModuleCctorOrEntryPoint => PredefinedBreakKinds.ModuleCctorOrEntryPoint,
+		BreakKinds.EntryPoint => PredefinedBreakKinds.EntryPoint,
 		_ => throw new ArgumentOutOfRangeException(nameof(breakKind)),
 	};
 
