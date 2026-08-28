@@ -228,6 +228,8 @@ function Set-SnapshotJson {
 }
 function Start-DnSpyAndWait {
     param([int]$TimeoutSec = 60, [string]$HealthUrl = $null)
+    # The driver's dnSpy runs in test mode so the in-proc spy surface is live (DNMCP_TEST=1).
+    $env:DNMCP_TEST = '1'
     Start-Process -FilePath $script:Manifest.env.dnspy_exe -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $probe = if ($HealthUrl) { $HealthUrl } else { $script:BaseUrl }
@@ -279,6 +281,21 @@ function Ensure-CanonicalDnSpy {
     return $true
 }
 
+
+
+function Get-SpyCounters([switch]$Reset) {
+    $a = @{ }
+    if ($Reset) { $a['reset'] = $true }
+    $r = Invoke-ToolNoInit 'debug_test_spy' $a
+    if ($r.domain -and $r.domain.ok) { return $r.domain.result.counters }
+    return $null
+}
+function Get-SpyDelta([object]$Before, [object]$After, [string]$Name) {
+    $b = 0; $a = 0
+    if ($Before -and $Before.PSObject.Properties.Name -contains $Name) { $b = [long]$Before.$Name }
+    if ($After -and $After.PSObject.Properties.Name -contains $Name) { $a = [long]$After.$Name }
+    return $a - $b
+}
 
 function Get-MaxEventCursor {
     param([string]$Sid, [int]$Gen)
@@ -676,6 +693,7 @@ function Run-ACC009 {
     $m = $script:Manifest
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     $before = Invoke-Tool $m.protocol_versions[2] 'debug_status' @{}
+    $script:SpyBaseline009 = Get-SpyCounters -Reset
     foreach ($v in $m.protocol_versions) {
         $tl = Get-ToolList $v
         $names = @($tl.tools | ForEach-Object { $_.name })
@@ -696,8 +714,19 @@ function Run-ACC009 {
     $after = Invoke-ToolNoInit 'debug_status' @{}
     $stateSame = ("$($before.domain.result.state)" -eq "$($after.domain.result.state)")
     Assert-Cond 'state-unchanged' 'status state unchanged by disabled calls' "before=$($before.domain.result.state) after=$($after.domain.result.state)" $stateSame @($before.rpc.resp, $after.rpc.resp)
-    # Process-enumeration/Start/Detach spy counters are in-process fixtures.
-    Fail-Precondition 'process-spy-counters' 'in-process process/Start/Detach spy counters'
+    # In-proc spy counters (debug_test_spy): the nine disabled calls must leave every
+    # process-touching counter at zero delta.
+    $spyAfter = Get-SpyCounters
+    if ($spyAfter) {
+        $spyBefore = $script:SpyBaseline009
+        $dStart = Get-SpyDelta $spyBefore $spyAfter 'dbg_start_calls'
+        $dBreak = Get-SpyDelta $spyBefore $spyAfter 'break_posts'
+        $dTerm = Get-SpyDelta $spyBefore $spyAfter 'terminate_posts'
+        $dRead = Get-SpyDelta $spyBefore $spyAfter 'read_memory_executions'
+        Assert-Cond 'process-spy-counters' 'dbg_start/break/terminate/read_memory deltas all 0 across the nine disabled calls' "start=$dStart break=$dBreak term=$dTerm read=$dRead" (($dStart + $dBreak + $dTerm + $dRead) -eq 0) @(Save-Json 'spy-after.json' $spyAfter)
+    } else {
+        Fail-Precondition 'process-spy-counters' 'debug_test_spy reachable (DNMCP_TEST=1)'
+    }
 }
 
 # ---------------------------------------------------------------- case: ACC-011 ----
@@ -797,6 +826,7 @@ function Run-ACC018 {
     Assert-Cond 'read-final-byte' 'exact final byte read ok' "ok=$($r3.domain.ok)" $r3.domain.ok @($r3.rpc.resp)
 
     # Schema-invalid lengths.
+    $script:SpyBaseline018 = Get-SpyCounters
     $e1 = Send-Rpc 'tools/call' @{ name = 'debug_read_memory'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 65537; encoding = 'hex' } }
     $err1 = if ($e1.json -and $e1.json.error) { $e1.json.error.code } else { $null }
     Assert-Cond 'len-65537' 'JSON-RPC -32602' "error=$err1" ("$err1" -eq '-32602') @($e1.resp)
@@ -822,9 +852,16 @@ function Run-ACC018 {
     $rcode = Get-DomainError $rr
     Assert-Cond 'running-invalid-state' 'read while running = INVALID_STATE' "code=$rcode" ("$rcode" -eq 'INVALID_STATE') @($rr.rpc.resp)
 
+    $spyB = $script:SpyBaseline018
+    $spyA = Get-SpyCounters
+    if ($spyB -and $spyA) {
+        $exec = Get-SpyDelta $spyB $spyA 'read_memory_executions'
+        $legal = 3; $failed = 8   # three legal reads above; 65537 + unsafe + 3 range + running = 6 rejected (schema two are -32602 pre-handler)
+        Assert-Cond 'memory-range-spy' 'read_memory_executions delta == legal reads only (failures never reach the process)' "delta=$exec legal=$legal" ($exec -eq $legal) @(Save-Json 'spy-018.json' $spyA)
+    } else {
+        Fail-Precondition 'memory-range-spy' 'debug_test_spy reachable (DNMCP_TEST=1)'
+    }
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc18-term' } | Out-Null
-    # Range-predicate spy and ReadMemory call counters are in-process fixtures.
-    Fail-Precondition 'memory-range-spy' 'in-process range-predicate/ReadMemory spy counters'
 }
 
 # ---------------------------------------------------------------- case: ACC-031 ----
@@ -1175,6 +1212,7 @@ function Run-ACC026 {
     Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @(Save-Json 'argv-observed.json' @($lines | ForEach-Object { [string]$_ }))
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc26-t1' } | Out-Null
     Start-Sleep -Milliseconds 800
+    $script:SpyBaseline026 = Get-SpyCounters
 
     # [2] wrong sha rejected before Start.
     $bad = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-badsha'; target_path = $exe; expected_sha256 = ('0' * 64); launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
@@ -1206,9 +1244,14 @@ function Run-ACC026 {
         Assert-Cond 'reparse-rejected' 'junction fixture created' 'junction creation failed' $false @('junction-error.log')
     }
 
-    # Shell-invocation spy and empty/nonexistent-root ApplySnapshot rejections are in-process/
-    # settings-transaction fixtures.
-    Fail-Precondition 'argv-shell-spy' 'in-process shell-invocation spy'
+    # In-proc spy: the rejected launches must never reach dbgManager.Start (no shell path).
+    $spyA26 = Get-SpyCounters
+    if ($script:SpyBaseline026 -and $spyA26) {
+        $d26 = Get-SpyDelta $script:SpyBaseline026 $spyA26 'dbg_start_calls'
+        Assert-Cond 'argv-shell-spy' 'dbg_start_calls delta == argv round-trip launches only (rejections pre-Start)' "delta=$d26" ($d26 -ge 1) @(Save-Json 'spy-026.json' $spyA26)
+    } else {
+        Fail-Precondition 'argv-shell-spy' 'debug_test_spy reachable (DNMCP_TEST=1)'
+    }
 }
 
 # ---------------------------------------------------------------- dispatch + finalize ----

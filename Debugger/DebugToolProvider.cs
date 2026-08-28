@@ -44,9 +44,23 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			var names = new List<string>(DisabledApiNames);
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
+			if (!DebugSessionService.TestModeEnabled)
+				names.Add("debug_test_spy");
 			return names;
 		}
 	}
+
+	ToolInfo TestSpyTool() => new ToolInfo {
+		Name = "debug_test_spy",
+		Description = "DNMCP_TEST-only: snapshot (or reset) the in-process spy counters the ACC fixtures assert deltas on (read_memory_executions, dbg_start_calls, break/terminate posts, dispatcher post counts, thread-domain classifications).",
+		InputSchema = new Dictionary<string, object> {
+			["type"] = "object",
+			["properties"] = new Dictionary<string, object> {
+				["reset"] = new Dictionary<string, object> { ["type"] = "boolean" },
+			},
+			["additionalProperties"] = false,
+		},
+	};
 
 	/// <summary>The per-process frozen gate owned by DebugGateService (CON-DYN-014): the
 	/// dispatcher-sampled value once it lands, otherwise the unsampleable gate (always false).</summary>
@@ -63,6 +77,10 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 
 	public IReadOnlyList<ToolInfo> GetTools() {
 		var tools = new List<ToolInfo> { CapabilitiesTool() };
+		// The in-proc injection surface (DNMCP_TEST=1): diagnostic tools are advertised only in
+		// test mode; they always answer (CAPABILITY_UNAVAILABLE outside it) via UnadvertisedTools.
+		if (DebugSessionService.TestModeEnabled)
+			tools.Add(TestSpyTool());
 		// The 21 session-scoped tools are advertised only when the frozen gate is active AND
 		// their handlers exist (staged with IMP-004..009); never advertise what cannot answer.
 		if (Gate.EffectiveDebugLaunch) {
@@ -86,6 +104,8 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
+			if (toolName == "debug_test_spy")
+				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);
 			return null; // session tools dispatch here as their handlers land (IMP-004..009)

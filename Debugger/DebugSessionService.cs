@@ -38,6 +38,17 @@ public sealed class DebugSessionService : IDisposable {
 	readonly SemaphoreSlim waitSlots = new(8, 8);
 
 	readonly object sessionLock = new();
+
+	// ---- DNMCP_TEST spy counters (in-proc injection surface, increment 1) ----
+	// Compiled unconditionally (an Interlocked per event is negligible), exposed ONLY through
+	// the debug_test_spy tool which is gated on DNMCP_TEST=1 and answers CAPABILITY_UNAVAILABLE
+	// otherwise. These are the in-process counters the ACC fixtures assert deltas on.
+	static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> SpyCounters = new();
+	static void SpyInc(string name) => SpyCounters.AddOrUpdate(name, 1, (_, v) => v + 1);
+	public static bool TestModeEnabled => Environment.GetEnvironmentVariable("DNMCP_TEST") == "1";
+	public static IReadOnlyDictionary<string, long> SpySnapshot() =>
+		(IReadOnlyDictionary<string, long>)SpyCounters.ToDictionary(kv => kv.Key, kv => kv.Value);
+	public static void SpyReset() => SpyCounters.Clear();
 	DbgProcess? ownedProcess;
 	DbgProcessControlAdapter? adapter;
 	LaunchPlan? activePlan;
@@ -124,6 +135,22 @@ public sealed class DebugSessionService : IDisposable {
 
 	// ---- dispatch ----
 
+	/// <summary>
+	/// DNMCP_TEST-only spy surface: counter snapshot/reset for the ACC fixtures. Outside test
+	/// mode it answers the fixed CAPABILITY_UNAVAILABLE envelope with zero side effects.
+	/// </summary>
+	string TestSpy(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var reset = args is not null && args.TryGetValue("reset", out var r) && r is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+		if (reset)
+			SpyReset();
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true,
+			["counters"] = SpySnapshot(),
+		});
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -160,6 +187,7 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_list_modules" => ListModules(arguments),
 				"debug_read_memory" => ReadMemory(arguments),
 				"debug_dump_module" => DumpModule(arguments),
+				"debug_test_spy" => TestSpy(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -376,7 +404,12 @@ public sealed class DebugSessionService : IDisposable {
 			return "DbgManager is not available";
 		DebugProgramOptions options = BuildOptions(plan);
 		var uiDispatcher = Application.Current?.Dispatcher;
-		Func<string?> start = () => dbgManager.Start(options);
+		Func<string?> start = () => {
+			SpyInc("dbg_start_calls");
+			SpyCounters["start_thread_is_wpf"] = uiDispatcher is not null && uiDispatcher.Thread == System.Threading.Thread.CurrentThread ? 1 : 0;
+			return dbgManager.Start(options);
+		};
+		SpyInc(uiDispatcher is null ? "start_without_wpf_dispatcher" : "start_via_wpf_invoke");
 		return uiDispatcher is null ? start() : (string?)uiDispatcher.Invoke(start);
 	}
 
@@ -955,6 +988,7 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	void PostVoidToDispatcher(Action action) {
+		SpyInc("dispatcher_async_posts");
 		dbgManager?.Dispatcher.BeginInvoke(new Action(action));
 	}
 
@@ -1198,6 +1232,7 @@ public sealed class DebugSessionService : IDisposable {
 	void PostVoidToDispatcherSync(Action action) {
 		if (dbgManager is null)
 			return;
+		SpyInc("dispatcher_sync_posts");
 		var done = new ManualResetEventSlim();
 		dbgManager.Dispatcher.BeginInvoke(new Action(() => {
 			try { action(); }
@@ -1538,6 +1573,7 @@ public sealed class DebugSessionService : IDisposable {
 			if (process is null)
 				return;
 			try {
+				SpyInc("read_memory_executions");
 				data = process.ReadMemory(address, length);
 			}
 			catch (Exception ex) {
