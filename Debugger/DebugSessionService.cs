@@ -1080,7 +1080,9 @@ public sealed class DebugSessionService : IDisposable {
 				return;
 			var walker = thread.CreateStackWalker();
 			try {
-				foreach (var frame in walker.GetNextStackFrames(start + pageSize)) {
+				// One lookahead frame beyond the page proves more frames exist (the cursor
+				// condition below needs frames.Count to exceed start + page.Count).
+				foreach (var frame in walker.GetNextStackFrames(start + pageSize + 1)) {
 					var module = frame.Module?.Name ?? frame.Module?.Filename ?? string.Empty;
 					frames.Add((module, frame.FunctionToken, frame.FunctionOffset));
 					frameModuleFiles.Add(frame.Module?.Filename);
