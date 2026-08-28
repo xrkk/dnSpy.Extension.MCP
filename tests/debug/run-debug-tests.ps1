@@ -491,7 +491,8 @@ function Run-ACC002 {
         $shaProv = [Security.Cryptography.SHA256]::Create()
         $verifierHex = ([BitConverter]::ToString($shaProv.ComputeHash($tokenBytes))).Replace('-', '').ToLower()
         $remoteUrl = "http://$($m.env.vm_ip):15100/"
-        & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
+        & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
+        & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
         $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.vm_ip + '/32","' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
         $script:RemoteUp = $false
         Stop-DnSpyAndTargets
@@ -515,7 +516,8 @@ function Run-ACC002 {
         if ($orig) {
             try { Restart-WithSnapshot $orig | Out-Null } catch { }
         }
-        & netsh http delete urlacl url="http://$($m.env.vm_ip):15100/" 2>&1 | Set-Content (Join-Path $script:OutDir 'urlacl-del.log')
+        & netsh http delete urlacl url="http://$($m.env.vm_ip):15100/" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-del.log')
+        & netsh advfirewall firewall delete rule name="dnspy-mcp-acc-remote" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-del.log')
     }
 }
 

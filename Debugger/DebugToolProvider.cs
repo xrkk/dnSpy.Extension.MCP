@@ -131,6 +131,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 
 	ToolInfo CapabilitiesTool() => new ToolInfo {
 		Name = "debug_capabilities",
+		OutputSchema = ResultSchema("debug_capabilities"),
 		Description = "Report the dynamic-debugging capability set of this dnSpy MCP instance: frozen enablement gate, host architecture, the fixed runtime/launch matrix, security posture, artifact policy and every fixed transport/resource limit.",
 		InputSchema = new Dictionary<string, object> {
 			["type"] = "object",
@@ -153,6 +154,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		Name = name,
 		Description = SessionToolDescriptions.TryGetValue(name, out var d) ? d : name,
 		InputSchema = ArgsSchema(name),
+		OutputSchema = ResultSchema(name),
 	};
 
 	/// <summary>
@@ -169,6 +171,17 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			}
 		}
 		return new Dictionary<string, object> { ["type"] = "object" };
+	}
+
+	/// <summary>The tool's result definition from the frozen contract (outputSchema).</summary>
+	Dictionary<string, object>? ResultSchema(string toolName) {
+		lock (schemaLock) {
+			schemaDoc ??= LoadEmbeddedSchema();
+			var defs = schemaDoc.RootElement.GetProperty("$defs");
+			if (defs.TryGetProperty(toolName + "_result", out var result))
+				return JsonSerializer.Deserialize<Dictionary<string, object>>(result.GetRawText());
+		}
+		return null;
 	}
 
 	static JsonDocument LoadEmbeddedSchema() {

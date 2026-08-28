@@ -124,7 +124,18 @@ public sealed class DebugSessionService : IDisposable {
 
 	// ---- dispatch ----
 
+	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
+	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
+	// schema-valid requests).
+	static readonly System.Collections.Generic.HashSet<string> RequestIdRequired = new() {
+		"debug_launch", "debug_pause", "debug_continue", "debug_terminate", "debug_restart",
+		"debug_set_breakpoint", "debug_set_breakpoint_enabled", "debug_remove_breakpoint",
+		"debug_set_exception_policy", "debug_step", "debug_dump_module",
+	};
+
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? arguments) {
+		if (RequestIdRequired.Contains(toolName))
+			ArgString(arguments, "request_id", required: true);
 		string? envelope;
 		try {
 			envelope = toolName switch {

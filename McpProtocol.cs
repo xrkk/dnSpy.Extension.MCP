@@ -107,6 +107,14 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		[JsonPropertyName("inputSchema")]
 		public Dictionary<string, object> InputSchema { get; set; } = new Dictionary<string, object>();
+
+		/// <summary>
+		/// JSON Schema describing the tool's result object; advertised only to clients that
+		/// negotiated protocol 2025-06-18 (older revisions must not see the field).
+		/// </summary>
+		[JsonPropertyName("outputSchema")]
+		[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+		public Dictionary<string, object>? OutputSchema { get; set; }
 	}
 
 	/// <summary>
@@ -152,6 +160,14 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		[JsonPropertyName("isError")]
 		public bool IsError { get; set; }
+
+		/// <summary>
+		/// Structured result mirroring the canonical text payload; emitted only for clients
+		/// that negotiated protocol 2025-06-18 (the revision that introduced it).
+		/// </summary>
+		[JsonPropertyName("structuredContent")]
+		[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+		public object? StructuredContent { get; set; }
 	}
 
 	/// <summary>

@@ -5,6 +5,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -891,13 +892,19 @@ namespace dnSpy.Extension.MCP {
 			}
 		}
 
+		// Last negotiated protocol revision (per-process approximation of the per-transport
+		// value; the dedicated-instance runbook guarantees a single driver at a time).
+		string negotiatedProtocolVersion = supportedProtocolVersions[0];
+		static string LatestProtocolVersion => "2025-06-18";
+
 		object HandleInitialize(Dictionary<string, object>? parameters) {
 			// Per the MCP lifecycle spec the server MUST reply with the client's requested
 			// protocol version if it supports it, otherwise with its own newest supported
 			// version. Hardcoding 2024-11-05 (the pre-Streamable-HTTP revision) ignored the
 			// client's request; we negotiate instead.
+			negotiatedProtocolVersion = NegotiateProtocolVersion(parameters);
 			return new InitializeResult {
-				ProtocolVersion = NegotiateProtocolVersion(parameters),
+				ProtocolVersion = negotiatedProtocolVersion,
 				Capabilities = new ServerCapabilities {
 					Tools = new Dictionary<string, object>(),
 					Resources = new Dictionary<string, object>()
@@ -936,8 +943,16 @@ namespace dnSpy.Extension.MCP {
 		}
 
 		object HandleListTools() {
+			var tools = toolRegistry.GetAvailableTools();
+			// outputSchema is a 2025-06-18 advertisement field; older revisions must not see it.
+			if (negotiatedProtocolVersion != LatestProtocolVersion) {
+				tools = tools.Select(t => {
+					t.OutputSchema = null;
+					return t;
+				}).ToList();
+			}
 			return new ListToolsResult {
-				Tools = toolRegistry.GetAvailableTools()
+				Tools = tools
 			};
 		}
 
@@ -951,7 +966,21 @@ namespace dnSpy.Extension.MCP {
 			if (toolCall == null)
 				throw new ArgumentException("Invalid tool call parameters");
 
-			return toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments);
+			var callResult = toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments);
+			// 2025-06-18 wire shape: structuredContent deep-equals the canonical text payload.
+			if (negotiatedProtocolVersion == LatestProtocolVersion && callResult != null) {
+				var text = callResult.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
+				if (!string.IsNullOrEmpty(text)) {
+					try {
+						using var doc = JsonDocument.Parse(text);
+						callResult.StructuredContent = JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText());
+					}
+					catch (JsonException) {
+						// Non-JSON text payloads have no structured representation.
+					}
+				}
+			}
+			return callResult;
 		}
 
 		object HandleListResources() {
