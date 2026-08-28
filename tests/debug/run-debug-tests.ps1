@@ -335,6 +335,28 @@ function Test-BreakpointHitSince {
     return @{ hit = ($hit -gt 0); count = $events.Count; raw = $r }
 }
 
+
+function Wait-HeldPause {
+    # Acquire a pause that actually sticks: the launch transient (create-break pause that
+    # auto-continues) races an immediate explicit pause, so retry until a pause holds.
+    param([string]$Sid, [int]$Gen, [int]$TimeoutSec = 20)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+        if ("$($st.domain.result.state)" -eq 'paused') {
+            $ep1 = $st.domain.debug_context.pause_epoch
+            Start-Sleep -Milliseconds 700
+            $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+            if ("$($st2.domain.result.state)" -eq 'paused' -and "$($st2.domain.debug_context.pause_epoch)" -eq "$ep1") {
+                return @{ ok = $true; epoch = [int]$ep1 }
+            }
+        }
+        $p = Invoke-ToolNoInit 'debug_pause' @{ session_id = $Sid; generation = $Gen; request_id = 'whp-p' }
+        Start-Sleep -Milliseconds 600
+    }
+    return @{ ok = $false; epoch = 0 }
+}
+
 function Wait-StablePaused {
     # break_kind entry/none both see a transient pause the extension auto-continues; wait for
     # a pause that holds across two samples before taking handles.
@@ -1343,9 +1365,8 @@ function Run-ACC007 {
     Assert-Cond 'cause-launch' 'second session running' "ok=$($L2.domain.ok)" ($L2.domain.ok) @($L2.rpc.resp)
     # The transient create-break auto-pauses then auto-continues; an explicit pause may race it
     # (INVALID_STATE either way) — what matters for the cause matrix is a HELD pause.
-    $null = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid2; generation = $gen2; request_id = 'acc7-p2' }
-    $wp = Wait-StablePaused $sid2
-    Assert-Cond 'cause-paused' 'paused before cause matrix (explicit pause or held transient)' "ok=$($wp.ok)" $wp.ok
+    $wp = Wait-HeldPause $sid2 $gen2
+    Assert-Cond 'cause-paused' 'held pause acquired before cause matrix' "ok=$($wp.ok)" $wp.ok
     $ep2 = $wp.epoch
     $curC = Get-MaxEventCursor $sid2 $gen2
     $cur2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid2; generation = $gen2; pause_epoch = $ep2; request_id = 'acc7-c1' }
