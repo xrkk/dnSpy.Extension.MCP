@@ -1997,12 +1997,44 @@ public sealed class DebugSessionService : IDisposable {
 		var infos = CollectBreakInfos(process);
 		if (infos.Count == 0)
 			infos.Add(new BreakInfoObservation("break", 0));
-		var result = coordinator.ObservePaused(coordinator.ActiveSessionId, coordinator.Generation,
-			ownedIdentityMatch: true, infos);
-		if (result.Accepted && result.SettledPauseRecord) {
+		// Observations flow through the adapter seam (production raises here; the DNMCP_TEST
+		// fake raises identical ones from debug_test_adapter emit).
+		IDbgProcessControlAdapter? raiseTarget;
+		lock (sessionLock) raiseTarget = testAdapter ?? adapter;
+		if (raiseTarget is DbgProcessControlAdapter production)
+			production.RaiseObservation(new ProcessObservation {
+				Kind = ProcessObservation.ObservationKind.Paused,
+				Pid = process.Id,
+				StartedUtc = sessionStartedUtc,
+				BreakInfos = infos,
+			});
+		else if (raiseTarget is FakeDbgProcessControlAdapter fake)
+			fake.EmitPaused(process.Id, sessionStartedUtc, infos);
+	}
+
+	/// <summary>
+	/// Single consumer of upstream paused/removal observations (dispatcher thread). Production
+	/// raises via the adapter after IsRunningChanged; test emissions arrive identically.
+	/// </summary>
+	void OnAdapterObservation(ProcessObservation observation) {
+		if (observation.Kind == ProcessObservation.ObservationKind.Paused) {
+			var result = coordinator.ObservePaused(coordinator.ActiveSessionId, coordinator.Generation,
+				ownedIdentityMatch: true, observation.BreakInfos);
+			if (result.Accepted && result.SettledPauseRecord) {
+				TaskCompletionSource<string>? controlTcs;
+				lock (sessionLock) controlTcs = controlOutcomeTcs;
+				controlTcs?.TrySetResult("paused");
+			}
+		}
+		else if (observation.Kind == ProcessObservation.ObservationKind.Removed) {
+			var result = coordinator.ObserveProcessRemoved(coordinator.ActiveSessionId, coordinator.Generation,
+				ownedIdentityMatch: true, observation.ExitCode);
 			TaskCompletionSource<string>? controlTcs;
 			lock (sessionLock) controlTcs = controlOutcomeTcs;
-			controlTcs?.TrySetResult("paused");
+			if (result.Outcome == "pending-restart")
+				controlTcs?.TrySetResult("removed-pending-restart");
+			else
+				controlTcs?.TrySetResult("removed");
 		}
 	}
 
