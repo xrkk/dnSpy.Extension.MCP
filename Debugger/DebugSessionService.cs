@@ -63,12 +63,14 @@ public sealed class DebugSessionService : IDisposable {
 		"debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled",
 		"debug_remove_breakpoint", "debug_set_exception_policy",
 		"debug_list_threads", "debug_get_stack", "debug_step",
+		"debug_get_locals", "debug_expand_value",
 	};
 
 	public bool Handles(string toolName) => HandledTools.Contains(toolName);
 
 	readonly DbgCodeBreakpointsService? breakpointsService;
 	readonly DbgDotNetCodeLocationFactory? locationFactory;
+	readonly dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService;
 	DebugBreakpointStore bpStore = new();
 	readonly Dictionary<int, string> mcpIdByDnSpyBreakpoint = new();
 	readonly Dictionary<string, int> dnSpyIdByMcpBreakpoint = new();
@@ -89,10 +91,12 @@ public sealed class DebugSessionService : IDisposable {
 	public DebugSessionService([Import(AllowDefault = true)] DbgManager? dbgManager,
 		[Import(AllowDefault = true)] DbgCodeBreakpointsService? breakpointsService,
 		[Import(AllowDefault = true)] DbgDotNetCodeLocationFactory? locationFactory,
+		[Import(AllowDefault = true)] dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService,
 		DebugGateService gateService) {
 		this.dbgManager = dbgManager;
 		this.breakpointsService = breakpointsService;
 		this.locationFactory = locationFactory;
+		this.languageService = languageService;
 		this.gateService = gateService;
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
@@ -132,6 +136,8 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_list_threads" => ListThreads(arguments),
 				"debug_get_stack" => GetStack(arguments),
 				"debug_step" => Step(arguments),
+				"debug_get_locals" => GetLocals(arguments),
+				"debug_expand_value" => ExpandValue(arguments),
 				_ => null,
 			};
 		}
@@ -986,6 +992,209 @@ public sealed class DebugSessionService : IDisposable {
 		done.Wait(ControlOperationRecord.DefaultDeadline);
 	}
 
+	// ---- IMP-008: locals and value expansion ----
+
+	sealed class ValueHandleEntry {
+		public string Handle = string.Empty;
+		public int Epoch;
+		public string ParentHandle = string.Empty;
+		public int Depth;
+		public string Name = string.Empty;
+		public string Kind = "local";
+		public string? Display;
+		public int FrameIndex;
+		public List<ValueHandleEntry> SnapshotChildren = new();
+	}
+	sealed class StringBufferWriter : dnSpy.Contracts.Debugger.Text.IDbgTextWriter {
+		readonly System.Text.StringBuilder sb = new();
+		public void Write(dnSpy.Contracts.Debugger.Text.DbgTextColor color, string? text) { if (text is not null) sb.Append(text); }
+		public override string ToString() => sb.ToString();
+	}
+	readonly Dictionary<string, ValueHandleEntry> valueHandles = new();
+	int valueHandleSeq;
+
+	const dnSpy.Contracts.Debugger.Evaluation.DbgValueNodeEvaluationOptions FixedNodeOptions =
+		dnSpy.Contracts.Debugger.Evaluation.DbgValueNodeEvaluationOptions.NoFuncEval
+		| dnSpy.Contracts.Debugger.Evaluation.DbgValueNodeEvaluationOptions.RawView;
+
+	/// <summary>Value handles are pause-epoch bound: any epoch change invalidates the registry
+	/// and closes the snapshot's evaluation contexts (each is closed exactly once).</summary>
+	void InvalidateStaleValueHandles() {
+		int epoch = coordinator.PauseEpoch;
+		foreach (var key in valueHandles.Where(kv => kv.Value.Epoch != epoch).Select(kv => kv.Key).ToList())
+			valueHandles.Remove(key);
+	}
+
+	string GetLocals(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var frameHandle = ArgString(args, "frame_handle", required: true);
+		if (!int.TryParse(frameHandle.Substring(frameHandle.IndexOf('-') + 1), out var frameIndex))
+			frameIndex = 0;
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
+		// The pause-epoch-bound immutable snapshot (CON-DYN-007/§3.5): evaluation objects do
+		// not survive the dispatcher callback, so the whole breadth-first expansion (depth<=4,
+		// 1024 nodes) is materialized here with pre-allocated handles; expand only pages it.
+		var roots = new List<ValueHandleEntry>();
+		bool truncated = false;
+		PostVoidToDispatcherSync(() => {
+			var frame = GetFrameByIndex(frameIndex);
+			if (frame is null)
+				return;
+			var languages = languageService!.GetLanguages(frame.Runtime.RuntimeKindGuid);
+			if (languages.Count == 0)
+				return;
+			var language = languages[0];
+			var context = language.CreateContext(frame);
+			if (context is null)
+				return;
+			try {
+				var evalInfo = new dnSpy.Contracts.Debugger.Evaluation.DbgEvaluationInfo(context, frame, default);
+				var locals = language.LocalsProvider.GetNodes(evalInfo, FixedNodeOptions,
+					dnSpy.Contracts.Debugger.Evaluation.DbgLocalsValueNodeEvaluationOptions.ShowRawLocals);
+				var queue = new Queue<(ValueHandleEntry entry, dnSpy.Contracts.Debugger.Evaluation.DbgValueNode node)>();
+				foreach (var local in locals) {
+					var entry = NewSnapshotEntry(local.ValueNode.Expression, local.Kind.ToString().ToLowerInvariant(), null, 0);
+					entry.Display = FormatNode(evalInfo, local.ValueNode);
+					roots.Add(entry);
+					if (entry.Depth < 4)
+						queue.Enqueue((entry, local.ValueNode));
+				}
+				int nodeCount = roots.Count;
+				try {
+				const int nodeCap = 1024;
+				while (queue.Count > 0 && nodeCount < nodeCap) {
+					var (parent, node) = queue.Dequeue();
+					ulong childCount;
+					try { childCount = node.GetChildCount(evalInfo); }
+					catch { continue; }
+					var children = node.GetChildren(evalInfo, 0, (int)Math.Min(100, (long)childCount), FixedNodeOptions);
+					foreach (var child in children) {
+						if (nodeCount >= nodeCap) { truncated = true; break; }
+						var childEntry = NewSnapshotEntry(child.Expression, "child", parent, parent.Depth + 1);
+						childEntry.Display = FormatNode(evalInfo, child);
+						nodeCount++;
+						if (childEntry.Depth < 4)
+							queue.Enqueue((childEntry, child));
+					}
+				}
+				}
+				catch (Exception ex) {
+					if (roots.Count > 0)
+						roots[0].Display += "  BFSERR[" + ex.GetType().Name + ": " + ex.Message + "]";
+				}
+			}
+			finally {
+				context.Close();
+			}
+		});
+		if (roots.Count == 0)
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "frame not found or has no locals");
+		var items = new List<object>();
+		foreach (var entry in roots.Take(pageSize)) {
+			lock (sessionLock) valueHandles[entry.Handle] = entry;
+			items.Add(ValueNodeDtoOf(entry));
+		}
+		var dto = new LocalsResultDto { Items = items, Truncated = truncated, TotalKnown = roots.Count };
+		if (pageSize < roots.Count)
+			dto.NextPageCursor = pageSize.ToString();
+		return Ok(coordinator, dto);
+	}
+
+	ValueHandleEntry NewSnapshotEntry(string name, string kind, ValueHandleEntry? parent, int depth) {
+		var entry = new ValueHandleEntry {
+			Handle = $"val-{Interlocked.Increment(ref valueHandleSeq)}",
+			Epoch = coordinator.PauseEpoch,
+			ParentHandle = parent?.Handle ?? string.Empty,
+			Depth = depth,
+			Name = name,
+			Kind = kind,
+			FrameIndex = -1,
+		};
+		if (parent is not null)
+			parent.SnapshotChildren.Add(entry);
+		lock (sessionLock) valueHandles[entry.Handle] = entry;
+		return entry;
+	}
+
+	string ExpandValue(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var valueHandle = ArgString(args, "value_handle", required: true);
+		ValueHandleEntry? parent;
+		lock (sessionLock)
+			valueHandles.TryGetValue(valueHandle, out parent);
+		if (parent is null || parent.Epoch != coordinator.PauseEpoch)
+			return Fail(coordinator, DomainErrorCodes.StaleHandle, message: "value handle is not valid in this pause epoch");
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
+		string? cursor = ArgString(args, "page_cursor");
+		int startAt = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var c) ? c : 0;
+		var children = parent.SnapshotChildren;
+		var page = children.Skip(startAt).Take(pageSize).ToList();
+		var dto = new LocalsResultDto {
+			Items = page.Select(e => (object)ValueNodeDtoOf(e)).ToList(),
+			Truncated = false,
+			TotalKnown = children.Count,
+		};
+		if (startAt + page.Count < children.Count)
+			dto.NextPageCursor = (startAt + page.Count).ToString();
+		return Ok(coordinator, dto);
+	}
+
+	/// <summary>Fixed NoDebuggerDisplay formatting (CON-DYN-007): never ToString/FuncEval.</summary>
+	static string FormatNode(dnSpy.Contracts.Debugger.Evaluation.DbgEvaluationInfo evalInfo,
+		dnSpy.Contracts.Debugger.Evaluation.DbgValueNode node) {
+		if (node.HasError)
+			return node.ErrorMessage ?? "error";
+		var writer = new StringBufferWriter();
+		node.FormatValue(evalInfo, writer,
+			dnSpy.Contracts.Debugger.Evaluation.DbgValueFormatterOptions.NoDebuggerDisplay,
+			System.Globalization.CultureInfo.InvariantCulture);
+		return writer.ToString();
+	}
+
+	DbgStackFrame? GetFrameByIndex(int index) {
+		DbgProcess? process;
+		lock (sessionLock) process = ownedProcess;
+		if (process is null || process.Threads.Length == 0)
+			return null;
+		var walker = process.Threads[0].CreateStackWalker();
+		try {
+			var frames = walker.GetNextStackFrames(index + 1);
+			return index < frames.Length ? frames[index] : null;
+		}
+		finally {
+			walker.Close();
+		}
+	}
+
+	dnSpy.Contracts.Debugger.Evaluation.DbgEvaluationContext? CreateEvaluationContext(DbgStackFrame frame) {
+		if (languageService is null)
+			return null;
+		var languages = languageService.GetLanguages(frame.Runtime.RuntimeKindGuid);
+		if (languages.Count == 0)
+			return null;
+		return languages[0].CreateContext(frame.Runtime, frame.Location, 0, TimeSpan.FromSeconds(10), default);
+	}
+
+	ValueNodeDto ValueNodeDtoOf(ValueHandleEntry entry) {
+		string? unavailable = entry.Display is not null && entry.Display.Contains("内部调试器错误")
+			? "requires_function_evaluation"
+			: null;
+		return new ValueNodeDto {
+			ValueHandle = entry.Handle,
+			ParentValueHandle = entry.ParentHandle.Length == 0 ? null : entry.ParentHandle,
+			Depth = entry.Depth,
+			Name = entry.Name,
+			Kind = entry.Kind,
+			Display = entry.Display,
+			HasChildren = entry.SnapshotChildren.Count > 0,
+			IsNull = entry.Display == "null",
+			Truncated = false,
+			UnavailableReason = unavailable,
+		};
+	}
+
 	// ---- observation pump (DbgManager dispatcher thread) ----
 
 	void OnProcessesChanged(object? sender, DbgCollectionChangedEventArgs<DbgProcess> e) {
@@ -1426,6 +1635,32 @@ public sealed class DebugSessionService : IDisposable {
 	public sealed class StepResultDto {
 		[System.Text.Json.Serialization.JsonPropertyName("step_id")] public string StepId { get; set; } = string.Empty;
 		[System.Text.Json.Serialization.JsonPropertyName("state")] public string State { get; set; } = string.Empty;
+	}
+
+	public sealed class LocalsResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("items")] public List<object> Items { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("next_page_cursor")] public string? NextPageCursor { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("total_known")] public int TotalKnown { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("evaluation_mode")] public string EvaluationMode { get; set; } = "no_func_eval_raw";
+		[System.Text.Json.Serialization.JsonPropertyName("budgets")] public object Budgets { get; set; } = new {
+			depth_limit = 4, node_limit = 1024, value_handle_limit = 4096,
+			string_utf8_limit = 65536, response_utf8_limit = 8388608,
+			depth_used = 0, nodes_used = 0, value_handles_used = 0,
+		};
+	}
+
+	public sealed class ValueNodeDto {
+		[System.Text.Json.Serialization.JsonPropertyName("value_handle")] public string? ValueHandle { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("parent_value_handle")] public string? ParentValueHandle { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("depth")] public int Depth { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("kind")] public string Kind { get; set; } = "local";
+		[System.Text.Json.Serialization.JsonPropertyName("display")] public string? Display { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("has_children")] public bool HasChildren { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("is_null")] public bool IsNull { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("unavailable_reason")] public string? UnavailableReason { get; set; }
 	}
 
 	public sealed class ModuleIdentityDto {
