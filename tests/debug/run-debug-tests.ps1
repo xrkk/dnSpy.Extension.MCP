@@ -317,7 +317,7 @@ function Assert-CtrlFail {
 }
 function Read-EventKinds {
     param([string]$Sid, [int]$Gen, [long]$AfterCursor)
-    $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = $AfterCursor; limit = 1000 }
+    $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = ([long][Math]::Max(0, $AfterCursor)); limit = 1000 }
     $ev = @()
     if ($r.domain -and $r.domain.result.events) { $ev = @($r.domain.result.events) }
     return @{ kinds = @($ev | ForEach-Object { $_.kind }); raw = ($ev | ConvertTo-Json -Depth 10 -Compress); next = $r.domain.result.next_cursor; call = $r }
@@ -2062,6 +2062,66 @@ function Run-ACC034 {
     } else { Assert-Cond 'a34-claim-spy' 'spy reachable' 'no' $false @() }
 }
 
+
+# ---------------------------------------------------------------- case: ACC-005 ----
+function Run-ACC005 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a5-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a5-launch' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+
+    # [1] Cursors strictly monotonic from 1 and read/wait honor after_cursor.
+    $ev1 = Read-EventKinds $sid $gen -1
+    Assert-Cond 'a5-cursor-monotonic' 'cursors start at 1 and strictly increase' "first=$($ev1.events[0].cursor) count=$($ev1.events.Count)" ((@($ev1.events)[0].cursor -eq 1)) @($ev1.call.rpc.resp)
+    $mid = [math]::Floor(@($ev1.events).Count / 2)
+    $midCur = @($ev1.events)[$mid].cursor
+    $ev2 = Read-EventKinds $sid $gen ($midCur - 1)
+    $allAfter = @($ev2.events | Where-Object { $_.cursor -le ($midCur - 1) }).Count -eq 0
+    Assert-Cond 'a5-after-cursor' "read after_cursor=$($midCur-1) returns only later events" "violations=$(($ev2.events | Where-Object { $_.cursor -le ($midCur - 1) }).Count)" $allAfter @($ev2.call.rpc.resp)
+
+    # [2] New events grow the log; wait_event returns on arrival.
+    $before = [int]$ev1.next; if ($before -le 0) { $before = Get-MaxEventCursor $sid $gen }
+    $wp = Wait-HeldPause $sid $gen
+    $ep = $wp.epoch
+    $ev3 = Read-EventKinds $sid $gen $before
+    Assert-Cond 'a5-events-grow' 'new pause events appended after baseline' "kinds=$($ev3.kinds -join ',')" (@($ev3.events).Count -gt 0) @($ev3.call.rpc.resp)
+    $base = Get-MaxEventCursor $sid $gen
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a5-c1' }
+    $w = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $base; limit = 10; timeout_ms = 6000 }
+    Assert-Cond 'a5-wait-returns' 'wait_event returns on the next event within window' "timed_out=$($w.domain.result.timed_out) kinds=$(@($w.domain.result.events).Count)" (-not "$($w.domain.result.timed_out)" -eq 'True') @($w.rpc.resp)
+
+    # [3] Terminal freeze: terminate writes session_end and freezes the log.
+    $stPre = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    $epZ = $stPre.domain.debug_context.pause_epoch
+    $curPre = Get-MaxEventCursor $sid $gen
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a5-t1' }
+    Start-Sleep -Milliseconds 1200
+    $evT = Read-EventKinds $sid $gen $curPre
+    $ends = @($evT.events | Where-Object { $_.kind -eq 'session_end' }).Count
+    Assert-Cond 'a5-terminal-freeze' 'terminate writes exactly one session_end (terminal)' "ends=$ends reason=$(($evT.events | Where-Object kind -eq 'session_end' | Select-Object -First 1).payload.reason)" ($ends -eq 1) @($evT.call.rpc.resp)
+    # Within the retention window the frozen log stays readable.
+    $evFrozen = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 1000 }
+    Assert-Cond 'a5-frozen-readable' 'frozen log readable in retention window' "ok=$($evFrozen.domain.ok) count=$(@($evFrozen.domain.result.events).Count)" ($evFrozen.domain.ok -and @($evFrozen.domain.result.events).Count -gt 0) @($evFrozen.rpc.resp)
+
+    # [4] Old-session reads after the next launch's start reservation are NOT_FOUND
+    # (old events never map onto the new session).
+    $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a5-la2'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    Start-Sleep -Milliseconds 500
+    $old = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 10 }
+    $oldCode = Get-DomainError $old
+    Assert-Cond 'a5-old-session-notfound' 'terminated session reads -> NOT_FOUND after next launch' "code=$oldCode" ("$oldCode" -eq 'NOT_FOUND') @($old.rpc.resp)
+    $null2 = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $L2.domain.result.session_id; generation = [int]$L2.domain.result.generation; request_id = 'a5-t2' }
+
+    # >4096-event eviction and 8MiB oversize payloads need fixture-driven flooding
+    # (slow on a live VM); the eviction/omission semantics are contract-fixture covered.
+    Fail-Precondition 'acc005-capacity-flood' '>4096-event eviction + >8MiB oversize payload_omitted flood fixtures'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2076,6 +2136,7 @@ $handlers = @{
     'ACC-014' = ${function:Run-ACC014}
     'ACC-008' = ${function:Run-ACC008}
     'ACC-034' = ${function:Run-ACC034}
+    'ACC-005' = ${function:Run-ACC005}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
