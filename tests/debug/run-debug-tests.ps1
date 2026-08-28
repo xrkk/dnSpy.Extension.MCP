@@ -2160,13 +2160,34 @@ function Run-ACC010 {
     $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
     Assert-Cond 'a10-launch' 'entry pause in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
     $wp = Wait-HeldPause $sid $gen
-    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch }
-    $th = $tl.domain.result.items[0].thread_handle
-    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; thread_handle = $th }
-    $fr = $st.domain.result.items[0]
+    # The held pause can be the empty transient create-break: re-acquire until the stack
+    # yields a frame (resume + held-pause retry loop).
+    $fr = $null; $th = $null; $st = $null; $cur = $wp.epoch
+    for ($i = 0; $i -lt 6 -and -not $fr; $i++) {
+        $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $cur }
+        if ($tl.domain.ok -and @($tl.domain.result.items).Count -gt 0) {
+            $th = $tl.domain.result.items[0].thread_handle
+            $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $th }
+            if ($st.domain.ok -and @($st.domain.result.items).Count -gt 0) { $fr = $st.domain.result.items[0] }
+        }
+        if (-not $fr) {
+            $stx = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+            if ("$($stx.domain.result.state)" -eq 'paused') {
+                $epx = $stx.domain.debug_context.pause_epoch
+                $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epx; request_id = 'a10-cx' }
+            }
+            $wp2 = Wait-HeldPause $sid $gen
+            if ($wp2.ok) { $cur = $wp2.epoch }
+        }
+    }
+    Assert-Cond 'a10-frame-acquired' 'held pause yields a stack frame' "ok=$([bool]$fr)" ([bool]$fr) @()
+    if (-not $fr) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a10-t0' } | Out-Null; return }
     $tok = "$($fr.location.method_token)"
     # Step into Hot to get a second token in the SAME disk-strong module.
-    $cur = $wp.epoch; $hotTok = $null; $hotOff = 0; $mod = $null
+    $hotTok = $null; $hotOff = 0; $mod = "$($fr.location.module_handle)"
+    $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $modEntry0 = @($MODS0.domain.result.items | Where-Object module_handle -eq $mod)[0]
+    $mod = if ($modEntry0) { $modEntry0.module_handle } else { $mod }
     for ($i = 0; $i -lt 12 -and -not $hotTok; $i++) {
         $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
         $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
