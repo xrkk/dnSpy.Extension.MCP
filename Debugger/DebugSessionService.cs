@@ -271,6 +271,21 @@ public sealed class DebugSessionService : IDisposable {
 		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["hint"] = "install/fail_next/emit" });
 	}
 
+	/// <summary>DNMCP_TEST-only: append N synthetic events to the active buffer.</summary>
+	string TestFlood(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var count = args is not null && args.TryGetValue("count", out var c) && c is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } cj ? (int)cj.GetDouble() : 0;
+		var bytesPer = args is not null && args.TryGetValue("bytes_per_event", out var b) && b is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } bj ? (int)bj.GetDouble() : 64;
+		if (count is < 1 or > 20000)
+			throw new ArgumentException("count must be within 1..20000", "count");
+		var (written, lost, earliest) = coordinator.WriteTestFlood(count, bytesPer);
+		SpyInc("test_flood_events");
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true, ["written"] = written, ["events_lost"] = lost, ["earliest_cursor"] = earliest,
+		});
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -310,6 +325,7 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_test_spy" => TestSpy(arguments),
 				"debug_test_clock" => TestClock(arguments),
 				"debug_test_adapter" => TestAdapter(arguments),
+				"debug_test_flood" => TestFlood(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.

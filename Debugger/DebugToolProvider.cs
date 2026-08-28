@@ -45,7 +45,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
-				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter" });
+				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter", "debug_test_flood" });
 			return names;
 		}
 	}
@@ -142,7 +142,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter")
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);

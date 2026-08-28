@@ -2120,9 +2120,29 @@ function Run-ACC005 {
     Assert-Cond 'a5-old-session-notfound' 'terminated session reads -> NOT_FOUND after next launch' "code=$oldCode" ("$oldCode" -eq 'NOT_FOUND') @($old.rpc.resp)
     $null2 = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $L2.domain.result.session_id; generation = [int]$L2.domain.result.generation; request_id = 'a5-t2' }
 
-    # >4096-event eviction and 8MiB oversize payloads need fixture-driven flooding
-    # (slow on a live VM); the eviction/omission semantics are contract-fixture covered.
-    Fail-Precondition 'acc005-capacity-flood' '>4096-event eviction + >8MiB oversize payload_omitted flood fixtures'
+    # [5] Capacity eviction via the flood tool: >4096 entries evict oldest (events_lost>0,
+    # earliest_cursor advances past 1); reads still work from the new earliest.
+    $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a5-la3'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sid3 = $L3.domain.result.session_id; $gen3 = [int]$L3.domain.result.generation
+    $wp3 = Wait-HeldPause $sid3 $gen3
+    if ($wp3.ok) {
+        $F = Invoke-ToolNoInit 'debug_test_flood' @{ count = 4500; bytes_per_event = 64 }
+        $f = $F.domain.result
+        $evAfter = Read-EventKinds $sid3 $gen3 0
+        $evictionOk = ($f.written -eq 4500) -and ([long]$f.events_lost -gt 0) -and ([long]$f.earliest_cursor -gt 1) -and (@($evAfter.events).Count -gt 0)
+        Assert-Cond 'a5-eviction' '>4096 entries: oldest evicted (events_lost>0, earliest advances, log readable)' "written=$($f.written) lost=$($f.events_lost) earliest=$($f.earliest_cursor) readback=$(@($evAfter.events).Count)" $evictionOk @($F.rpc.resp, $evAfter.call.rpc.resp)
+        # [6] Oversize single event: >8MiB payload becomes payload_omitted (kind rewritten).
+        $F2 = Invoke-ToolNoInit 'debug_test_flood' @{ count = 1; bytes_per_event = 8500000 }
+        $f2 = $F2.domain.result
+        $evBig = Read-EventKinds $sid3 $gen3 ([long]$f.earliest)
+        $bigKinds = @($evBig.kinds | Where-Object { $_ -eq 'payload_omitted' }).Count
+        Assert-Cond 'a5-payload-omitted' '>8MiB single event rewritten as payload_omitted; later events readable' "omitted=$bigKinds readback=$(@($evBig.events).Count)" ($bigKinds -ge 1) @($F2.rpc.resp, $evBig.call.rpc.resp)
+        $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid3; generation = $gen3; request_id = 'a5-t3' }
+        Start-Sleep -Milliseconds 900
+    } else {
+        Assert-Cond 'a5-eviction' 'flood session paused' 'no' $false @()
+        Assert-Cond 'a5-payload-omitted' 'flood session paused' 'no' $false @()
+    }
 }
 
 # ---------------------------------------------------------------- dispatch + finalize ----
