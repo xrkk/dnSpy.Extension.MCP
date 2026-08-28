@@ -2099,8 +2099,6 @@ public sealed class DebugSessionService : IDisposable {
 		return list;
 	}
 
-	void OnAdapterObservation(ProcessObservation observation) { }
-
 	void OnIsDebuggingChanged(object? sender, EventArgs e) { }
 
 	// ---- file identity leases ----
