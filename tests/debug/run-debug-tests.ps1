@@ -203,7 +203,14 @@ if (-not (Test-Path $manifestPath)) {
 }
 
 function Get-Sha256File([string]$Path) {
-    return (Get-FileHash $Path -Algorithm SHA256).Hash.ToLower()
+    # Self-contained: Get-FileHash (Microsoft.PowerShell.Utility) fails to autoload in some
+    # spawned -NoProfile sessions on this host.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $fs = [System.IO.File]::OpenRead($Path)
+        try { return ([System.BitConverter]::ToString($sha.ComputeHash($fs))).Replace('-','').ToLower() }
+        finally { $fs.Close() }
+    } finally { $sha.Dispose() }
 }
 function Stop-DnSpyAndTargets {
     Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
