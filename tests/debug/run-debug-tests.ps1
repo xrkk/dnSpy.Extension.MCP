@@ -1143,6 +1143,12 @@ function Run-ACC017 {
 # ---------------------------------------------------------------- case: ACC-026 ----
 function Run-ACC026 {
     $m = $script:Manifest
+    $sj0 = Save-Json 'argv-bisect0.json' @('a','b')
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B0-savejson-small`r`n')
+    $null = ConvertTo-Json @('a','b') -Depth 40 -Compress
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B1-convertjson-inline`r`n')
+    $sj1 = Save-Json 'argv-bisect1.json' $null
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'B2-savejson-null`r`n')
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
