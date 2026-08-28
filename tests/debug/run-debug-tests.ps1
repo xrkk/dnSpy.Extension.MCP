@@ -320,7 +320,7 @@ function Read-EventKinds {
     $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = ([long][Math]::Max(0, $AfterCursor)); limit = 1000 }
     $ev = @()
     if ($r.domain -and $r.domain.result.events) { $ev = @($r.domain.result.events) }
-    return @{ kinds = @($ev | ForEach-Object { $_.kind }); raw = ($ev | ConvertTo-Json -Depth 10 -Compress); next = $r.domain.result.next_cursor; call = $r }
+    return @{ kinds = @($ev | ForEach-Object { $_.kind }); raw = ($ev | ConvertTo-Json -Depth 10 -Compress); events = $ev; next = $r.domain.result.next_cursor; call = $r }
 }
 
 function Get-MaxEventCursor {
@@ -2077,11 +2077,14 @@ function Run-ACC005 {
 
     # [1] Cursors strictly monotonic from 1 and read/wait honor after_cursor.
     $ev1 = Read-EventKinds $sid $gen -1
-    Assert-Cond 'a5-cursor-monotonic' 'cursors start at 1 and strictly increase' "first=$($ev1.events[0].cursor) count=$($ev1.events.Count)" ((@($ev1.events)[0].cursor -eq 1)) @($ev1.call.rpc.resp)
-    $mid = [math]::Floor(@($ev1.events).Count / 2)
-    $midCur = @($ev1.events)[$mid].cursor
+    $evArr = @($ev1.events)
+    $monotonic = ($evArr.Count -gt 0) -and ($evArr[0].cursor -eq 1)
+    for ($i = 1; $i -lt $evArr.Count; $i++) { if ([long]$evArr[$i].cursor -le [long]$evArr[$i-1].cursor) { $monotonic = $false } }
+    Assert-Cond 'a5-cursor-monotonic' 'cursors start at 1 and strictly increase' "first=$($evArr[0].cursor) count=$($evArr.Count)" ($monotonic) @($ev1.call.rpc.resp)
+    $mid = [math]::Floor($evArr.Count / 2)
+    $midCur = [long]$evArr[$mid].cursor
     $ev2 = Read-EventKinds $sid $gen ($midCur - 1)
-    $allAfter = @($ev2.events | Where-Object { $_.cursor -le ($midCur - 1) }).Count -eq 0
+    $allAfter = @($ev2.events | Where-Object { [long]$_.cursor -le ($midCur - 1) }).Count -eq 0
     Assert-Cond 'a5-after-cursor' "read after_cursor=$($midCur-1) returns only later events" "violations=$(($ev2.events | Where-Object { $_.cursor -le ($midCur - 1) }).Count)" $allAfter @($ev2.call.rpc.resp)
 
     # [2] New events grow the log; wait_event returns on arrival.
