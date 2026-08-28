@@ -2093,7 +2093,7 @@ function Run-ACC005 {
     $base = Get-MaxEventCursor $sid $gen
     $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a5-c1' }
     $w = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $base; limit = 10; timeout_ms = 6000 }
-    Assert-Cond 'a5-wait-returns' 'wait_event returns on the next event within window' "timed_out=$($w.domain.result.timed_out) kinds=$(@($w.domain.result.events).Count)" (-not "$($w.domain.result.timed_out)" -eq 'True') @($w.rpc.resp)
+    Assert-Cond 'a5-wait-returns' 'wait_event returns on the next event within window' "timed_out=$($w.domain.result.timed_out) events=$(@($w.domain.result.events).Count)" ("$($w.domain.result.timed_out)" -ne 'True') @($w.rpc.resp)
 
     # [3] Terminal freeze: terminate writes session_end and freezes the log.
     $stPre = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
