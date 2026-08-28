@@ -642,7 +642,10 @@ public sealed class DebugSessionService : IDisposable {
 			return Ok(coordinator, new PauseResultDto {
 				State = coordinator.State,
 				PauseEpoch = coordinator.PauseEpoch,
-				Reason = PauseCauseArbiter.Manual,
+				// P2 collision semantics (§3.2): an authoritative observation settled this
+				// pause, so the response reports the REAL primary cause — manual only when
+				// an issued pause landed with no higher-priority cause.
+				Reason = coordinator.LastPauseCause,
 				RequestEffect = DebugWire.RequestEffectStateSatisfied,
 			});
 
@@ -1896,7 +1899,9 @@ public sealed class DebugSessionService : IDisposable {
 					startsPaused = pendingClaimStartsPaused;
 					reason = pendingClaimReason;
 				}
+				SpyInc("launch_claim_candidates");
 				if (coordinator.State == DebugStates.Starting && claimTcs is not null) {
+					SpyInc("launch_claim_windows");
 					lock (sessionLock) {
 						ownedProcess = process;
 						adapter = new DbgProcessControlAdapter(process);

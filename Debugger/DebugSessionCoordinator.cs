@@ -74,6 +74,13 @@ public sealed class DebugSessionCoordinator {
 	public string? ActiveSessionId { get { lock (gate) return activeSessionId; } }
 	public string? LastSessionId { get { lock (gate) return lastSessionId; } }
 	public int Generation { get { lock (gate) return generation; } }
+
+	/// <summary>
+	/// Primary cause of the most recent accepted paused observation ("manual" when an issued
+	/// pause settled with no higher-priority cause) — the control response reports it.
+	/// </summary>
+	public string LastPauseCause { get { lock (gate) return lastPauseCause; } }
+	string lastPauseCause = PauseCauseArbiter.Manual;
 	public int PauseEpoch { get { lock (gate) return pauseEpoch; } }
 	public FaultKind Fault { get { lock (gate) return fault; } }
 	public string ObservedProcessState { get { lock (gate) return observedProcessState; } }
