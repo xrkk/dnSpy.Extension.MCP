@@ -187,10 +187,11 @@ public sealed class DebugSessionService : IDisposable {
 		};
 	}
 
-	static string Ok(DebugSessionCoordinator c, object result, List<string>? warnings = null) {
+	static string Ok(DebugSessionCoordinator c, object result, List<string>? warnings = null, bool untrustedSampleData = false) {
 		var envelope = new DebugSuccessEnvelope {
 			DebugContext = c.ContextSnapshot(),
 			Result = result,
+			UntrustedSampleData = untrustedSampleData,
 		};
 		if (warnings is not null)
 			envelope.Warnings = warnings;
@@ -1123,7 +1124,7 @@ public sealed class DebugSessionService : IDisposable {
 		};
 		if (start + page.Count < frames.Count)
 			dto.NextPageCursor = (start + page.Count).ToString();
-		return Ok(coordinator, dto);
+		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
 	string Step(Dictionary<string, object>? args) {
@@ -1289,7 +1290,7 @@ public sealed class DebugSessionService : IDisposable {
 		if (pageSize < roots.Count)
 			dto.NextPageCursor = pageSize.ToString();
 		dto.Budgets = BudgetsUsed();
-		return Ok(coordinator, dto);
+		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
 	object BudgetsUsed() {
@@ -1349,7 +1350,7 @@ public sealed class DebugSessionService : IDisposable {
 		if (startAt + page.Count < children.Count)
 			dto.NextPageCursor = (startAt + page.Count).ToString();
 		dto.Budgets = BudgetsUsed();
-		return Ok(coordinator, dto);
+		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
 	/// <summary>Fixed NoDebuggerDisplay formatting (CON-DYN-007): never ToString/FuncEval.</summary>
@@ -1465,7 +1466,7 @@ public sealed class DebugSessionService : IDisposable {
 		};
 		if (start + page.Count < modules.Count)
 			dto.NextPageCursor = (start + page.Count).ToString();
-		return Ok(coordinator, dto);
+		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
 	ModuleIdentityDto ModuleDtoOf(RegisteredModuleRecord m) => new() {
@@ -1523,7 +1524,7 @@ public sealed class DebugSessionService : IDisposable {
 		});
 		if (data is null)
 			return Fail(coordinator, DomainErrorCodes.NotFound, message: error ?? "the address range is not readable");
-		return Ok(coordinator, new ReadMemoryResultDto {
+		return Ok(coordinator, untrustedSampleData: true, result: new ReadMemoryResultDto {
 			ModuleHandle = moduleHandle,
 			Address = $"0x{address:x}",
 			Length = data.Length,
@@ -1631,7 +1632,7 @@ public sealed class DebugSessionService : IDisposable {
 				return Fail(coordinator, MapAdmit(manifestAdmit));
 			File.WriteAllBytes(Path.Combine(root, sessionId, manifestName), manifestBytes);
 
-			return Ok(coordinator, new DumpModuleResultDto {
+			return Ok(coordinator, untrustedSampleData: true, result: new DumpModuleResultDto {
 				Artifact = new ArtifactDto {
 					ArtifactId = sessionId + "/" + childName,
 					Path = finalPath,
