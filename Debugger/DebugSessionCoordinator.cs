@@ -486,7 +486,7 @@ public sealed class DebugSessionCoordinator {
 		var json = JsonSerializer.Serialize(envelope, new JsonSerializerOptions {
 			DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
 		});
-		buffer.Append(kind, json);
 		eventCursorCounter++;
+		buffer.Append(kind, json, eventCursorCounter);
 	}
 }

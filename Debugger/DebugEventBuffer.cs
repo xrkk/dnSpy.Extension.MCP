@@ -62,12 +62,20 @@ public sealed class DebugEventBuffer {
 	/// whose envelope alone exceeds the byte cap is replaced by an EVT-DYN-019 payload_omitted
 	/// entry carrying the original kind, byte count and SHA-256.
 	/// </summary>
-	public bool Append(string kind, string canonicalJson) {
+	public bool Append(string kind, string canonicalJson) => Append(kind, canonicalJson, 0);
+
+	/// <summary>
+	/// Appends with an explicit cursor. The coordinator owns ONE monotonic cursor line for the
+	/// whole process (envelope cursor == entry cursor); a zero cursor falls back to the local
+	/// line. Splitting the two made after_cursor reads silently empty in any second session.
+	/// </summary>
+	public bool Append(string kind, string canonicalJson, long explicitCursor) {
 		lock (gate) {
 			if (frozen)
 				return false;
 			var bytes = Encoding.UTF8.GetByteCount(canonicalJson);
-			var cursor = ++nextCursor;
+			var cursor = explicitCursor > 0 ? explicitCursor : ++nextCursor;
+			nextCursor = Math.Max(nextCursor, cursor);
 			if (bytes > MaxBytes) {
 				canonicalJson = BuildPayloadOmitted(kind, canonicalJson, bytes, cursor);
 				kind = EventKinds.PayloadOmitted;
