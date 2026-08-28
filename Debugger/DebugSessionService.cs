@@ -610,6 +610,9 @@ public sealed class DebugSessionService : IDisposable {
 	async Task<string> Control(Dictionary<string, object>? args, ControlOperation operation) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		var identityErr = SessionIdentityError(args);
+		if (identityErr is not null)
+			return Fail(coordinator, identityErr, message: "request names a different session than the active one");
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, RequiredFor(operation));
 		var requestId = ArgString(args, "request_id", required: true);
@@ -679,6 +682,9 @@ public sealed class DebugSessionService : IDisposable {
 	async Task<string> Continue(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		var identityErr = SessionIdentityError(args);
+		if (identityErr is not null)
+			return Fail(coordinator, identityErr, message: "request names a different session than the active one");
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
 		var pauseEpoch = ArgInt(args, "pause_epoch", required: true);
@@ -719,6 +725,9 @@ public sealed class DebugSessionService : IDisposable {
 	async Task<string> Restart(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		var identityErr = SessionIdentityError(args);
+		if (identityErr is not null)
+			return Fail(coordinator, identityErr, message: "request names a different session than the active one");
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Running, DebugStates.Paused });
 		var requestId = ArgString(args, "request_id", required: true);
@@ -2238,6 +2247,20 @@ public sealed class DebugSessionService : IDisposable {
 		ControlOperation.Restart => new List<string> { DebugStates.Running, DebugStates.Paused },
 		_ => new List<string>(),
 	};
+
+
+	/// <summary>
+	/// Session-identity mismatch vs state mismatch (ACC-027): when a session IS active and the
+	/// request names a DIFFERENT session_id, that is TARGET_MISMATCH (wrong target), never a
+	/// bare INVALID_STATE; with no active session the state gate still answers INVALID_STATE.
+	/// </summary>
+	string? SessionIdentityError(Dictionary<string, object>? args) {
+		var sessionId = ArgString(args, "session_id");
+		var active = coordinator.ActiveSessionId;
+		if (active is not null && !string.IsNullOrEmpty(sessionId) && sessionId != active)
+			return DomainErrorCodes.TargetMismatch;
+		return null;
+	}
 
 	bool SessionAndGenerationMatch(Dictionary<string, object>? args) {
 		var sessionId = ArgString(args, "session_id", required: true);
