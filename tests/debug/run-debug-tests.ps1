@@ -342,7 +342,7 @@ function Run-ACC001 {
     #     extension DLL in-tree; attempted, outcome recorded truthfully.
     $ok = $true
     try {
-        $extDest = Join-Path $script:Repo "Extensions\dnSpy.Extension.MCP\bin\Release\net48"
+        $extDest = Join-Path $script:Repo "bin\Release\net48"
         New-Item -ItemType Directory -Force -Path $extDest | Out-Null
         Copy-Item $m.env.extension_dll -Destination (Join-Path $extDest 'dnSpy.Extension.MCP.x.dll') -Force
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Repo 'tests\fixtures\bin') | Out-Null
