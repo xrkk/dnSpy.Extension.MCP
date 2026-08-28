@@ -1022,8 +1022,13 @@ public sealed class DebugSessionService : IDisposable {
 		var frameModuleHandles = new List<string>();
 		lock (sessionLock) {
 			for (int fi = 0; fi < frames.Count; fi++) {
+				var file = frameModuleFiles[fi];
+				var name = frames[fi].module;
 				var registered = modulesByHandle.Values.FirstOrDefault(m =>
-					!string.IsNullOrEmpty(frameModuleFiles[fi]) && string.Equals(m.Filename, frameModuleFiles[fi], StringComparison.OrdinalIgnoreCase));
+					(!string.IsNullOrEmpty(file) && string.Equals(m.Filename, file, StringComparison.OrdinalIgnoreCase))
+					|| (!string.IsNullOrEmpty(file) && !string.IsNullOrEmpty(m.Filename)
+						&& m.Filename.EndsWith("\\" + file, StringComparison.OrdinalIgnoreCase))
+					|| (!string.IsNullOrEmpty(name) && string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)));
 				frameModuleHandles.Add(registered?.ModuleHandle ?? $"mod:{frames[fi].module}");
 			}
 		}
