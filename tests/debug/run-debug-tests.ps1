@@ -485,13 +485,13 @@ function Assert-DeadlineBoundary {
     $null = Test-Adapter '{"install":true}'
     $body = '{"jsonrpc":"2.0","id":792,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
-    Start-Sleep -Milliseconds 600
-    # The virtual deadline is admission+30s; real time and offset BOTH count against it, so
-    # advance to just under (29500+600 < 30000), verify still waiting, then blow past it.
-    $null = Test-Clock 29500
-    Start-Sleep -Milliseconds 700
+    Start-Sleep -Milliseconds 500
+    # The virtual deadline is admission+30s; real time and offset BOTH count. Advance to a
+    # safely-below point, check IMMEDIATELY (no further sleep — the deadline fires on a
+    # 20ms poll once virtual time passes it), then blow past with a big jump.
+    $null = Test-Clock 29000
     $stillWaiting = -not (Test-Path $rf)
-    $null = Test-Clock 1000
+    $null = Test-Clock 2000
     $dom = Read-DetachedResp $rf
     $null = Test-Adapter '{"install":false}'
     $code = if ($dom) { "$($dom.error.code)" } else { '' }
@@ -1585,13 +1585,15 @@ function Run-ACC007 {
     # settles as a new pause_epoch with the real cause — it never rewrites the first response.
     $null = Resume-FromPaused $sid3 $gen3
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
-    $curLate = Get-MaxEventCursor $sid3 $gen3
     $bodyP1 = '{"jsonrpc":"2.0","id":793,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $sid3 + '","generation":' + $gen3 + ',"request_id":"acc7-p1late"}}}'
     $rfP1 = Invoke-Detached $bodyP1 'acc7p1late'
     Start-Sleep -Milliseconds 900
     $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"break","ordinal":0}]}}'
     $domP1 = Read-DetachedResp $rfP1
     $p1Epoch = if ($domP1) { [int]$domP1.result.pause_epoch } else { -1 }
+    # Baseline AFTER the manual settle: the settle's own paused event must not be in the
+    # late window (only the late observation's absence is under test).
+    $curLate = Get-MaxEventCursor $sid3 $gen3
     $stAfter = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid3 }
     $epAfter = $stAfter.domain.debug_context.pause_epoch
     $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc7-bp-late"}]}}'
