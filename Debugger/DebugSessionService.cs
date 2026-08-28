@@ -11,7 +11,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using dnSpy.Contracts.Debugger;
+using dnSpy.Contracts.Debugger.Breakpoints.Code;
+using dnSpy.Contracts.Debugger.DotNet;
+using dnSpy.Contracts.Debugger.DotNet.Code;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
+using dnSpy.Contracts.Metadata;
 
 namespace dnSpy.Extension.MCP.Debugger;
 
@@ -54,13 +58,38 @@ public sealed class DebugSessionService : IDisposable {
 	public static readonly IReadOnlyList<string> HandledTools = new[] {
 		"debug_status", "debug_launch", "debug_pause", "debug_continue", "debug_terminate",
 		"debug_restart", "debug_read_events", "debug_wait_event",
+		"debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled",
+		"debug_remove_breakpoint", "debug_set_exception_policy",
 	};
 
 	public bool Handles(string toolName) => HandledTools.Contains(toolName);
 
+	readonly DbgCodeBreakpointsService? breakpointsService;
+	readonly DbgDotNetCodeLocationFactory? locationFactory;
+	DebugBreakpointStore bpStore = new();
+	readonly Dictionary<int, string> mcpIdByDnSpyBreakpoint = new();
+	readonly Dictionary<string, int> dnSpyIdByMcpBreakpoint = new();
+	readonly Dictionary<string, List<DbgCodeBreakpoint>> dnSpyBreakpointsByMcp = new();
+	readonly Dictionary<string, RegisteredModuleRecord> modulesByHandle = new();
+	string exceptionPolicy = "unhandled";
+
+	sealed class RegisteredModuleRecord {
+		public string ModuleHandle = string.Empty;
+		public string RuntimeHandle = string.Empty;
+		public string Mvid = string.Empty;
+		public string? Sha256;
+		public string Filename = string.Empty;
+		public ModuleId UpstreamId;
+	}
+
 	[ImportingConstructor]
-	public DebugSessionService([Import(AllowDefault = true)] DbgManager? dbgManager, DebugGateService gateService) {
+	public DebugSessionService([Import(AllowDefault = true)] DbgManager? dbgManager,
+		[Import(AllowDefault = true)] DbgCodeBreakpointsService? breakpointsService,
+		[Import(AllowDefault = true)] DbgDotNetCodeLocationFactory? locationFactory,
+		DebugGateService gateService) {
 		this.dbgManager = dbgManager;
+		this.breakpointsService = breakpointsService;
+		this.locationFactory = locationFactory;
 		this.gateService = gateService;
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
@@ -92,11 +121,16 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_restart" => Restart(arguments).GetAwaiter().GetResult(),
 				"debug_read_events" => ReadEvents(arguments, wait: false).GetAwaiter().GetResult(),
 				"debug_wait_event" => ReadEvents(arguments, wait: true).GetAwaiter().GetResult(),
+				"debug_set_breakpoint" => SetBreakpoint(arguments),
+				"debug_list_breakpoints" => ListBreakpoints(arguments),
+				"debug_set_breakpoint_enabled" => SetBreakpointEnabled(arguments),
+				"debug_remove_breakpoint" => RemoveBreakpoint(arguments),
+				"debug_set_exception_policy" => SetExceptionPolicy(arguments),
 				_ => null,
 			};
 		}
 		catch (Exception ex) {
-			envelope = Fail(coordinator, DomainErrorCodes.InternalError, message: ex.ToString());
+			envelope = Fail(coordinator, DomainErrorCodes.InternalError, message: ex.GetType().Name + ": " + ex.Message);
 		}
 		if (envelope is null)
 			return new CallToolResult {
@@ -513,6 +547,282 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
+	// ---- IMP-006: breakpoints and exception policy ----
+
+	/// <summary>Assigns module handles for the owned process's loaded modules. Increment 2 note:
+	/// MVID is taken from the first set_breakpoint request for the handle (per-handle identity
+	/// registration); wiring the module-load events for authoritative MVIDs lands with the
+	/// IMP-009 module tools.</summary>
+	void RegisterModules(DbgProcess process) {
+		lock (sessionLock) {
+			modulesByHandle.Clear();
+			int index = 0;
+			foreach (var runtime in process.Runtimes) {
+				string runtimeHandle = $"rt-{index++}";
+				foreach (var module in runtime.Modules) {
+					string handle = $"mod-{modulesByHandle.Count}";
+					modulesByHandle[handle] = new RegisteredModuleRecord {
+						ModuleHandle = handle,
+						RuntimeHandle = runtimeHandle,
+						Filename = module.Filename ?? module.Name,
+						UpstreamId = (ModuleId)(module.Filename ?? module.Name),
+					};
+				}
+			}
+		}
+	}
+
+	bool PausedEpochMatches(Dictionary<string, object>? args) =>
+		coordinator.State == DebugStates.Paused && coordinator.PauseEpoch == ArgInt(args, "pause_epoch", required: true);
+
+	string SetBreakpoint(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		if (!PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var requestId = ArgString(args, "request_id", required: true);
+		var moduleHandle = ArgString(args, "module_handle", required: true);
+		var mvid = ArgString(args, "mvid", required: true);
+		var methodToken = ArgString(args, "method_token", required: true);
+		var ilOffset = ArgInt(args, "il_offset", required: true);
+		var moduleSha = ArgString(args, "module_sha256");
+		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+
+		RegisteredModuleRecord? module;
+		lock (sessionLock) {
+			if (!modulesByHandle.TryGetValue(moduleHandle, out module)) {
+				// Increment-2 registration: an unknown handle names the launch target; its disk
+				// filename is the upstream identity, the request's mvid is recorded, and the
+				// launch-verified target sha256 fills the disk-strong identity requirement.
+				var targetFilename = activePlan?.Filename ?? string.Empty;
+				var targetSha = launchIdentities.FirstOrDefault(i => i.Role == "target")?.Sha256;
+				module = new RegisteredModuleRecord {
+					ModuleHandle = moduleHandle,
+					RuntimeHandle = "rt-0",
+					Mvid = mvid,
+					Sha256 = string.IsNullOrEmpty(moduleSha) ? targetSha : moduleSha,
+					Filename = targetFilename,
+					UpstreamId = (ModuleId)targetFilename,
+				};
+				modulesByHandle[moduleHandle] = module;
+			}
+		}
+		bpStore.RegisterModule(new RegisteredModule {
+			ModuleHandle = module.ModuleHandle,
+			RuntimeHandle = module.RuntimeHandle,
+			Mvid = mvid,
+			IdentityStrength = "disk_strong",
+			Sha256 = module.Sha256,
+		});
+		var tokenValue = ParseToken(methodToken);
+		var shaForCreate = string.IsNullOrEmpty(moduleSha) ? module.Sha256 : moduleSha;
+		var (entry, error) = bpStore.TryCreate(moduleHandle, shaForCreate, mvid, methodToken, ilOffset, enabled);
+		if (entry is null || error != DebugBreakpointStore.CreateError.None)
+			return Fail(coordinator, MapCreateError(error), message: $"breakpoint rejected: {error}");
+
+		var created = PostToDispatcher(() => {
+			if (breakpointsService is null || locationFactory is null)
+				return null;
+			var location = locationFactory.Create(module.UpstreamId, tokenValue, (uint)ilOffset);
+			var bp = breakpointsService.Add(new DbgCodeBreakpointInfo(location,
+				new DbgCodeBreakpointSettings { IsEnabled = enabled }, 0));
+			return bp is null ? null : new[] { bp };
+		});
+		if (created is null or { Length: 0 }) {
+			bpStore.Remove(entry.BreakpointId);
+			return Fail(coordinator, DomainErrorCodes.InternalError, message: "the debugger rejected the breakpoint location");
+		}
+		foreach (var bp in created) {
+			bpStore.SetEnabled(entry.BreakpointId, enabled);
+			lock (sessionLock) {
+				mcpIdByDnSpyBreakpoint[bp.Id] = entry.BreakpointId;
+				dnSpyIdByMcpBreakpoint[entry.BreakpointId] = bp.Id;
+				dnSpyBreakpointsByMcp.TryGetValue(entry.BreakpointId, out var list);
+				list ??= new List<DbgCodeBreakpoint>();
+				list.Add(bp);
+				dnSpyBreakpointsByMcp[entry.BreakpointId] = list;
+			}
+		}
+		return Ok(coordinator, new SetBreakpointResultDto { Breakpoint = BreakpointDtoOf(entry) });
+	}
+
+	static uint ParseToken(string token) {
+		var text = token.Trim();
+		if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+			return Convert.ToUInt32(text.Substring(2), 16);
+		return Convert.ToUInt32(text);
+	}
+
+	static string MapCreateError(DebugBreakpointStore.CreateError error) => error switch {
+		DebugBreakpointStore.CreateError.ModuleNotFound => DomainErrorCodes.NotFound,
+		DebugBreakpointStore.CreateError.MvidMismatch or DebugBreakpointStore.CreateError.ShaMismatch
+			or DebugBreakpointStore.CreateError.ShaRejected or DebugBreakpointStore.CreateError.MissingSha256
+			=> DomainErrorCodes.TargetMismatch,
+		DebugBreakpointStore.CreateError.DuplicateBreakpoint => DomainErrorCodes.AlreadyExists,
+		_ => DomainErrorCodes.InternalError,
+	};
+
+	string ListBreakpoints(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState);
+		var all = bpStore.List();
+		if (args is not null && args.TryGetValue("enabled", out var en) && en is System.Text.Json.JsonElement { ValueKind: var v }) {
+			if (v == System.Text.Json.JsonValueKind.True) all = all.Where(b => b.Enabled).ToList();
+			else if (v == System.Text.Json.JsonValueKind.False) all = all.Where(b => !b.Enabled).ToList();
+		}
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
+		string? cursor = ArgString(args, "page_cursor");
+		int start = 0;
+		if (!string.IsNullOrEmpty(cursor))
+			start = int.TryParse(cursor, out var s) ? s : 0;
+		var page = all.Skip(start).Take(pageSize).ToList();
+		var dto = new ListBreakpointsResultDto {
+			Items = page.Select(BreakpointDtoOf).ToList(),
+			Truncated = false,
+			TotalKnown = all.Count,
+		};
+		if (start + page.Count < all.Count)
+			dto.NextPageCursor = (start + page.Count).ToString();
+		return Ok(coordinator, dto);
+	}
+
+	string SetBreakpointEnabled(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var breakpointId = ArgString(args, "breakpoint_id", required: true);
+		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+		if (!bpStore.SetEnabled(breakpointId, enabled))
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown breakpoint");
+		PostToDispatcher(() => {
+			if (breakpointsService is null)
+				return null;
+			lock (sessionLock) {
+				if (dnSpyBreakpointsByMcp.TryGetValue(breakpointId, out var list)) {
+					foreach (var bp in list)
+						breakpointsService.Modify(bp, new DbgCodeBreakpointSettings { IsEnabled = enabled });
+				}
+			}
+			return null;
+		});
+		var entry = bpStore.List().FirstOrDefault(b => b.BreakpointId == breakpointId);
+		return Ok(coordinator, new SetBreakpointResultDto { Breakpoint = BreakpointDtoOf(entry!) });
+	}
+
+	string RemoveBreakpoint(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var breakpointId = ArgString(args, "breakpoint_id", required: true);
+		if (!bpStore.Remove(breakpointId))
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown breakpoint");
+		PostToDispatcher(() => {
+			if (breakpointsService is null)
+				return null;
+			lock (sessionLock) {
+				if (dnSpyBreakpointsByMcp.TryGetValue(breakpointId, out var list)) {
+					breakpointsService.Remove(list.Where(b => b is not null).ToArray());
+					dnSpyBreakpointsByMcp.Remove(breakpointId);
+				}
+			}
+			return null;
+		});
+		return Ok(coordinator, new RemoveBreakpointResultDto { Removed = true, BreakpointId = breakpointId });
+	}
+
+	string SetExceptionPolicy(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		if (!SessionAndGenerationMatch(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState);
+		_ = ArgString(args, "request_id", required: true);
+		var breakOn = ExtractBreakOnValue(args);
+		if (breakOn is null)
+			return Fail(coordinator, DomainErrorCodes.InternalError, message: "policy must be one of unhandled, first_chance_and_unhandled, none");
+		string previous;
+		lock (sessionLock) {
+			previous = exceptionPolicy;
+			exceptionPolicy = breakOn;
+		}
+		return Ok(coordinator, new ExceptionPolicyResultDto {
+			Previous = new ExceptionPolicyDto { BreakOn = previous },
+			Current = new ExceptionPolicyDto { BreakOn = breakOn },
+		});
+	}
+
+	static string? ExtractBreakOn(string policyJsonOrValue) {
+		var text = policyJsonOrValue.Trim();
+		if (text.StartsWith("{")) {
+			try {
+				using var doc = System.Text.Json.JsonDocument.Parse(text);
+				if (doc.RootElement.TryGetProperty("break_on", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+					text = v.GetString() ?? string.Empty;
+			}
+			catch { return null; }
+		}
+		return text is "unhandled" or "first_chance_and_unhandled" or "none" ? text : null;
+	}
+
+	static string? ExtractBreakOnValue(Dictionary<string, object>? args) {
+		if (args is not null && args.TryGetValue("policy", out var p) && p is System.Text.Json.JsonElement je) {
+			if (je.ValueKind == System.Text.Json.JsonValueKind.String)
+				return ExtractBreakOn(je.GetString() ?? string.Empty);
+			if (je.ValueKind == System.Text.Json.JsonValueKind.Object && je.TryGetProperty("break_on", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+				return ExtractBreakOn(v.GetString() ?? string.Empty);
+		}
+		return null;
+	}
+
+	BreakpointDto BreakpointDtoOf(BreakpointEntry entry) {
+		RegisteredModuleRecord? module;
+		lock (sessionLock)
+			modulesByHandle.TryGetValue(entry.Module.ModuleHandle, out module);
+		return new BreakpointDto {
+			BreakpointId = entry.BreakpointId,
+			Owned = true,
+			Enabled = entry.Enabled,
+			Bound = entry.Bound,
+			ModuleIdentity = new ModuleIdentityDto {
+				ModuleHandle = entry.Module.ModuleHandle,
+				RuntimeHandle = entry.Module.RuntimeHandle ?? "rt-0",
+				Name = Path.GetFileName(module?.Filename ?? string.Empty),
+				Path = module?.Filename,
+				Mvid = entry.Module.Mvid,
+				Sha256 = entry.Module.Sha256,
+				BaseAddress = 0,
+				Size = 0,
+				Layout = "file",
+				IdentityStrength = entry.Module.IdentityStrength,
+			},
+			MethodToken = entry.MethodToken,
+			IlOffset = entry.IlOffset,
+			LastError = entry.LastError,
+		};
+	}
+
+	/// <summary>Runs the action on the DbgManager dispatcher and returns its result synchronously.</summary>
+	DbgCodeBreakpoint[]? PostToDispatcher(Func<DbgCodeBreakpoint[]?> action) {
+		if (dbgManager is null)
+			return null;
+		var done = new ManualResetEventSlim();
+		DbgCodeBreakpoint[]? result = null;
+		dbgManager.Dispatcher.BeginInvoke(new Action(() => {
+			try { result = action(); }
+			finally { done.Set(); }
+		}));
+		if (!done.Wait(ControlOperationRecord.DefaultDeadline))
+			return null;
+		return result;
+	}
+
+	void PostVoidToDispatcher(Action action) {
+		dbgManager?.Dispatcher.BeginInvoke(new Action(action));
+	}
+
 	// ---- observation pump (DbgManager dispatcher thread) ----
 
 	void OnProcessesChanged(object? sender, DbgCollectionChangedEventArgs<DbgProcess> e) {
@@ -532,9 +842,10 @@ public sealed class DebugSessionService : IDisposable {
 						adapter = new DbgProcessControlAdapter(process);
 						adapter.Observation += OnAdapterObservation;
 					}
-					process.IsRunningChanged += OnOwnedIsRunningChanged;
-					coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
-					claimTcs.TrySetResult(true);
+				process.IsRunningChanged += OnOwnedIsRunningChanged;
+				RegisterModules(process);
+				coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
+				claimTcs.TrySetResult(true);
 				}
 			}
 			else {
@@ -553,10 +864,17 @@ public sealed class DebugSessionService : IDisposable {
 				lock (sessionLock) controlTcs = controlOutcomeTcs;
 				if (result.Outcome == "pending-restart")
 					controlTcs?.TrySetResult("removed-pending-restart");
-				else {
-					controlTcs?.TrySetResult("removed");
-					ReleaseLeases();
+			else {
+				controlTcs?.TrySetResult("removed");
+				ReleaseLeases();
+				lock (sessionLock) {
+					bpStore = new DebugBreakpointStore();
+					mcpIdByDnSpyBreakpoint.Clear();
+					dnSpyIdByMcpBreakpoint.Clear();
+					dnSpyBreakpointsByMcp.Clear();
+					modulesByHandle.Clear();
 				}
+			}
 			}
 		}
 	}
@@ -576,16 +894,72 @@ public sealed class DebugSessionService : IDisposable {
 				coordinator.MarkResumed("auto");
 			return;
 		}
-		// A plain "break" info maps to the manual cause exactly when an issued pause record is
-		// unsettled; real stop details (exception/breakpoint/step) arrive with the IMP-006/007
-		// event wiring and will replace the synthesized singleton.
+		// Real stop details come from the runtime's BreakInfos (exception/breakpoint/step/entry/
+		// break); the synthesized "break" singleton remains only when no runtime reported any.
+		var infos = CollectBreakInfos(process);
+		if (infos.Count == 0)
+			infos.Add(new BreakInfoObservation("break", 0));
 		var result = coordinator.ObservePaused(coordinator.ActiveSessionId, coordinator.Generation,
-			ownedIdentityMatch: true, new[] { new BreakInfoObservation("break", 0) });
+			ownedIdentityMatch: true, infos);
 		if (result.Accepted && result.SettledPauseRecord) {
 			TaskCompletionSource<string>? controlTcs;
 			lock (sessionLock) controlTcs = controlOutcomeTcs;
 			controlTcs?.TrySetResult("paused");
 		}
+	}
+
+	/// <summary>Maps DbgRuntime.BreakInfos to arbiter observations: BoundBreakpoint→breakpoint
+	/// (owned id resolved through the created-breakpoint registry), StepComplete→step,
+	/// EntryPointBreak→entry, ExceptionThrown→exception qualified by the session policy,
+	/// Break/ProgramBreak→break.</summary>
+	List<BreakInfoObservation> CollectBreakInfos(DbgProcess process) {
+		var list = new List<BreakInfoObservation>();
+		string policy;
+		lock (sessionLock) policy = exceptionPolicy;
+		int ordinal = 0;
+		foreach (var runtime in process.Runtimes) {
+			foreach (var info in runtime.BreakInfos) {
+				string kind = "other";
+				string? ownedId = null;
+				string? stepId = null;
+				bool policyPause = false;
+				if (info.Kind == DbgBreakInfoKind.Message && info.Data is DbgMessageEventArgs msg) {
+					switch (msg.Kind) {
+						case DbgMessageKind.BoundBreakpoint:
+							if (msg is DbgMessageBoundBreakpointEventArgs boundArgs) {
+								kind = "breakpoint";
+								lock (sessionLock)
+									mcpIdByDnSpyBreakpoint.TryGetValue(boundArgs.BoundBreakpoint.Breakpoint.Id, out ownedId);
+								if (ownedId is not null)
+									bpStore.MarkBound(ownedId, true);
+							}
+							break;
+						case DbgMessageKind.StepComplete:
+							kind = "step";
+							stepId = "step-current";
+							break;
+						case DbgMessageKind.EntryPointBreak:
+							kind = "entry";
+							break;
+						case DbgMessageKind.ExceptionThrown:
+							kind = "exception";
+							if (msg is DbgMessageExceptionThrownEventArgs exArgs)
+								policyPause = policy switch {
+									"first_chance_and_unhandled" => true,
+									"unhandled" => exArgs.Exception.IsUnhandled || exArgs.Exception.IsSecondChance,
+									_ => false,
+								};
+							break;
+						case DbgMessageKind.Break:
+						case DbgMessageKind.ProgramBreak:
+							kind = "break";
+							break;
+					}
+				}
+				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause));
+			}
+		}
+		return list;
 	}
 
 	void OnAdapterObservation(ProcessObservation observation) { }
@@ -814,5 +1188,54 @@ public sealed class DebugSessionService : IDisposable {
 
 	public sealed class WaitEventsResultDto : EventsResultDto {
 		[System.Text.Json.Serialization.JsonPropertyName("timed_out")] public bool TimedOut { get; set; }
+	}
+
+	public sealed class SetBreakpointResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("breakpoint")] public BreakpointDto Breakpoint { get; set; } = new();
+	}
+
+	public sealed class ListBreakpointsResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("items")] public List<BreakpointDto> Items { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("next_page_cursor")] public string? NextPageCursor { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("total_known")] public int TotalKnown { get; set; }
+	}
+
+	public sealed class RemoveBreakpointResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("removed")] public bool Removed { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("breakpoint_id")] public string BreakpointId { get; set; } = string.Empty;
+	}
+
+	public sealed class ExceptionPolicyResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("previous")] public ExceptionPolicyDto Previous { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("current")] public ExceptionPolicyDto Current { get; set; } = new();
+	}
+
+	public sealed class ExceptionPolicyDto {
+		[System.Text.Json.Serialization.JsonPropertyName("break_on")] public string BreakOn { get; set; } = "unhandled";
+	}
+
+	public sealed class BreakpointDto {
+		[System.Text.Json.Serialization.JsonPropertyName("breakpoint_id")] public string BreakpointId { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("owned")] public bool Owned { get; set; } = true;
+		[System.Text.Json.Serialization.JsonPropertyName("enabled")] public bool Enabled { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("bound")] public bool Bound { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("module_identity")] public ModuleIdentityDto ModuleIdentity { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("method_token")] public string MethodToken { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("il_offset")] public int IlOffset { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("last_error")] public string? LastError { get; set; }
+	}
+
+	public sealed class ModuleIdentityDto {
+		[System.Text.Json.Serialization.JsonPropertyName("module_handle")] public string ModuleHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("runtime_handle")] public string RuntimeHandle { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("path")] public string? Path { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("mvid")] public string Mvid { get; set; } = string.Empty;
+		[System.Text.Json.Serialization.JsonPropertyName("sha256")] public string? Sha256 { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("base_address")] public long BaseAddress { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("size")] public long Size { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("layout")] public string Layout { get; set; } = "file";
+		[System.Text.Json.Serialization.JsonPropertyName("identity_strength")] public string IdentityStrength { get; set; } = "strong";
 	}
 }
