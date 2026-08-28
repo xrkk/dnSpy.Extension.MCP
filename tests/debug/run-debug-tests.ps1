@@ -350,7 +350,9 @@ function Run-ACC001 {
         $fixOut = "fixture staged from $($m.env.testil_dll)" 
         $fixOut | Set-Content (Join-Path $script:OutDir 'testil-build.log')
         # In-process invocation: deeply nested powershell children occasionally fail to
-        # autoload Microsoft.PowerShell.Utility (Get-FileHash) on this host.
+        # autoload Microsoft.PowerShell.Utility (Get-FileHash) on this host. run-tests.ps1
+        # deploys the extension DLL itself, so dnSpy must be down before it starts.
+        Stop-DnSpyAndTargets
         $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 2>&1
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')
