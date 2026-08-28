@@ -1169,8 +1169,10 @@ function Run-ACC026 {
     if ($lines.Count -ne $expected.Count) { $mismatches += "count $($lines.Count) vs $($expected.Count)" }
     for ($i = 0; $i -lt [Math]::Min($lines.Count, $expected.Count); $i++) { if ($lines[$i] -ne $expected[$i]) { $mismatches += "[$i] '$($lines[$i])' vs '$($expected[$i])'" } }
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6-compare-done`r`n')
-    Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @(Save-Json 'argv-observed.json' $lines)
-    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S7-save-done`r`n')
+    $savedName = Save-Json 'argv-observed.json' $lines
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6b-save-json-done`r`n')
+    Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @($savedName)
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S7-assert-done`r`n')
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc26-t1' } | Out-Null
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S8-terminate-done`r`n')
     Start-Sleep -Milliseconds 800
