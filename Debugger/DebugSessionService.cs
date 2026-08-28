@@ -634,7 +634,12 @@ public sealed class DebugSessionService : IDisposable {
 	/// </summary>
 	List<RegisteredModuleRecord> RegisterLiveModules() {
 		var modules = new List<RegisteredModuleRecord>();
-		PostVoidToDispatcherSync(() => {
+		PostVoidToDispatcherSync(() => RegisterLiveModulesInto(modules));
+		return modules;
+	}
+
+	/// <summary>Must run on the DbgManager dispatcher (the ModulesChanged handler already does).</summary>
+	void RegisterLiveModulesInto(List<RegisteredModuleRecord> modules) {
 			DbgProcess? process;
 			lock (sessionLock) process = ownedProcess;
 			if (process is null)
@@ -678,8 +683,6 @@ public sealed class DebugSessionService : IDisposable {
 				foreach (var m in modules)
 					modulesByHandle[m.ModuleHandle] = m;
 			}
-		});
-		return modules;
 	}
 
 	string SetBreakpoint(Dictionary<string, object>? args) {
@@ -1737,7 +1740,10 @@ public sealed class DebugSessionService : IDisposable {
 	// re-registers first so the event can carry the same module_handle list_modules mints.
 	void OnOwnedModulesChanged(object? sender, DbgCollectionChangedEventArgs<DbgModule> e) {
 		try {
-			var table = RegisterLiveModules();
+			// We are already on the DbgManager dispatcher: enumerate inline (a sync post from
+			// this thread would self-wait on the dispatcher and stall the debug pump).
+			var table = new List<RegisteredModuleRecord>();
+			RegisterLiveModulesInto(table);
 			foreach (var module in e.Objects) {
 				var added = e.Added;
 				var record = table.FirstOrDefault(m => string.Equals(m.Filename, module.Filename ?? string.Empty, StringComparison.OrdinalIgnoreCase)
