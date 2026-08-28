@@ -137,9 +137,11 @@ namespace dnSpy.Extension.MCP {
 		/// which makes this the authoritative record of what the extension did at startup during
 		/// development. Release builds do not write to disk.
 		/// </summary>
+#if DEBUG
 		public static readonly string LogFilePath = @"E:\dnspy-mcp.log";
 
 		static readonly object logFileLock = new object();
+#endif
 
 		/// <summary>
 		/// Adds a log message with timestamp to the log collection. In DEBUG builds the entry is
@@ -152,7 +154,9 @@ namespace dnSpy.Extension.MCP {
 			var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
 			var logEntry = $"[{timestamp}] {message}";
 
-			// Diagnostic build: always mirror to disk (E:\dnspy-mcp.log).
+#if DEBUG
+			// Debug-only: mirror to disk. UI writes can fail silently if the dispatcher is unavailable,
+			// so the on-disk log is the authoritative record during development.
 			try {
 				lock (logFileLock)
 					System.IO.File.AppendAllText(LogFilePath, logEntry + Environment.NewLine);
@@ -160,6 +164,7 @@ namespace dnSpy.Extension.MCP {
 			catch {
 				// If we can't write the log file, there is nowhere sensible to report that failure.
 			}
+#endif
 
 			void addToCollection() {
 				LogMessages.Add(logEntry);
