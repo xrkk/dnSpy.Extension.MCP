@@ -1502,30 +1502,26 @@ function Run-ACC014 {
     $wp = Wait-HeldPause $sid $gen
     Assert-Cond 'a14-held-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
     $ep = $wp.epoch
-    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
-    $th = $tl.domain.result.items[0].thread_handle
-
-    # [1] Real step into via the API (registration path), settle via synthetic StepComplete.
+    # [1] Pure synthetic step cause (the real registration path is exercised by ACC-031's
+    # live stepping; here the matrix isolates arbiter semantics from process noise).
     $curA = Get-MaxEventCursor $sid $gen
-    $ST = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc14-s1'; thread_handle = $th; kind = 'into' }
-    Assert-Cond 'a14-step-accepted' 'debug_step accepted (step_id issued, state running)' "ok=$($ST.domain.ok) step=$($ST.domain.result.step_id)" ($ST.domain.ok -and $ST.domain.result.step_id) @($ST.rpc.resp)
-    $regStepId = $ST.domain.result.step_id
-    Start-Sleep -Milliseconds 700
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc14-c0' }
+    Start-Sleep -Milliseconds 500
     $curB = Get-MaxEventCursor $sid $gen
-    $null = Test-Adapter ('{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"' + $regStepId + '","step_kind":"into"}]}}')
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"step-acc14a","step_kind":"into"}]}}'
     Start-Sleep -Milliseconds 600
     $evA = Read-EventKinds $sid $gen $curB
     $idxP = [array]::IndexOf($evA.kinds, 'paused')
     $idxS = [array]::IndexOf($evA.kinds, 'step_completed')
-    $stepOk = ($idxP -ge 0) -and ($idxS -gt $idxP) -and ($evA.raw -match '"reason":"step"') -and ($evA.raw -match $regStepId) -and ($evA.raw -match '"kind":"into"')
-    Assert-Cond 'a14-step-complete' 'paused(reason=step) precedes step_completed with matching step_id/kind' "p=$idxP s=$idxS id=$regStepId" $stepOk @($evA.call.rpc.resp)
+    $stepOk = ($idxP -ge 0) -and ($idxS -gt $idxP) -and ($evA.raw -match '"reason":"step"') -and ($evA.raw -match 'step-acc14a') -and ($evA.raw -match '"kind":"into"')
+    Assert-Cond 'a14-step-complete' 'paused(reason=step) precedes step_completed with matching step_id/kind' "p=$idxP s=$idxS" $stepOk @($evA.call.rpc.resp)
 
     # [2] breakpoint + step collision: breakpoint wins primary; both detail events once.
     $ep2 = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
     $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep2; request_id = 'acc14-c1' }
     Start-Sleep -Milliseconds 500
     $curC = Get-MaxEventCursor $sid $gen
-    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc14-bp-1"},{"type":"step","ordinal":1,"step_id":"step-acc14","step_kind":"over"}]}}'
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc14-bp-1"},{"type":"step","ordinal":1,"step_id":"step-acc14b","step_kind":"over"}]}}'
     Start-Sleep -Milliseconds 600
     $evC = Read-EventKinds $sid $gen $curC
     $bpStep = ($evC.raw -match '"reason":"breakpoint"') -and ($evC.kinds -contains 'breakpoint_hit') -and ($evC.kinds -contains 'step_completed')
@@ -1536,7 +1532,7 @@ function Run-ACC014 {
     $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc14-c2' }
     Start-Sleep -Milliseconds 500
     $curD = Get-MaxEventCursor $sid $gen
-    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true},{"type":"step","ordinal":1,"step_id":"step-acc14b","step_kind":"out"}]}}'
+    $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true},{"type":"step","ordinal":1,"step_id":"step-acc14c","step_kind":"out"}]}}'
     Start-Sleep -Milliseconds 600
     $evD = Read-EventKinds $sid $gen $curD
     $iE = [array]::IndexOf($evD.kinds, 'exception')
