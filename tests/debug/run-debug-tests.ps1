@@ -1331,11 +1331,12 @@ function Run-ACC007 {
     Assert-Cond 'p1b-timeout-event' 'control_failed (timeout) event written' "kinds=$($evB.kinds -join ',')" (($evB.kinds -contains 'control_failed')) @($evB.call.rpc.resp)
 
     # ---- cause-matrix: synthetic paused observations with classified BreakInfos ----
-    # The fake still holds control; state machine is faulted/idle after TIMEOUT? Re-launch fresh.
-    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc7-t1' } 
-    Start-Sleep -Milliseconds 800
+    # Uninstall the fake FIRST so terminate reaches the real adapter (the fake swallows posts
+    # and would turn the removal into another 30s virtual wait).
     $null = Test-Adapter '{"install":false}'
-    Start-Sleep -Milliseconds 400
+    Start-Sleep -Milliseconds 500
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc7-t1' }
+    Start-Sleep -Milliseconds 900
 
     $L2 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc7-lb'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sid2 = $L2.domain.result.session_id; $gen2 = [int]$L2.domain.result.generation
