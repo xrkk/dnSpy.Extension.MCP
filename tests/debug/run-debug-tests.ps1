@@ -856,8 +856,9 @@ function Run-ACC018 {
     $spyA = Get-SpyCounters
     if ($spyB -and $spyA) {
         $exec = Get-SpyDelta $spyB $spyA 'read_memory_executions'
-        $legal = 3; $failed = 8   # three legal reads above; 65537 + unsafe + 3 range + running = 6 rejected (schema two are -32602 pre-handler)
-        Assert-Cond 'memory-range-spy' 'read_memory_executions delta == legal reads only (failures never reach the process)' "delta=$exec legal=$legal" ($exec -eq $legal) @(Save-Json 'spy-018.json' $spyA)
+        # Baseline sits after the three legal reads: every later request (65537, unsafe integer,
+        # three out-of-range, running-state) is rejected and must never reach the process.
+        Assert-Cond 'memory-range-spy' 'post-baseline read_memory_executions delta == 0 (all rejected, none reaches the process)' "delta=$exec" ($exec -eq 0) @(Save-Json 'spy-018.json' $spyA)
     } else {
         Fail-Precondition 'memory-range-spy' 'debug_test_spy reachable (DNMCP_TEST=1)'
     }
