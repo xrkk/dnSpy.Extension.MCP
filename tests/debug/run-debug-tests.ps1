@@ -470,10 +470,10 @@ function Run-ACC002 {
 
         # Tool-shape per protocol version: 2025-06-18 advertises outputSchema, older omit it.
         $old1 = Get-ToolList $m.protocol_versions[0]
-        $oldTool = $old1.tools | Where-Object name -eq 'open_files' | Select-Object -First 1
+        $oldTool = $old1.tools | Where-Object name -eq 'debug_status' | Select-Object -First 1
         $oldHas = [bool]($oldTool.PSObject.Properties.Name -contains 'outputSchema')
         $new1 = Get-ToolList $vLatest
-        $newTool = $new1.tools | Where-Object name -eq 'open_files' | Select-Object -First 1
+        $newTool = $new1.tools | Where-Object name -eq 'debug_status' | Select-Object -First 1
         $newHas = [bool]($newTool.PSObject.Properties.Name -contains 'outputSchema')
         Assert-Cond 'toolshape-outputschema' 'old versions omit outputSchema; 2025-06-18 includes it' "old=$oldHas new=$newHas" (($oldHas -eq $false) -and ($newHas -eq $true)) @((Save-Json 'toolshape-old.json' ($oldTool | Select-Object name)), (Save-Json 'toolshape-new.json' ($newTool | Select-Object name)))
 
@@ -481,7 +481,11 @@ function Run-ACC002 {
         $sc = $cap.rpc.json.result.structuredContent
         $txt = ($cap.rpc.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json
         $eq = $false
-        if ($sc) { $eq = Test-JsonEqual $sc $txt }
+        if ($sc) {
+            # structuredContent arrives as a boxed JsonElement; round-trip for PS property access
+            $scRound = (ConvertTo-Json $sc -Depth 40 -Compress) | ConvertFrom-Json
+            $eq = Test-JsonEqual $scRound $txt
+        }
         Assert-Cond 'structuredcontent-deepequal' 'structuredContent deep-equals parsed text' "equal=$eq" $eq $evc
 
         # Remote snapshot: bind 15100 with token/CIDR, read security tuple over auth, then restore.
