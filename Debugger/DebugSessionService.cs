@@ -157,6 +157,11 @@ public sealed class DebugSessionService : IDisposable {
 				_ => null,
 			};
 		}
+		catch (ArgumentException ex) {
+			// Semantic parameter/metadata rejections (token table, identity-shape, boundary)
+			// surface as JSON-RPC -32602 via the server's ArgumentException mapping.
+			throw;
+		}
 		catch (Exception ex) {
 			envelope = Fail(coordinator, DomainErrorCodes.InternalError, message: ex.GetType().Name + ": " + ex.Message);
 		}
@@ -621,35 +626,39 @@ public sealed class DebugSessionService : IDisposable {
 		var methodToken = ArgString(args, "method_token", required: true);
 		var ilOffset = ArgInt(args, "il_offset", required: true);
 		var moduleSha = ArgString(args, "module_sha256");
+		var identityStrength = ArgString(args, "identity_strength") ?? "disk_strong";
 		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
 
+		// Metadata/shape rejections are -32602 (ArgumentException): a non-MethodDef token, a
+		// disk_strong request without its SHA, and a runtime_weak request carrying one.
+		uint tokenValue;
+		try {
+			tokenValue = ParseToken(methodToken);
+		}
+		catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentOutOfRangeException) {
+			throw new ArgumentException("method_token is not a valid 32-bit token", nameof(methodToken));
+		}
+		if ((tokenValue >> 24) != 0x06 || (tokenValue & 0x00FFFFFF) == 0)
+			throw new ArgumentException("method_token must reference a MethodDef row (0x06xxxxxx)", nameof(methodToken));
+		if (identityStrength == "disk_strong" && string.IsNullOrEmpty(moduleSha))
+			throw new ArgumentException("disk_strong breakpoints require module_sha256", nameof(moduleSha));
+		if (identityStrength == "runtime_weak" && !string.IsNullOrEmpty(moduleSha))
+			throw new ArgumentException("runtime_weak breakpoints reject module_sha256", nameof(moduleSha));
+
+		// Only handles minted by debug_list_modules are addressable; unknown or stale handles
+		// are TARGET_MISMATCH, never an implicit re-registration of the launch target.
 		RegisteredModuleRecord? module;
 		lock (sessionLock) {
-			if (!modulesByHandle.TryGetValue(moduleHandle, out module)) {
-				// Increment-2 registration: an unknown handle names the launch target; its disk
-				// filename is the upstream identity, the request's mvid is recorded, and the
-				// launch-verified target sha256 fills the disk-strong identity requirement.
-				var targetFilename = activePlan?.Filename ?? string.Empty;
-				var targetSha = launchIdentities.FirstOrDefault(i => i.Role == "target")?.Sha256;
-				module = new RegisteredModuleRecord {
-					ModuleHandle = moduleHandle,
-					RuntimeHandle = "rt-0",
-					Mvid = mvid,
-					Sha256 = string.IsNullOrEmpty(moduleSha) ? targetSha : moduleSha,
-					Filename = targetFilename,
-					UpstreamId = (ModuleId)targetFilename,
-				};
-				modulesByHandle[moduleHandle] = module;
-			}
+			if (!modulesByHandle.TryGetValue(moduleHandle, out module))
+				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "module_handle is not a registered module of this pause");
 		}
 		bpStore.RegisterModule(new RegisteredModule {
 			ModuleHandle = module.ModuleHandle,
 			RuntimeHandle = module.RuntimeHandle,
-			Mvid = mvid,
-			IdentityStrength = "disk_strong",
+			Mvid = module.Mvid,
+			IdentityStrength = identityStrength,
 			Sha256 = module.Sha256,
 		});
-		var tokenValue = ParseToken(methodToken);
 		var shaForCreate = string.IsNullOrEmpty(moduleSha) ? module.Sha256 : moduleSha;
 		var (entry, error) = bpStore.TryCreate(moduleHandle, shaForCreate, mvid, methodToken, ilOffset, enabled);
 		if (entry is null || error != DebugBreakpointStore.CreateError.None)
@@ -689,7 +698,7 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	static string MapCreateError(DebugBreakpointStore.CreateError error) => error switch {
-		DebugBreakpointStore.CreateError.ModuleNotFound => DomainErrorCodes.NotFound,
+		DebugBreakpointStore.CreateError.ModuleNotFound => DomainErrorCodes.TargetMismatch,
 		DebugBreakpointStore.CreateError.MvidMismatch or DebugBreakpointStore.CreateError.ShaMismatch
 			or DebugBreakpointStore.CreateError.ShaRejected or DebugBreakpointStore.CreateError.MissingSha256
 			=> DomainErrorCodes.TargetMismatch,
@@ -991,6 +1000,7 @@ public sealed class DebugSessionService : IDisposable {
 		if (classifyError is not null)
 			return Fail(coordinator, classifyError, message: classifyError == DomainErrorCodes.StaleHandle ? "thread_handle belongs to an earlier pause" : "unknown thread_handle");
 		var frames = new List<(string module, uint token, uint offset)>();
+		var frameModuleFiles = new List<string?>();
 		PostVoidToDispatcherSync(() => {
 			var thread = FindThreadByTid(tid);
 			if (thread is null)
@@ -1000,19 +1010,30 @@ public sealed class DebugSessionService : IDisposable {
 				foreach (var frame in walker.GetNextStackFrames(start + pageSize)) {
 					var module = frame.Module?.Name ?? frame.Module?.Filename ?? string.Empty;
 					frames.Add((module, frame.FunctionToken, frame.FunctionOffset));
+					frameModuleFiles.Add(frame.Module?.Filename);
 				}
 			}
 			finally {
 				walker.Close();
 			}
 		});
+		// Map each frame to the handle debug_list_modules minted (by file path, falling back
+		// to the name-keyed pseudo handle for modules that were never enumerated).
+		var frameModuleHandles = new List<string>();
+		lock (sessionLock) {
+			for (int fi = 0; fi < frames.Count; fi++) {
+				var registered = modulesByHandle.Values.FirstOrDefault(m =>
+					!string.IsNullOrEmpty(frameModuleFiles[fi]) && string.Equals(m.Filename, frameModuleFiles[fi], StringComparison.OrdinalIgnoreCase));
+				frameModuleHandles.Add(registered?.ModuleHandle ?? $"mod:{frames[fi].module}");
+			}
+		}
 		var page = frames.Skip(start).Take(pageSize).ToList();
 		var dto = new PagedItemsDto {
 			Items = page.Select((f, i) => (object)new FrameInfoDto {
 				FrameHandle = MintFrameHandle(threadHandle, start + i),
 				Index = start + i,
 				Location = new LocationDto {
-					ModuleHandle = $"mod:{f.module}",
+					ModuleHandle = frameModuleHandles[start + i],
 					MethodToken = $"0x{f.token:x8}",
 					IlOffset = (int)f.offset,
 				},
@@ -1383,6 +1404,14 @@ public sealed class DebugSessionService : IDisposable {
 						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
 							record.Mvid = existing.Mvid;
 							record.Sha256 = existing.Sha256;
+						}
+						// The launch-verified target carries its disk-strong sha from the start.
+						if (string.IsNullOrEmpty(record.Sha256) && !string.IsNullOrEmpty(record.Filename)) {
+							var targetIdentity = launchIdentities.FirstOrDefault(i =>
+								i.Role == "target" && !string.IsNullOrEmpty(i.FinalPath)
+								&& string.Equals(i.FinalPath, record.Filename, StringComparison.OrdinalIgnoreCase));
+							if (targetIdentity is not null)
+								record.Sha256 = targetIdentity.Sha256;
 						}
 						modules.Add(record);
 					}
