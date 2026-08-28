@@ -149,6 +149,11 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_list_modules" => ListModules(arguments),
 				"debug_read_memory" => ReadMemory(arguments),
 				"debug_dump_module" => DumpModule(arguments),
+				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
+				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
+				// and without the unsupported-target details object.
+				"debug_attach" or "debug_detach" or "debug_list_attachable_processes"
+					=> Fail(coordinator, DomainErrorCodes.CapabilityUnavailable),
 				_ => null,
 			};
 		}

@@ -269,6 +269,26 @@ function Ensure-CanonicalDnSpy {
     }
     return $true
 }
+
+function Wait-StablePaused {
+    # break_kind entry/none both see a transient pause the extension auto-continues; wait for
+    # a pause that holds across two samples before taking handles.
+    param([string]$Sid, [int]$TimeoutSec = 12)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+        if ("$($st.domain.result.state)" -eq 'paused') {
+            $ep1 = $st.domain.debug_context.pause_epoch
+            Start-Sleep -Milliseconds 700
+            $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
+            if ("$($st2.domain.result.state)" -eq 'paused' -and "$($st2.domain.debug_context.pause_epoch)" -eq "$ep1") {
+                return @{ ok = $true; epoch = [int]$ep1; status = $st2 }
+            }
+        } else { Start-Sleep -Milliseconds 350 }
+    }
+    return @{ ok = $false; epoch = 0; status = $null }
+}
+
 function Compile-AccFixture {
     $envm = $script:Manifest.env
     $src = Join-Path $script:Repo $envm.fixture_src
@@ -598,8 +618,9 @@ function Run-ACC011 {
     $li = $L.domain.result
     $sid = $li.session_id
     $gen = [int]$li.generation
-    Assert-Cond 'launch-entry-paused' 'entry break pauses in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok -and ($li.state -eq 'paused')) @($L.rpc.resp)
-    $ep = $li.pause_epoch
+    $wp = Wait-StablePaused $sid
+    $ep = $wp.epoch
+    Assert-Cond 'launch-entry-paused' 'entry break settles into a stable paused' "ok=$($L.domain.ok) initial=$($li.state) stable_paused=$($wp.ok) epoch=$ep" ($L.domain.ok -and $wp.ok -and $ep -ge 1) @($L.rpc.resp)
     $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
     $th = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
@@ -650,8 +671,9 @@ function Run-ACC018 {
     $li = $L.domain.result
     $sid = $li.session_id
     $gen = [int]$li.generation
-    $ep = $li.pause_epoch
-    Assert-Cond 'launch-paused' 'paused at entry' "state=$($li.state)" ($li.state -eq 'paused') @($L.rpc.resp)
+    $wp = Wait-StablePaused $sid
+    $ep = $wp.epoch
+    Assert-Cond 'launch-paused' 'entry break settles into a stable paused' "initial=$($li.state) stable_paused=$($wp.ok) epoch=$ep" ($wp.ok -and $ep -ge 1) @($L.rpc.resp)
 
     $M = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $big = @($M.domain.result.items | Sort-Object size -Descending | Select-Object -First 8 | Where-Object { $_.size -ge 65536 -and $_.path } | Select-Object -First 1)[0]
@@ -723,8 +745,9 @@ function Run-ACC031 {
     $li = $L.domain.result
     $sid = $li.session_id
     $gen = [int]$li.generation
-    $ep = $li.pause_epoch
-    Assert-Cond 'launch-entry-paused' 'paused at entry (Main)' "state=$($li.state)" ($li.state -eq 'paused') @($L.rpc.resp)
+    $wp = Wait-StablePaused $sid
+    $ep = $wp.epoch
+    Assert-Cond 'launch-entry-paused' 'entry break settles into a stable paused (Main)' "initial=$($li.state) stable_paused=$($wp.ok) epoch=$ep" ($wp.ok -and $ep -ge 1) @($L.rpc.resp)
 
     $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
     $th = $T.domain.result.items[0].thread_handle
