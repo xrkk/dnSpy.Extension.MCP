@@ -1231,7 +1231,7 @@ function Run-ACC026 {
 
     # [5] reparse path: a junction to the sample root directory, target addressed through it.
     $junction = Join-Path $m.env.sample_root 'junction-dir'
-    if (Test-Path $junction) { Remove-Item $junction -Force }
+    if (Test-Path $junction) { cmd /c rmdir "$junction" }
     try { New-Item -ItemType Junction -Path $junction -Target $m.env.sample_root | Out-Null } catch { $_.Exception.Message | Set-Content (Join-Path $script:OutDir 'junction-error.log') }
     if (Test-Path $junction) {
         $rpTarget = Join-Path $junction 'ArgvFixture.exe'
@@ -1240,7 +1240,7 @@ function Run-ACC026 {
         $rpLaunched = $rp.domain.ok
         if ($rpLaunched) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $rp.domain.result.session_id; generation = $rp.domain.result.generation; request_id = 'acc26-t2' } | Out-Null; Start-Sleep -Milliseconds 600 }
         Assert-Cond 'reparse-rejected' 'reparse path rejected before Start (TARGET_MISMATCH)' "code=$rpCode ok=$rpLaunched" ($rpCode -eq 'TARGET_MISMATCH') @($rp.rpc.resp)
-        Remove-Item $junction -Force
+        cmd /c rmdir "$junction"
     } else {
         Assert-Cond 'reparse-rejected' 'junction fixture created' 'junction creation failed' $false @('junction-error.log')
     }
