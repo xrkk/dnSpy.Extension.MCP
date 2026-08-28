@@ -545,7 +545,9 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
 		}
 
-		var claimed = launchClaimTcs!.Task.Wait(ControlOperationRecord.DefaultDeadline);
+		// Task.Wait reports completion, not the value: a negatively-settled claim (test
+		// pre-claim exit) must still surface as !claimed.
+		var claimed = launchClaimTcs!.Task.Wait(ControlOperationRecord.DefaultDeadline) && launchClaimTcs!.Task.Result;
 		if (!claimed) {
 			coordinator.MarkLaunchFailed("TIMEOUT");
 			lock (sessionLock) { launchClaimTcs = null; activePlan = null; }
@@ -782,7 +784,9 @@ public sealed class DebugSessionService : IDisposable {
 			ReleaseLeases();
 			return Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
 		}
-		var claimed = launchClaimTcs!.Task.Wait(ControlOperationRecord.DefaultDeadline);
+		// Task.Wait reports completion, not the value: a negatively-settled claim (test
+		// pre-claim exit) must still surface as !claimed.
+		var claimed = launchClaimTcs!.Task.Wait(ControlOperationRecord.DefaultDeadline) && launchClaimTcs!.Task.Result;
 		if (!claimed) {
 			coordinator.MarkLaunchFailed("TIMEOUT");
 			lock (sessionLock) { launchClaimTcs = null; activePlan = null; }
