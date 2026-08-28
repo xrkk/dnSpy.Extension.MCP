@@ -475,9 +475,9 @@ function Run-ACC006 {
     Assert-Cond 'pause1' 'paused epoch>=1' "epoch=$e1 state=$($P.domain.result.state)" ($P.domain.ok -and $e1 -ge 1) @($P.rpc.resp)
 
     $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $e1 }
-    $t1 = $T.domain.result.threads[0].thread_handle
+    $t1 = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $e1; thread_handle = $t1 }
-    $f1 = $S.domain.result.frames[0].frame_handle
+    $f1 = $S.domain.result.items[0].frame_handle
     $V = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = 1; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
     $v1 = $null
     if ($V.domain.ok -and $V.domain.result.items) { $v1 = (@($V.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle }
@@ -498,9 +498,9 @@ function Run-ACC006 {
     $e2 = $P2.domain.result.pause_epoch
     Assert-Cond 'pause2-epoch-increases' "pause_epoch > $e1" "epoch=$e2" ($e2 -gt $e1) @($P2.rpc.resp)
     $T2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $e2 }
-    $t2 = $T2.domain.result.threads[0].thread_handle
+    $t2 = $T2.domain.result.items[0].thread_handle
     $S3 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $e2; thread_handle = $t2 }
-    $f2 = $S3.domain.result.frames[0].frame_handle
+    $f2 = $S3.domain.result.items[0].frame_handle
     $L3 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = 1; pause_epoch = $e2; frame_handle = $f2; page_size = 100 }
     Assert-Cond 'fresh-handles-work' 'new epoch handles valid (stack+locals ok)' "stack_ok=$($S3.domain.ok) locals_ok=$($L3.domain.ok)" ($S3.domain.ok -and $L3.domain.ok) @($S3.rpc.resp, $L3.rpc.resp)
 
@@ -511,7 +511,7 @@ function Run-ACC006 {
     $P3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = 2; request_id = 'acc6-p3' }
     $e3 = $P3.domain.result.pause_epoch
     $T3 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 2; pause_epoch = $e3 }
-    $t3 = $T3.domain.result.threads[0].thread_handle
+    $t3 = $T3.domain.result.items[0].thread_handle
     $S4 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 2; pause_epoch = $e3; thread_handle = $t2 }
     $c4 = Get-DomainError $S4
     $S5 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 2; pause_epoch = $e3; thread_handle = $t3 }
@@ -564,9 +564,9 @@ function Run-ACC011 {
     Assert-Cond 'launch-entry-paused' 'entry break pauses in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok -and ($li.state -eq 'paused')) @($L.rpc.resp)
     $ep = $li.pause_epoch
     $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $ep }
-    $th = $T.domain.result.threads[0].thread_handle
+    $th = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $ep; thread_handle = $th }
-    $frame = $S.domain.result.frames[0]
+    $frame = $S.domain.result.items[0]
     $mod = $frame.module_handle
     $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = 1 }
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mod)[0]
@@ -688,9 +688,9 @@ function Run-ACC031 {
     Assert-Cond 'launch-entry-paused' 'paused at entry (Main)' "state=$($li.state)" ($li.state -eq 'paused') @($L.rpc.resp)
 
     $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $ep }
-    $th = $T.domain.result.threads[0].thread_handle
+    $th = $T.domain.result.items[0].thread_handle
     $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $ep; thread_handle = $th }
-    $mainFrame = $S.domain.result.frames[0]
+    $mainFrame = $S.domain.result.items[0]
     $mainToken = "$($mainFrame.method_token)"
     $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = 1 }
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.module_handle)[0]
@@ -712,7 +712,7 @@ function Run-ACC031 {
         if (-not $paused) { break }
         $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $curEp; thread_handle = $th }
         if ($s2.domain.ok) {
-            $f0 = $s2.domain.result.frames[0]
+            $f0 = $s2.domain.result.items[0]
             if ("$($f0.method_token)" -ne $mainToken) { $hotToken = "$($f0.method_token)"; $hotOff = [int]$f0.il_offset; $mod = "$($f0.module_handle)" }
         }
     }
