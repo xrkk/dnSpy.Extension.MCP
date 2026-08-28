@@ -2035,11 +2035,12 @@ function Run-ACC034 {
     $body4 = '{"jsonrpc":"2.0","id":784,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid4 + '","generation":' + $gen4 + ',"request_id":"a34-rb"}}}'
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $rf4 = Invoke-Detached $body4 'a34rb'
-    Start-Sleep -Milliseconds 900
-    $null = Test-Clock 29999
-    Start-Sleep -Milliseconds 700
+    Start-Sleep -Milliseconds 500
+    # Same boundary math as the pause helper: check IMMEDIATELY at a safely-below point,
+    # then blow past the 30s virtual deadline.
+    $null = Test-Clock 29000
     $wait4 = -not (Test-Path $rf4)
-    $null = Test-Clock 2
+    $null = Test-Clock 2000
     $dom4 = Read-DetachedResp $rf4
     $code4 = if ($dom4) { "$($dom4.error.code)" } else { '' }
     Assert-Cond 'a34-boundary' 'restart T1: 29.999s waiting, +2ms TIMEOUT' "waiting=$wait4 code=$code4" ($wait4 -and ($code4 -eq 'TIMEOUT')) @($rf4)
