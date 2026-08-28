@@ -1179,6 +1179,10 @@ function Run-ACC026 {
     $probeJson = ($lines -join '|')
     [IO.File]::WriteAllText((Join-Path $script:OutDir 'argv-probe.txt'), $probeJson, (New-Object Text.UTF8Encoding($false)))
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a2-inline-write-done`r`n')
+    $sj3 = Save-Json 'argv-bisect3.json' @('a','b')
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a3-small-save-after-launch`r`n')
+    $null = ConvertTo-Json @('a','b') -Depth 40 -Compress
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a4-inline-convert-after-launch`r`n')
     $savedName = Save-Json 'argv-observed.json' $lines
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6b-save-json-done`r`n')
     Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @($savedName)
