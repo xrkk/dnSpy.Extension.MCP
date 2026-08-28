@@ -1640,13 +1640,18 @@ function Run-ACC012 {
     $stZ2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
     Assert-Cond 'a12-terminate' 'terminated to idle' "state=$($stZ2.domain.result.state)" ("$($stZ2.domain.result.state)" -ne 'paused') @($stZ2.rpc.resp)
 
-    # P2 issued collision: the pause response reports reason=exception (state_satisfied).
-    $wp5 = Wait-HeldPause $sid $gen
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp5.epoch; request_id = 'acc12-c3' }
+    # P2 issued collision on a fresh session: the pause response reports reason=exception.
+    $LP = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc12-lp'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sidP = $LP.domain.result.session_id; $genP = [int]$LP.domain.result.generation
+    Assert-Cond 'acc12-p2-launch' 'fresh session for P2' "ok=$($LP.domain.ok)" ($LP.domain.ok) @($LP.rpc.resp)
+    $wp5 = Wait-HeldPause $sidP $genP
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sidP; generation = $genP; pause_epoch = $wp5.epoch; request_id = 'acc12-c3' }
     Start-Sleep -Milliseconds 500
-    Assert-P2Collision $sid $gen 'acc12-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'acc12-p2-exception-response'
+    Assert-P2Collision $sidP $genP 'acc12-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'acc12-p2-exception-response'
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 400
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidP; generation = $genP; request_id = 'acc12-tp' }
+    Start-Sleep -Milliseconds 900
     # Global exception settings are untouched BY CONSTRUCTION: the policy lives in a
     # session-scoped field, no tool ever calls a dnSpy global-settings API (code-audited),
     # and the previous/current roundtrip above proves the store is per-session.
@@ -1754,13 +1759,18 @@ function Run-ACC014 {
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidT; generation = $genT; request_id = 'a14-t2' }
         Start-Sleep -Milliseconds 900
     }
-    # P2 issued collision: pause response reports reason=step (state_satisfied).
-    $wp6 = Wait-HeldPause $sid $gen
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp6.epoch; request_id = 'acc14-c3' }
+    # P2 issued collision on a fresh session: pause response reports reason=step.
+    $LP = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc14-lp'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sidP = $LP.domain.result.session_id; $genP = [int]$LP.domain.result.generation
+    Assert-Cond 'acc14-p2-launch' 'fresh session for P2' "ok=$($LP.domain.ok)" ($LP.domain.ok) @($LP.rpc.resp)
+    $wp6 = Wait-HeldPause $sidP $genP
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sidP; generation = $genP; pause_epoch = $wp6.epoch; request_id = 'acc14-c3' }
     Start-Sleep -Milliseconds 500
-    Assert-P2Collision $sid $gen 'acc14-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"step-p2","step_kind":"into"}]}}' 'step' 'acc14-p2-step-response'
+    Assert-P2Collision $sidP $genP 'acc14-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"step","ordinal":0,"step_id":"step-p2","step_kind":"into"}]}}' 'step' 'acc14-p2-step-response'
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 400
+    $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidP; generation = $genP; request_id = 'acc14-tp' }
+    Start-Sleep -Milliseconds 900
 }
 
 
