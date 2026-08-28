@@ -1310,14 +1310,23 @@ function Run-ACC007 {
     Assert-Cond 'p1a-control-failed-event' 'control_failed event written' "kinds=$($ev.kinds -join ',')" (($ev.kinds -contains 'control_failed')) @($ev.call.rpc.resp)
 
     # [P1-b] pause with delivered post + NO observation, clock advanced past 30s -> TIMEOUT.
+    # The pause call blocks on the (virtual) deadline, so it runs in a detached curl process.
     $null = Test-Adapter '{"fail_next":"none"}'
     $curB = Get-MaxEventCursor $sid $gen
-    $Pw = $null
-    $pauseJob = [System.Threading.Tasks.Task]::Run([Func[object]]{ Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc7-p1b' } })
-    Start-Sleep -Milliseconds 800
+    $p1bReq = '{"jsonrpc":"2.0","id":771,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"request_id":"acc7-p1b"}}}'
+    Set-Content C:\Tools\p1b-req.json $p1bReq -Encoding ascii
+    Remove-Item C:\Tools\p1b-resp.txt -Force -ErrorAction SilentlyContinue
+    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','20','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\p1b-req.json','-o','C:\Tools\p1b-resp.txt' -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
-    $Pw = $pauseJob.Result
-    Assert-CtrlFail $Pw 'TIMEOUT' 'p1b-timeout' 'clock-advanced'
+    $deadlineP1b = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadlineP1b -and -not (Test-Path C:\Tools\p1b-resp.txt)) { Start-Sleep -Milliseconds 400 }
+    $Pw = $null
+    if (Test-Path C:\Tools\p1b-resp.txt) {
+        $Pw = @{ rpc = @{ resp = 'p1b-resp.txt' }; domain = ((Get-Content C:\Tools\p1b-resp.txt -Raw | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json) }
+    }
+    if ($Pw) { Assert-CtrlFail $Pw 'TIMEOUT' 'p1b-timeout' 'clock-advanced' }
+    else { Assert-Cond 'p1b-timeout' 'detached pause returned' 'no response file' $false @() }
     $evB = Read-EventKinds $sid $gen $curB
     Assert-Cond 'p1b-timeout-event' 'control_failed (timeout) event written' "kinds=$($evB.kinds -join ',')" (($evB.kinds -contains 'control_failed')) @($evB.call.rpc.resp)
 
