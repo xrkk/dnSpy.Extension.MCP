@@ -86,8 +86,10 @@ function Resolve-DnSpyBinDirectory([string]$exePath)
     $exeDir = Split-Path $exePath -Parent
     # BinDirectory is the directory that contains dnSpy.dll next to the marker extension.
     foreach ($candidate in @($exeDir, (Join-Path $exeDir 'bin'))) {
-        if ((Test-Path (Join-Path $candidate 'dnSpy.dll')) -and
-            (Test-Path (Join-Path $candidate 'dnSpy.Analyzer.x.dll'))) {
+        # dnSpy.dll is absent in single-exe distributions; the analyzer extension plus the
+        # extensions folder is the reliable marker of the directory extensions load from.
+        if ((Test-Path (Join-Path $candidate 'dnSpy.Analyzer.x.dll')) -and
+            (Test-Path (Join-Path $candidate 'Extensions'))) {
             return $candidate
         }
     }
