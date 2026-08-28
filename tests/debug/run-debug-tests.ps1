@@ -245,10 +245,29 @@ function New-SnapshotJson {
     return '{"AllowedSampleRoot":"' + ($SampleRoot -replace '\\','\\') + '","ArtifactRoot":"' + ($ArtifactRoot -replace '\\','\\') + '","DebugToolsEnabled":' + $dt + ',"DedicatedDebugInstanceAcknowledged":' + $dd + ',"EnableServer":true,"Host":"' + $Host_ + '","Port":' + $Port_ + ',"RemoteAllowedCidrs":' + $CidrsJson + ',"RemoteHostOnlyAcknowledged":' + $ra + ',"RemoteTokenVerifier":' + $Verifier + '}'
 }
 function Ensure-CanonicalDnSpy {
-    # Leave/ensure the VM in the canonical gate-on loopback state.
-    if ((Get-HealthCode $script:BaseUrl) -eq '200') { return $true }
-    $json = New-SnapshotJson $true $true 'localhost' 3000 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
-    return Restart-WithSnapshot $json
+    # Leave/ensure the VM in the canonical gate-on loopback state, and sweep any session a
+    # previously aborted case left behind so launch-facing cases always start from idle.
+    if ((Get-HealthCode $script:BaseUrl) -ne '200') {
+        $json = New-SnapshotJson $true $true 'localhost' 3000 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+        if (-not (Restart-WithSnapshot $json)) { return $false }
+    }
+    $st = Invoke-ToolNoInit 'debug_status' @{ session_id = 'driver-sweep' }
+    $state = if ($st.domain) { "$($st.domain.result.state)" } else { '' }
+    if ($state -and $state -ne 'idle') {
+        $sid = $st.domain.result.active_session_id
+        if (-not $sid) { $sid = $st.domain.debug_context.session_id }
+        $gen = $st.domain.debug_context.generation
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'driver-sweep-term' } | Out-Null
+        Start-Sleep -Milliseconds 1500
+        $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = 'driver-sweep' }
+        $state2 = if ($st2.domain) { "$($st2.domain.result.state)" } else { '' }
+        if ($state2 -and $state2 -ne 'idle' -and $state2 -ne 'terminal') {
+            # hard reset only as last resort
+            $json = New-SnapshotJson $true $true 'localhost' 3000 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+            return Restart-WithSnapshot $json
+        }
+    }
+    return $true
 }
 function Compile-AccFixture {
     $envm = $script:Manifest.env
