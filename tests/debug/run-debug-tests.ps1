@@ -1697,11 +1697,22 @@ function Run-ACC034 {
     $null = Test-Clock 35000
     $dl = (Get-Date).AddSeconds(15)
     while ((Get-Date) -lt $dl -and -not (Test-Path C:\Tools\a34-resp.txt)) { Start-Sleep -Milliseconds 400 }
+    $dom = $null
     if (Test-Path C:\Tools\a34-resp.txt) {
-        $lines = [IO.File]::ReadAllLines('C:\Tools\a34-resp.txt')
-        $dom = (($lines | Select-Object -First ($lines.Count - 1)) -join "`n" | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+        for ($i = 0; $i -lt 12 -and $null -eq $dom; $i++) {
+            try {
+                $lines = [IO.File]::ReadAllLines('C:\Tools\a34-resp.txt')
+                if ($lines.Count -ge 1) {
+                    $body = ($lines | Select-Object -First ($lines.Count - 1)) -join "`n"
+                    if (-not $body) { $body = $lines[0] }
+                    $dom = ($body | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+                }
+            } catch { Start-Sleep -Milliseconds 500 }
+        }
+    }
+    if ($dom) {
         Assert-Cond 'a34-t1-timeout' 'issued restart TIMEOUT' "ok=$($dom.ok) code=$($dom.error.code)" (-not $dom.ok -and ("$($dom.error.code)" -eq 'TIMEOUT')) @('a34-resp.txt')
-    } else { Assert-Cond 'a34-t1-timeout' 'detached restart returned' 'no response' $false @() }
+    } else { Assert-Cond 'a34-t1-timeout' 'detached restart returned parseable' 'no/partial response' $false @() }
     Start-Sleep -Milliseconds 600
     $stF = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
     $evB = Read-EventKinds $sid2 $gen2b $curB
@@ -1745,9 +1756,20 @@ function Run-ACC034 {
     $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
     $dl3 = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $dl3 -and -not (Test-Path C:\Tools\a34-resp3.txt)) { Start-Sleep -Milliseconds 500 }
+    $dom3 = $null
     if (Test-Path C:\Tools\a34-resp3.txt) {
-        $l3 = [IO.File]::ReadAllLines('C:\Tools\a34-resp3.txt')
-        $dom3 = (($l3 | Select-Object -First ($l3.Count - 1)) -join "`n" | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+        for ($i = 0; $i -lt 12 -and $null -eq $dom3; $i++) {
+            try {
+                $l3 = [IO.File]::ReadAllLines('C:\Tools\a34-resp3.txt')
+                if ($l3.Count -ge 1) {
+                    $body3 = ($l3 | Select-Object -First ($l3.Count - 1)) -join "`n"
+                    if (-not $body3) { $body3 = $l3[0] }
+                    $dom3 = ($body3 | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
+                }
+            } catch { Start-Sleep -Milliseconds 500 }
+        }
+    }
+    if ($dom3) {
         $gen4 = [int]$dom3.result.generation
         Assert-Cond 'a34-pending-restart-relaunch' 'removal while waiting: restart relaunches, generation+1, no fault' "ok=$($dom3.ok) gen=$gen4" ($dom3.ok -and ($gen4 -eq ($gen3 + 1))) @('a34-resp3.txt')
         $null = Test-Adapter '{"install":false}'
