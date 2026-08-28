@@ -1169,6 +1169,10 @@ function Run-ACC026 {
     if ($lines.Count -ne $expected.Count) { $mismatches += "count $($lines.Count) vs $($expected.Count)" }
     for ($i = 0; $i -lt [Math]::Min($lines.Count, $expected.Count); $i++) { if ($lines[$i] -ne $expected[$i]) { $mismatches += "[$i] '$($lines[$i])' vs '$($expected[$i])'" } }
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6-compare-done`r`n')
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a-pre-save`r`n')
+    $probeJson = ($lines -join '|')
+    [IO.File]::WriteAllText((Join-Path $script:OutDir 'argv-probe.txt'), $probeJson, (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6a2-inline-write-done`r`n')
     $savedName = Save-Json 'argv-observed.json' $lines
     [IO.File]::AppendAllText('C:\Tools\acc26-trace.log', 'S6b-save-json-done`r`n')
     Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @($savedName)
