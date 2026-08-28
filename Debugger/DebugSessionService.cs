@@ -613,6 +613,63 @@ public sealed class DebugSessionService : IDisposable {
 	bool PausedEpochMatches(Dictionary<string, object>? args) =>
 		coordinator.State == DebugStates.Paused && coordinator.PauseEpoch == ArgInt(args, "pause_epoch", required: true);
 
+	/// <summary>
+	/// Enumerates the owned process's live module table on the DbgManager dispatcher and
+	/// refreshes <see cref="modulesByHandle"/> with minted mod-N handles (preserving identity
+	/// data earlier set_breakpoint calls recorded, seeding the launch-verified target sha).
+	/// Both list_modules and get_stack call this so frame→module mapping works regardless of
+	/// which tool the client happens to call first.
+	/// </summary>
+	List<RegisteredModuleRecord> RegisterLiveModules() {
+		var modules = new List<RegisteredModuleRecord>();
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is null)
+				return;
+			lock (sessionLock) {
+				int index = 0;
+				foreach (var runtime in process.Runtimes) {
+					var runtimeHandle = $"rt-{index++}";
+					foreach (var module in runtime.Modules) {
+						string handle = $"mod-{modules.Count}";
+						var record = new RegisteredModuleRecord {
+							ModuleHandle = handle,
+							RuntimeHandle = runtimeHandle,
+							Filename = module.Filename ?? string.Empty,
+							Name = module.Name,
+							Address = module.Address,
+							Size = module.Size,
+							Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+							Mvid = "00000000-0000-0000-0000-000000000000",
+							UpstreamId = (ModuleId)(module.Filename ?? module.Name),
+						};
+						// Preserve identity data registered by earlier set_breakpoint calls on the same handle.
+						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
+							record.Mvid = existing.Mvid;
+							record.Sha256 = existing.Sha256;
+						}
+						// The launch-verified target carries its disk-strong sha from the start.
+						if (string.IsNullOrEmpty(record.Sha256) && !string.IsNullOrEmpty(record.Filename)) {
+							var targetIdentity = launchIdentities.FirstOrDefault(i =>
+								i.Role == "target" && !string.IsNullOrEmpty(i.FinalPath)
+								&& string.Equals(i.FinalPath, record.Filename, StringComparison.OrdinalIgnoreCase));
+							if (targetIdentity is not null)
+								record.Sha256 = targetIdentity.Sha256;
+						}
+						modules.Add(record);
+					}
+				}
+				// The enumeration refreshes the handle registry so dump/memory/breakpoints see
+				// the live module table (RegisterModules at claim time runs before module loads).
+				modulesByHandle.Clear();
+				foreach (var m in modules)
+					modulesByHandle[m.ModuleHandle] = m;
+			}
+		});
+		return modules;
+	}
+
 	string SetBreakpoint(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
@@ -1017,8 +1074,10 @@ public sealed class DebugSessionService : IDisposable {
 				walker.Close();
 			}
 		});
-		// Map each frame to the handle debug_list_modules minted (by file path, falling back
-		// to the name-keyed pseudo handle for modules that were never enumerated).
+		// Map each frame to the handle debug_list_modules mints; refresh the live module table
+		// first so the mapping also works when get_stack is the client's first paused call.
+		if (coordinator.State == DebugStates.Paused)
+			RegisterLiveModules();
 		var frameModuleHandles = new List<string>();
 		lock (sessionLock) {
 			for (int fi = 0; fi < frames.Count; fi++) {
@@ -1382,52 +1441,7 @@ public sealed class DebugSessionService : IDisposable {
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
 		string? cursor = ArgString(args, "page_cursor");
 		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var c) ? c : 0;
-		var modules = new List<RegisteredModuleRecord>();
-		PostVoidToDispatcherSync(() => {
-			DbgProcess? process;
-			lock (sessionLock) process = ownedProcess;
-			if (process is null)
-				return;
-			lock (sessionLock) {
-				int index = 0;
-				foreach (var runtime in process.Runtimes) {
-					var runtimeHandle = $"rt-{index++}";
-					foreach (var module in runtime.Modules) {
-						string handle = $"mod-{modules.Count}";
-						var record = new RegisteredModuleRecord {
-							ModuleHandle = handle,
-							RuntimeHandle = runtimeHandle,
-							Filename = module.Filename ?? string.Empty,
-							Name = module.Name,
-							Address = module.Address,
-							Size = module.Size,
-							Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
-							Mvid = "00000000-0000-0000-0000-000000000000",
-							UpstreamId = (ModuleId)(module.Filename ?? module.Name),
-						};
-						// Preserve identity data registered by earlier set_breakpoint calls on the same handle.
-						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
-							record.Mvid = existing.Mvid;
-							record.Sha256 = existing.Sha256;
-						}
-						// The launch-verified target carries its disk-strong sha from the start.
-						if (string.IsNullOrEmpty(record.Sha256) && !string.IsNullOrEmpty(record.Filename)) {
-							var targetIdentity = launchIdentities.FirstOrDefault(i =>
-								i.Role == "target" && !string.IsNullOrEmpty(i.FinalPath)
-								&& string.Equals(i.FinalPath, record.Filename, StringComparison.OrdinalIgnoreCase));
-							if (targetIdentity is not null)
-								record.Sha256 = targetIdentity.Sha256;
-						}
-						modules.Add(record);
-					}
-				}
-				// The enumeration refreshes the handle registry so dump/memory/breakpoints see
-				// the live module table (RegisterModules at claim time runs before module loads).
-				modulesByHandle.Clear();
-				foreach (var m in modules)
-					modulesByHandle[m.ModuleHandle] = m;
-			}
-		});
+		var modules = RegisterLiveModules();
 		var page = modules.Skip(start).Take(pageSize).ToList();
 		var dto = new PagedItemsDto {
 			Items = page.Select(m => (object)ModuleDtoOf(m)).ToList(),
@@ -1457,15 +1471,27 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
 		var moduleHandle = ArgString(args, "module_handle", required: true);
 		var address = ParseUlong(ArgString(args, "address", required: true));
-		var length = (int)ArgLong(args, "length", 0);
+		var lengthLong = ArgLong(args, "length", 0);
 		var encoding = ArgString(args, "encoding");
 		if (encoding.Length == 0)
 			encoding = "hex";
-		if (length <= 0 || length > 65536)
-			return Fail(coordinator, DomainErrorCodes.LimitExceeded, message: "length must be within 1..65536");
+		// Schema/metadata bound: 1..65536 is a -32602 rejection (the schema maximum), never a
+		// truncated int — an unsafe-integer length lands here too instead of aliasing to 1.
+		if (lengthLong <= 0 || lengthLong > 65536)
+			throw new ArgumentException("length must be within 1..65536", "length");
+		var length = (int)lengthLong;
 		// API-DYN-023: overflow-safe range predicate only — never compute address+length.
 		if (address > ulong.MaxValue - (ulong)length)
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "address range overflows the address space");
+		// The read must lie inside the named module (subtraction predicate, no overflow).
+		RegisteredModuleRecord? rangeModule;
+		lock (sessionLock)
+			modulesByHandle.TryGetValue(moduleHandle, out rangeModule);
+		if (rangeModule is null)
+			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "module_handle is not a registered module of this pause");
+		var moduleEndDelta = (ulong)(rangeModule.Address + rangeModule.Size) - (ulong)rangeModule.Address;
+		if (address < (ulong)rangeModule.Address || (address - (ulong)rangeModule.Address) > moduleEndDelta - (ulong)length)
+			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "address range lies outside the module");
 		byte[]? data = null;
 		string? error = null;
 		PostVoidToDispatcherSync(() => {
