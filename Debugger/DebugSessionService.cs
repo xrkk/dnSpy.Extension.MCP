@@ -305,6 +305,16 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
 
 		var breakKind = ArgString(args, "break_kind") ?? BreakKinds.None;
+		// CON-DYN-011 / ACC-026: reparse points (junctions/symlinks) in any component of the
+		// target/host/harness/working-directory paths are rejected before the identity lease —
+		// identity must resolve on a reparse-free path, never through substitution.
+		foreach (var rpPath in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
+			if (string.IsNullOrEmpty(rpPath))
+				continue;
+			string? reparseComponent = FindReparseComponent(rpPath);
+			if (reparseComponent is not null)
+				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path traverses a reparse point: {reparseComponent}");
+		}
 		// CON-DYN-011 / ACC-026: every filesystem input must live under the configured
 		// AllowedSampleRoot (when set); anything outside is TARGET_MISMATCH before Start.
 		var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
@@ -1590,6 +1600,29 @@ public sealed class DebugSessionService : IDisposable {
 			Data = encoding == "base64" ? Convert.ToBase64String(data) : ConvertHexShim.ToHexString(data).ToLowerInvariant(),
 			ReadSemantics = "dnspy-zero-fill",
 		});
+	}
+
+	static string? FindReparseComponent(string path) {
+		try {
+			var full = System.IO.Path.GetFullPath(path);
+			var current = full;
+			while (!string.IsNullOrEmpty(current)) {
+				System.IO.FileAttributes attrs;
+				try { attrs = System.IO.File.GetAttributes(current); }
+				catch (System.IO.FileNotFoundException) { return null; }   // not-yet-created tail is fine
+				catch (System.IO.DirectoryNotFoundException) { return null; }
+				if ((attrs & System.IO.FileAttributes.ReparsePoint) != 0)
+					return current;
+				var parent = System.IO.Path.GetDirectoryName(current);
+				if (string.IsNullOrEmpty(parent))
+					return null;
+				current = parent;
+			}
+		}
+		catch {
+			return null;
+		}
+		return null;
 	}
 
 	static ulong ParseUlong(string text) {
