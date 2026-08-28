@@ -554,7 +554,10 @@ function Run-ACC002 {
             & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
             & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
         }
-        $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.vm_ip + '/32","' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
+        # JCS canonical CIDR arrays are ordinal-sorted ("192.168.204.1/32" < "192.168.204.149/32").
+        $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
+        $cidrJson = '["' + ($cidrSorted -join '","') + '"]'
+        $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
         $script:RemoteUp = $false
         Stop-DnSpyAndTargets
         Set-SnapshotJson $snapR
