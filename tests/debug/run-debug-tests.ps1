@@ -2182,9 +2182,14 @@ function Run-ACC010 {
         $tly = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $cur }
         $sy = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $tly.domain.result.items[0].thread_handle }
         if ($sy.domain.ok -and "$($sy.domain.result.items[0].location.method_token)" -ne $tok) {
-            $hotTok = "$($sy.domain.result.items[0].location.method_token)"
-            $hotOff = [int]$sy.domain.result.items[0].location.il_offset
-            $mod = "$($sy.domain.result.items[0].location.module_handle)"
+            $candTok = "$($sy.domain.result.items[0].location.method_token)"
+            $candMod = "$($sy.domain.result.items[0].location.module_handle)"
+            # Only accept a MethodDef inside the fixture module (a step into framework code
+            # yields non-0x06 or foreign-module tokens the bp identity cannot use).
+            if ($candTok -like '0x06*' -and $candMod -eq $mod) {
+                $hotTok = $candTok
+                $hotOff = [int]$sy.domain.result.items[0].location.il_offset
+            }
         }
     }
     Assert-Cond 'a10-entered-hot' 'stepped into a second method' "hot=$hotTok" ([bool]$hotTok) @($st.rpc.resp)
