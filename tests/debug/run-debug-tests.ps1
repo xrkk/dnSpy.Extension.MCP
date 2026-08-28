@@ -1011,7 +1011,7 @@ function Run-ACC013 {
     do {
         $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $best; page_size = 2 }
         if ($cursor) { $a['page_cursor'] = $cursor }
-        $pg = Invoke-ToolNoInit 'debug_get_stack' @a
+        $pg = Invoke-ToolNoInit 'debug_get_stack' $a
         if (-not $pg.domain.ok) { break }
         $seen += @($pg.domain.result.items | ForEach-Object { $_.frame_handle })
         $pages++
@@ -1048,7 +1048,7 @@ function Run-ACC015 {
     $cursor = $lo.domain.result.next_page_cursor; $pages = 1
     while ($cursor -and $pages -lt 10) {
         $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 2; page_cursor = $cursor }
-        $nx = Invoke-ToolNoInit 'debug_get_locals' @a
+        $nx = Invoke-ToolNoInit 'debug_get_locals' $a
         if (-not $nx.domain.ok) { break }
         $cursor = $nx.domain.result.next_page_cursor; $pages++
     }
