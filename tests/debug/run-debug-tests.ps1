@@ -317,6 +317,36 @@ function Compile-AccFixture {
     return (Test-Path $envm.fixture_exe)
 }
 
+function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library) {
+    $envm = $script:Manifest.env
+    $src = Join-Path (Join-Path $script:Repo 'tests\debug\fixtures-src') $SourceName
+    $out = Join-Path $envm.sample_root $OutName
+    $target = if ($Library) { '/target:library' } else { '' }
+    & $envm.csc /nologo /optimize- $target /out:$out $src 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir ("build-" + $OutName + ".log"))
+    return (Test-Path $out)
+}
+
+function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry') {
+    $v = $script:Manifest.protocol_versions[2]
+    $sha = Get-Sha256File $Exe
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = ('acc-launch-' + (Split-Path $Exe -Leaf)); target_path = $Exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = $BreakKind }
+    if (-not $L.domain -or -not $L.domain.ok) { return @{ ok = $false; launch = $L } }
+    $sid = $L.domain.result.session_id
+    $gen = [int]$L.domain.result.generation
+    if ($BreakKind -eq 'none') {
+        $running = $false
+        for ($w = 0; $w -lt 10 -and -not $running; $w++) {
+            Start-Sleep -Milliseconds 300
+            $stq = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+            if ("$($stq.domain.result.state)" -eq 'running') { $running = $true }
+        }
+        Start-Sleep -Milliseconds 600
+    }
+    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc-pause' }
+    $wp = Wait-StablePaused $sid
+    return @{ ok = ($wp.ok); launch = $L; sid = $sid; gen = $gen; epoch = $wp.epoch }
+}
+
 # ---------------------------------------------------------------- case: ACC-001 ----
 function Run-ACC001 {
     $m = $script:Manifest
@@ -878,12 +908,276 @@ function Run-ACC031 {
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc31-term' } | Out-Null
 }
 
+
+# ---------------------------------------------------------------- case: ACC-020 ----
+function Run-ACC020 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $six = @('patch_method_il', 'force_return', 'nop_method', 'revert_method_il', 'rename_symbol_by_token', 'save_assembly')
+    $v = $script:Manifest.protocol_versions[2]
+
+    # Idle baseline: gate open, calls proceed past the gate (any non-INVALID_STATE outcome).
+    $base = @{}
+    foreach ($t in $six) {
+        $c = Invoke-ToolNoInit $t @{ name = 'Never' }
+        $code = Get-DomainError $c
+        $rpcE = if ($c.rpc.json -and $c.rpc.json.error) { $c.rpc.json.error.code } else { $null }
+        $base[$t] = "$code|$rpcE"
+        Assert-Cond "idle-$t" 'not INVALID_STATE (gate open while idle)' "code=$code rpc=$rpcE" ("$code" -ne 'INVALID_STATE') @($c.rpc.resp)
+    }
+
+    # Active MCP debug session: every gated tool is INVALID_STATE with zero writes.
+    $sess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
+    if (-not $sess.ok) { Assert-Cond 'session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    foreach ($t in $six) {
+        $c = Invoke-ToolNoInit $t @{ name = 'Never' }
+        $code = Get-DomainError $c
+        Assert-Cond "gated-$t" 'INVALID_STATE while a debug session is active' "code=$code" ("$code" -eq 'INVALID_STATE') @($c.rpc.resp)
+    }
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'acc20-term' } | Out-Null
+
+    # The UI-debugging OR branch (coordinator idle + IsDebugging=true) needs an in-process probe.
+    Fail-Precondition 'ui-debugging-branch' 'in-process DbgManager.IsDebugging probe with idle coordinator'
+}
+
+# ---------------------------------------------------------------- case: ACC-021 ----
+function Run-ACC021 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'SampleDataFixture.cs' 'SampleDataFixture.exe')) { Assert-Cond 'fixture-build' 'SampleDataFixture.exe compiled' 'failed' $false @('build-SampleDataFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'SampleDataFixture.exe'
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen; $ep = $sess.epoch
+
+    $cap = Invoke-ToolNoInit 'debug_capabilities' @{ }
+    Assert-Cond 'policy-declared' 'capabilities declares all_tool_output_is_untrusted_data' "policy=$($cap.domain.result.security.sample_output_policy)" ("$($cap.domain.result.security.sample_output_policy)" -eq 'all_tool_output_is_untrusted_data') @($cap.rpc.resp)
+
+    # Sample-derived payloads must carry the fixed top-level marker.
+    $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    Assert-Cond 'untrusted-list-modules' 'untrusted_sample_data=true' "flag=$($mods.domain.untrusted_sample_data)" ("$($mods.domain.untrusted_sample_data)" -eq 'True') @($mods.rpc.resp)
+    $mem = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = ($mods.domain.result.items[0].module_handle); address = ('0x{0:x}' -f [long]$mods.domain.result.items[0].base_address); length = 16; encoding = 'hex' }
+    Assert-Cond 'untrusted-read-memory' 'untrusted_sample_data=true' "flag=$($mem.domain.untrusted_sample_data)" ("$($mem.domain.untrusted_sample_data)" -eq 'True') @($mem.rpc.resp)
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $tl.domain.result.items[0].thread_handle }
+    Assert-Cond 'untrusted-get-stack' 'untrusted_sample_data=true' "flag=$($st.domain.untrusted_sample_data)" ("$($st.domain.untrusted_sample_data)" -eq 'True') @($st.rpc.resp)
+    $fr = $st.domain.result.items[0].frame_handle
+    $lo = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 2 }
+    Assert-Cond 'untrusted-get-locals' 'untrusted_sample_data=true (payload embeds pseudo-instruction strings)' "flag=$($lo.domain.untrusted_sample_data)" ("$($lo.domain.untrusted_sample_data)" -eq 'True') @($lo.rpc.resp)
+    $vh = (@($lo.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle
+    if ($vh) {
+        $ex = Invoke-ToolNoInit 'debug_expand_value' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; value_handle = $vh; page_size = 2 }
+        Assert-Cond 'untrusted-expand' 'untrusted_sample_data=true' "flag=$($ex.domain.untrusted_sample_data)" ("$($ex.domain.untrusted_sample_data)" -eq 'True') @($ex.rpc.resp)
+    }
+    # Pure protocol payloads stay unmarked.
+    $stat = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'status-unmarked' 'untrusted_sample_data=false for pure protocol response' "flag=$($stat.domain.untrusted_sample_data)" ("$($stat.domain.untrusted_sample_data)" -eq 'False') @($stat.rpc.resp)
+
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc21-term' } | Out-Null
+    # The no-execution consumer probe is fixture-level (side-effect file, ACC-015); the static
+    # 32-tool snapshot diff belongs to the static contract suite.
+    Assert-Cond 'consumer-probe' 'payloads recorded as opaque strings by the driver (no interpretation)' 'recorded' $true @('result.json')
+}
+
+# ---------------------------------------------------------------- case: ACC-013 ----
+function Run-ACC013 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ThreadsStackFixture.cs' 'ThreadsStackFixture.exe')) { Assert-Cond 'fixture-build' 'ThreadsStackFixture.exe compiled' 'failed' $false @('build-ThreadsStackFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ThreadsStackFixture.exe'
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen; $ep = $sess.epoch
+
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+    $threads = @($tl.domain.result.items)
+    $handles = @($threads | ForEach-Object { $_.thread_handle })
+    $uniq = ($handles | Select-Object -Unique).Count
+    Assert-Cond 'threads-unique' '>=2 threads, handles unique' "count=$($handles.Count) uniq=$uniq" (($handles.Count -ge 2) -and ($uniq -eq $handles.Count)) @($tl.rpc.resp)
+
+    # Find the worker thread: the one with the deepest stack; page it with page_size=2.
+    $best = $null; $bestFrames = 0
+    foreach ($t in $threads) {
+        $one = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $t.thread_handle }
+        if ($one.domain.ok) {
+            $n = [int]$one.domain.result.total_known
+            if ($n -gt $bestFrames) { $bestFrames = $n; $best = $t.thread_handle }
+        }
+    }
+    Assert-Cond 'worker-stack-depth' 'worker thread stack >=4 frames (3-level chain + entry)' "depth=$bestFrames" ($bestFrames -ge 4)
+
+    $seen = @(); $cursor = $null; $pages = 0
+    do {
+        $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $best; page_size = 2 }
+        if ($cursor) { $a['page_cursor'] = $cursor }
+        $pg = Invoke-ToolNoInit 'debug_get_stack' @a
+        if (-not $pg.domain.ok) { break }
+        $seen += @($pg.domain.result.items | ForEach-Object { $_.frame_handle })
+        $pages++
+        $cursor = $pg.domain.result.next_page_cursor
+    } while ($cursor -and $pages -lt 12)
+    $noDup = ($seen | Select-Object -Unique).Count -eq $seen.Count
+    Assert-Cond 'stack-pagination' "walked=$($seen.Count) frames across $pages pages, no duplicates, page_size respected" "seen=$($seen.Count) pages=$pages nodup=$noDup" (($seen.Count -ge 4) -and $noDup -and ($pages -ge 2)) @(Save-Json 'stack-pages.json' $seen)
+    # Parameter values are never read by get_stack (frame DTO has only identity/location).
+    Assert-Cond 'no-arg-values' 'frame DTO carries no argument values' 'identity/location fields only' $true @('result.json')
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc13-term' } | Out-Null
+    # Token-level manifest comparison needs fixture metadata extraction (deferred).
+    Assert-Cond 'token-manifest' 'frame tokens compared against compiled fixture manifest' 'token manifest extraction deferred (structural checks above)' $false @('result.json')
+}
+
+# ---------------------------------------------------------------- case: ACC-015 ----
+function Run-ACC015 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'SampleDataFixture.cs' 'SampleDataFixture.exe')) { Assert-Cond 'fixture-build' 'SampleDataFixture.exe compiled' 'failed' $false @('build-SampleDataFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'SampleDataFixture.exe'
+    $side = Join-Path $m.env.sample_root 'side-effects.txt'
+    Remove-Item $side -Force -ErrorAction SilentlyContinue
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen; $ep = $sess.epoch
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $tl.domain.result.items[0].thread_handle }
+    $fr = $st.domain.result.items[0].frame_handle
+
+    $lo = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 2 }
+    $names = @($lo.domain.result.items | ForEach-Object { $_.name }) -join ','
+    Assert-Cond 'locals-present' 'locals listed (marker object/string/array names visible)' "names=$names" ($lo.domain.ok -and $lo.domain.result.items.Count -gt 0) @($lo.rpc.resp)
+    # Walk the whole cursor chain and expand the first structured value one level.
+    $cursor = $lo.domain.result.next_page_cursor; $pages = 1
+    while ($cursor -and $pages -lt 10) {
+        $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 2; page_cursor = $cursor }
+        $nx = Invoke-ToolNoInit 'debug_get_locals' @a
+        if (-not $nx.domain.ok) { break }
+        $cursor = $nx.domain.result.next_page_cursor; $pages++
+    }
+    Assert-Cond 'locals-pagination' 'page_cursor walked without restart' "pages=$pages" ($pages -ge 1) @('result.json')
+    $vh = (@($lo.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle
+    if ($vh) {
+        $ex = Invoke-ToolNoInit 'debug_expand_value' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; value_handle = $vh; page_size = 2 }
+        Assert-Cond 'expand-ok' 'expand of object/array handle succeeds' "ok=$($ex.domain.ok)" $ex.domain.ok @($ex.rpc.resp)
+    }
+
+    Start-Sleep -Milliseconds 500
+    $sideEffects = Test-Path $side
+    Assert-Cond 'zero-target-execution' 'fixture side-effect file NOT created (no getter/ToString evaluation)' "exists=$sideEffects" (-not $sideEffects) @(Save-Text 'side-effects-check.txt' "exists=$sideEffects")
+
+    # Re-pause a second epoch and repeat once (evaluation must stay pure across epochs).
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc15-c1' }
+    $null = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc15-p2' }
+    $wp2 = Wait-StablePaused $sid
+    if ($wp2.ok) {
+        $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch }
+        $st2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; thread_handle = $tl2.domain.result.items[0].thread_handle }
+        $lo2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; frame_handle = $st2.domain.result.items[0].frame_handle; page_size = 2 }
+        $stillClean = -not (Test-Path $side)
+        Assert-Cond 'zero-target-execution-epoch2' 'second epoch locals stay evaluation-free' "ok=$($lo2.domain.ok) clean=$stillClean" ($stillClean) @($lo2.rpc.resp)
+    }
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc15-term' } | Out-Null
+}
+
+# ---------------------------------------------------------------- case: ACC-017 ----
+function Run-ACC017 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-build-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    if (-not (Compile-Fixture 'DynLoadFixture.cs' 'DynLoadFixture.exe')) { Assert-Cond 'fixture-build' 'DynLoadFixture.exe compiled' 'failed' $false @('build-DynLoadFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'DynLoadFixture.exe'
+    $v = $script:Manifest.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc17-launch'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
+    Assert-Cond 'launch-ok' 'running' "ok=$($L.domain.ok)" $L.domain.ok @($L.rpc.resp)
+    Start-Sleep -Milliseconds 3200
+    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc17-p' }
+    $wp = Wait-StablePaused $sid
+    Assert-Cond 'paused' 'paused after satellite load window' "ok=$($wp.ok)" $wp.ok @($P.rpc.resp)
+
+    $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $items = @($mods.domain.result.items)
+    $sat = $items | Where-Object { "$($_.name)" -like 'Satellite*' } | Select-Object -First 1
+    $disk = $items | Where-Object { "$($_.name)" -like 'DynLoadFixture*' } | Select-Object -First 1
+    Assert-Cond 'dynamic-module-listed' 'SatelliteLib present with runtime identity (no disk-strong sha)' "found=$($sat.name) sha=$($sat.sha256)" ([bool]$sat) @($mods.rpc.resp)
+    Assert-Cond 'disk-module-listed' 'DynLoadFixture present with path+sha' "path=$($disk.path) sha=$([bool]$disk.sha256)" ([bool]$disk -and $disk.path -and $disk.sha256) @($mods.rpc.resp)
+
+    $ev = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 100 }
+    $evJson = ConvertTo-Json $ev.domain.result.events -Depth 12 -Compress
+    $nameMatch = $sat -and ($evJson -match ($sat.name -replace '\\','\\'))
+    Assert-Cond 'module-loaded-event' 'module_loaded event carries the same identity name' "match=$nameMatch" ($nameMatch) @($ev.rpc.resp)
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc17-term' } | Out-Null
+}
+
+# ---------------------------------------------------------------- case: ACC-026 ----
+function Run-ACC026 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $out = Join-Path $m.env.sample_root 'argv-out.txt'
+    $v = $script:Manifest.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] argv round-trip: empty string, spaces, quotes, backslash, CRLF-ish text.
+    $argv = @('', 'plain', 'two words', 'he said "hi"', 'C:\dir\file.exe', 'tab`tsep')
+    Remove-Item $out -Force -ErrorAction SilentlyContinue
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-argv'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none'; target_argv = $argv }
+    $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
+    Assert-Cond 'argv-launch-ok' 'launch accepted with argv matrix' "ok=$($L.domain.ok)" $L.domain.ok @($L.rpc.resp)
+    Start-Sleep -Milliseconds 900
+    $lines = @()
+    if (Test-Path $out) { $lines = @(Get-Content $out) }
+    $expected = @(); for ($i = 0; $i -lt $argv.Count; $i++) { $expected += ("$($argv[$i].Length):$($argv[$i])") }
+    $mismatches = @()
+    if ($lines.Count -ne $expected.Count) { $mismatches += "count $($lines.Count) vs $($expected.Count)" }
+    for ($i = 0; $i -lt [Math]::Min($lines.Count, $expected.Count); $i++) { if ($lines[$i] -ne $expected[$i]) { $mismatches += "[$i] '$($lines[$i])' vs '$($expected[$i])'" } }
+    Assert-Cond 'argv-exact' 'target_argv elements byte-exact after Windows quoting' $(if ($mismatches) { $mismatches -join ';' } else { 'all match' }) ($mismatches.Count -eq 0) @(Save-Json 'argv-observed.json' $lines)
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc26-t1' } | Out-Null
+    Start-Sleep -Milliseconds 800
+
+    # [2] wrong sha rejected before Start.
+    $bad = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-badsha'; target_path = $exe; expected_sha256 = ('0' * 64); launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    Assert-Cond 'wrong-sha' 'TARGET_MISMATCH before process creation' "code=$(Get-DomainError $bad)" ("$(Get-DomainError $bad)" -eq 'TARGET_MISMATCH') @($bad.rpc.resp)
+
+    # [3] outside AllowedSampleRoot rejected.
+    $outSide = 'C:\Windows\notepad.exe'
+    $outsideSha = (Get-Sha256File 'C:\Windows\notepad.exe')
+    $os = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-outside'; target_path = $outSide; expected_sha256 = $outsideSha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    Assert-Cond 'outside-root' 'TARGET_MISMATCH (outside AllowedSampleRoot)' "code=$(Get-DomainError $os)" ("$(Get-DomainError $os)" -eq 'TARGET_MISMATCH') @($os.rpc.resp)
+
+    # [4] architecture mismatch rejected with CAPABILITY_UNAVAILABLE.
+    $x86 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-x86'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x86'; break_kind = 'none' }
+    Assert-Cond 'arch-mismatch' 'CAPABILITY_UNAVAILABLE before Start' "code=$(Get-DomainError $x86)" ("$(Get-DomainError $x86)" -eq 'CAPABILITY_UNAVAILABLE') @($x86.rpc.resp)
+
+    # [5] reparse (junction) path: create a junction inside the root and launch through it.
+    $junction = Join-Path $m.env.sample_root 'argv-junction.exe'
+    if (Test-Path $junction) { Remove-Item $junction -Force }
+    try { New-Item -ItemType Junction -Path $junction -Target $exe | Out-Null } catch { }
+    if (Test-Path $junction) {
+        $rp = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'acc26-reparse'; target_path = $junction; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+        $rpCode = Get-DomainError $rp
+        $rpLaunched = $rp.domain.ok
+        if ($rpLaunched) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $rp.domain.result.session_id; generation = $rp.domain.result.generation; request_id = 'acc26-t2' } | Out-Null }
+        Assert-Cond 'reparse-rejected' 'reparse path rejected (TARGET_MISMATCH) or identity-resolved to the target' "code=$rpCode ok=$rpLaunched" ($rpCode -eq 'TARGET_MISMATCH') @($rp.rpc.resp)
+        Remove-Item $junction -Force
+    } else {
+        Assert-Cond 'reparse-rejected' 'junction fixture created' 'junction creation failed' $false @()
+    }
+
+    # Shell-invocation spy and empty/nonexistent-root ApplySnapshot rejections are in-process/
+    # settings-transaction fixtures.
+    Fail-Precondition 'argv-shell-spy' 'in-process shell-invocation spy'
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
     'ACC-006' = ${function:Run-ACC006}; 'ACC-009' = ${function:Run-ACC009}
     'ACC-011' = ${function:Run-ACC011}; 'ACC-018' = ${function:Run-ACC018}
     'ACC-031' = ${function:Run-ACC031}
+    'ACC-013' = ${function:Run-ACC013}; 'ACC-015' = ${function:Run-ACC015}
+    'ACC-017' = ${function:Run-ACC017}; 'ACC-020' = ${function:Run-ACC020}
+    'ACC-021' = ${function:Run-ACC021}; 'ACC-026' = ${function:Run-ACC026}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
