@@ -20,13 +20,15 @@ namespace dnSpy.Extension.MCP.Debugger;
 public sealed class DebugToolProvider : IMcpToolProvider {
 	readonly McpSettings settings;
 	readonly DebugGateService gateService;
+	readonly DebugSessionService sessionService;
 	readonly object schemaLock = new object();
 	JsonDocument? schemaDoc;
 
 	[ImportingConstructor]
-	public DebugToolProvider(McpSettings settings, DebugGateService gateService) {
+	public DebugToolProvider(McpSettings settings, DebugGateService gateService, DebugSessionService sessionService) {
 		this.settings = settings;
 		this.gateService = gateService;
+		this.sessionService = sessionService;
 	}
 
 	public string Name => "debug";
@@ -49,8 +51,11 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		// The 21 session-scoped tools are advertised only when the frozen gate is active AND
 		// their handlers exist (staged with IMP-004..009); never advertise what cannot answer.
 		if (Gate.EffectiveDebugLaunch) {
+			// Never advertise what cannot answer: only session tools with a landed handler
+			// (IMP-004..009 wiring) are listed while the rest stay hidden until implemented.
 			foreach (var name in AdvertisedSessionTools)
-				tools.Add(SessionTool(name));
+				if (sessionService.Handles(name))
+					tools.Add(SessionTool(name));
 		}
 		return tools;
 	}
@@ -66,6 +71,8 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
+			if (sessionService.Handles(toolName))
+				return sessionService.Execute(toolName, arguments);
 			return null; // session tools dispatch here as their handlers land (IMP-004..009)
 		}
 		var gate = Gate;
