@@ -53,6 +53,66 @@ namespace dnSpy.Extension.MCP {
 		int port = 3000;
 
 		/// <summary>
+		/// Gets or sets whether the dynamic-debugging tools are enabled. The per-process gate
+		/// freezes this value at startup; changes apply after a restart (CON-DYN-014).
+		/// </summary>
+		public bool DebugToolsEnabled {
+			get => debugToolsEnabled;
+			set {
+				if (debugToolsEnabled != value) {
+					debugToolsEnabled = value;
+					OnPropertyChanged(nameof(DebugToolsEnabled));
+				}
+			}
+		}
+		bool debugToolsEnabled;
+
+		/// <summary>
+		/// Gets or sets the dedicated-instance acknowledgment for this installation. The operator
+		/// confirms this dnSpy instance follows the dedicated-instance runbook; the gate freezes
+		/// the value at startup.
+		/// </summary>
+		public bool DedicatedDebugInstanceAcknowledged {
+			get => dedicatedDebugInstanceAcknowledged;
+			set {
+				if (dedicatedDebugInstanceAcknowledged != value) {
+					dedicatedDebugInstanceAcknowledged = value;
+					OnPropertyChanged(nameof(DedicatedDebugInstanceAcknowledged));
+				}
+			}
+		}
+		bool dedicatedDebugInstanceAcknowledged;
+
+		/// <summary>
+		/// Gets or sets the artifact root for debug dumps (absolute path, exclusive of the
+		/// extension directory and the sample root).
+		/// </summary>
+		public string ArtifactRoot {
+			get => artifactRoot;
+			set {
+				if (artifactRoot != value) {
+					artifactRoot = value;
+					OnPropertyChanged(nameof(ArtifactRoot));
+				}
+			}
+		}
+		string artifactRoot = string.Empty;
+
+		/// <summary>
+		/// Gets or sets the allowed sample root for trusted sample data (may be empty).
+		/// </summary>
+		public string AllowedSampleRoot {
+			get => allowedSampleRoot;
+			set {
+				if (allowedSampleRoot != value) {
+					allowedSampleRoot = value;
+					OnPropertyChanged(nameof(AllowedSampleRoot));
+				}
+			}
+		}
+		string allowedSampleRoot = string.Empty;
+
+		/// <summary>
 		/// Gets the collection of log messages (limited to last 100 messages).
 		/// </summary>
 		public ObservableCollection<string> LogMessages { get; } = new ObservableCollection<string>();
@@ -140,6 +200,10 @@ namespace dnSpy.Extension.MCP {
 			other.EnableServer = EnableServer;
 			other.Host = Host;
 			other.Port = Port;
+			other.DebugToolsEnabled = DebugToolsEnabled;
+			other.DedicatedDebugInstanceAcknowledged = DedicatedDebugInstanceAcknowledged;
+			other.ArtifactRoot = ArtifactRoot;
+			other.AllowedSampleRoot = AllowedSampleRoot;
 			return other;
 		}
 
@@ -158,6 +222,10 @@ namespace dnSpy.Extension.MCP {
 			EnableServer = edited.EnableServer;
 			Host = edited.Host;
 			Port = edited.Port;
+			DebugToolsEnabled = edited.DebugToolsEnabled;
+			DedicatedDebugInstanceAcknowledged = edited.DedicatedDebugInstanceAcknowledged;
+			ArtifactRoot = edited.ArtifactRoot;
+			AllowedSampleRoot = edited.AllowedSampleRoot;
 		}
 	}
 
@@ -197,9 +265,17 @@ namespace dnSpy.Extension.MCP {
 			EnableServer = s.EnableServer;
 			Host = s.Host;
 			Port = s.Port;
+			DebugToolsEnabled = s.DebugToolsEnabled;
+			DedicatedDebugInstanceAcknowledged = s.DedicatedDebugInstanceAcknowledged;
+			ArtifactRoot = s.ArtifactRoot;
+			AllowedSampleRoot = s.AllowedSampleRoot;
 			OnPropertyChanged(nameof(EnableServer));
 			OnPropertyChanged(nameof(Host));
 			OnPropertyChanged(nameof(Port));
+			OnPropertyChanged(nameof(DebugToolsEnabled));
+			OnPropertyChanged(nameof(DedicatedDebugInstanceAcknowledged));
+			OnPropertyChanged(nameof(ArtifactRoot));
+			OnPropertyChanged(nameof(AllowedSampleRoot));
 		}
 
 		/// <summary>
@@ -218,8 +294,8 @@ namespace dnSpy.Extension.MCP {
 			var current = store.Current;
 			var candidate = McpSettingsSnapshot.TryCreate(
 				edited.EnableServer, edited.Host, edited.Port,
-				current.DebugToolsEnabled, current.DedicatedDebugInstanceAcknowledged,
-				current.AllowedSampleRoot, current.ArtifactRoot,
+				edited.DebugToolsEnabled, edited.DedicatedDebugInstanceAcknowledged,
+				edited.AllowedSampleRoot, edited.ArtifactRoot,
 				current.RemoteAllowedCidrs, current.RemoteTokenVerifier,
 				current.RemoteHostOnlyAcknowledged, out var error);
 			if (candidate == null) {

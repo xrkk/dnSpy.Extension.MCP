@@ -27,12 +27,31 @@
                 <TextBlock Text="Port:" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
             </Grid>
+            <TextBlock Text="Dynamic Debugging" FontWeight="Bold" Margin="0,10,0,5"/>
+            <CheckBox Content="Enable debug tools (requires restart; freezes at startup)" IsChecked="{Binding DebugToolsEnabled}" Margin="0,0,0,5"/>
+            <CheckBox Content="This dnSpy instance is dedicated to MCP debugging (runbook acknowledged; requires restart)" IsChecked="{Binding DedicatedDebugInstanceAcknowledged}" Margin="0,0,0,5"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Artifact root:" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding ArtifactRoot, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
+                <TextBlock Text="Allowed sample root:" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding AllowedSampleRoot, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
+            </Grid>
             <TextBlock Margin="0,10,0,10"
                        FontStyle="Italic"
                        Foreground="Gray">
                 <Run Text="Note: Server starts/stops immediately when enabled/disabled."/>
                 <LineBreak/>
                 <Run Text="Host/Port changes require restarting dnSpy."/>
+                <LineBreak/>
+                <Run Text="Debug enablement, acknowledgment and path roots apply after restart; they cannot change while a debug session is active."/>
             </TextBlock>
         </StackPanel>
 

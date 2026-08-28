@@ -146,6 +146,30 @@ namespace dnSpy.Extension.MCP {
 			set => editableSettings.Port = value;
 		}
 
+		/// <summary>Gets or sets whether the dynamic-debugging tools are enabled (editable).</summary>
+		public bool DebugToolsEnabled {
+			get => editableSettings.DebugToolsEnabled;
+			set => editableSettings.DebugToolsEnabled = value;
+		}
+
+		/// <summary>Gets or sets the dedicated-instance acknowledgment (editable).</summary>
+		public bool DedicatedDebugInstanceAcknowledged {
+			get => editableSettings.DedicatedDebugInstanceAcknowledged;
+			set => editableSettings.DedicatedDebugInstanceAcknowledged = value;
+		}
+
+		/// <summary>Gets or sets the artifact root path (editable).</summary>
+		public string ArtifactRoot {
+			get => editableSettings.ArtifactRoot;
+			set => editableSettings.ArtifactRoot = value;
+		}
+
+		/// <summary>Gets or sets the allowed sample root path (editable).</summary>
+		public string AllowedSampleRoot {
+			get => editableSettings.AllowedSampleRoot;
+			set => editableSettings.AllowedSampleRoot = value;
+		}
+
 		/// <summary>
 		/// Gets the live log messages from global settings.
 		/// </summary>
