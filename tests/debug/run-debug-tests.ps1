@@ -2147,6 +2147,84 @@ function Run-ACC005 {
     }
 }
 
+
+# ---------------------------------------------------------------- case: ACC-010 ----
+function Run-ACC010 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'AccFixture.cs' 'AccFixture.exe')) { Assert-Cond 'fixture-build' 'AccFixture.exe compiled' 'failed' $false @('build-AccFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'AccFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a10-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'entry' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a10-launch' 'entry pause in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
+    $wp = Wait-HeldPause $sid $gen
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch }
+    $th = $tl.domain.result.items[0].thread_handle
+    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; thread_handle = $th }
+    $fr = $st.domain.result.items[0]
+    $tok = "$($fr.location.method_token)"
+    # Step into Hot to get a second token in the SAME disk-strong module.
+    $cur = $wp.epoch; $hotTok = $null; $hotOff = 0; $mod = $null
+    for ($i = 0; $i -lt 12 -and -not $hotTok; $i++) {
+        $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
+        $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
+        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = 'into' }
+        if (-not $stx.domain.ok) { break }
+        $paused = $false
+        for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
+            Start-Sleep -Milliseconds 300
+            $stq = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+            if ("$($stq.domain.result.state)" -eq 'paused') { $paused = $true; $cur = $stq.domain.debug_context.pause_epoch }
+        }
+        if (-not $paused) { break }
+        $tly = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $cur }
+        $sy = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $tly.domain.result.items[0].thread_handle }
+        if ($sy.domain.ok -and "$($sy.domain.result.items[0].location.method_token)" -ne $tok) {
+            $hotTok = "$($sy.domain.result.items[0].location.method_token)"
+            $hotOff = [int]$sy.domain.result.items[0].location.il_offset
+            $mod = "$($sy.domain.result.items[0].location.module_handle)"
+        }
+    }
+    Assert-Cond 'a10-entered-hot' 'stepped into a second method' "hot=$hotTok" ([bool]$hotTok) @($st.rpc.resp)
+    if (-not $hotTok) { return }
+
+    # Create with the FULL five-part identity (module/mvid/token/offset/sha from disk).
+    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mod)[0]
+    $mvid = "$($modEntry.mvid)"
+    $B = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; request_id = 'a10-bp'; module_handle = $mod; mvid = $mvid; method_token = $hotTok; il_offset = $hotOff; module_sha256 = $sha; enabled = $true }
+    $bpid = $B.domain.result.breakpoint.breakpoint_id
+    Assert-Cond 'a10-created' 'bp created with full five-part identity' "ok=$($B.domain.ok) id=$bpid" ($B.domain.ok -and $bpid) @($B.rpc.resp)
+
+    # list reflects it; bound=false until the bound event.
+    $lst = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $e0 = @($lst.domain.result.items | Where-Object breakpoint_id -eq $bpid)
+    $bound0 = "$($e0[0].bound)"
+    Assert-Cond 'a10-list-enabled-unbound' 'list shows enabled=true bound=false pre-hit' "bound=$bound0" (("$($e0[0].enabled)" -eq 'True') -and ($bound0 -eq 'False')) @($lst.rpc.resp)
+
+    # continue -> hit: EVT breakpoint_hit + bound=true after.
+    $curEvt = Get-MaxEventCursor $sid $gen
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; request_id = 'a10-c1' }
+    $w = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $curEvt; limit = 20; timeout_ms = 10000 }
+    $evj = ConvertTo-Json @($w.domain.result.events) -Depth 10 -Compress
+    $stH = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a10-hit-evt' 'breakpoint hit (EVT breakpoint_hit / paused)' "state=$($stH.domain.result.state) hit=$($evj -match 'breakpoint_hit')" (($stH.domain.result.state -eq 'paused') -or ($evj -match 'breakpoint_hit')) @($w.rpc.resp, $stH.rpc.resp)
+    $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $e2 = @($lst2.domain.result.items | Where-Object breakpoint_id -eq $bpid)[0]
+    Assert-Cond 'a10-bound-after-hit' 'bound=true after the bound/hit event' "bound=$($e2.bound)" ("$($e2.bound)" -eq 'True') @($lst2.rpc.resp)
+
+    # remove: only the owned bp disappears (list empty of it; no other entries changed).
+    $epH2 = $stH.domain.debug_context.pause_epoch
+    $rm = Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $epH2; request_id = 'a10-rm'; breakpoint_id = $bpid }
+    Assert-Cond 'a10-remove-ok' 'remove ok' "ok=$($rm.domain.ok)" $rm.domain.ok @($rm.rpc.resp)
+    $lst3 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $gone = -not (@($lst3.domain.result.items) | Where-Object breakpoint_id -eq $bpid)
+    Assert-Cond 'a10-remove-owned-only' 'owned bp gone; no other residue' "gone=$gone count=$(@($lst3.domain.result.items).Count)" ($gone) @($lst3.rpc.resp)
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a10-t1' } | Out-Null
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2162,6 +2240,7 @@ $handlers = @{
     'ACC-008' = ${function:Run-ACC008}
     'ACC-034' = ${function:Run-ACC034}
     'ACC-005' = ${function:Run-ACC005}
+    'ACC-010' = ${function:Run-ACC010}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
