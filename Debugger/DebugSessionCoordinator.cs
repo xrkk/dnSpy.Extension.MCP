@@ -94,6 +94,18 @@ public sealed class DebugSessionCoordinator {
 	/// idle + launch → starting (§3.6). Creates the session, increments the generation (never
 	/// reused afterwards, even when the claim fails) and writes EVT-DYN-001 session_start.
 	/// </summary>
+
+	/// <summary>Module lifecycle events (EVT-DYN-006/007) with sample-derived identity.</summary>
+	public void WriteModuleLoaded(object payload) {
+		lock (gate)
+			WriteEvent(EventKinds.ModuleLoaded, payload, untrusted: true);
+	}
+
+	public void WriteModuleUnloaded(object payload) {
+		lock (gate)
+			WriteEvent(EventKinds.ModuleUnloaded, payload, untrusted: true);
+	}
+
 	public bool BeginLaunch(string requestId, string launchMode, string runtimeFamily, string architecture) {
 		lock (gate) {
 			if (state != DebugStates.Idle)

@@ -1680,6 +1680,11 @@ public sealed class DebugSessionService : IDisposable {
 					}
 				process.IsRunningChanged += OnOwnedIsRunningChanged;
 				RegisterModules(process);
+				// Module load/unload events (EVT-DYN-006/007): every runtime of the owned
+				// process reports collection changes on the DbgManager dispatcher; the fresh
+				// module table is registered so the event and list_modules share identity.
+				foreach (var runtime in process.Runtimes)
+					runtime.ModulesChanged += OnOwnedModulesChanged;
 				coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
 				claimTcs.TrySetResult(true);
 				}
@@ -1712,6 +1717,37 @@ public sealed class DebugSessionService : IDisposable {
 				}
 			}
 			}
+		}
+	}
+
+
+	// DbgManager dispatcher: a module appeared/vanished in the owned process. The live table
+	// re-registers first so the event can carry the same module_handle list_modules mints.
+	void OnOwnedModulesChanged(object? sender, DbgCollectionChangedEventArgs<DbgModule> e) {
+		try {
+			var table = RegisterLiveModules();
+			foreach (var module in e.Objects) {
+				var added = e.Added;
+				var record = table.FirstOrDefault(m => string.Equals(m.Filename, module.Filename ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					|| string.Equals(m.Name, module.Name, StringComparison.OrdinalIgnoreCase));
+				if (added) {
+					coordinator.WriteModuleLoaded(new {
+						module_handle = record?.ModuleHandle ?? "",
+						name = module.Name,
+						path = module.Filename,
+						layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+					});
+				}
+				else {
+					coordinator.WriteModuleUnloaded(new {
+						module_handle = record?.ModuleHandle ?? "",
+						name = module.Name,
+					});
+				}
+			}
+		}
+		catch {
+			// Event wiring must never disturb the debug pump.
 		}
 	}
 

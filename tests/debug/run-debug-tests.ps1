@@ -1021,7 +1021,6 @@ function Run-ACC013 {
     Assert-Cond 'stack-pagination' "walked=$($seen.Count) frames across $pages pages, no duplicates, page_size respected" "seen=$($seen.Count) pages=$pages nodup=$noDup" (($seen.Count -ge 4) -and $noDup -and ($pages -ge 2)) @(Save-Json 'stack-pages.json' $seen)
     # Parameter values are never read by get_stack (frame DTO has only identity/location).
     Assert-Cond 'no-arg-values' 'frame DTO carries no argument values' 'identity/location fields only' $true @('result.json')
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc13-term' } | Out-Null
     # Token manifest: the fixture dumps its own MethodDef tokens via reflection at startup.
     $manifestPath = Join-Path $m.env.sample_root 'tokens-manifest.txt'
     if (Test-Path $manifestPath) {
@@ -1031,7 +1030,6 @@ function Run-ACC013 {
             if ($kv.Count -eq 2) { $map['0x' + $kv[1]] = $kv[0] }
         }
         $observed = @()
-        foreach ($h in $seen) { }
         $cursor2 = $null
         do {
             $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $best; page_size = 100 }
@@ -1047,6 +1045,7 @@ function Run-ACC013 {
     } else {
         Assert-Cond 'token-manifest' 'fixture token manifest written' 'manifest missing' $false @()
     }
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc13-term' } | Out-Null
 }
 
 # ---------------------------------------------------------------- case: ACC-015 ----
