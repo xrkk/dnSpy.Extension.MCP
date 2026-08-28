@@ -46,6 +46,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $fixtureDir = $PSScriptRoot
+
+# Self-contained SHA-256 (Get-FileHash lives in Microsoft.PowerShell.Utility, whose autoload
+# is unreliable in deeply nested -NoProfile sessions on this host).
+function Get-FileSha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $fs = [System.IO.File]::OpenRead($Path)
+        try { ([System.BitConverter]::ToString($sha.ComputeHash($fs))).Replace('-','').ToLower() }
+        finally { $fs.Close() }
+    } finally { $sha.Dispose() }
+}
+
 if (-not $DnSpyExe) { $DnSpyExe = Join-Path $fixtureDir "..\..\..\..\dnSpy\dnSpy\bin\Release\$Tfm\dnSpy.exe" }
 
 # Force dnSpy's MCP server onto the port we want by rewriting the persisted setting.
@@ -145,7 +157,7 @@ if (-not $SkipBuild)
 if (-not (Test-Path $testDll)) { throw "Fixture DLL missing: $testDll" }
 if (-not (Test-Path $extDllSrc)) { throw "Extension DLL missing: $extDllSrc" }
 
-$originalHash = (Get-FileHash -Algorithm SHA256 $testDll).Hash
+$originalHash = Get-FileSha256 $testDll
 Write-Host "[*] Fixture SHA256 (pre-patch): $originalHash"
 
 # ----- step 3: deploy extension -----
@@ -309,9 +321,9 @@ try
     Write-Host "[11] save_assembly overwriting original (backup-then-overwrite)"
     $savedOver = Rpc 'save_assembly' @{ assembly_name='TestIL' }
     Assert ($savedOver.backup_path -ne $null -and (Test-Path $savedOver.backup_path)) "backup exists" "backup=$($savedOver.backup_path)"
-    $backupHash = (Get-FileHash -Algorithm SHA256 $savedOver.backup_path).Hash
+    $backupHash = Get-FileSha256 $savedOver.backup_path
     Assert ($backupHash -eq $originalHash) "backup SHA matches pre-patch bytes" "backup=$backupHash original=$originalHash"
-    $newHash = (Get-FileHash -Algorithm SHA256 $testDll).Hash
+    $newHash = Get-FileSha256 $testDll
     Assert ($newHash -ne $originalHash) "original file bytes changed"
 
     Write-Host ""
