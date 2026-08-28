@@ -1723,15 +1723,19 @@ function Run-ACC034 {
     $R3 = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid2; generation = $gen2b; request_id = 'a34-r3' }
     Assert-Cond 'a34-abandoned-no-restart' 'restart refused after abandoned restart' "code=$(Get-DomainError $R3)" ("$(Get-DomainError $R3)" -eq 'INVALID_STATE') @($R3.rpc.resp)
 
-    # [3] T2 terminate retry on the same owned process: emit removed settles it as terminated.
+    # [3] T2 terminate retry on the same owned process: the fake swallows the post, so the
+    # call blocks on the (virtual) deadline — run it detached and settle via emit removed.
     $curC = Get-MaxEventCursor $sid2 $gen2b
-    $T2 = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid2; generation = $gen2b; request_id = 'a34-t2' }
-    $t2ok = $T2.domain.ok
-    if (-not $t2ok) {
-        # terminate admitted but settlement waits on removal (fake swallows the post) — emit it.
-        Start-Sleep -Milliseconds 500
-        $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
-        Start-Sleep -Milliseconds 700
+    $t2Req = '{"jsonrpc":"2.0","id":783,"method":"tools/call","params":{"name":"debug_terminate","arguments":{"session_id":"' + $sid2 + '","generation":' + $gen2b + ',"request_id":"a34-t2"}}}'
+    Set-Content C:\Tools\a34-t2req.json $t2Req -Encoding ascii
+    Remove-Item C:\Tools\a34-t2resp.txt -Force -ErrorAction SilentlyContinue
+    $cp2 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-t2req.json','-o','C:\Tools\a34-t2resp.txt' -PassThru -WindowStyle Hidden
+    Start-Sleep -Milliseconds 900
+    $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
+    $dl2 = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $dl2 -and -not (Test-Path C:\Tools\a34-t2resp.txt)) { Start-Sleep -Milliseconds 400 }
+    $t2ok = $false
+    if (Test-Path C:\Tools\a34-t2resp.txt) {
         $stT = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
         $t2ok = "$($stT.domain.result.state)" -ne 'faulted'
     }
