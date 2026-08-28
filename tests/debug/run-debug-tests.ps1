@@ -758,13 +758,16 @@ function Run-ACC031 {
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.location.module_handle)[0]
     $mvid = "$($modEntry.mvid)"
 
-    # Step-into until the current method is no longer Main (enter Hot); epochs come from status.
+    # Step-into until the current method is no longer Main (enter Hot). Each step resumes the
+    # process, so thread handles are re-minted every pause: re-list before every step.
     $hotToken = $null; $hotOff = $null; $mod = "$($mainFrame.location.module_handle)"
+    $curEp = $ep
     for ($i = 0; $i -lt 14 -and -not $hotToken; $i++) {
-        $curEp = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
-        $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $th; kind = 'into' }
+        $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp }
+        if (-not $tl.domain.ok) { break }
+        $curTh = $tl.domain.result.items[0].thread_handle
+        $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $curTh; kind = 'into' }
         if (-not $st.domain.ok) { break }
-        $null = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 50; timeout_ms = 8000 }
         $paused = $false
         for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
             Start-Sleep -Milliseconds 300
@@ -772,7 +775,7 @@ function Run-ACC031 {
             if ("$($stt.domain.result.state)" -eq 'paused') { $paused = $true; $curEp = $stt.domain.debug_context.pause_epoch }
         }
         if (-not $paused) { break }
-        $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $th }
+        $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $curTh }
         if ($s2.domain.ok) {
             $f0 = $s2.domain.result.items[0]
             if ("$($f0.location.method_token)" -ne $mainToken) { $hotToken = "$($f0.location.method_token)"; $hotOff = [int]$f0.location.il_offset; $mod = "$($f0.location.module_handle)" }
