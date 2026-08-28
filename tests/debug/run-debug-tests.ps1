@@ -270,6 +270,25 @@ function Ensure-CanonicalDnSpy {
     return $true
 }
 
+
+function Get-MaxEventCursor {
+    param([string]$Sid, [int]$Gen)
+    $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = 0; limit = 1000 }
+    if ($r.domain -and $r.domain.result.events) {
+        $m = (@($r.domain.result.events) | Measure-Object cursor -Maximum).Maximum
+        if ($m) { return [int]$m }
+    }
+    return 0
+}
+function Test-BreakpointHitSince {
+    param([string]$Sid, [int]$Gen, [int]$AfterCursor)
+    $r = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $Sid; generation = $Gen; after_cursor = $AfterCursor; limit = 1000 }
+    $events = @()
+    if ($r.domain -and $r.domain.result.events) { $events = @($r.domain.result.events) }
+    $hit = ($events | Where-Object { $_.kind -eq 'breakpoint_hit' -or ($_.kind -eq 'paused' -and $_.payload.reason -eq 'breakpoint') } | Measure-Object).Count
+    return @{ hit = ($hit -gt 0); count = $events.Count; raw = $r }
+}
+
 function Wait-StablePaused {
     # break_kind entry/none both see a transient pause the extension auto-continues; wait for
     # a pause that holds across two samples before taking handles.
@@ -791,38 +810,36 @@ function Run-ACC031 {
         $bpid = if ($bp.domain.ok) { $bp.domain.result.breakpoint.breakpoint_id } else { $null }
         Assert-Cond 'bp-created-enabled' 'breakpoint created enabled=true' "ok=$($bp.domain.ok) id=$bpid" ($bp.domain.ok -and $bpid) @($bp.rpc.resp)
 
+        $baseCur1 = Get-MaxEventCursor $sid $gen
         $cont = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = 'acc31-c1' }
-        $hit1 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 100; timeout_ms = 10000 }
-        $ev1 = ConvertTo-Json $hit1.domain.result.events -Depth 20 -Compress
-        $st1 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
-        Assert-Cond 'first-hit' 'breakpoint hit after continue (EVT-DYN-013 observed / paused)' "state=$($st1.domain.result.state) evt13=$($ev1 -match 'EVT-DYN-013')" (($st1.domain.result.state -eq 'paused') -or ($ev1 -match 'EVT-DYN-013')) @($hit1.rpc.resp, $st1.rpc.resp)
+        $wp1 = Wait-StablePaused $sid
+        $h1 = Test-BreakpointHitSince $sid $gen $baseCur1
+        Assert-Cond 'first-hit' 'breakpoint hit after continue (breakpoint_hit event / paused reason=breakpoint)' "paused=$($wp1.ok) hit=$($h1.hit) events=$($h1.count)" ($wp1.ok -and $h1.hit) @($cont.rpc.resp, $h1.raw.rpc.resp)
 
-        $epH = $st1.domain.debug_context.pause_epoch
+        $epH = $wp1.epoch
         $dis = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = $gen; pause_epoch = $epH; request_id = 'acc31-dis'; breakpoint_id = $bpid; enabled = $false }
         Assert-Cond 'disabled-ok' 'set enabled=false ok' "ok=$($dis.domain.ok)" $dis.domain.ok @($dis.rpc.resp)
         $lst1 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
         $e1 = (@($lst1.domain.result.items) | Where-Object breakpoint_id -eq $bpid).enabled
         Assert-Cond 'list-disabled-consistent' 'list shows enabled=false' "enabled=$e1" ("$e1" -eq 'False') @($lst1.rpc.resp)
 
+        $midBase = Get-MaxEventCursor $sid $gen
         $cont2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epH; request_id = 'acc31-c2' }
         Start-Sleep -Milliseconds 1500
-        $beforeCursor = $hit1.domain.result.next_cursor
-        $evMid = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = $beforeCursor; limit = 100 }
-        $midJson = ConvertTo-Json $evMid.domain.result.events -Depth 20 -Compress
-        Assert-Cond 'no-hit-while-disabled' 'no EVT-DYN-013 while disabled' "evt13=$($midJson -match 'EVT-DYN-013')" ($midJson -notmatch 'EVT-DYN-013') @($evMid.rpc.resp)
+        $hMid = Test-BreakpointHitSince $sid $gen $midBase
+        Assert-Cond 'no-hit-while-disabled' 'no breakpoint hit while disabled' "hit=$($hMid.hit) events=$($hMid.count)" (-not $hMid.hit) @($hMid.raw.rpc.resp)
 
         $p3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc31-p3' }
-        $ep3 = $p3.domain.result.pause_epoch
-        $preEnableCursor = $evMid.domain.result.next_cursor
+        $wp3 = Wait-StablePaused $sid
+        $ep3 = $wp3.epoch
         $en = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc31-en'; breakpoint_id = $bpid; enabled = $true }
         Assert-Cond 're-enabled-ok' 'set enabled=true ok' "ok=$($en.domain.ok)" $en.domain.ok @($en.rpc.resp)
         $cont3 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc31-c3' }
-        $hit2 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $preEnableCursor; limit = 100; timeout_ms = 10000 }
-        $ev2 = ConvertTo-Json $hit2.domain.result.events -Depth 20 -Compress
-        $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
-        Assert-Cond 'second-hit-after-enable' 'breakpoint hits again after re-enable' "state=$($st2.domain.result.state) evt13=$($ev2 -match 'EVT-DYN-013')" (($st2.domain.result.state -eq 'paused') -or ($ev2 -match 'EVT-DYN-013')) @($hit2.rpc.resp, $st2.rpc.resp)
+        $wp2 = Wait-StablePaused $sid
+        $h2 = Test-BreakpointHitSince $sid $gen $midBase
+        Assert-Cond 'second-hit-after-enable' 'breakpoint hits again after re-enable' "paused=$($wp2.ok) hit=$($h2.hit)" ($wp2.ok -and $h2.hit) @($cont3.rpc.resp, $h2.raw.rpc.resp)
 
-        $ep4 = $st2.domain.debug_context.pause_epoch
+        $ep4 = $wp2.epoch
         $rm = Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $ep4; request_id = 'acc31-rm'; breakpoint_id = $bpid }
         Assert-Cond 'removed-ok' 'remove ok' "ok=$($rm.domain.ok)" $rm.domain.ok @($rm.rpc.resp)
         $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
