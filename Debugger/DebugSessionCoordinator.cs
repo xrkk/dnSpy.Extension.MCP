@@ -323,6 +323,7 @@ public sealed class DebugSessionCoordinator {
 					bool issuedPause = unsettledControl is { Operation: ControlOperation.Pause }
 						&& unsettledControl.CurrentPhase == ControlOperationRecord.Phase.Issued;
 					cause = PauseCauseArbiter.SelectPrimaryCause(breakInfos, issuedPause);
+					lastPauseCause = cause;
 					pauseEpoch++;
 					SetState(DebugStates.Paused);
 					WriteEvent(EventKinds.Paused, new { reason = cause }, untrusted: false);
