@@ -485,16 +485,18 @@ function Assert-DeadlineBoundary {
     $null = Test-Adapter '{"install":true}'
     $body = '{"jsonrpc":"2.0","id":792,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $Sid + '","generation":' + $Gen + ',"request_id":"' + $RequestId + '"}}}'
     $rf = Invoke-Detached $body $RequestId
-    Start-Sleep -Milliseconds 900
-    $null = Test-Clock 29999
+    Start-Sleep -Milliseconds 600
+    # The virtual deadline is admission+30s; real time and offset BOTH count against it, so
+    # advance to just under (29500+600 < 30000), verify still waiting, then blow past it.
+    $null = Test-Clock 29500
     Start-Sleep -Milliseconds 700
     $stillWaiting = -not (Test-Path $rf)
-    $null = Test-Clock 2
+    $null = Test-Clock 1000
     $dom = Read-DetachedResp $rf
     $null = Test-Adapter '{"install":false}'
     $code = if ($dom) { "$($dom.error.code)" } else { '' }
     $ok = $stillWaiting -and ($code -eq 'TIMEOUT')
-    Assert-Cond "$RequestId-boundary" '29.999s: still waiting; +2ms: TIMEOUT' "waiting29999=$stillWaiting code=$code" $ok @($rf)
+    Assert-Cond "$RequestId-boundary" 'just-under deadline: still waiting; past it: TIMEOUT' "waiting=$stillWaiting code=$code" $ok @($rf)
 }
 
 function Wait-HeldPause {
@@ -1590,11 +1592,17 @@ function Run-ACC007 {
     $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"break","ordinal":0}]}}'
     $domP1 = Read-DetachedResp $rfP1
     $p1Epoch = if ($domP1) { [int]$domP1.result.pause_epoch } else { -1 }
+    $stAfter = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid3 }
+    $epAfter = $stAfter.domain.debug_context.pause_epoch
     $null = Test-Adapter '{"emit":{"kind":"paused","break_infos":[{"type":"breakpoint","ordinal":0,"owned_breakpoint_id":"acc7-bp-late"}]}}'
     Start-Sleep -Milliseconds 700
     $evLate = Read-EventKinds $sid3 $gen3 $curLate
-    $lateOk = ($domP1 -and $domP1.ok -and ("$($domP1.result.reason)" -eq 'manual')) -and ($evLate.raw -match '"reason":"breakpoint"') -and ($evLate.kinds -contains 'breakpoint_hit')
-    Assert-Cond 'p1-late-not-rewritten' 'manual-settled response intact; late breakpoint settles as a NEW pause (epoch advances)' "reason=$($domP1.result.reason) p1ep=$p1Epoch lateBp=$($evLate.kinds -contains 'breakpoint_hit')" $lateOk @($rfP1, $evLate.call.rpc.resp)
+    $stLate = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid3 }
+    $epLate = $stLate.domain.debug_context.pause_epoch
+    # Contract (§3.2): once the pause settled, a LATE observation is deduped — no new
+    # paused/breakpoint events, no epoch bump, and the already-returned response is untouched.
+    $lateOk = ($domP1 -and $domP1.ok -and ("$($domP1.result.reason)" -eq 'manual')) -and (-not ($evLate.kinds -contains 'paused')) -and (-not ($evLate.kinds -contains 'breakpoint_hit')) -and ("$epLate" -eq "$epAfter")
+    Assert-Cond 'p1-late-not-rewritten' 'manual-settled response intact; late breakpoint DEDUPED (no new events, epoch unchanged)' "reason=$($domP1.result.reason) ep=$epAfter->$epLate lateBp=$($evLate.kinds -contains 'breakpoint_hit')" $lateOk @($rfP1, $evLate.call.rpc.resp)
 
     # 29.999/30.000 deadline boundary on the virtual clock.
     $null = Resume-FromPaused $sid3 $gen3
