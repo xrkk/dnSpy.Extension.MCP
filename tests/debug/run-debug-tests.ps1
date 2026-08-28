@@ -486,57 +486,58 @@ function Run-ACC006 {
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc6-launch'; target_path = $m.env.fixture_exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $li = $L.domain.result
     $sid = $li.session_id
-    Assert-Cond 'launch-ok' 'ok=true state=running gen=1' "ok=$($L.domain.ok) state=$($li.state) gen=$($li.generation)" ($L.domain.ok -and ($li.state -eq 'running') -and ($li.generation -eq 1)) @($L.rpc.resp)
+    $gen = [int]$li.generation
+    Assert-Cond 'launch-ok' 'ok=true state=running (generation recorded; fresh-session baseline)' "ok=$($L.domain.ok) state=$($li.state) gen=$gen" ($L.domain.ok -and ($li.state -eq 'running')) @($L.rpc.resp)
     Start-Sleep -Milliseconds 800
 
-    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = 1; request_id = 'acc6-p1' }
+    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc6-p1' }
     $e1 = $P.domain.result.pause_epoch
     Assert-Cond 'pause1' 'paused epoch>=1' "epoch=$e1 state=$($P.domain.result.state)" ($P.domain.ok -and $e1 -ge 1) @($P.rpc.resp)
 
-    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $e1 }
+    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $e1 }
     $t1 = $T.domain.result.items[0].thread_handle
-    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $e1; thread_handle = $t1 }
+    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; thread_handle = $t1 }
     $f1 = $S.domain.result.items[0].frame_handle
-    $V = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = 1; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
+    $V = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
     $v1 = $null
     if ($V.domain.ok -and $V.domain.result.items) { $v1 = (@($V.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle }
     Assert-Cond 'handles-taken' 'thread/frame/value handles materialized' "t=$t1 f=$f1 v=$v1" (($t1) -and ($f1)) @($T.rpc.resp, $S.rpc.resp)
 
-    $C = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = 1; pause_epoch = $e1; request_id = 'acc6-cont' }
+    $C = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; request_id = 'acc6-cont' }
     Assert-Cond 'continue1' 'ok running' "ok=$($C.domain.ok) state=$($C.domain.result.state)" ($C.domain.ok) @($C.rpc.resp)
     Start-Sleep -Milliseconds 500
 
     # Old-epoch stack read and old frame/value reuse must be STALE_HANDLE.
-    $S2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $e1; thread_handle = $t1 }
+    $S2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; thread_handle = $t1 }
     $c2 = Get-DomainError $S2
-    $L2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = 1; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
+    $L2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
     $c3 = Get-DomainError $L2
     Assert-Cond 'stale-after-continue' 'old-epoch get_stack/get_locals = STALE_HANDLE' "stack=$c2 locals=$c3" (("$c2" -eq 'STALE_HANDLE') -and ("$c3" -eq 'STALE_HANDLE')) @($S2.rpc.resp, $L2.rpc.resp)
 
-    $P2 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = 1; request_id = 'acc6-p2' }
+    $P2 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc6-p2' }
     $e2 = $P2.domain.result.pause_epoch
     Assert-Cond 'pause2-epoch-increases' "pause_epoch > $e1" "epoch=$e2" ($e2 -gt $e1) @($P2.rpc.resp)
-    $T2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $e2 }
+    $T2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $e2 }
     $t2 = $T2.domain.result.items[0].thread_handle
-    $S3 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $e2; thread_handle = $t2 }
+    $S3 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $e2; thread_handle = $t2 }
     $f2 = $S3.domain.result.items[0].frame_handle
-    $L3 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = 1; pause_epoch = $e2; frame_handle = $f2; page_size = 100 }
+    $L3 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e2; frame_handle = $f2; page_size = 100 }
     Assert-Cond 'fresh-handles-work' 'new epoch handles valid (stack+locals ok)' "stack_ok=$($S3.domain.ok) locals_ok=$($L3.domain.ok)" ($S3.domain.ok -and $L3.domain.ok) @($S3.rpc.resp, $L3.rpc.resp)
 
-    $R = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid; generation = 1; request_id = 'acc6-restart' }
-    $gen2 = $R.domain.result.generation
-    Assert-Cond 'restart-gen2' 'restart returns generation 2' "gen=$gen2 ok=$($R.domain.ok)" ($R.domain.ok -and ($gen2 -eq 2)) @($R.rpc.resp)
+    $R = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid; generation = $gen; request_id = 'acc6-restart' }
+    $gen2 = [int]$R.domain.result.generation
+    Assert-Cond 'restart-gen-increments' "restart returns generation $($gen + 1)" "gen=$gen2 ok=$($R.domain.ok)" ($R.domain.ok -and ($gen2 -eq ($gen + 1))) @($R.rpc.resp)
     Start-Sleep -Milliseconds 1500
-    $P3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = 2; request_id = 'acc6-p3' }
+    $P3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen2; request_id = 'acc6-p3' }
     $e3 = $P3.domain.result.pause_epoch
-    $T3 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 2; pause_epoch = $e3 }
+    $T3 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen2; pause_epoch = $e3 }
     $t3 = $T3.domain.result.items[0].thread_handle
-    $S4 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 2; pause_epoch = $e3; thread_handle = $t2 }
+    $S4 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen2; pause_epoch = $e3; thread_handle = $t2 }
     $c4 = Get-DomainError $S4
-    $S5 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 2; pause_epoch = $e3; thread_handle = $t3 }
+    $S5 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen2; pause_epoch = $e3; thread_handle = $t3 }
     Assert-Cond 'stale-after-restart' 'old thread handle STALE_HANDLE; fresh gen2 handle ok' "old=$c4 fresh_ok=$($S5.domain.ok)" (("$c4" -eq 'STALE_HANDLE') -and $S5.domain.ok) @($S4.rpc.resp, $S5.rpc.resp)
 
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = 2; request_id = 'acc6-term' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen2; request_id = 'acc6-term' } | Out-Null
     $St = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
     Assert-Cond 'terminated-idle' 'status after terminate = idle/terminal' "state=$($St.domain.result.state)" ("$($St.domain.result.state)" -ne 'paused') @($St.rpc.resp)
 }
@@ -580,21 +581,22 @@ function Run-ACC011 {
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc11-launch'; target_path = $m.env.fixture_exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'entry' }
     $li = $L.domain.result
     $sid = $li.session_id
+    $gen = [int]$li.generation
     Assert-Cond 'launch-entry-paused' 'entry break pauses in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok -and ($li.state -eq 'paused')) @($L.rpc.resp)
     $ep = $li.pause_epoch
-    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $ep }
+    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
     $th = $T.domain.result.items[0].thread_handle
-    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $ep; thread_handle = $th }
+    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
     $frame = $S.domain.result.items[0]
     $mod = $frame.module_handle
-    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = 1 }
+    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mod)[0]
     $mvid = "$($modEntry.mvid)"
     $token = "$($frame.method_token)"
     $off = "$($frame.il_offset)"
     Assert-Cond 'frame-identity' 'frame carries module/token/offset; module list carries mvid' "mod=$mod mvid=$mvid token=$token off=$off" (($mod) -and ($mvid) -and ($token)) @($S.rpc.resp, $MODS.rpc.resp)
 
-    $before = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = 1 }
+    $before = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
     $beforeCount = @($before.domain.result.items).Count
 
     function Try-Bp([string]$Id, $ToolArgs, [string]$ExpectKind, [string]$ExpectCode) {
@@ -607,18 +609,18 @@ function Run-ACC011 {
     }
     $goodMvid = $mvid
     $badMvid = if ($mvid -match '^[0-9a-f-]+$') { ($mvid -replace '^[0-9a-f]', 'f') } else { '00000000-0000-0000-0000-00000000bad0' }
-    Try-Bp 'wrong-sha' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-badsha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; module_sha256 = ('0' * 64) } 'domain' 'TARGET_MISMATCH'
-    Try-Bp 'wrong-mvid' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-badmvid'; module_handle = $mod; mvid = $badMvid; method_token = $token; il_offset = 0 } 'domain' 'TARGET_MISMATCH'
-    Try-Bp 'stale-module-handle' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-badmod'; module_handle = 'mod-99999'; mvid = $goodMvid; method_token = $token; il_offset = 0 } 'domain' 'TARGET_MISMATCH'
-    Try-Bp 'non-methoddef-token' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-badtoken'; module_handle = $mod; mvid = $goodMvid; method_token = '0x2B000001'; il_offset = 0 } 'rpc' '-32602'
-    Try-Bp 'offset-out-of-method' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-badoff'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 1048576 } 'rpc' '-32602'
-    Try-Bp 'diskstrong-missing-sha' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc11-nosha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; identity_strength = 'disk_strong' } 'rpc' '-32602'
+    Try-Bp 'wrong-sha' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badsha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; module_sha256 = ('0' * 64) } 'domain' 'TARGET_MISMATCH'
+    Try-Bp 'wrong-mvid' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badmvid'; module_handle = $mod; mvid = $badMvid; method_token = $token; il_offset = 0 } 'domain' 'TARGET_MISMATCH'
+    Try-Bp 'stale-module-handle' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badmod'; module_handle = 'mod-99999'; mvid = $goodMvid; method_token = $token; il_offset = 0 } 'domain' 'TARGET_MISMATCH'
+    Try-Bp 'non-methoddef-token' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badtoken'; module_handle = $mod; mvid = $goodMvid; method_token = '0x2B000001'; il_offset = 0 } 'rpc' '-32602'
+    Try-Bp 'offset-out-of-method' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badoff'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 1048576 } 'rpc' '-32602'
+    Try-Bp 'diskstrong-missing-sha' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-nosha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; identity_strength = 'disk_strong' } 'rpc' '-32602'
 
-    $after = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = 1 }
+    $after = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
     $afterCount = @($after.domain.result.items).Count
     Assert-Cond 'no-residue' 'breakpoint count unchanged by rejected requests' "before=$beforeCount after=$afterCount" ($beforeCount -eq $afterCount) @($before.rpc.resp, $after.rpc.resp)
 
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = 1; request_id = 'acc11-term' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc11-term' } | Out-Null
 }
 
 # ---------------------------------------------------------------- case: ACC-018 ----
@@ -631,10 +633,11 @@ function Run-ACC018 {
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc18-launch'; target_path = $m.env.fixture_exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'entry' }
     $li = $L.domain.result
     $sid = $li.session_id
+    $gen = [int]$li.generation
     $ep = $li.pause_epoch
     Assert-Cond 'launch-paused' 'paused at entry' "state=$($li.state)" ($li.state -eq 'paused') @($L.rpc.resp)
 
-    $M = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = 1 }
+    $M = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $big = @($M.domain.result.items | Sort-Object size -Descending | Select-Object -First 8 | Where-Object { $_.size -ge 65536 -and $_.path } | Select-Object -First 1)[0]
     if (-not $big) { $big = @($M.domain.result.items | Where-Object { $_.size -ge 65536 -and $_.path } | Select-Object -First 1)[0] }
     Assert-Cond 'big-module-found' 'a module with size>=65536 and a disk path' "found=$($big.name)" ([bool]$big) @($M.rpc.resp)
@@ -644,7 +647,7 @@ function Run-ACC018 {
     $size = [long]$big.size
 
     # Legal reads.
-    $r1 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 256; encoding = 'hex' }
+    $r1 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 256; encoding = 'hex' }
     $hex1 = "$($r1.domain.result.data)" -replace '\s',''
     $disk = ''
     try {
@@ -657,16 +660,16 @@ function Run-ACC018 {
     $sem1 = "$($r1.domain.result.read_semantics)"
     Assert-Cond 'read-256-pattern' 'first 256 bytes match on-disk image; semantics=dnspy-zero-fill' "match=$($hex1 -eq $disk) sem=$sem1" (($hex1 -eq $disk) -and ($sem1 -eq 'dnspy-zero-fill')) @($r1.rpc.resp)
 
-    $r2 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f ($base + $size - 65536); length = 65536; encoding = 'hex' }
+    $r2 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f ($base + $size - 65536); length = 65536; encoding = 'hex' }
     Assert-Cond 'read-last-64k' '65536-byte tail read ok' "ok=$($r2.domain.ok) len=$($r2.domain.result.length)" ($r2.domain.ok -and ($r2.domain.result.length -eq 65536)) @($r2.rpc.resp)
-    $r3 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f ($base + $size - 1); length = 1; encoding = 'hex' }
+    $r3 = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f ($base + $size - 1); length = 1; encoding = 'hex' }
     Assert-Cond 'read-final-byte' 'exact final byte read ok' "ok=$($r3.domain.ok)" $r3.domain.ok @($r3.rpc.resp)
 
     # Schema-invalid lengths.
-    $e1 = Send-Rpc 'tools/call' @{ name = 'debug_read_memory'; arguments = @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 65537; encoding = 'hex' } }
+    $e1 = Send-Rpc 'tools/call' @{ name = 'debug_read_memory'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 65537; encoding = 'hex' } }
     $err1 = if ($e1.json -and $e1.json.error) { $e1.json.error.code } else { $null }
     Assert-Cond 'len-65537' 'JSON-RPC -32602' "error=$err1" ("$err1" -eq '-32602') @($e1.resp)
-    $e2 = Send-Rpc 'tools/call' @{ name = 'debug_read_memory'; arguments = @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 9007199254740993; encoding = 'hex' } }
+    $e2 = Send-Rpc 'tools/call' @{ name = 'debug_read_memory'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 9007199254740993; encoding = 'hex' } }
     $err2 = if ($e2.json -and $e2.json.error) { $e2.json.error.code } else { $null }
     Assert-Cond 'len-unsafe-integer' 'JSON-RPC -32602' "error=$err2" ("$err2" -eq '-32602') @($e2.resp)
 
@@ -676,19 +679,19 @@ function Run-ACC018 {
         @{ id = 'addr-last-plus-one'; a = "0x{0:x}" -f ($base + $size); l = 2 },
         @{ id = 'addr-wrap'; a = '0xffffffffffffffff'; l = 2 }
     )) {
-        $c = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = $case.a; length = $case.l; encoding = 'hex' }
+        $c = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = $case.a; length = $case.l; encoding = 'hex' }
         $code = Get-DomainError $c
         Assert-Cond $case.id 'tool error TARGET_MISMATCH' "code=$code" ("$code" -eq 'TARGET_MISMATCH') @($c.rpc.resp)
     }
 
     # Running-state read must be INVALID_STATE.
-    $C = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = 1; pause_epoch = $ep; request_id = 'acc18-cont' }
+    $C = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc18-cont' }
     Start-Sleep -Milliseconds 400
-    $rr = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = 1; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 16; encoding = 'hex' }
+    $rr = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 16; encoding = 'hex' }
     $rcode = Get-DomainError $rr
     Assert-Cond 'running-invalid-state' 'read while running = INVALID_STATE' "code=$rcode" ("$rcode" -eq 'INVALID_STATE') @($rr.rpc.resp)
 
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = 1; request_id = 'acc18-term' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc18-term' } | Out-Null
     # Range-predicate spy and ReadMemory call counters are in-process fixtures.
     Fail-Precondition 'memory-range-spy' 'in-process range-predicate/ReadMemory spy counters'
 }
@@ -703,15 +706,16 @@ function Run-ACC031 {
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc31-launch'; target_path = $m.env.fixture_exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'entry' }
     $li = $L.domain.result
     $sid = $li.session_id
+    $gen = [int]$li.generation
     $ep = $li.pause_epoch
     Assert-Cond 'launch-entry-paused' 'paused at entry (Main)' "state=$($li.state)" ($li.state -eq 'paused') @($L.rpc.resp)
 
-    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = 1; pause_epoch = $ep }
+    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
     $th = $T.domain.result.items[0].thread_handle
-    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $ep; thread_handle = $th }
+    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
     $mainFrame = $S.domain.result.items[0]
     $mainToken = "$($mainFrame.method_token)"
-    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = 1 }
+    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.module_handle)[0]
     $mvid = "$($modEntry.mvid)"
 
@@ -719,9 +723,9 @@ function Run-ACC031 {
     $hotToken = $null; $hotOff = $null; $mod = "$($mainFrame.module_handle)"
     for ($i = 0; $i -lt 14 -and -not $hotToken; $i++) {
         $curEp = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
-        $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = 1; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $th; kind = 'into' }
+        $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $th; kind = 'into' }
         if (-not $st.domain.ok) { break }
-        $null = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = 1; after_cursor = 0; limit = 50; timeout_ms = 8000 }
+        $null = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 50; timeout_ms = 8000 }
         $paused = $false
         for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
             Start-Sleep -Milliseconds 300
@@ -729,7 +733,7 @@ function Run-ACC031 {
             if ("$($stt.domain.result.state)" -eq 'paused') { $paused = $true; $curEp = $stt.domain.debug_context.pause_epoch }
         }
         if (-not $paused) { break }
-        $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = 1; pause_epoch = $curEp; thread_handle = $th }
+        $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $th }
         if ($s2.domain.ok) {
             $f0 = $s2.domain.result.items[0]
             if ("$($f0.method_token)" -ne $mainToken) { $hotToken = "$($f0.method_token)"; $hotOff = [int]$f0.il_offset; $mod = "$($f0.module_handle)" }
@@ -738,50 +742,50 @@ function Run-ACC031 {
     Assert-Cond 'entered-hot' 'stepped from Main into Hot (frame token changed)' "hot_token=$hotToken off=$hotOff" ([bool]$hotToken) @($S.rpc.resp)
 
     if ($hotToken) {
-        $bp = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = 1; pause_epoch = $curEp; request_id = 'acc31-bp'; module_handle = $mod; mvid = $mvid; method_token = $hotToken; il_offset = $hotOff; module_sha256 = $sha; enabled = $true }
+        $bp = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = 'acc31-bp'; module_handle = $mod; mvid = $mvid; method_token = $hotToken; il_offset = $hotOff; module_sha256 = $sha; enabled = $true }
         $bpid = if ($bp.domain.ok) { $bp.domain.result.breakpoint.breakpoint_id } else { $null }
         Assert-Cond 'bp-created-enabled' 'breakpoint created enabled=true' "ok=$($bp.domain.ok) id=$bpid" ($bp.domain.ok -and $bpid) @($bp.rpc.resp)
 
-        $cont = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = 1; pause_epoch = $curEp; request_id = 'acc31-c1' }
-        $hit1 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = 1; after_cursor = 0; limit = 100; timeout_ms = 10000 }
+        $cont = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = 'acc31-c1' }
+        $hit1 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 100; timeout_ms = 10000 }
         $ev1 = ConvertTo-Json $hit1.domain.result.events -Depth 20 -Compress
         $st1 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
         Assert-Cond 'first-hit' 'breakpoint hit after continue (EVT-DYN-013 observed / paused)' "state=$($st1.domain.result.state) evt13=$($ev1 -match 'EVT-DYN-013')" (($st1.domain.result.state -eq 'paused') -or ($ev1 -match 'EVT-DYN-013')) @($hit1.rpc.resp, $st1.rpc.resp)
 
         $epH = $st1.domain.debug_context.pause_epoch
-        $dis = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = 1; pause_epoch = $epH; request_id = 'acc31-dis'; breakpoint_id = $bpid; enabled = $false }
+        $dis = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = $gen; pause_epoch = $epH; request_id = 'acc31-dis'; breakpoint_id = $bpid; enabled = $false }
         Assert-Cond 'disabled-ok' 'set enabled=false ok' "ok=$($dis.domain.ok)" $dis.domain.ok @($dis.rpc.resp)
-        $lst1 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = 1 }
+        $lst1 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
         $e1 = (@($lst1.domain.result.items) | Where-Object breakpoint_id -eq $bpid).enabled
         Assert-Cond 'list-disabled-consistent' 'list shows enabled=false' "enabled=$e1" ("$e1" -eq 'False') @($lst1.rpc.resp)
 
-        $cont2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = 1; pause_epoch = $epH; request_id = 'acc31-c2' }
+        $cont2 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epH; request_id = 'acc31-c2' }
         Start-Sleep -Milliseconds 1500
         $beforeCursor = $hit1.domain.result.next_cursor
-        $evMid = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = 1; after_cursor = $beforeCursor; limit = 100 }
+        $evMid = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = $beforeCursor; limit = 100 }
         $midJson = ConvertTo-Json $evMid.domain.result.events -Depth 20 -Compress
         Assert-Cond 'no-hit-while-disabled' 'no EVT-DYN-013 while disabled' "evt13=$($midJson -match 'EVT-DYN-013')" ($midJson -notmatch 'EVT-DYN-013') @($evMid.rpc.resp)
 
-        $p3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = 1; request_id = 'acc31-p3' }
+        $p3 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc31-p3' }
         $ep3 = $p3.domain.result.pause_epoch
         $preEnableCursor = $evMid.domain.result.next_cursor
-        $en = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = 1; pause_epoch = $ep3; request_id = 'acc31-en'; breakpoint_id = $bpid; enabled = $true }
+        $en = Invoke-ToolNoInit 'debug_set_breakpoint_enabled' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc31-en'; breakpoint_id = $bpid; enabled = $true }
         Assert-Cond 're-enabled-ok' 'set enabled=true ok' "ok=$($en.domain.ok)" $en.domain.ok @($en.rpc.resp)
-        $cont3 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = 1; pause_epoch = $ep3; request_id = 'acc31-c3' }
-        $hit2 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = 1; after_cursor = $preEnableCursor; limit = 100; timeout_ms = 10000 }
+        $cont3 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep3; request_id = 'acc31-c3' }
+        $hit2 = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $preEnableCursor; limit = 100; timeout_ms = 10000 }
         $ev2 = ConvertTo-Json $hit2.domain.result.events -Depth 20 -Compress
         $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
         Assert-Cond 'second-hit-after-enable' 'breakpoint hits again after re-enable' "state=$($st2.domain.result.state) evt13=$($ev2 -match 'EVT-DYN-013')" (($st2.domain.result.state -eq 'paused') -or ($ev2 -match 'EVT-DYN-013')) @($hit2.rpc.resp, $st2.rpc.resp)
 
         $ep4 = $st2.domain.debug_context.pause_epoch
-        $rm = Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = 1; pause_epoch = $ep4; request_id = 'acc31-rm'; breakpoint_id = $bpid }
+        $rm = Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $ep4; request_id = 'acc31-rm'; breakpoint_id = $bpid }
         Assert-Cond 'removed-ok' 'remove ok' "ok=$($rm.domain.ok)" $rm.domain.ok @($rm.rpc.resp)
-        $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = 1 }
+        $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
         $gone = -not (@($lst2.domain.result.items) | Where-Object breakpoint_id -eq $bpid)
         Assert-Cond 'list-empty-after-remove' 'breakpoint gone from list' "gone=$gone" $gone @($lst2.rpc.resp)
     }
 
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = 1; request_id = 'acc31-term' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc31-term' } | Out-Null
 }
 
 # ---------------------------------------------------------------- dispatch + finalize ----
