@@ -1429,40 +1429,38 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: ex.Message);
 		}
 		var admitSession = ledger.AdmitNewSession(sessionId);
-		if (admitSession == ArtifactStoreLedger.AdmitResult.AlreadyExists || admitSession == ArtifactStoreLedger.AdmitResult.Ok) {
-			// Hold the no-delete lease on the session marker for the process lifetime.
-			lock (artifactSessionHandles) {
-				if (!artifactSessionHandles.ContainsKey(sessionId)) {
-					var markerPath = Path.Combine(root, sessionId, ".session-marker");
-					if (!File.Exists(markerPath)) {
-						using (var created = new FileStream(markerPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { }
-					}
-					// The no-delete lease: a read handle held for the process lifetime.
-					artifactSessionHandles[sessionId] = new FileStream(markerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-				}
-			}
-		}
-		else if (admitSession != ArtifactStoreLedger.AdmitResult.Ok) {
+		if (admitSession != ArtifactStoreLedger.AdmitResult.Ok && admitSession != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 			return Fail(coordinator, MapAdmit(admitSession));
-		}
 
 		var fs = new ProductionArtifactFs(root);
-		var tempName = childName + ".partial";
 		try {
-			fs.CreateChildFile(sessionId, tempName, sourceBytes.Length);
-			File.WriteAllBytes(Path.Combine(root, sessionId, tempName), sourceBytes);
-			var observed = fs.ObserveChild(sessionId, tempName);
-			if (observed is null)
-				return Fail(coordinator, DomainErrorCodes.InternalError, message: "written artifact could not be observed");
+			// Every file in a ledgered session directory must be an admitted child — the marker
+			// included — or the next admission's fail-closed verification rejects the store.
+			string markerSha;
+			using (var sha = SHA256.Create())
+				markerSha = ConvertHexShim.ToHexString(sha.ComputeHash(Array.Empty<byte>())).ToLowerInvariant();
+			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, ".session-marker", 0,
+				new ArtifactStoreLedger.ChildRecord(".session-marker", "0x0", new string('0', 32), 0, markerSha));
+			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok)
+				return Fail(coordinator, MapAdmit(markerAdmit));
+			var markerPath = Path.Combine(root, sessionId, ".session-marker");
+			lock (artifactSessionHandles) {
+				if (!artifactSessionHandles.ContainsKey(sessionId))
+					artifactSessionHandles[sessionId] = new FileStream(markerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+			}
+
 			string sha256;
 			using (var sha = SHA256.Create())
 				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(sourceBytes)).ToLowerInvariant();
-			var record = new ArtifactStoreLedger.ChildRecord(tempName, observed.Value.VolumeSerial, observed.Value.FileId, observed.Value.Length, sha256);
-			var admit = ledger.AdmitArtifactWrite(sessionId, childName, sourceBytes.Length, record);
+			// The admission reserves the quota and creates the empty child; this call is its
+			// active writer, so the bytes go straight into the ledgered file.
+			var admit = ledger.AdmitArtifactWrite(sessionId, childName, sourceBytes.Length,
+				new ArtifactStoreLedger.ChildRecord(childName, "0x0", new string('0', 32), sourceBytes.Length, sha256));
 			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(admit));
 			var finalPath = Path.Combine(root, sessionId, childName);
-			File.Move(Path.Combine(root, sessionId, tempName), finalPath);
+			File.WriteAllBytes(finalPath, sourceBytes);
+
 			var manifestName = childName + ".manifest.json";
 			var manifest = System.Text.Json.JsonSerializer.Serialize(new {
 				schema_version = "dnspy.mcp.artifact.v1",
@@ -1475,10 +1473,13 @@ public sealed class DebugSessionService : IDisposable {
 				sha256,
 				created_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
 			});
-			File.WriteAllText(Path.Combine(root, sessionId, manifestName), manifest);
-			var finalObserved = fs.ObserveChild(sessionId, childName);
-			var manifestRecord = new ArtifactStoreLedger.ChildRecord(manifestName, finalObserved?.VolumeSerial ?? "0x0", finalObserved?.FileId ?? new string('0', 32), System.Text.Encoding.UTF8.GetByteCount(manifest), sha256);
-			ledger.AdmitArtifactWrite(sessionId, manifestName, manifestRecord.Length, manifestRecord);
+			var manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest);
+			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes.Length,
+				new ArtifactStoreLedger.ChildRecord(manifestName, "0x0", new string('0', 32), manifestBytes.Length, sha256));
+			if (manifestAdmit != ArtifactStoreLedger.AdmitResult.Ok)
+				return Fail(coordinator, MapAdmit(manifestAdmit));
+			File.WriteAllBytes(Path.Combine(root, sessionId, manifestName), manifestBytes);
+
 			return Ok(coordinator, new DumpModuleResultDto {
 				Artifact = new ArtifactDto {
 					ArtifactId = sessionId + "/" + childName,
