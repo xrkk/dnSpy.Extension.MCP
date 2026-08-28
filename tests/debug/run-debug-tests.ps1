@@ -1249,7 +1249,9 @@ function Run-ACC026 {
     $spyA26 = Get-SpyCounters
     if ($script:SpyBaseline026 -and $spyA26) {
         $d26 = Get-SpyDelta $script:SpyBaseline026 $spyA26 'dbg_start_calls'
-        Assert-Cond 'argv-shell-spy' 'dbg_start_calls delta == argv round-trip launches only (rejections pre-Start)' "delta=$d26" ($d26 -ge 1) @(Save-Json 'spy-026.json' $spyA26)
+        # Baseline sits after the argv round-trip launch: wrong-sha/outside-root/x86 and the
+        # reparse traversal must all be rejected before dbgManager.Start (delta 0).
+        Assert-Cond 'argv-shell-spy' 'post-baseline dbg_start_calls delta == 0 (every rejected path stops before Start)' "delta=$d26" ($d26 -eq 0) @(Save-Json 'spy-026.json' $spyA26)
     } else {
         Fail-Precondition 'argv-shell-spy' 'debug_test_spy reachable (DNMCP_TEST=1)'
     }
