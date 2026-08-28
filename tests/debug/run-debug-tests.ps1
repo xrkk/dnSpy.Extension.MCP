@@ -775,6 +775,9 @@ function Run-ACC031 {
             if ("$($stt.domain.result.state)" -eq 'paused') { $paused = $true; $curEp = $stt.domain.debug_context.pause_epoch }
         }
         if (-not $paused) { break }
+        $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp }
+        if (-not $tl2.domain.ok) { break }
+        $curTh = $tl2.domain.result.items[0].thread_handle
         $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $curTh }
         if ($s2.domain.ok) {
             $f0 = $s2.domain.result.items[0]
