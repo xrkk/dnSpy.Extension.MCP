@@ -1022,8 +1022,31 @@ function Run-ACC013 {
     # Parameter values are never read by get_stack (frame DTO has only identity/location).
     Assert-Cond 'no-arg-values' 'frame DTO carries no argument values' 'identity/location fields only' $true @('result.json')
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc13-term' } | Out-Null
-    # Token-level manifest comparison needs fixture metadata extraction (deferred).
-    Assert-Cond 'token-manifest' 'frame tokens compared against compiled fixture manifest' 'token manifest extraction deferred (structural checks above)' $false @('result.json')
+    # Token manifest: the fixture dumps its own MethodDef tokens via reflection at startup.
+    $manifestPath = Join-Path $m.env.sample_root 'tokens-manifest.txt'
+    if (Test-Path $manifestPath) {
+        $map = @{}
+        foreach ($line in @(Get-Content $manifestPath)) {
+            $kv = $line -split ':', 2
+            if ($kv.Count -eq 2) { $map['0x' + $kv[1]] = $kv[0] }
+        }
+        $observed = @()
+        foreach ($h in $seen) { }
+        $cursor2 = $null
+        do {
+            $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $best; page_size = 100 }
+            if ($cursor2) { $a['page_cursor'] = $cursor2 }
+            $pg = Invoke-ToolNoInit 'debug_get_stack' $a
+            if (-not $pg.domain.ok) { break }
+            foreach ($f in @($pg.domain.result.items)) { $observed += "$($f.location.method_token)" }
+            $cursor2 = $pg.domain.result.next_page_cursor
+        } while ($cursor2)
+        $unknown = @($observed | Where-Object { $map.ContainsKey($_) -eq $false -and $_ -ne '0x00000000' })
+        $knownCount = @($observed | Where-Object { $map.ContainsKey($_) }).Count
+        Assert-Cond 'token-manifest' "worker frames map to fixture methods ($($map.Count) known tokens); unknown tokens only from runtime frames" "observed=$($observed.Count) known=$knownCount unknown=$($unknown.Count)" ($unknown.Count -eq 0 -and $knownCount -ge 3) @(Save-Json 'token-observed.json' $observed)
+    } else {
+        Assert-Cond 'token-manifest' 'fixture token manifest written' 'manifest missing' $false @()
+    }
 }
 
 # ---------------------------------------------------------------- case: ACC-015 ----
