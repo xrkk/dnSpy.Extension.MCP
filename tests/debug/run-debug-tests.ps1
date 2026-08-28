@@ -1039,9 +1039,12 @@ function Run-ACC013 {
             foreach ($f in @($pg.domain.result.items)) { $observed += "$($f.location.method_token)" }
             $cursor2 = $pg.domain.result.next_page_cursor
         } while ($cursor2)
-        $unknown = @($observed | Where-Object { $map.ContainsKey($_) -eq $false -and $_ -ne '0x00000000' })
         $knownCount = @($observed | Where-Object { $map.ContainsKey($_) }).Count
-        Assert-Cond 'token-manifest' "worker frames map to fixture methods ($($map.Count) known tokens); unknown tokens only from runtime frames" "observed=$($observed.Count) known=$knownCount unknown=$($unknown.Count)" ($unknown.Count -eq 0 -and $knownCount -ge 3) @(Save-Json 'token-observed.json' $observed)
+        # Spec: the top three frames match the manifest chain in order (Level3/Level2/Level1);
+        # deeper frames legitimately belong to mscorlib/runtime plumbing.
+        $orderOk = ($observed.Count -ge 3) -and $map.ContainsKey($observed[0]) -and $map.ContainsKey($observed[1]) -and $map.ContainsKey($observed[2])
+        $chainOk = $orderOk -and (@($map[$observed[0]], $map[$observed[1]], $map[$observed[2]]) -join '>') -eq 'Level3>Level2>Level1'
+        Assert-Cond 'token-manifest' "top-3 frames = Level3>Level2>Level1 per manifest; deeper frames are runtime-owned" "observed=$($observed.Count) known=$knownCount chain=$chainOk" ($chainOk -and $knownCount -ge 3) @(Save-Json 'token-observed.json' $observed)
     } else {
         Assert-Cond 'token-manifest' 'fixture token manifest written' 'manifest missing' $false @()
     }
