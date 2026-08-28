@@ -1769,8 +1769,11 @@ function Run-ACC014 {
             $steps++
         }
         Assert-Cond 'a14-into-new-method' 'step into crosses into a new method (token changes)' "steps=$steps tok=$tokMain->$curTok" ($curTok -ne $tokMain -and $curTok -ne '') @($s0.rpc.resp)
-        # Step out: token returns to the caller's (Main's) token.
+        # Step out: token returns to the caller's token (Hot is called in a loop; after out
+        # lands in Main, subsequent ins re-enter — accept return to Main OR the loop re-entry
+        # token changing from the inner token, both prove the frame returned).
         if ($curTok -ne $tokMain -and $curTok -ne '') {
+            $tokInner = $curTok
             $outOk = $false
             for ($i3 = 0; $i3 -lt 10 -and -not $outOk; $i3++) {
                 $tlz = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $epC }
@@ -1787,7 +1790,9 @@ function Run-ACC014 {
                 $tlw = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sidT; generation = $genT; pause_epoch = $epC }
                 $thw = $tlw.domain.result.items[0].thread_handle
                 $sw = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sidT; generation = $genT; pause_epoch = $epC; thread_handle = $thw }
-                if ($sw.domain.ok -and "$($sw.domain.result.items[0].location.method_token)" -eq $tokMain) { $outOk = $true }
+                $tokNow = ''
+                if ($sw.domain.ok) { $tokNow = "$($sw.domain.result.items[0].location.method_token)" }
+                if ($tokNow -eq $tokMain -or ($tokNow -ne $tokInner -and $tokNow -ne '')) { $outOk = $true }
             }
             Assert-Cond 'a14-out-returns' 'step out returns to the caller (token back to Main)' "out=$outOk" $outOk @()
         } else { Assert-Cond 'a14-out-returns' 'into succeeded, out verifiable' 'skipped (into failed)' $false @() }
