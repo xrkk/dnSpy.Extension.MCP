@@ -50,16 +50,6 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		}
 	}
 
-	static ToolInfo TestToolInfo(string name, string description) => new ToolInfo {
-		Name = name,
-		Description = description,
-		InputSchema = new Dictionary<string, object> {
-			["type"] = "object",
-			["properties"] = new Dictionary<string, object>(),
-			["additionalProperties"] = false,
-		},
-	};
-
 	ToolInfo TestSpyTool() => new ToolInfo {
 		Name = "debug_test_spy",
 		Description = "DNMCP_TEST-only: snapshot (or reset) the in-process spy counters the ACC fixtures assert deltas on (read_memory_executions, dbg_start_calls, break/terminate posts, dispatcher post counts, thread-domain classifications).",
@@ -91,8 +81,38 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		// test mode; they always answer (CAPABILITY_UNAVAILABLE outside it) via UnadvertisedTools.
 		if (DebugSessionService.TestModeEnabled) {
 			tools.Add(TestSpyTool());
-			tools.Add(TestToolInfo("debug_test_clock", "DNMCP_TEST-only: advance the virtual clock that control-operation deadlines run on (advance_ms), or read the virtual elapsed/offset."));
-			tools.Add(TestToolInfo("debug_test_adapter", "DNMCP_TEST-only: install/uninstall the scriptable fake control adapter, arm fail_next=explicit_failure, or emit synthetic paused/removed observations with classified BreakInfos through the production observation path."));
+			tools.Add(new ToolInfo {
+				Name = "debug_test_clock",
+				Description = "DNMCP_TEST-only: advance the virtual clock that control-operation deadlines run on (advance_ms), or read the virtual elapsed/offset.",
+				InputSchema = new Dictionary<string, object> {
+					["type"] = "object",
+					["properties"] = new Dictionary<string, object> {
+						["advance_ms"] = new Dictionary<string, object> { ["type"] = "integer" },
+					},
+					["additionalProperties"] = false,
+				},
+			});
+			tools.Add(new ToolInfo {
+				Name = "debug_test_adapter",
+				Description = "DNMCP_TEST-only: install/uninstall the scriptable fake control adapter, arm fail_next=explicit_failure, or emit synthetic paused/removed observations with classified BreakInfos through the production observation path.",
+				InputSchema = new Dictionary<string, object> {
+					["type"] = "object",
+					["properties"] = new Dictionary<string, object> {
+						["install"] = new Dictionary<string, object> { ["type"] = "boolean" },
+						["fail_next"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "explicit_failure" } },
+						["emit"] = new Dictionary<string, object> {
+							["type"] = "object",
+							["properties"] = new Dictionary<string, object> {
+								["kind"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "paused", "removed" } },
+								["pid"] = new Dictionary<string, object> { ["type"] = "integer" },
+								["exit_code"] = new Dictionary<string, object> { ["type"] = "integer" },
+								["break_infos"] = new Dictionary<string, object> { ["type"] = "array" },
+							},
+						},
+					},
+					["additionalProperties"] = false,
+				},
+			});
 		}
 		// The 21 session-scoped tools are advertised only when the frozen gate is active AND
 		// their handlers exist (staged with IMP-004..009); never advertise what cannot answer.
