@@ -66,9 +66,9 @@
       "executor_response": "CHK-007/009/011 全部接受:第 63 轮实写勘误/FB-002/簿记补全;纯记录修复无代码变更,批 8 证据继续有效"
     }
   ],
-  "last_checkpoint": "R1 十项 CHK 全部整改; 批8 单次连续 36/36 全绿; READY_TO_REVERIFY——待 R2 定向复核",
+  "last_checkpoint": "R2 维持项(CHK-007/009/011)已实写修复于 97781c7;批8 证据不变;待 R3 定向复核",
   "stop_reason": null,
-  "status": "RECTIFYING_AFTER_ROUND_2",
+  "status": "READY_TO_REVERIFY",
   "rectification": {
     "commits": [
       "05f884f",
