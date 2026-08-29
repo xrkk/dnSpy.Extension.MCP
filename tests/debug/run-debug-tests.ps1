@@ -3177,11 +3177,13 @@ function Run-ACC024 {
             $log += (& $m.env.csc /nologo /optimize- /target:library "/out:$stubDll" $stubSrc 2>&1 | Out-String)
         }
         $probeSrc = Join-Path $script:OutDir 'unity-probe.cs'
-        $refs = @($StubNames | ForEach-Object { '/r:' + (Join-Path $root ($_ + '.dll')) })
+        $refs = @($StubNames | ForEach-Object { '/r:"' + (Join-Path $root ($_ + '.dll')) + '"' })
         Set-Content $probeSrc 'internal static class U { private static void Main() { System.Console.WriteLine(Satellite.Satellite.Answer()); } }'
         $probeExe = Join-Path $root $ProbeName
+        $rsp = Join-Path $script:OutDir 'unity-probe.rsp'
+        @('/nologo', '/optimize-', '/platform:x64', "/out:`"$probeExe`"", "`"$probeSrc`"") + $refs | Set-Content $rsp -Encoding ASCII
         $log += "probe: $ProbeName refs=$($refs.Count)"
-        $log += (& $m.env.csc /nologo /optimize- /platform:x64 "/out:$probeExe" @refs $probeSrc 2>&1 | Out-String)
+        $log += (& $m.env.csc "@$rsp" 2>&1 | Out-String)
         $log | Set-Content $buildLog
         return @((Test-Path $probeExe), $ProbeName)
     }
