@@ -2458,13 +2458,31 @@ function Run-ACC010 {
     $bound0 = "$($e0[0].bound)"
     Assert-Cond 'a10-list-enabled-unbound' 'list shows enabled=true bound=false pre-hit' "bound=$bound0" (("$($e0[0].enabled)" -eq 'True') -and ($bound0 -eq 'False')) @($lst.rpc.resp)
 
-    # continue -> hit: EVT breakpoint_hit + bound=true after.
+    # continue -> hit: wait for the actual breakpoint event. A manual Break requested while
+    # acquiring the setup pause can be delivered just after continue; that unrelated pause
+    # must be resumed instead of being mistaken for the breakpoint hit.
     $curEvt = Get-MaxEventCursor $sid $gen
     $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; request_id = 'a10-c1' }
-    $w = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $curEvt; limit = 20; timeout_ms = 10000 }
-    $evj = ConvertTo-Json @($w.domain.result.events) -Depth 10 -Compress
-    $stH = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
-    Assert-Cond 'a10-hit-evt' 'breakpoint hit (EVT breakpoint_hit / paused)' "state=$($stH.domain.result.state) hit=$($evj -match 'breakpoint_hit')" (($stH.domain.result.state -eq 'paused') -or ($evj -match 'breakpoint_hit')) @($w.rpc.resp, $stH.rpc.resp)
+    $hit = $false; $hitEvents = @(); $hitEvidence = @(); $stH = $null
+    $hitDeadline = (Get-Date).AddSeconds(12)
+    do {
+        $w = Invoke-ToolNoInit 'debug_wait_event' @{ session_id = $sid; generation = $gen; after_cursor = $curEvt; limit = 20; timeout_ms = 2500 }
+        $events = @($w.domain.result.events)
+        $hitEvents += $events
+        $hitEvidence += @($w.rpc.resp)
+        if ($events.Count -gt 0) {
+            $maxCursor = ($events | Measure-Object cursor -Maximum).Maximum
+            if ($maxCursor) { $curEvt = [int]$maxCursor }
+            $hit = [bool]($events | Where-Object { $_.kind -eq 'breakpoint_hit' -or ($_.kind -eq 'paused' -and $_.payload.reason -eq 'breakpoint') } | Select-Object -First 1)
+        }
+        $stH = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+        $hitEvidence += @($stH.rpc.resp)
+        if (-not $hit -and "$($stH.domain.result.state)" -eq 'paused') {
+            $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $stH.domain.debug_context.pause_epoch; request_id = (New-HelperRequestId 'a10-c-hit') }
+        }
+    } while (-not $hit -and (Get-Date) -lt $hitDeadline)
+    $evj = ConvertTo-Json $hitEvents -Depth 10 -Compress
+    Assert-Cond 'a10-hit-evt' 'breakpoint hit (EVT breakpoint_hit / paused reason=breakpoint)' "state=$($stH.domain.result.state) events=$evj" $hit $hitEvidence
     $lst2 = $null; $e2 = $null
     $boundDeadline = (Get-Date).AddSeconds(5)
     do {
