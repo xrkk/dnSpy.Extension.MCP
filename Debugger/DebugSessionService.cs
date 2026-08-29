@@ -2476,7 +2476,11 @@ public sealed class DebugSessionService : IDisposable {
 		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) {
 			try {
 				var path = Path.Combine(SessionDir(sessionId), relativeName);
-				using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+				// Share compatibility is bidirectional on Windows. The committed child handle has
+				// ReadWrite access while sharing Read only; this read-only observer must therefore
+				// share the existing writer, even though that writer still denies every external
+				// write/delete request.
+				using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 				var info = GetFileIdentity(lease);
 				return ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'), lease.Length);
 			}

@@ -3574,7 +3574,9 @@ function Run-ACC029 {
             $har = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a29-harness86'; target_path = $lib; expected_sha256 = (Get-Sha256File $lib); launch_mode = 'harness'; architecture = 'x86'; break_kind = 'none'; harness_path = $h86; harness_sha256 = (Get-Sha256File $h86); harness_argv = @('x86-positive') }
             $harOk = [bool]$har.domain.ok
             if ($harOk) {
-                $hi = $har.domain.result; $hp = Wait-StablePaused $hi.session_id; $harOk = $hp.ok
+                # The process break in the launch response can auto-resume before the first
+                # status poll; reacquire a held pause if necessary.
+                $hi = $har.domain.result; $hp = Wait-HeldPause $hi.session_id ([int]$hi.generation); $harOk = $hp.ok
                 Invoke-ToolNoInit 'debug_terminate' @{ session_id = $hi.session_id; generation = [int]$hi.generation; request_id = 'a29-har86-term' } | Out-Null
                 Start-Sleep -Milliseconds 900
             }
