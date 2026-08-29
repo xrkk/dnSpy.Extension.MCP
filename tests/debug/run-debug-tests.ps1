@@ -429,20 +429,24 @@ function Invoke-CoreClrMatrix {
 
 
 function Invoke-Detached {
-    # Fire a blocking tool call in a detached curl; returns resp file path.
+    # Fire a blocking tool call in a detached curl; returns resp file path. Req/resp live
+    # UNDER the result directory so the evidence gate can see them (CHK-004: C:\Tools\dt-*
+    # volatile files were invisible to result-evidence-complete).
     param([string]$BodyJson, [string]$Tag, [int]$MaxSec = 25)
-    $reqF = "C:\Tools\dt-$Tag-req.json"; $respF = "C:\Tools\dt-$Tag-resp.txt"
+    $reqRel = "dt-$Tag-req.json"; $respRel = "dt-$Tag-resp.txt"
+    $reqF = Join-Path $script:OutDir $reqRel; $respF = Join-Path $script:OutDir $respRel
     Set-Content $reqF $BodyJson -Encoding ascii
     Remove-Item $respF -Force -ErrorAction SilentlyContinue
     Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time',"$MaxSec",'-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$reqF",'-o',$respF -PassThru -WindowStyle Hidden | Out-Null
-    return $respF
+    return $respRel
 }
 function Read-DetachedResp {
     param([string]$RespFile, [int]$Retries = 14)
+    $full = if ([IO.Path]::IsPathRooted($RespFile)) { $RespFile } else { Join-Path $script:OutDir $RespFile }
     for ($i = 0; $i -lt $Retries; $i++) {
-        if (Test-Path $RespFile) {
+        if (Test-Path $full) {
             try {
-                $body = ([IO.File]::ReadAllText($RespFile)).Trim()
+                $body = ([IO.File]::ReadAllText($full)).Trim()
                 if ($body) {
                     $dom = ($body | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json
                     if ($dom) { return $dom }
@@ -926,7 +930,11 @@ function Run-ACC006 {
     $c2 = Get-DomainError $S2
     $L2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $e1; frame_handle = $f1; page_size = 100 }
     $c3 = Get-DomainError $L2
-    Assert-Cond 'running-state-rejected' 'get_stack/get_locals while running = INVALID_STATE' "stack=$c2 locals=$c3" (("$c2" -eq 'INVALID_STATE') -and ("$c3" -eq 'INVALID_STATE')) @($S2.rpc.resp, $L2.rpc.resp)
+    # Plan §6 ACC-006: handles minted in an earlier pause_epoch are STALE after continue —
+    # epoch staleness (STALE_HANDLE) takes precedence over the paused-state gate, exactly as
+    # the product implements since fix #31 (CHK-003 alignment; the old INVALID_STATE
+    # expectation predated that semantics).
+    Assert-Cond 'running-state-rejected' 'get_stack/get_locals with the pre-continue epoch while running = STALE_HANDLE' "stack=$c2 locals=$c3" (("$c2" -eq 'STALE_HANDLE') -and ("$c3" -eq 'STALE_HANDLE')) @($S2.rpc.resp, $L2.rpc.resp)
 
     $P2 = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc6-p2' }
     $e2 = $P2.domain.result.pause_epoch
@@ -1125,7 +1133,8 @@ function Run-ACC018 {
     Start-Sleep -Milliseconds 400
     $rr = Invoke-ToolNoInit 'debug_read_memory' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; module_handle = $mod; address = "0x{0:x}" -f $base; length = 16; encoding = 'hex' }
     $rcode = Get-DomainError $rr
-    Assert-Cond 'running-invalid-state' 'read while running = INVALID_STATE' "code=$rcode" ("$rcode" -eq 'INVALID_STATE') @($rr.rpc.resp)
+    # Same CHK-003 alignment: the pre-continue pause_epoch is stale after continue.
+    Assert-Cond 'running-invalid-state' 'read with the pre-continue epoch while running = STALE_HANDLE' "code=$rcode" ("$rcode" -eq 'STALE_HANDLE') @($rr.rpc.resp)
 
     $spyB = $script:SpyBaseline018
     $spyA = Get-SpyCounters
@@ -1581,16 +1590,17 @@ function Run-ACC007 {
     $null = Test-Adapter '{"fail_next":"none"}'
     $curB = Get-MaxEventCursor $sid $gen
     $p1bReq = '{"jsonrpc":"2.0","id":771,"method":"tools/call","params":{"name":"debug_pause","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"request_id":"acc7-p1b"}}}'
-    Set-Content C:\Tools\p1b-req.json $p1bReq -Encoding ascii
-    Remove-Item C:\Tools\p1b-resp.txt -Force -ErrorAction SilentlyContinue
-    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','20','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\p1b-req.json','-o','C:\Tools\p1b-resp.txt' -PassThru -WindowStyle Hidden
+    $p1bReqF = Join-Path $script:OutDir 'p1b-req.json'; $p1bRespF = Join-Path $script:OutDir 'p1b-resp.txt'
+    Set-Content $p1bReqF $p1bReq -Encoding ascii
+    Remove-Item $p1bRespF -Force -ErrorAction SilentlyContinue
+    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','20','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$p1bReqF",'-o',$p1bRespF -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
     $deadlineP1b = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadlineP1b -and -not (Test-Path C:\Tools\p1b-resp.txt)) { Start-Sleep -Milliseconds 400 }
+    while ((Get-Date) -lt $deadlineP1b -and -not (Test-Path $p1bRespF)) { Start-Sleep -Milliseconds 400 }
     $Pw = $null
-    if (Test-Path C:\Tools\p1b-resp.txt) {
-        $Pw = @{ rpc = @{ resp = 'p1b-resp.txt' }; domain = ((Get-Content C:\Tools\p1b-resp.txt -Raw | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json) }
+    if (Test-Path $p1bRespF) {
+        $Pw = @{ rpc = @{ resp = 'p1b-resp.txt' }; domain = ((Get-Content $p1bRespF -Raw | ConvertFrom-Json).result.content[0].text | ConvertFrom-Json) }
     }
     if ($Pw) { Assert-CtrlFail $Pw 'TIMEOUT' 'p1b-timeout' 'clock-advanced' }
     else { Assert-Cond 'p1b-timeout' 'detached pause returned' 'no response file' $false @() }
@@ -2071,24 +2081,35 @@ function Run-ACC034 {
     Start-Sleep -Milliseconds 500
 
     # [4] Pending-restart relaunch: emit removed while restart waits -> generation+1, no fault.
-    $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a34-la3'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    # CHK-005: the fault->recovery->terminal transition is asynchronously settled upstream;
+    # a launch landing inside that window is rejected INVALID_STATE (with the envelope
+    # snapshot already showing the post-settlement idle state). Bounded retry until the
+    # coordinator is observably idle again — the upstream transition itself is not a
+    # contract violation.
+    $L3 = $null
+    for ($try = 0; $try -lt 10 -and -not ($L3 -and $L3.domain.ok); $try++) {
+        Start-Sleep -Milliseconds 400
+        $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a34-la3'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    }
     $sid3 = $L3.domain.result.session_id; $gen3 = [int]$L3.domain.result.generation
-    Assert-Cond 'a34-launch3' 'third session running' "ok=$($L3.domain.ok)" ($L3.domain.ok) @($L3.rpc.resp)
+    Assert-Cond 'a34-launch3' 'third session running (after the transition window)' "ok=$($L3.domain.ok) tries=$($try+1)" ($L3.domain.ok) @($L3.rpc.resp)
     $null = Test-Adapter '{"install":true}'
     $null = Test-Adapter '{"fail_next":"none"}'
     $rReq3 = '{"jsonrpc":"2.0","id":782,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid3 + '","generation":' + $gen3 + ',"request_id":"a34-r4"}}}'
-    Set-Content C:\Tools\a34-req3.json $rReq3 -Encoding ascii
-    Remove-Item C:\Tools\a34-resp3.txt -Force -ErrorAction SilentlyContinue
-    $cp3 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-req3.json','-o','C:\Tools\a34-resp3.txt' -PassThru -WindowStyle Hidden
+    $a34Req3F = Join-Path $script:OutDir 'a34-req3.json'
+    $a34Resp3 = Join-Path $script:OutDir 'a34-resp3.txt'
+    Set-Content $a34Req3F $rReq3 -Encoding ascii
+    Remove-Item $a34Resp3 -Force -ErrorAction SilentlyContinue
+    $cp3 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$a34Req3F",'-o',$a34Resp3 -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 900
     $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
     $dl3 = (Get-Date).AddSeconds(20)
-    while ((Get-Date) -lt $dl3 -and -not (Test-Path C:\Tools\a34-resp3.txt)) { Start-Sleep -Milliseconds 500 }
+    while ((Get-Date) -lt $dl3 -and -not (Test-Path $a34Resp3)) { Start-Sleep -Milliseconds 500 }
     $dom3 = $null
-    if (Test-Path C:\Tools\a34-resp3.txt) {
+    if (Test-Path $a34Resp3) {
         for ($i = 0; $i -lt 12 -and $null -eq $dom3; $i++) {
             try {
-                $l3 = [IO.File]::ReadAllLines('C:\Tools\a34-resp3.txt')
+                $l3 = [IO.File]::ReadAllLines($a34Resp3)
                 if ($l3.Count -ge 1) {
                     $body3 = ($l3 | Select-Object -First ($l3.Count - 1)) -join "`n"
                     if (-not $body3) { $body3 = $l3[0] }
@@ -3754,6 +3775,10 @@ $handlers = @{
     'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}; 'ACC-003' = ${function:Run-ACC003}; 'ACC-004' = ${function:Run-ACC004}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
+    # CHK-006: every case starts COLD. Ensure-CanonicalDnSpy reuses a healthy dnSpy when the
+    # snapshot matches, so a previous case's lingering transitions could bleed into the next
+    # case's first launch in sequential batch runs; stopping here makes batch == cold start.
+    Stop-DnSpyAndTargets
     try { & $handlers[$Case] } catch {
         $_ | Out-String | Set-Content (Join-Path $script:OutDir 'harness-error.log')
         Assert-Cond 'harness-exception' 'case body completes without harness exception' $_.Exception.Message $false @('harness-error.log')

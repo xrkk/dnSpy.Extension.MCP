@@ -706,7 +706,12 @@ public sealed class DebugSessionService : IDisposable {
 		// bytes — CAPABILITY_UNAVAILABLE with the TYPE-DYN-019 evidence chain, zero session.
 		// An over-limit evidence value answers a small INTERNAL_ERROR instead of shipping an
 		// over-limit untrusted domain envelope.
-		var unsupported = UnsupportedTargetDetector.Detect(targetPath);
+		// coreclr-apphost is EXEMPT: a .NET apphost is a native loader stub by design (no CLR
+		// header in the stub PE) — the debugged managed image is the sibling DLL, so PE-level
+		// unsupported-target detection must not run against the stub (CHK-002/ACC-008).
+		var unsupported = launchMode == LaunchModes.CoreClrAppHost
+			? null
+			: UnsupportedTargetDetector.Detect(targetPath);
 		if (unsupported is not null && unsupported.EvidenceOverLimit) {
 			SpyInc("unsupported_target_evidence_overflow");
 			ReleaseLeases();
