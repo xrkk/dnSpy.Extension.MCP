@@ -2588,6 +2588,8 @@ public sealed class DebugSessionService : IDisposable {
 			}
 			artifactLedger = new ArtifactStoreLedger(artifactFs);
 			artifactLedger.Initialize();
+			if (TestModeEnabled)
+				SpyCounters["artifact_ledger_initial_stale"] = artifactLedger.StaleCount;
 			artifactLedgerRoot = normalizedRoot;
 		}
 		return artifactLedger;
@@ -2832,6 +2834,7 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: ex.Message);
 		}
 		var admitSession = ledger.AdmitNewSession(sessionId);
+		if (TestModeEnabled) SpyInc("artifact_admit_session:" + admitSession);
 		if (admitSession != ArtifactStoreLedger.AdmitResult.Ok && admitSession != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 			return Fail(coordinator, MapAdmit(admitSession));
 
@@ -2848,6 +2851,7 @@ public sealed class DebugSessionService : IDisposable {
 				artifact_root_file_id = rootIdentity.FileId,
 			}, CanonicalOptions));
 			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, markerName, markerBytes, active.Record);
+			if (TestModeEnabled) SpyInc("artifact_admit_marker:" + markerAdmit);
 			// The marker is constant per session: a second dump in the same session re-admits
 			// it and the ledger answers AlreadyExists — that is the idempotent success.
 			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok && markerAdmit != ArtifactStoreLedger.AdmitResult.AlreadyExists)
@@ -2858,6 +2862,7 @@ public sealed class DebugSessionService : IDisposable {
 			// The admission reserves the quota and creates the empty child; this call is its
 			// active writer, so the bytes go straight into the ledgered file.
 			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes, active.Record);
+			if (TestModeEnabled) SpyInc("artifact_admit_payload:" + admit);
 			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(admit));
 			var finalPath = Path.Combine(root, sessionId, childName);
@@ -2883,6 +2888,7 @@ public sealed class DebugSessionService : IDisposable {
 			}, CanonicalOptions);
 			var manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest);
 			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes, active.Record);
+			if (TestModeEnabled) SpyInc("artifact_admit_manifest:" + manifestAdmit);
 			if (manifestAdmit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(manifestAdmit));
 

@@ -2913,10 +2913,17 @@ function Run-ACC033 {
     # legal ordering as an identity failure.
     $modNow = $null
     $targetNow = $null
-    for ($moduleAttempt = 0; $moduleAttempt -lt 24 -and -not $targetNow; $moduleAttempt++) {
+    for ($moduleAttempt = 0; $moduleAttempt -lt 6 -and -not $targetNow; $moduleAttempt++) {
         $modNow = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
         $targetNow = @($modNow.domain.result.items | Where-Object { "$($_.path)" -eq "$exe" }) | Select-Object -First 1
-        if (-not $targetNow) { Start-Sleep -Milliseconds 250 }
+        if (-not $targetNow -and $moduleAttempt -lt 5) {
+            # A held pause freezes module loading. Let the target advance between inventory
+            # samples, then reacquire a stable pause while the launch FileId lease stays held.
+            Resume-FromPaused $sid $gen | Out-Null
+            Start-Sleep -Milliseconds 700
+            $nextPause = Wait-HeldPause $sid $gen
+            if ($nextPause.ok) { $wp = $nextPause }
+        }
     }
     $moduleIdentityOk = $targetNow -and ("$($targetNow.mvid)" -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') `
         -and ("$($targetNow.mvid)" -ne '00000000-0000-0000-0000-000000000000') -and ("$($targetNow.sha256)" -eq $sha) -and $fidOk
@@ -3564,7 +3571,7 @@ function Run-ACC029 {
             # [7] x86 harness positive: entry-less library runs through an x86 harness.
             $h86 = Join-Path $m.env.sample_root 'AccHarness86.exe'
             $lib = Join-Path $m.env.sample_root 'SatelliteLib.dll'
-            $har = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a29-harness86'; target_path = $lib; expected_sha256 = (Get-Sha256File $lib); launch_mode = 'harness'; architecture = 'x86'; break_kind = 'process'; harness_path = $h86; harness_sha256 = (Get-Sha256File $h86); harness_argv = @('x86-positive') }
+            $har = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a29-harness86'; target_path = $lib; expected_sha256 = (Get-Sha256File $lib); launch_mode = 'harness'; architecture = 'x86'; break_kind = 'none'; harness_path = $h86; harness_sha256 = (Get-Sha256File $h86); harness_argv = @('x86-positive') }
             $harOk = [bool]$har.domain.ok
             if ($harOk) {
                 $hi = $har.domain.result; $hp = Wait-StablePaused $hi.session_id; $harOk = $hp.ok
@@ -3745,7 +3752,8 @@ function Run-ACC019 {
     # [1] S1: dump, terminal -> the session directory and every child SURVIVE (retention,
     # zero auto-delete) and are write/delete protected by the held marker handle.
     $s1 = Invoke-DumpCycle 's1'
-    Assert-Cond 'a19-s1-dump' 'S1 dump ok' "ok=$($s1.ok)" $s1.ok @()
+    $s1SpyEv = Save-Json 'a19-s1-artifact-spy.json' (Get-SpyCounters)
+    Assert-Cond 'a19-s1-dump' 'S1 dump ok' "ok=$($s1.ok)" $s1.ok @($s1SpyEv)
     $s1dir = if ($s1.art) { Split-Path "$($s1.art.path)" -Parent } else { $null }
     $s1files = if ($s1dir -and (Test-Path $s1dir)) { Get-ChildItem $s1dir -File | ForEach-Object { $_.Name } } else { @() }
     $tamper = 'blocked'
@@ -4002,7 +4010,7 @@ function Run-ACC004 {
     for ($i = 0; $i -lt 16; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
         [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\\Tools\\a4-w$i.json") -RedirectStandardOutput ("C:\\Tools\\a4-w$i.out") -PassThru -WindowStyle Hidden
+        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','"Content-Type: application/json"','--data',("@C:\\Tools\\a4-w$i.json") -RedirectStandardOutput ("C:\\Tools\\a4-w$i.out") -PassThru -WindowStyle Hidden
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $limitHits = 0; $oks = 0
@@ -4015,13 +4023,15 @@ function Run-ACC004 {
     for ($i = 0; $i -lt 17; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (650 + $i) + ',"method":"tools/call","params":{"name":"debug_test_transport","arguments":{"hold_ms":4000}}}'
         [IO.File]::WriteAllText("C:\Tools\a4-s$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $shortJobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\Tools\a4-s$i.json") -RedirectStandardOutput ("C:\Tools\a4-s$i.out") -PassThru -WindowStyle Hidden
+        $shortJobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','"Content-Type: application/json"','--data',("@C:\Tools\a4-s$i.json") -RedirectStandardOutput ("C:\Tools\a4-s$i.out") -PassThru -WindowStyle Hidden
     }
     $shortJobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $shortOk = 0; $http429 = 0
     for ($i = 0; $i -lt 17; $i++) {
         $o = Get-Content "C:\Tools\a4-s$i.out" -Raw -ErrorAction SilentlyContinue
-        if ("$o" -match '429$') { $http429++ }
+        # Accept the historical flattened-header suffix as well as the explicitly quoted
+        # single-transfer form, while still requiring the real request's 429 status.
+        if ("$o" -match '429(?:000)?$') { $http429++ }
         elseif ("$o" -match '"ok":true') { $shortOk++ }
     }
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a4-t1' } | Out-Null
