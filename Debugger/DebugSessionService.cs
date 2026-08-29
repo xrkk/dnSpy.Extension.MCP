@@ -112,15 +112,16 @@ public sealed class DebugSessionService : IDisposable {
 	ModuleId UpstreamIdOf(DbgModule module) {
 		if (!string.IsNullOrEmpty(module.Filename))
 			return (ModuleId)module.Filename;
+		// In-memory/dynamic modules: the ENGINE's own id is the only one that binds — dndbg
+		// serializes them as "<name> (id=N)" so same-bytes siblings get distinct ids, which is
+		// exactly the module_handle disambiguation ACC-035 needs.
 		try {
-			var md = metadataService?.TryGetMetadata(module, DbgLoadModuleOptions.None);
-			if (md is not null)
-				return ModuleId.Create(md, module.IsDynamic, isInMemory: true);
+			return module.Runtime.GetDotNetRuntime().GetModuleId(module);
 		}
 		catch {
-			// metadata unavailable: fall through to the name-only in-memory guess
+			// non-dotnet runtime or engine refusal: name-only in-memory guess (won't bind)
+			return ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true);
 		}
-		return ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true);
 	}
 	readonly Dictionary<string, RegisteredModuleRecord> modulesByHandle = new();
 	string exceptionPolicy = "unhandled";
