@@ -1118,7 +1118,12 @@ public sealed class DebugSessionService : IDisposable {
 			identityStrength = "disk_strong";
 		if (identityStrength != "disk_strong" && identityStrength != "runtime_weak")
 			throw new ArgumentException("identity_strength must be disk_strong or runtime_weak", nameof(identityStrength));
-		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+		// API-DYN-013: enabled? defaults to TRUE — an omitted field must never create a
+		// disabled breakpoint (the engine never binds disabled bps, so it would silently
+		// never hit).
+		var enabled = true;
+		if (args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement je)
+			enabled = je.ValueKind == System.Text.Json.JsonValueKind.True;
 
 		// Metadata/shape rejections are -32602 (ArgumentException): a non-MethodDef token, a
 		// disk_strong request without its SHA, and a runtime_weak request carrying one.
