@@ -2501,7 +2501,7 @@ function Run-ACC016 {
     $noDup = ($seen | Where-Object { $_ } | Select-Object -Unique).Count -eq (@($seen | Where-Object { $_ })).Count
     $total = if ($lo4.domain.result.items) { } else { 0 }
     $ev16 = Save-Json 'a16-expand-handles.json' $seen
-    Assert-Cond 'a16-expand-paging' "expand pages=$pages handles=$(@($seen).Count) no-dup=$noDup" (($pages -ge 1) -and $noDup) @($ev16)
+    Assert-Cond 'a16-expand-paging' 'expand cursor chain walked without duplicates' "pages=$pages handles=$(@($seen).Count) no-dup=$noDup" (($pages -ge 1) -and $noDup) @($ev16)
 
     # [3] STALE_HANDLE: continue to a new epoch, reuse the old value_handle.
     $c1 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a16-c1' }
