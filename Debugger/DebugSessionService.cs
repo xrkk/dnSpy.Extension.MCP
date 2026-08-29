@@ -559,6 +559,32 @@ public sealed class DebugSessionService : IDisposable {
 
 	readonly SideEffectRequestCache launchCache = new();
 
+	/// <summary>JsonElement → primitive tree for the cache's JCS canonicalizer.</summary>
+	static object? NormalizeJsonValue(object? v) {
+		if (v is not System.Text.Json.JsonElement je)
+			return v;
+		switch (je.ValueKind) {
+			case System.Text.Json.JsonValueKind.String: return je.GetString();
+			case System.Text.Json.JsonValueKind.True: return true;
+			case System.Text.Json.JsonValueKind.False: return false;
+			case System.Text.Json.JsonValueKind.Number:
+				return je.TryGetInt64(out var l) ? l : je.GetDouble();
+			case System.Text.Json.JsonValueKind.Null: return null;
+			case System.Text.Json.JsonValueKind.Array: {
+				var list = new List<object?>();
+				foreach (var item in je.EnumerateArray()) list.Add(NormalizeJsonValue(item));
+				return list;
+			}
+			case System.Text.Json.JsonValueKind.Object: {
+				var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
+				foreach (var prop in je.EnumerateObject()) dict[prop.Name] = NormalizeJsonValue(prop.Value);
+				return dict;
+			}
+			default: return null;
+		}
+	}
+	readonly SideEffectRequestCache launchCache = new();
+
 	string Launch(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
@@ -566,7 +592,7 @@ public sealed class DebugSessionService : IDisposable {
 		// settled envelope across transports/protocol versions; a mismatched id is reuse.
 		var requestId = ArgString(args, "request_id", required: true);
 		var canonicalArgs = SideEffectRequestCache.CanonicalizeArguments(
-			args is null ? null : new Dictionary<string, object?>(args.ToDictionary(kv => kv.Key, kv => (object?)kv.Value), StringComparer.Ordinal));
+			args is null ? null : new Dictionary<string, object?>(args.ToDictionary(kv => kv.Key, kv => (object?)NormalizeJsonValue(kv.Value)), StringComparer.Ordinal));
 		var admit = launchCache.TryAdmit(requestId, "debug_launch", canonicalArgs, "{}", () => "{}");
 		switch (admit.Status) {
 			case SideEffectRequestCache.AdmitStatus.HitSettled:
