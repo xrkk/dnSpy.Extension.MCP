@@ -109,8 +109,11 @@ public sealed class DebugSessionService : IDisposable {
 	/// filename) need the engine's own ModuleId — built from the same ModuleDef the metadata
 	/// service loads, exactly like dndbg does — or the engine never binds (ACC-035); disk-backed
 	/// modules keep the filename identity.</summary>
+	static bool HasDiskPath(DbgModule module) =>
+		!string.IsNullOrEmpty(module.Filename) && Path.IsPathRooted(module.Filename);
+
 	ModuleId UpstreamIdOf(DbgModule module) {
-		if (!string.IsNullOrEmpty(module.Filename))
+		if (HasDiskPath(module))
 			return (ModuleId)module.Filename;
 		// In-memory/dynamic modules: the ENGINE's own id is the only one that binds — dndbg
 		// serializes them as "<name> (id=N)" so same-bytes siblings get distinct ids, which is
@@ -1013,7 +1016,7 @@ public sealed class DebugSessionService : IDisposable {
 						Name = module.Name,
 						Address = module.Address,
 						Size = module.Size,
-						Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+						Layout = module.IsDynamic || !HasDiskPath(module) ? "memory" : "file",
 						Mvid = "00000000-0000-0000-0000-000000000000", // real MVID lands with DmdModule wiring (IMP-009 note)
 						UpstreamId = UpstreamIdOf(module),
 						LiveModule = module,
@@ -1067,7 +1070,7 @@ public sealed class DebugSessionService : IDisposable {
 							Name = module.Name,
 							Address = module.Address,
 							Size = module.Size,
-							Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
+							Layout = module.IsDynamic || !HasDiskPath(module) ? "memory" : "file",
 							Mvid = "00000000-0000-0000-0000-000000000000",
 							UpstreamId = UpstreamIdOf(module),
 							LiveModule = module,
