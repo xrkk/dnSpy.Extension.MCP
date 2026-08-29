@@ -554,7 +554,7 @@ function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library
     $envm = $script:Manifest.env
     $src = Join-Path (Join-Path $script:Repo 'tests\debug\fixtures-src') $SourceName
     $out = Join-Path $envm.sample_root $OutName
-    $target = if ($Library) { '/target:library' } else { '/target:exe /platform:x64' }
+    $target = if ($Library) { '/target:library' } else { '/platform:x64' }
     & $envm.csc /nologo /optimize- $target /out:$out $src 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir ("build-" + $OutName + ".log"))
     return (Test-Path $out)
 }
