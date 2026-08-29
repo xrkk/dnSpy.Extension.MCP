@@ -653,6 +653,11 @@ function Run-ACC001 {
     # (assert-dispatchers.ps1) always answered "unknown" and was removed as vacuous.
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build-disp' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     $dispSess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
+    if ($dispSess.ok) {
+        # list_modules resolves live objects through a SYNCHRONOUS dispatcher post — the
+        # measurable DbgManager-side half of the dispatcher-domain requirement.
+        Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $dispSess.sid; generation = $dispSess.gen } | Out-Null
+    }
     $dispSpy = Get-SpyCounters
     $dispEv = Save-Json 'dispatcher-domains.json' $dispSpy
     $wpfOk = [int]$dispSpy.start_thread_is_wpf -eq 1
@@ -672,6 +677,7 @@ function Run-ACC001 {
         Stop-DnSpyAndTargets
         Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' 3100 $m.env.sample_root $m.env.artifact_root)
         $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 2>&1
+        "$static" | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')
     } catch {
