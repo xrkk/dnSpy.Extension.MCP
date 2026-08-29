@@ -21,24 +21,23 @@ public static class UnsupportedTargetDetector {
 
 	const int EvidenceValueMaxBytes = 1024;
 
-	/// <summary>Raw PE read of the COR20 header's ILOnly flag (dnlib does not expose the
-	/// flags): PE offset → optional-header magic → data-directory base → CLR directory RVA →
-	/// section-mapped file offset → flags at COR20+16.</summary>
-	static bool IsILOnly(string path) {
+	/// <summary>Raw PE read of the COR20 header flags (dnlib does not expose them):
+	/// PE offset -> optional-header magic -> data-directory base -> CLR directory RVA ->
+	/// section-mapped file offset -> flags at COR20+16.</summary>
+	static uint Cor20Flags(string path) {
 		try {
 			using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
 			using var br = new System.IO.BinaryReader(fs);
 			fs.Position = 0x3C;
 			int peOffset = br.ReadInt32();
 			fs.Position = peOffset + 24;
-		 ushort magic = br.ReadUInt16();
+			ushort magic = br.ReadUInt16();
 			int dirBase = magic == 0x20B ? 112 : 96;
 			fs.Position = peOffset + 24 + dirBase + 14 * 8;
 			uint clrRva = br.ReadUInt32();
 			uint clrSize = br.ReadUInt32();
 			if (clrRva == 0 || clrSize == 0)
-				return false;
-			// Section table for RVA->file offset mapping.
+				return 0;
 			fs.Position = peOffset + 20;
 			ushort optSize = br.ReadUInt16();
 			fs.Position = peOffset + 6;
@@ -52,16 +51,14 @@ public static class UnsupportedTargetDetector {
 				uint rawPtr = br.ReadUInt32();
 				uint span = System.Math.Max(virtSize, rawSize);
 				if (clrRva >= virtAddr && clrRva < virtAddr + span) {
-					uint corFileOffset = rawPtr + (clrRva - virtAddr);
-					fs.Position = corFileOffset + 16;
-					uint flags = br.ReadUInt32();
-					return (flags & 0x00000001) != 0;
+					fs.Position = rawPtr + (clrRva - virtAddr) + 16;
+					return br.ReadUInt32();
 				}
 			}
-			return false;
+			return 0;
 		}
 		catch {
-			return false;
+			return 0;
 		}
 	}
 
@@ -90,13 +87,16 @@ public static class UnsupportedTargetDetector {
 			};
 		}
 		using (module) {
-			if (!IsILOnly(path)) {
+			// ILOnly alone does NOT mean mixed: csc /platform:x64 emits ILOnly=0 for pure IL.
+			// 32BITREQUIRED without ILOnly is the classic 32-bit mixed-mode (C++/CLI) shape.
+			uint corFlags = Cor20Flags(path);
+			if ((corFlags & 0x00000002) != 0 && (corFlags & 0x00000001) == 0) {
 				return new Result {
 					DetectedTargetKind = "mixed_mode",
 					RecommendedWorkflow = "pe_x64dbg_ida_dynamic_analysis",
 					Evidence = {
 						("pe_headers", $"native entry point with CLR directory present: {System.IO.Path.GetFileName(path)}"),
-						("clr_metadata", "CorFlags ILOnly=0 (mixed-mode C++/CLI image)"),
+						("clr_metadata", $"CorFlags=0x{corFlags:x8} (32BITREQUIRED without ILOnly: mixed-mode C++/CLI image)"),
 					},
 				};
 			}
