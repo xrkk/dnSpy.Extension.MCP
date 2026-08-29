@@ -3290,6 +3290,9 @@ function Run-ACC029 {
     $origDnspy = $m.env.dnspy_exe
     $m.env.dnspy_exe = $x86Exe
     try {
+        # Ensure-CanonicalDnSpy reuses a healthy dnSpy when the snapshot matches — force the
+        # handover by stopping the x64 instance first.
+        Stop-DnSpyAndTargets
         $up86 = Ensure-CanonicalDnSpy
         Assert-Cond 'a29-x86-host-up' 'x86 dnSpy host healthy with the extension loaded' "health=$(Get-HealthCode $script:BaseUrl)" $up86 @()
         if ($up86) {
@@ -3321,6 +3324,7 @@ function Run-ACC029 {
     }
     finally {
         $m.env.dnspy_exe = $origDnspy
+        Stop-DnSpyAndTargets
         Ensure-CanonicalDnSpy | Out-Null
     }
 
