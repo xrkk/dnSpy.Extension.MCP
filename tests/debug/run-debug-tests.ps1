@@ -3841,7 +3841,9 @@ Assert-Cond 'result-evidence-complete' 'every assertion evidence path exists und
 # pattern/minItems — every keyword the schema uses).
 function Get-ValueProp {
     param($Obj, [string]$Name)
-    if ($Obj -is [System.Collections.IDictionary]) { return $Obj[$Name] } else { return $Obj.$Name }
+    # The comma operator prevents PowerShell's function-output enumeration from flattening
+    # single-element arrays (verified micro-repro: bare `return $Obj.$Name` unrolls them).
+    if ($Obj -is [System.Collections.IDictionary]) { return ,$Obj[$Name] } else { return ,$Obj.$Name }
 }
 function Get-ValueProps {
     param($Obj)
