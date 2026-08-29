@@ -52,15 +52,26 @@
         "CHK-009 FB-002少报",
         "CHK-010 UIA归属标注"
       ],
-      "executor_response": "见第62轮(全部接受;007为历史混入仅勘误不重写历史)"
+      "executor_response": "全部接受并整改完毕: 修复链 05f884f..e9bff3b(13 提交); 终版单次连续批跑 36/36(490 断言 0 失败)@e9bff3b, 证据 PLAN/2026.08.26/独立核验/round-2/batch-evidence/batch8-summary.json; 实施记录第 62 轮完结"
     }
   ],
-  "last_checkpoint": "R1 不通过(10 CHK)已整改: 05f884f(CHK-002..006)+5b2ae2e/590ccb6(CHK-007..010)+2211831(034 管理器拆场等待+010 外层重锚+034 唯一id). 批跑#1@590ccb6/DLL 88fd5314: 34/36, BAD ACC-010[a10-entered-hot 抖动]+ACC-034[IsDebugging 拆场残留误触#32预检]. 批跑#2@2211831/DLL e36cce8b 进行中(VM 分离 runner pid 7680, 16:35 时 20/36, 仅 010 已见失败; 034 待位 33). 产物: VM C:\\Tools\\batch62\\{summary.json,progress.log,DONE,evidence\\*.result.json}; 结果目录 mcp-repo\\tests\\debug\\results\\2211831*\\",
+  "last_checkpoint": "R1 十项 CHK 全部整改; 批8 单次连续 36/36 全绿; READY_TO_REVERIFY——待 R2 定向复核",
   "stop_reason": null,
-  "status": "PAUSED_HOST_RESTART",
+  "status": "READY_TO_REVERIFY",
   "rectification": {
     "commits": [
-      "05f884f"
+      "05f884f",
+      "5b2ae2e",
+      "590ccb6",
+      "2211831",
+      "9c36b97",
+      "843a353",
+      "7bb4c54",
+      "a19b0c0",
+      "00ba6ad",
+      "e5a15f2",
+      "261d3df",
+      "e9bff3b"
     ],
     "chk_response": {
       "CHK-001": "接受(待单次连续批跑重立)",
@@ -73,7 +84,18 @@
       "CHK-008": "接受(已固化)",
       "CHK-009": "接受(已更正)",
       "CHK-010": "接受(已统一)"
-    }
+    },
+    "final_head": "e9bff3b(批跑后仅增证据提交 adb6bc3 与本状态更新)",
+    "batch_history": [
+      "34/36@590ccb6",
+      "34/36@2211831",
+      "34/36@9c36b97",
+      "33/36@843a353",
+      "34/36@7bb4c54",
+      "35/36@e5a15f2(仅016)",
+      "35/36@261d3df(仅010)",
+      "36/36@e9bff3b 终版"
+    ]
   },
   "pending_after_restart": [
     "1) 读 VM C:\\Tools\\batch62\\summary.json+DONE: 若 ACC-034 过→仅剩 010; 若 034 仍败→取 2211831 结果目录 wire 诊断 launch3",
