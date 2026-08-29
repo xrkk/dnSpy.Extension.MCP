@@ -2282,7 +2282,12 @@ public sealed class DebugSessionService : IDisposable {
 			fs.Position = peOffset + 4;
 			if (br.ReadInt32() != 0x4550)
 				return null;
-			fs.Position = peOffset + 4 + 20 + 208; // COM descriptor directory entry
+			// Optional header magic decides the data-directory base: PE32 (0x10b) at 96,
+			// PE32+ (0x20b) at 112; the CLR header is directory index 14.
+			fs.Position = peOffset + 24;
+			var magic = br.ReadUInt16();
+			var dirBase = magic == 0x20B ? 112 : 96;
+			fs.Position = peOffset + 24 + dirBase + 14 * 8;
 			var comRva = br.ReadInt32();
 			return comRva != 0 ? RuntimeFamilies.Net48 : null;
 		}
