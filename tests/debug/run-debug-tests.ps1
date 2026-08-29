@@ -2239,9 +2239,12 @@ function Run-ACC010 {
         if ($sy.domain.ok) {
             $candTok = "$($sy.domain.result.items[0].location.method_token)"
             $candMod = "$($sy.domain.result.items[0].location.module_handle)"
-            # Only accept a MethodDef inside the fixture module (a step into framework code
-            # yields non-0x06 or foreign-module tokens the bp identity cannot use).
-            if ($candTok -like '0x06*' -and $candMod -eq $mod) {
+            # Main's token = the BOTTOM-most fixture frame; its IL offset 0 never executes
+            # again (infinite loop already past it), so only a DIFFERENT fixture method
+            # (Hot) is an acceptable hit target.
+            $fixF = @($sy.domain.result.items | Where-Object { "$($_.location.module_handle)" -eq $mod -and "$($_.location.method_token)" -like '0x06*' })
+            $mainTok = if ($fixF.Count -gt 0) { "$($fixF[-1].location.method_token)" } else { '' }
+            if ($candTok -like '0x06*' -and $candMod -eq $mod -and $candTok -ne $mainTok) {
                 $hotTok = $candTok
                 # Pin to offset 0 — the method's first IL instruction is always a real
                 # boundary; a stepped-to frame offset can fall mid-instruction (e.g. inside
