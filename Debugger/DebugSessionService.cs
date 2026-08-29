@@ -907,8 +907,17 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
-	bool PausedEpochMatches(Dictionary<string, object>? args) =>
-		coordinator.State == DebugStates.Paused && coordinator.PauseEpoch == ArgInt(args, "pause_epoch", required: true);
+	/// <summary>Paused-tool gate (ACC-006/016): pause_epoch is part of every handle/page-cursor
+	/// identity, so a request naming an epoch that no longer matches answers STALE_HANDLE
+	/// whatever the current state — INVALID_STATE stays reserved for a current epoch while
+	/// the coordinator is not paused. Returns the serialized failure, or null when admitted.</summary>
+	string? PausedGateFailure(Dictionary<string, object>? args) {
+		if (ArgInt(args, "pause_epoch", required: true) != coordinator.PauseEpoch)
+			return Fail(coordinator, DomainErrorCodes.StaleHandle);
+		if (coordinator.State != DebugStates.Paused)
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		return null;
+	}
 
 	/// <summary>
 	/// Enumerates the owned process's live module table on the DbgManager dispatcher and
@@ -975,8 +984,9 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
-		if (!PausedEpochMatches(args))
-			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var requestId = ArgString(args, "request_id", required: true);
 		var moduleHandle = ArgString(args, "module_handle", required: true);
 		var mvid = ArgString(args, "mvid", required: true);
@@ -1094,8 +1104,11 @@ public sealed class DebugSessionService : IDisposable {
 	string SetBreakpointEnabled(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var breakpointId = ArgString(args, "breakpoint_id", required: true);
 		var enabled = args is not null && args.TryGetValue("enabled", out var e) && e is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
 		if (!bpStore.SetEnabled(breakpointId, enabled))
@@ -1118,8 +1131,11 @@ public sealed class DebugSessionService : IDisposable {
 	string RemoveBreakpoint(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var breakpointId = ArgString(args, "breakpoint_id", required: true);
 		if (!bpStore.Remove(breakpointId))
 			return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown breakpoint");
@@ -1318,8 +1334,11 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	string ListThreads(Dictionary<string, object>? args) {
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
 		string? cursor = ArgString(args, "page_cursor");
 		int start = !string.IsNullOrEmpty(cursor) && int.TryParse(cursor, out var s) ? s : 0;
@@ -1352,8 +1371,11 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	string GetStack(Dictionary<string, object>? args) {
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var threadHandle = ArgString(args, "thread_handle", required: true);
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 20));
 		string? cursor = ArgString(args, "page_cursor");
@@ -1421,8 +1443,11 @@ public sealed class DebugSessionService : IDisposable {
 	string Step(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var requestId = ArgString(args, "request_id", required: true);
 		var threadHandle = ArgString(args, "thread_handle", required: true);
 		var kind = ArgString(args, "kind", required: true);
@@ -1510,8 +1535,11 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	string GetLocals(Dictionary<string, object>? args) {
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		ValidateValueToolArgs(args, "debug_get_locals", new[] { "session_id", "generation", "pause_epoch", "frame_handle", "page_size", "page_cursor" });
 		var frameHandle = ArgString(args, "frame_handle", required: true);
 		var frameError = ClassifyFrameHandle(frameHandle, out var frameIndex);
@@ -1622,8 +1650,11 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	string ExpandValue(Dictionary<string, object>? args) {
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		ValidateValueToolArgs(args, "debug_expand_value", new[] { "session_id", "generation", "pause_epoch", "value_handle", "depth", "page_size", "page_cursor" }, depthKey: 1);
 		var valueHandle = ArgString(args, "value_handle", required: true);
 		ValueHandleEntry? parent;
@@ -1777,8 +1808,11 @@ public sealed class DebugSessionService : IDisposable {
 	};
 
 	string ReadMemory(Dictionary<string, object>? args) {
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var moduleHandle = ArgString(args, "module_handle", required: true);
 		var address = ParseUlong(ArgString(args, "address", required: true));
 		var lengthLong = ArgLong(args, "length", 0);
@@ -1862,8 +1896,11 @@ public sealed class DebugSessionService : IDisposable {
 	string DumpModule(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
-		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
+		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
 		var requestId = ArgString(args, "request_id", required: true);
 		var moduleHandle = ArgString(args, "module_handle", required: true);
 		var relativeName = ArgString(args, "relative_name");
