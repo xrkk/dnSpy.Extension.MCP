@@ -2482,11 +2482,15 @@ public sealed class DebugSessionService : IDisposable {
 									// ACC-035 module_handle scoping: the engine binds this
 									// breakpoint against every ModuleId-equal sibling (same
 									// MVID/name); only the module the creating handle addressed
-									// may settle as this breakpoint's hit.
+									// may settle as this breakpoint's hit. The engine leaves
+									// Module unset on some bind paths (disk modules) — then the
+									// location's engine-unique id already scopes the hit.
+									var hitModule = boundArgs.BoundBreakpoint.Module;
 									if (ownedId is not null
 										&& moduleByOwnedBp.TryGetValue(ownedId, out var ownerModule)
 										&& ownerModule is not null
-										&& !ReferenceEquals(ownerModule, boundArgs.BoundBreakpoint.Module))
+										&& hitModule is not null
+										&& !ReferenceEquals(ownerModule, hitModule))
 										ownedId = null;
 								}
 								if (ownedId is not null)
