@@ -3360,7 +3360,7 @@ function Run-ACC023 {
     $token = 'acc23-secret-token'
     $tokenBytes = [Text.Encoding]::UTF8.GetBytes($token)
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
-    $b64 = [Convert]::ToBase64String($tokenBytes)
+    $b64 = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
     # [1] Defaults: loopback snapshot, no VM IP anywhere in the committed default posture.
     $orig = Read-SettingsSnapshot
