@@ -44,7 +44,7 @@ public static class UnsupportedTargetDetector {
 			ushort numSections = br.ReadUInt16();
 			long sectionsAt = peOffset + 24 + optSize;
 			for (int i = 0; i < numSections; i++) {
-				fs.Position = sectionsAt + i * 40 + 12;
+				fs.Position = sectionsAt + i * 40 + 8;
 				uint virtSize = br.ReadUInt32();
 				uint virtAddr = br.ReadUInt32();
 				uint rawSize = br.ReadUInt32();
