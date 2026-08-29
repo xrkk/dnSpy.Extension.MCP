@@ -3344,6 +3344,66 @@ function Run-ACC029 {
     # [7] The coreclr-x64 leg is live-verified by ACC-008 (apphost/dotnet-host double mode).
     Assert-Cond 'a29-coreclr-x64-covered' 'coreclr-x64 double-mode leg covered by ACC-008 (matrix reference)' 'ACC-008 exit 0' $true @('result.json')
 }
+# ---------------------------------------------------------------- case: ACC-023 ----
+function Read-SettingsSnapshot {
+    $xmlPath = [Environment]::ExpandEnvironmentVariables($script:Manifest.env.settings_xml)
+    [xml]$d = Get-Content $xmlPath
+    $node = $d.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
+    if ($node) { return ($node.GetAttribute('SettingsSnapshotJson') | ConvertFrom-Json) }
+    return $null
+}
+
+function Run-ACC023 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    $remoteUrl = "http://$($m.env.vm_ip):15100/"
+    $token = 'acc23-secret-token'
+    $tokenBytes = [Text.Encoding]::UTF8.GetBytes($token)
+    $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
+    $b64 = [Convert]::ToBase64String($tokenBytes)
+
+    # [1] Defaults: loopback snapshot, no VM IP anywhere in the committed default posture.
+    $orig = Read-SettingsSnapshot
+    $defOk = $orig -and ("$($orig.Host)" -eq 'localhost') -and ([int]$orig.Port -eq 3000) -and (@($orig.RemoteAllowedCidrs).Count -eq 0) -and (-not $orig.RemoteTokenVerifier) -and (-not $orig.RemoteHostOnlyAcknowledged)
+    $repoDirty = Select-String -Path (Join-Path $script:Repo 'tests\debug\cases\*.json') -Pattern $m.env.vm_ip -List -ErrorAction SilentlyContinue
+    $ev1 = Save-Json 'a23-defaults.json' $orig
+    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack; case manifests carry no VM IP' "ok=$defOk ipInCases=$([bool]$repoDirty)" ($defOk -and (-not $repoDirty)) @($ev1)
+
+    # [2] Provision remote (urlacl + firewall + single ApplySnapshot) and prove authenticated
+    # reachability with unauthenticated 401.
+    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
+    & netsh http add urlacl url=$remoteUrl user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-urlacl-add.log')
+    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc23" 2>&1 | Out-Null
+    & netsh advfirewall firewall add rule name="dnspy-mcp-acc23" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-firewall-add.log')
+    $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
+    $cidrJson = '["' + ($cidrSorted -join '","') + '"]'
+    $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $snapR
+    $up = Start-DnSpyAndWait -HealthUrl $remoteUrl
+    if (-not $up) { Assert-Cond 'a23-remote-up' 'health reachable on the remote snapshot' 'failed' $false @('a23-urlacl-add.log'); return }
+    $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+    $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Authorization: Bearer $b64" -BaseUrlOverride $remoteUrl
+    $rdom = $null
+    try { $rdom = ($rCap.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
+    $tupleOk = $rdom -and ($rdom.result.security.bind_mode -eq 'remote_host_only') -and ($rdom.result.security.auth_required) -and ($rdom.result.security.cidr_required)
+    $ev2 = Save-Text 'a23-remote-capabilities.txt' ($rCap.body + "`nstatus=" + $rCap.status + "`nno_auth=" + $noAuth)
+    Assert-Cond 'a23-authenticated-reach' 'remote: allowlisted source authenticated 200 tuple; unauthenticated 401' "tuple=$tupleOk no_auth=$noAuth" ($tupleOk -and ("$noAuth" -eq '401')) @($ev2)
+
+    # [3] Revoke: delete the urlacl/firewall rules, single ApplySnapshot back to every
+    # default network field, restart — only loopback listens afterwards.
+    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-urlacl-del.log')
+    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc23" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-firewall-del.log')
+    $defaultJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $defaultJson
+    $upL = Start-DnSpyAndWait
+    $afterRemote = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+    $revokedSnap = Read-SettingsSnapshot
+    $revOk = $revokedSnap -and ("$($revokedSnap.Host)" -eq 'localhost') -and ([int]$revokedSnap.Port -eq 3000) -and (@($revokedSnap.RemoteAllowedCidrs).Count -eq 0) -and (-not $revokedSnap.RemoteTokenVerifier) -and (-not $revokedSnap.RemoteHostOnlyAcknowledged)
+    $ev3 = Save-Json 'a23-revoked.json' @{ snapshot = $revokedSnap; remoteProbe = $afterRemote; loopbackHealth = (Get-HealthCode $script:BaseUrl) }
+    Assert-Cond 'a23-revoked-loopback-only' 'revocation: default snapshot restored, loopback healthy, remote port closed' "snap=$revOk remote=$afterRemote health=$(Get-HealthCode $script:BaseUrl)" ($revOk -and $upL -and ("$afterRemote" -ne '200') -and ((Get-HealthCode $script:BaseUrl) -eq 200)) @($ev3, 'a23-urlacl-del.log')
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3362,7 +3422,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
