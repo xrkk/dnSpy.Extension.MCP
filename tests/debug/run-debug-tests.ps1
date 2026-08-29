@@ -2206,11 +2206,14 @@ function Run-ACC010 {
     Assert-Cond 'a10-frame-acquired' 'held pause yields a stack frame' "ok=$([bool]$fr)" ([bool]$fr) @()
     if (-not $fr) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a10-t0' } | Out-Null; return }
     $tok = "$($fr.location.method_token)"
-    # Step into Hot to get a second token in the SAME disk-strong module.
-    $hotTok = $null; $hotOff = 0; $mod = "$($fr.location.module_handle)"
+    # Step into Hot to get a second token in the SAME disk-strong module. Anchor on the
+    # FIXTURE module (by name), never on wherever the pause happened to land — a re-acquired
+    # pause usually sits inside mscorlib's Thread.Sleep.
+    $hotTok = $null; $hotOff = 0
     $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-    $modEntry0 = @($MODS0.domain.result.items | Where-Object module_handle -eq $mod)[0]
-    $mod = if ($modEntry0) { $modEntry0.module_handle } else { $mod }
+    $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+    if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
+    $mod = "$($modEntry0.module_handle)"
     for ($i = 0; $i -lt 14 -and -not $hotTok; $i++) {
         $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
         $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
@@ -2233,7 +2236,7 @@ function Run-ACC010 {
         if (-not $paused) { break }
         $tly = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $cur }
         $sy = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $tly.domain.result.items[0].thread_handle }
-        if ($sy.domain.ok -and "$($sy.domain.result.items[0].location.method_token)" -ne $tok) {
+        if ($sy.domain.ok) {
             $candTok = "$($sy.domain.result.items[0].location.method_token)"
             $candMod = "$($sy.domain.result.items[0].location.module_handle)"
             # Only accept a MethodDef inside the fixture module (a step into framework code
