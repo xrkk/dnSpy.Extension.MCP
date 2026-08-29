@@ -55,7 +55,24 @@
       "executor_response": "见第62轮(全部接受;007为历史混入仅勘误不重写历史)"
     }
   ],
-  "last_checkpoint": "round-1 verdict recorded; rectification starting",
+  "last_checkpoint": "CHK-002..006 code/driver committed 05f884f; CHK-007..010 records amended; batch run pending",
   "stop_reason": null,
-  "status": "RECTIFYING_AFTER_ROUND_1"
+  "status": "RECTIFYING_AFTER_ROUND_1",
+  "rectification": {
+    "commits": [
+      "05f884f"
+    ],
+    "chk_response": {
+      "CHK-001": "接受(待单次连续批跑重立)",
+      "CHK-002": "接受(已修)",
+      "CHK-003": "接受(已修)",
+      "CHK-004": "接受(已修)",
+      "CHK-005": "接受(已修,有界重试)",
+      "CHK-006": "接受(已修,派发处冷启动)",
+      "CHK-007": "接受(勘误,不重写历史)",
+      "CHK-008": "接受(已固化)",
+      "CHK-009": "接受(已更正)",
+      "CHK-010": "接受(已统一)"
+    }
+  }
 }
