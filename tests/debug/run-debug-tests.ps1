@@ -1173,27 +1173,18 @@ function Run-ACC031 {
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.location.module_handle)[0]
     $mvid = "$($modEntry.mvid)"
 
-    # Deterministic Hot discovery: the fixture publishes its MethodDef tokens at startup
-    # (stepping could land in the manifest writer or an inlined frame instead of Hot).
-    # Resume the entry pause so Main runs and writes the manifest, poll for it, re-pause.
-    $manPath31 = Join-Path $m.env.sample_root 'accfix-manifest.txt'
-    Remove-Item $manPath31 -Force -ErrorAction SilentlyContinue
-    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc31-c0' }
-    $manReady31 = $false
-    for ($w = 0; $w -lt 20 -and -not $manReady31; $w++) {
-        Start-Sleep -Milliseconds 200
-        if (Test-Path $manPath31) { $manReady31 = $true }
-    }
-    $wp31 = Wait-StablePaused $sid
-    $curEp = $wp31.epoch
-    $hotToken = $null; $hotOff = 0; $mod = "$($mainFrame.location.module_handle)"
-    if ($manReady31) {
-        $fixMan31 = @{}
-        foreach ($line in ([IO.File]::ReadAllLines($manPath31))) { $kv = $line -split '=', 2; if ($kv.Count -eq 2) { $fixMan31[$kv[0]] = $kv[1] } }
-        if ($fixMan31['hot'] -and ("$($fixMan31['hot'])" -ne "$($fixMan31['main'])")) { $hotToken = "$($fixMan31['hot'])" }
-    }
-    Save-Json 'acc31-token-manifest.json' @{ ready = $manReady31; hot = $hotToken } | Out-Null
-    Assert-Cond 'entered-hot' 'Hot token resolved deterministically from the fixture manifest' "hot_token=$hotToken manifest=$manReady31 paused=$($wp31.ok)" ([bool]$hotToken) @('acc31-token-manifest.json')
+    # Deterministic Hot discovery: reflection over the fixture bytes (same MethodDef tokens
+    # as the debugged process; no stepping, no dependence on JIT inlining). The process
+    # stays at the entry pause — the bp is created there, then continue triggers Hot@0.
+    $hotToken = $null; $hotOff = 0; $curEp = $ep
+    try {
+        $asmBytes31 = [IO.File]::ReadAllBytes($m.env.fixture_exe)
+        $asmObj31 = [Reflection.Assembly]::Load($asmBytes31)
+        $hotMi31 = $asmObj31.GetType('AccFixture').GetMethod('Hot', [Reflection.BindingFlags]'NonPublic,Static')
+        if ($hotMi31) { $hotToken = '0x' + $hotMi31.MetadataToken.ToString('x8') }
+    } catch { }
+    Save-Json 'acc31-token-reflection.json' @{ hot = $hotToken } | Out-Null
+    Assert-Cond 'entered-hot' 'Hot token resolved via reflection over the fixture bytes' "hot_token=$hotToken" ([bool]$hotToken) @('acc31-token-reflection.json')
 
     if ($hotToken) {
         $bp = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = 'acc31-bp'; module_handle = $mod; mvid = $mvid; method_token = $hotToken; il_offset = $hotOff; module_sha256 = $sha; enabled = $true }
@@ -2310,28 +2301,19 @@ function Run-ACC010 {
     $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
     if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
     $mod = "$($modEntry0.module_handle)"
-    # Deterministic token discovery (CHK batch flake root fix): stepping could never find a
-    # Hot frame when the JIT inlines Hot into Main. The fixture publishes its real MethodDef
-    # tokens in a startup manifest; resume the entry pause so Main runs (writing it), poll
-    # for the file, then re-pause and read Hot's token directly. No stepping involved.
-    $manPath = Join-Path $m.env.sample_root 'accfix-manifest.txt'
-    Remove-Item $manPath -Force -ErrorAction SilentlyContinue
-    Resume-FromPaused $sid $gen | Out-Null
-    $manReady = $false
-    for ($w = 0; $w -lt 20 -and -not $manReady; $w++) {
-        Start-Sleep -Milliseconds 200
-        if (Test-Path $manPath) { $manReady = $true }
-    }
-    $reheld = Wait-HeldPause $sid $gen
-    if ($reheld.ok) { $cur = $reheld.epoch }
+    # Deterministic token discovery: reflection over the fixture BYTES (Assembly.Load of a
+    # byte[] does not lock the file) yields the same MethodDef tokens the debugged process
+    # carries. Immune to JIT inlining (no Hot frame on the stack) and to fixture layout
+    # changes; the process stays paused at the acquired frame — no resume/re-pause dance.
     $hotTok = $null; $hotOff = 0; $rnd = 0
-    if ($manReady) {
-        $fixMan = @{}
-        foreach ($line in ([IO.File]::ReadAllLines($manPath))) { $kv = $line -split '=', 2; if ($kv.Count -eq 2) { $fixMan[$kv[0]] = $kv[1] } }
-        if ($fixMan['hot'] -and ($fixMan['hot'] -ne $fixMan['main'])) { $hotTok = "$($fixMan['hot'])"; $hotOff = 0 }
-    }
-    Save-Json 'a10-token-manifest.json' @{ ready = $manReady; hot = $hotTok; reheld = $reheld.ok } | Out-Null
-    Assert-Cond 'a10-entered-hot' 'Hot token resolved deterministically from the fixture manifest' "hot=$hotTok manifest=$manReady reheld=$($reheld.ok)" ([bool]$hotTok) @('a10-token-manifest.json')
+    try {
+        $asmBytes = [IO.File]::ReadAllBytes($exe)
+        $asm31 = [Reflection.Assembly]::Load($asmBytes)
+        $hotMi = $asm31.GetType('AccFixture').GetMethod('Hot', [Reflection.BindingFlags]'NonPublic,Static')
+        if ($hotMi) { $hotTok = '0x' + $hotMi.MetadataToken.ToString('x8'); $hotOff = 0 }
+    } catch { }
+    Save-Json 'a10-token-reflection.json' @{ hot = $hotTok } | Out-Null
+    Assert-Cond 'a10-entered-hot' 'Hot token resolved via reflection over the fixture bytes' "hot=$hotTok" ([bool]$hotTok) @('a10-token-reflection.json')
     if (-not $hotTok) { return }
 
     # Create with the FULL five-part identity (module/mvid/token/offset/sha from disk).
