@@ -91,7 +91,6 @@ jobs:
     needs: [contracts, build]
     # The E2E driver lands with the Windows-side wiring; until the file exists this leg is
     # skipped rather than silently passing — packaging still gates on contracts+build.
-    if: hashFiles('tests/debug/run-debug-tests.ps1') != ''
     steps:
       - name: Checkout MCP Extension
         uses: actions/checkout@v4
@@ -129,7 +128,7 @@ jobs:
       - name: Run dynamic verification (ACC cases)
         shell: pwsh
         working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
-        run: .\tests\debug\run-debug-tests.ps1
+        run: .\tests\debug\run-debug-tests.ps1 -VerifyHarness
 
   verify-status:
     name: Verify Status
@@ -139,14 +138,12 @@ jobs:
     steps:
       - name: Check verify result
         run: |
-          for job in contracts build; do
-            if [ "${{ needs.jobs[job].result }}" != "success" ]; then
-              echo "verify job '$job' failed!"
-              exit 1
-            fi
-          done
-          if [ "${{ needs.jobs.e2e.result }}" == "failure" ]; then
-            echo "verify job 'e2e' failed!"
+          # Hard gate: anything but success — including 'skipped' — fails verification.
+          # (Static references: GitHub Actions has no dynamic needs.jobs[job] indexing.)
+          if [ "${{ needs.contracts.result }}" != "success" ] \
+             || [ "${{ needs.build.result }}" != "success" ] \
+             || [ "${{ needs.e2e.result }}" != "success" ]; then
+            echo "verify did not succeed: contracts=${{ needs.contracts.result }} build=${{ needs.build.result }} e2e=${{ needs.e2e.result }}"
             exit 1
           fi
           echo "Verify completed successfully!"

@@ -112,7 +112,7 @@ pwsh 版的 Python 等价)+ 双 TFM Release 构建,并把产物写入 `dist/`(�
 
 ## 已知边界(如实声明)
 
-- 本机为 Linux:`dist/` 产物未经任何 Windows 运行时验证,部署前必须先跑 L3;
-- L4 整层被环境阻碍(VM `192.168.204.149` 未运行、无凭据/通道)阻断,自第 1 轮记录至今;
-- `run-debug-tests.ps1` driver 尚未创建(属 IMP-011 剩余),创建后 L4 才可机械化执行;
-- 每轮测试捕获的产品缺陷均已当场修复并回归(见实施记录各轮)。
+- 本机为 Linux:`dist/` 产物在每次部署前都经 VM 实跑验证(第 34-61 轮),部署链含 SHA-256 比对;
+- L4 已解除阻断(第 34 轮起):`tests/debug/run-debug-tests.ps1 -Case ACC-xxx` 36 案全部机械化实跑;
+- CI 层:`.github/workflows/verify.yml` 的 E2E job 以 `-VerifyHarness` 作为驱动完整性硬门禁,VM 全量复跑按《第三方核查指引》执行;
+- 每轮测试捕获的产品缺陷均已当场修复并回归(见实施记录各轮);每案 result.json 证据与 dnspy.debug.test.v1 形状门禁自第 61 轮起实装。

@@ -21,12 +21,45 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Case')]
     [ValidatePattern('^ACC-\d{3}$')]
-    [string]$Case
+    [string]$Case,
+    # CI harness gate: validate manifests/handlers/syntax without a VM (no result.json).
+    [Parameter(Mandatory = $true, ParameterSetName = 'VerifyHarness')]
+    [switch]$VerifyHarness
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ---- CI harness gate (-VerifyHarness): no VM, no result.json — validates that the E2E
+# driver itself is complete and wired: script parses, all 36 case manifests exist, every
+# manifest has an implemented handler, and the committed result schema is present.
+if ($VerifyHarness) {
+    $repo = Split-Path -Parent $PSScriptRoot | Split-Path -Parent
+    $errors = @()
+    $tokens = $null; $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile($PSCommandPath, [ref]$tokens, [ref]$parseErrors) | Out-Null
+    if ($parseErrors.Count -gt 0) { $errors += "driver parse errors: $($parseErrors.Count)" }
+    $manifests = Get-ChildItem (Join-Path $repo 'tests\debug\cases') -Filter 'ACC-*.json'
+    if ($manifests.Count -ne 36) { $errors += "expected 36 case manifests, found $($manifests.Count)" }
+    $handlerIds = @('ACC-001','ACC-002','ACC-003','ACC-004','ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012','ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019','ACC-020','ACC-021','ACC-022','ACC-023','ACC-024','ACC-025','ACC-026','ACC-027','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-033','ACC-034','ACC-035','ACC-036')
+    $driverText = Get-Content $PSCommandPath -Raw
+    foreach ($hid in $handlerIds) {
+        if ($manifests.Name -notcontains "$hid.json") { $errors += "manifest missing: $hid" }
+    }
+    # Handler wiring is enforced by the dispatch table content check below.
+    $dispatchStart = $driverText.IndexOf('$handlers = @{')
+    $dispatchEnd = $driverText.IndexOf('}', $dispatchStart)
+    $dispatchBody = $driverText.Substring($dispatchStart, $dispatchEnd - $dispatchStart)
+    foreach ($hid in $handlerIds) {
+        if ($dispatchBody -notmatch [regex]::Escape("'$hid'")) { $errors += "dispatch handler missing: $hid" }
+    }
+    if (-not (Test-Path (Join-Path $repo 'tests\debug\contracts\dnspy.debug.test.v1.schema.json'))) { $errors += 'result schema file missing' }
+    if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+    Write-Output 'HARNESS VERIFY PASSED: 36 manifests, 36 handlers, driver parses, result schema present'
+    exit 0
+}
+
 
 # ---------------------------------------------------------------- framework ----
 $script:ScriptDir = $PSScriptRoot
@@ -632,12 +665,21 @@ function Run-ACC001 {
     }
     Assert-Cond 'static-e2e-exit0' 'tests/fixtures/run-tests.ps1 exit 0' "$(if ($ok) { 'exit 0' } else { 'failed; see static-e2e.log' })" $ok @('static-e2e.log', 'testil-build.log')
 
-    # [3] Dispatcher-domain probes require the in-process fixture (assert-dispatchers.ps1).
-    $disp = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:Repo 'tests\debug\assert-dispatchers.ps1') -BaseUrl $script:BaseUrl 2>&1
-    $disp | Set-Content (Join-Path $script:OutDir 'dispatchers.log')
-    $dispOk = (($disp | Select-String 'WPF=.*DbgManager=.*' -Quiet) -eq $true)
-    if (-not $dispOk) { Fail-Precondition 'dispatcher-domain-probe' 'in-process dispatcher probe fixture' }
-    else { Assert-Cond 'dispatcher-domain-probe' 'WPF outer / DbgManager inner probe reported' 'reported' $true @('dispatchers.log') }
+    # [3] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
+    # the WPF thread (spy start_thread_is_wpf==1) and drive object work through the
+    # DbgManager dispatcher (spy dispatcher_sync_posts>=1). The former placeholder probe
+    # (assert-dispatchers.ps1) always answered "unknown" and was removed as vacuous.
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build-disp' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $dispSess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
+    $dispSpy = Get-SpyCounters
+    $dispEv = Save-Json 'dispatcher-domains.json' $dispSpy
+    $wpfOk = [int]$dispSpy.start_thread_is_wpf -eq 1
+    $dispOk2 = [int]$dispSpy.dispatcher_sync_posts -ge 1
+    Assert-Cond 'dispatcher-domain-probe' 'Start executed on the WPF thread; object work on the DbgManager dispatcher' "wpf=$($dispSpy.start_thread_is_wpf) syncPosts=$($dispSpy.dispatcher_sync_posts) session=$($dispSess.ok)" ($wpfOk -and $dispOk2 -and $dispSess.ok) @($dispEv)
+    if ($dispSess.ok) {
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $dispSess.sid; generation = $dispSess.gen; request_id = 'acc1-t1' } | Out-Null
+        Start-Sleep -Milliseconds 900
+    }
 
     Ensure-CanonicalDnSpy | Out-Null
 }
@@ -3539,7 +3581,18 @@ function Run-ACC022 {
     $hasEntry = (Test-Path $readme) -and ((Get-Content $readme -Raw -ErrorAction SilentlyContinue) -match 'run-debug-tests')
     Assert-Cond 'a22-gate-documented' 'E2E gate invocation documented in tests/TEST-PLAN.zh-CN.md' "doc=$hasEntry" $hasEntry @()
 
-    # [3] Release-gate miniature: one full canonical E2E cycle on the advertised wire.
+    # [3] The CI verify workflow is a HARD gate (third-party audit finding): the E2E job
+    # must invoke the driver explicitly (never silently skippable), and verify-status must
+    # reject anything but success — including 'skipped' — for contracts/build/e2e.
+    $wfPath = Join-Path $script:Repo '.github\workflows\verify.yml'
+    $wf = if (Test-Path $wfPath) { Get-Content $wfPath -Raw } else { '' }
+    $ev3 = Save-Text 'a22-verify-workflow.yml' $wf
+    $wfInvokes = ($wf -match 'run-debug-tests\.ps1\s+(-Case\s+ACC-\d{3}|-VerifyHarness)')
+    $wfNoHashGate = ($wf -notmatch "if:\s*hashFiles\('tests/debug/run-debug-tests\.ps1'\)")
+    $wfStatusStrict = @(); foreach ($jid in @('contracts', 'build', 'e2e')) { if ($wf -match [regex]::Escape("needs.$jid.result") + "[^\n]*!=\s*["']success["']") { $wfStatusStrict += $jid } }
+    Assert-Cond 'a22-ci-workflow-hard-gate' 'E2E job invokes the driver explicitly; no hashFiles skip; verify-status rejects non-success (incl. skipped) for contracts/build/e2e' "invoke=$wfInvokes noHashGate=$wfNoHashGate strict=$($wfStatusStrict -join ',')" ($wfInvokes -and $wfNoHashGate -and ($wfStatusStrict.Count -eq 3)) @($ev3)
+
+    # [4] Release-gate miniature: one full canonical E2E cycle on the advertised wire.
     $sess = Launch-AndPause $exe 'none'
     $cycleOk = $false
     if ($sess.ok) {
@@ -3640,7 +3693,7 @@ function Run-ACC004 {
     [IO.File]::WriteAllText('C:\Tools\a4-big.json', $big, (New-Object Text.ASCIIEncoding))
     $rBig = & curl.exe -s -o NUL -w '%{http_code}' --max-time 10 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary '@C:\Tools\a4-big.json' 2>$null
     $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
-    Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB enters parse (400-family parse result); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and (("$r1m" -eq '400') -or ("$r1m" -eq '200') -or ("$r1m" -eq '413'))) @($ev1)
+    Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB is served (200-family, NOT 413); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and ("$r1m" -ne '413') -and ("$r1m" -ne '') -and ("$r1m" -ne '000')) @($ev1)
 
     # [2] Concurrent admission under load: eight pinned waits on a REAL session hold the
     # global wait slots; nine further concurrent requests must see the domain LIMIT_EXCEEDED
@@ -3665,7 +3718,7 @@ function Run-ACC004 {
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a4-t1' } | Out-Null
     Start-Sleep -Milliseconds 900
     $ev2 = Save-Text 'a4-concurrent-admission.txt' "limit=$limitHits ok=$oks"
-    Assert-Cond 'a4-concurrent-admission' 'concurrent admission caps observed (9th+ wait = LIMIT_EXCEEDED), transport stayed responsive' "limit=$limitHits ok=$oks" ($limitHits -ge 1 -and ($limitHits + $oks) -ge 9) @($ev2)
+    Assert-Cond 'a4-concurrent-admission' 'EXACTLY the 8 global wait slots admitted; the other 9 = LIMIT_EXCEEDED' "limit=$limitHits ok=$oks" (($limitHits -eq 9) -and ($oks -eq 8)) @($ev2)
 
     # [3] Transport-level and payload pieces live-verified elsewhere in the suite:
     # malformed JSON -32700 + UTF-8 byte ceilings + the 9th-wait cap (ACC-028), event
@@ -3706,6 +3759,29 @@ if ($handlers.ContainsKey($Case) -and $script:Manifest) {
 }
 
 $finishedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+
+# Exit-0 gates beyond assertion status (third-party audit finding): every referenced
+# evidence file must exist on disk, and the emitted result must satisfy the committed
+# dnspy.debug.test.v1 shape. 'result.json' is self-referential and always satisfied.
+$missingEvidence = @()
+foreach ($a in $script:Assertions) {
+    foreach ($ep in @($a.evidence_paths)) {
+        if ($ep -and ("$ep" -ne 'result.json') -and -not (Test-Path (Join-Path $script:OutDir "$ep"))) { $missingEvidence += "$($a.assertion_id):$ep" }
+    }
+}
+$missingEvidence | Set-Content (Join-Path $script:OutDir 'evidence-gate.log')
+Assert-Cond 'result-evidence-complete' 'every assertion evidence path exists under the result directory' "missing=$($missingEvidence.Count)" ($missingEvidence.Count -eq 0) @('evidence-gate.log')
+
+$shapeErrors = @()
+foreach ($a in $script:Assertions) {
+    foreach ($f in @('assertion_id', 'status', 'expected', 'actual')) {
+        if ($null -eq $a.PSObject.Properties[$f]) { $shapeErrors += "$($a.assertion_id):$f" }
+    }
+    if ($null -eq $a.PSObject.Properties['evidence_paths']) { $shapeErrors += "$($a.assertion_id):evidence_paths" }
+}
+$shapeErrors | Set-Content (Join-Path $script:OutDir 'shape-gate.log')
+Assert-Cond 'result-schema-shape' 'result satisfies dnspy.debug.test.v1 (id/status/expected/actual/evidence_paths per assertion)' "errors=$($shapeErrors.Count) schema=tests/debug/contracts/dnspy.debug.test.v1.schema.json" ($shapeErrors.Count -eq 0) @('shape-gate.log')
+
 $allPass = (@($script:Assertions | Where-Object status -ne 'pass').Count -eq 0) -and ($script:Assertions.Count -gt 0)
 $status = if ($allPass) { 'pass' } else { 'fail' }
 $exit = if ($allPass) { 0 } elseif ($script:PreconditionFailed) { 2 } else { 1 }
