@@ -3025,10 +3025,12 @@ function Run-ACC028 {
     # [6] UTF-8 byte-vs-char boundary on an untrusted pointer (session_id): 341 non-BMP
     # chars = 1023 bytes passes structure (then NOT_FOUND for the unknown session); 343
     # chars = 1029 bytes is the byte-limit -32602 — character count stays under schema max.
-    # U+1D11E as a UTF-16 surrogate pair (PS [char] cannot hold > 0xFFFF).
+    # ASCII probes isolate the BYTE limit from the base64url charset pattern; a non-BMP id
+    # additionally exercises the charset rejection.
+    $id1023 = 'a' * 1024   # exactly 1024 UTF-8 bytes: passes structure -> NOT_FOUND (unknown)
+    $id1029 = 'a' * 1025   # 1025 bytes: deterministic byte-limit -32602
     $g = [string]::Concat([char]0xD834, [char]0xDD1E)
-    $id1023 = $g * 341    # 341 x 3 bytes = 1023 UTF-8 bytes (chars stay under the schema max)
-    $id1029 = $g * 343    # 343 x 3 = 1029 bytes -> byte-limit rejection
+    $idNbmp = $g * 343
     # Send-Rpc writes bodies with an ASCII encoding that mangles non-BMP input, so these
     # probes go through curl with properly UTF-8-encoded body files.
     function Invoke-ByteProbe([string]$IdValue, [int]$ProbeId) {
@@ -3045,8 +3047,9 @@ function Run-ACC028 {
     }
     $c1 = Invoke-ByteProbe $id1023 81
     $c2 = Invoke-ByteProbe $id1029 82
-    $ev6 = Save-Text 'a28-utf8-boundary.txt' "1023B: $c1`n1029B: $c2"
-    Assert-Cond 'a28-utf8-byte-boundary' '1023 UTF-8 bytes passes structure (NOT_FOUND), 1029 bytes = -32602 byte rejection' "1023=$c1 1029=$c2" (("$c2" -eq 'rpc:-32602') -and ("$c1" -eq 'domain:NOT_FOUND')) @($ev6)
+    $c3 = Invoke-ByteProbe $idNbmp 83
+    $ev6 = Save-Text 'a28-utf8-boundary.txt' "1024B: $c1`n1025B: $c2`nnonBMP: $c3"
+    Assert-Cond 'a28-utf8-byte-boundary' '1024 ASCII bytes passes structure (NOT_FOUND); 1025 = -32602 byte limit; non-BMP id rejected' "1024=$c1 1025=$c2 nonBMP=$c3" (("$c2" -eq 'rpc:-32602') -and ("$c1" -eq 'domain:NOT_FOUND') -and ("$c3" -eq 'rpc:-32602')) @($ev6)
 
     # [7] Wait cap (CON-DYN-009 global 8): nine concurrent waits -> the ninth LIMIT_EXCEEDED.
     # Hold all nine: after_cursor at the session's current max cursor means no events are
