@@ -2203,10 +2203,18 @@ function Run-ACC010 {
     $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
     $modEntry0 = @($MODS0.domain.result.items | Where-Object module_handle -eq $mod)[0]
     $mod = if ($modEntry0) { $modEntry0.module_handle } else { $mod }
-    for ($i = 0; $i -lt 12 -and -not $hotTok; $i++) {
+    for ($i = 0; $i -lt 14 -and -not $hotTok; $i++) {
         $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
         $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
-        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = 'into' }
+        # Step OUT of framework frames (foreign module / non-MethodDef tops) and only step
+        # INTO from fixture frames — a blind into-chain buries itself in mscorlib.
+        $kind = 'into'
+        if ($i -gt 0 -and $sy -and $sy.domain.ok) {
+            $topMod = "$($sy.domain.result.items[0].location.module_handle)"
+            $topTok = "$($sy.domain.result.items[0].location.method_token)"
+            if (($topMod -ne $mod) -or ($topTok -notlike '0x06*')) { $kind = 'out' }
+        }
+        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = $kind }
         if (-not $stx.domain.ok) { break }
         $paused = $false
         for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
