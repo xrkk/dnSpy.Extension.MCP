@@ -2727,6 +2727,9 @@ function Run-ACC033 {
     # [7] MVID/FileId recheck after module-loaded lives with the DmdModule MVID wiring (IMP-009
     # ledger); the structural guarantee (target cannot change under the session) is [2]+[3].
     Assert-Cond 'a33-module-recheck-note' 'module-loaded MVID/SHA/FileId recheck: file-level closed by lease; DmdModule MVID pending' 'see ledger' $true @('result.json')
+
+    # Hygiene: [4] corrupted the fixture on purpose — restore a clean build for later cases.
+    Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe' | Out-Null
 }
 
 # ---------------------------------------------------------------- dispatch + finalize ----

@@ -2366,8 +2366,9 @@ public sealed class DebugSessionService : IDisposable {
 	bool TryLeaseIdentity(string path, string role, string objectKind, string? expectedSha256, out FileIdentityDto? identity, out string? error) {
 		identity = null;
 		error = null;
+		FileStream? stream = null;
 		try {
-			var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+			stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 			identityLeases.Add(stream);
 			var info = GetFileIdentity(stream);
 			string sha256;
@@ -2379,6 +2380,10 @@ public sealed class DebugSessionService : IDisposable {
 			}
 			if (expectedSha256 is not null && !string.Equals(expectedSha256, sha256, StringComparison.OrdinalIgnoreCase)) {
 				error = $"{role} sha256 mismatch: expected {expectedSha256.ToLowerInvariant()}, file is {sha256}";
+				// A rejected target keeps no lease: the handle must not outlive the rejection
+				// (ACC-033 — a leaked read handle would block the file's legitimate rewrite).
+				stream.Dispose();
+				identityLeases.Remove(stream);
 				return false;
 			}
 			identity = new FileIdentityDto {
@@ -2392,6 +2397,11 @@ public sealed class DebugSessionService : IDisposable {
 			return true;
 		}
 		catch (Exception ex) {
+			// Same rule for open/read failures (e.g. file-not-found, device-not-ready).
+			if (stream is not null) {
+				try { stream.Dispose(); } catch { }
+				identityLeases.Remove(stream);
+			}
 			error = $"{role} identity lease failed: {ex.Message}";
 			return false;
 		}
