@@ -647,6 +647,22 @@ function Run-ACC001 {
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Repo 'tests\fixtures\bin') | Out-Null
         Copy-Item $m.env.testil_dll -Destination (Join-Path $script:Repo 'tests\fixtures\bin\TestIL.dll') -Force
         $fixOut = "fixture staged from $($m.env.testil_dll)" 
+    # [3] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
+    # the WPF thread (spy start_thread_is_wpf==1) and drive object work through the
+    # DbgManager dispatcher (spy dispatcher_sync_posts>=1). The former placeholder probe
+    # (assert-dispatchers.ps1) always answered "unknown" and was removed as vacuous.
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build-disp' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $dispSess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
+    $dispSpy = Get-SpyCounters
+    $dispEv = Save-Json 'dispatcher-domains.json' $dispSpy
+    $wpfOk = [int]$dispSpy.start_thread_is_wpf -eq 1
+    $dispOk2 = [int]$dispSpy.dispatcher_sync_posts -ge 1
+    Assert-Cond 'dispatcher-domain-probe' 'Start executed on the WPF thread; object work on the DbgManager dispatcher' "wpf=$($dispSpy.start_thread_is_wpf) syncPosts=$($dispSpy.dispatcher_sync_posts) session=$($dispSess.ok)" ($wpfOk -and $dispOk2 -and $dispSess.ok) @($dispEv)
+    if ($dispSess.ok) {
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $dispSess.sid; generation = $dispSess.gen; request_id = 'acc1-t1' } | Out-Null
+        Start-Sleep -Milliseconds 900
+    }
+
         $fixOut | Set-Content (Join-Path $script:OutDir 'testil-build.log')
         # In-process invocation: deeply nested powershell children occasionally fail to
         # autoload Microsoft.PowerShell.Utility (Get-FileHash) on this host. run-tests.ps1
@@ -664,21 +680,6 @@ function Run-ACC001 {
     }
     Assert-Cond 'static-e2e-exit0' 'tests/fixtures/run-tests.ps1 exit 0' "$(if ($ok) { 'exit 0' } else { 'failed; see static-e2e.log' })" $ok @('static-e2e.log', 'testil-build.log')
 
-    # [3] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
-    # the WPF thread (spy start_thread_is_wpf==1) and drive object work through the
-    # DbgManager dispatcher (spy dispatcher_sync_posts>=1). The former placeholder probe
-    # (assert-dispatchers.ps1) always answered "unknown" and was removed as vacuous.
-    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build-disp' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
-    $dispSess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
-    $dispSpy = Get-SpyCounters
-    $dispEv = Save-Json 'dispatcher-domains.json' $dispSpy
-    $wpfOk = [int]$dispSpy.start_thread_is_wpf -eq 1
-    $dispOk2 = [int]$dispSpy.dispatcher_sync_posts -ge 1
-    Assert-Cond 'dispatcher-domain-probe' 'Start executed on the WPF thread; object work on the DbgManager dispatcher' "wpf=$($dispSpy.start_thread_is_wpf) syncPosts=$($dispSpy.dispatcher_sync_posts) session=$($dispSess.ok)" ($wpfOk -and $dispOk2 -and $dispSess.ok) @($dispEv)
-    if ($dispSess.ok) {
-        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $dispSess.sid; generation = $dispSess.gen; request_id = 'acc1-t1' } | Out-Null
-        Start-Sleep -Milliseconds 900
-    }
 
     Ensure-CanonicalDnSpy | Out-Null
 }
