@@ -3032,7 +3032,12 @@ function Run-ACC032 {
     $art2 = $d2.domain.result.artifact
     $man2 = if ($art2 -and (Test-Path "$($art2.manifest_path)")) { Get-Content "$($art2.manifest_path)" -Raw | ConvertFrom-Json } else { $null }
     $man2Ev = if ($man2) { Save-Json 'a32-manifest-recon.json' $man2 } else { $null }
-    $head = if ($art2 -and (Test-Path "$($art2.path)")) { [IO.File]::ReadAllBytes("$($art2.path)")[0..1] -join ',' } else { '' }
+    $head = ''
+    if ($art2 -and (Test-Path "$($art2.path)")) {
+        $artifactRead = [IO.FileStream]::new("$($art2.path)", [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try { $head = "$($artifactRead.ReadByte()),$($artifactRead.ReadByte())" }
+        finally { $artifactRead.Dispose() }
+    }
     $reconOk = $d2.domain.ok -and ("$($art2.kind)" -eq 'reconstructed') -and ("$($art2.layout)" -eq 'memory') -and ("$($art2.sha256)" -ne $sha) -and ($head -eq '77,90') -and $man2 -and ("$($man2.byte_equivalence)" -eq 'reconstructed_not_source_equivalent') -and ("$($man2.reconstruction_method)" -eq 'dnspy-force-memory')
     Assert-Cond 'a32-branch-reconstructed' 'reconstructed: kind/layout, MZ header, NOT source-equivalent, dnspy-force-memory' "kind=$($art2.kind) head=$head equiv=$($man2.byte_equivalence) method=$($man2.reconstruction_method)" $reconOk @($d2.rpc.resp, $man2Ev)
 
