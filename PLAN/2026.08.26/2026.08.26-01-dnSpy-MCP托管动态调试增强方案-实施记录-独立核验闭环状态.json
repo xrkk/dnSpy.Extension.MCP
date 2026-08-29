@@ -22,7 +22,7 @@
     ]
   },
   "max_rounds": 5,
-  "completed_rounds": 3,
+  "completed_rounds": 4,
   "verifier": {
     "agent_type": "general-plan-acceptance-verifier",
     "instance_identity": "round-1 dispatch 2026-08-29; continuity via full history chain in later task packages",
@@ -75,11 +75,22 @@
       "record_blob": "5e85e9b14f1d3f30766b715847120888453722de",
       "verifier_agent": "agent_98ab2ef9-d8c5-4bba-98d2-a298289eaa8d",
       "executor_response": "CHK-012 接受:第 64 轮一行勘误(9c36b97 描述更正并附勘误注);纯 PLAN 修改,批 8 证据不变"
+    },
+    {
+      "round": 4,
+      "mode": "定向复核",
+      "verdict": "核查通过(CHK-012 关闭;12 项历史 CHK 全关;无新发现;验收证据链完整成立)",
+      "head_at_dispatch": "92b9d9e",
+      "anchor": "e9bff3b",
+      "record": "PLAN/2026.08.26/独立核验/round-4/核查记录-第4轮-定向复核.md",
+      "record_blob": "22ff1a67f29d15ecc7a74d53f63eac10dbb92588",
+      "verifier_agent": "agent_98ab2ef9-d8c5-4bba-98d2-a298289eaa8d",
+      "executor_response": "无待办——核验方明示闭环可关闭,R1..R4 四份记录构成完整验收证据链"
     }
   ],
-  "last_checkpoint": "R3 仅余 CHK-012 已勘误(第 64 轮,提交 40119be);待 R4 定向复核(已消耗 3/5 轮)",
+  "last_checkpoint": "COMPLETE——R4 核查通过,全部历史 CHK 关闭,无核验后漂移(HEAD 与派发时一致)",
   "stop_reason": null,
-  "status": "READY_TO_REVERIFY",
+  "status": "COMPLETE",
   "rectification": {
     "commits": [
       "05f884f",
@@ -128,5 +139,16 @@
     "4) 写第 62 轮完整记录(整改+批跑证据+ACC 状态表 010 行更新)→状态 READY_TO_REVERIFY",
     "5) R2 定向复核: SendMessage 到同实例 agent_ae530c8a-f67e-486a-87fd-c52766208e51, 任务包含: R1 记录 blob 67cf2059、10 CHK 逐项回应、整改 diff(05f884f..HEAD)、批跑 summary+evidence、受影响既有通过项(006/007/008/012/014/018/027/028/029/034/035)",
     "保护现场: PLAN/dnSpy-MCP.md 用户自有; VM runner 为分离进程会自行完成"
-  ]
+  ],
+  "final": {
+    "claim_verified": "36/36 ACC 实跑 exit 0(490 断言 0 失败)@e9bff3b 单次连续顺序批跑(VM 原始产物经核验方 R2 逐案直读独立证实;DLL e322f19b… 本地构建确定性复现);11/11 IMP 落点;7 子集案披露无隐藏;本地门禁复跑全绿",
+    "rounds_consumed": "4/5(R1 全面不通过→R2 定向不通过(001 关闭)→R3 定向不通过(007/009/011 关闭)→R4 定向通过)",
+    "verification_head": "92b9d9e(核验时点;其后仅核验记录入库与状态 COMPLETE 簿记)",
+    "records": [
+      "round-1/核查记录-第1轮-全面核查.md blob 67cf2059",
+      "round-2/核查记录-第2轮-定向复核.md blob 4b929190",
+      "round-3/核查记录-第3轮-定向复核.md blob 5e85e9b1",
+      "round-4/核查记录-第4轮-定向复核.md blob 22ff1a67"
+    ]
+  }
 }
