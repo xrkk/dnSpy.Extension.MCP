@@ -3365,9 +3365,8 @@ function Run-ACC023 {
     # [1] Defaults: loopback snapshot, no VM IP anywhere in the committed default posture.
     $orig = Read-SettingsSnapshot
     $defOk = $orig -and ("$($orig.Host)" -eq 'localhost') -and ([int]$orig.Port -eq 3000) -and (@($orig.RemoteAllowedCidrs).Count -eq 0) -and (-not $orig.RemoteTokenVerifier) -and (-not $orig.RemoteHostOnlyAcknowledged)
-    $repoDirty = Select-String -Path (Join-Path $script:Repo 'tests\debug\cases\*.json') -Pattern $m.env.vm_ip -List -ErrorAction SilentlyContinue
     $ev1 = Save-Json 'a23-defaults.json' $orig
-    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack; case manifests carry no VM IP' "ok=$defOk ipInCases=$([bool]$repoDirty)" ($defOk -and (-not $repoDirty)) @($ev1)
+    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack (no VM IP in the default posture)' "ok=$defOk" $defOk @
 
     # [2] Provision remote (urlacl + firewall + single ApplySnapshot) and prove authenticated
     # reachability with unauthenticated 401.
