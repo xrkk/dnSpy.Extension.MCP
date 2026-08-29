@@ -88,9 +88,9 @@
       "executor_response": "无待办——核验方明示闭环可关闭,R1..R4 四份记录构成完整验收证据链"
     }
   ],
-  "last_checkpoint": "第 65 轮整改中:驱动 schema 真门禁+evidence 字段+validate.py 三重检查已落;CI 诚实化+状态降格+v2 补披露已落;待 VM 重跑批 9+R5",
+  "last_checkpoint": "第 65 轮完结;READY_TO_REVERIFY;R5 定向复核待发(5/5 最后一轮)",
   "stop_reason": null,
-  "status": "RECTIFYING_AFTER_EXTERNAL_FINDINGS",
+  "status": "READY_TO_REVERIFY",
   "rectification": {
     "commits": [
       "05f884f",
@@ -159,5 +159,14 @@
     "EF-1 result-schema-shape 空门禁(schema 要求 evidence/驱动输出 evidence_paths/门禁未加载 schema)",
     "EF-2 CI e2e=-VerifyHarness 静态,IMP-011/ACC-022 CI 动态维度未落地",
     "EF-3 IMP-003 尾差未入 v2 披露清单"
-  ]
+  ],
+  "rectification_r5": {
+    "trigger": "COMPLETE 作废后的第三方三否决项(EF-1/2/3)",
+    "commits": [
+      "487c36b",
+      "bf2fa9e",
+      "39193f8"
+    ],
+    "batch": "batch10 36/36(490 断言 0 失败)@39193f8 真 schema 门禁——独立核验/round-5/batch-evidence/batch10-summary.json"
+  }
 }
