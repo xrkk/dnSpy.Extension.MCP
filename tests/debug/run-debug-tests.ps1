@@ -3562,7 +3562,9 @@ function Run-ACC003 {
     ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
     $goodTok = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
-    $badTok = [Convert]::ToBase64String(([byte[]]($tokenBytes[0..30]) + ,$tokenBytes[0] -bxor $tokenBytes[31] -bxor 1)).TrimEnd('=').Replace('+','-').Replace('/','_')
+    $badBytes = [byte[]]$tokenBytes.Clone()
+    $badBytes[31] = $badBytes[31] -bxor 1
+    $badTok = [Convert]::ToBase64String($badBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
 
     # Remote posture: host-pinned 15100, Ubuntu+VM CIDR, verifier, ack.
     & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
