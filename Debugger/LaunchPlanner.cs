@@ -150,8 +150,10 @@ public static class LaunchPlanner {
 				family = RuntimeFamilies.CoreClr;
 				break;
 			case LaunchModes.Harness: {
-				// The harness PE's own family selects the exe mapping; harness runtime family is
-				// identified from its PE/CLR headers and a failure is CAPABILITY_UNAVAILABLE.
+				// The harness PE's own family must be identifiable (net48 or coreclr); a failure
+				// is CAPABILITY_UNAVAILABLE. The mode stays "harness": the plan switch's
+				// harness branch launches the HARNESS exe with target_path as first argument —
+				// overwriting mode here would build a plan that starts the target DLL instead.
 				var resolved = request.DetectedRuntimeFamily switch {
 					RuntimeFamilies.Net48 => LaunchModes.Net48Exe,
 					RuntimeFamilies.CoreClr => LaunchModes.CoreClrAppHost,
@@ -161,7 +163,6 @@ public static class LaunchPlanner {
 					error = "harness: harness runtime family could not be identified";
 					return null;
 				}
-				mode = resolved;
 				family = request.DetectedRuntimeFamily!;
 				break;
 			}
