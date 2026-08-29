@@ -2602,8 +2602,25 @@ function Run-ACC016 {
     if (-not $fr) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a16-t0' } | Out-Null; return }
 
     # [1] depth=4 valid / depth=5 rejected as JSON-RPC -32602 (schema maximum).
-    $lo4 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100 }
-    Assert-Cond 'a16-locals-ok' 'locals page returned (budgets fields present)' "ok=$($lo4.domain.ok) depth_used=$($lo4.domain.result.budgets.depth_used)" ($lo4.domain.ok) @($lo4.rpc.resp)
+    # Rare frame-mint/validation race: the just-minted frame handle can answer NOT_FOUND for
+    # the same epoch (batch evidence: fr-1@ep3 NOT_FOUND, re-anchored ep5 fully green). A
+    # bounded re-anchor (continue -> held pause -> fresh stack/handles) closes it.
+    $lo4 = $null
+    for ($lr = 0; $lr -lt 3 -and -not ($lo4 -and $lo4.domain.ok); $lr++) {
+        $lo4 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100 }
+        if (-not ($lo4 -and $lo4.domain.ok)) {
+            $epx2 = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
+            $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epx2; request_id = "a16-lr$lr" }
+            $wpl = Wait-HeldPause $sid $gen
+            if ($wpl.ok) {
+                $ep = $wpl.epoch
+                $tll = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+                $stl = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $tll.domain.result.items[0].thread_handle }
+                if ($stl.domain.ok -and @($stl.domain.result.items).Count -gt 0) { $fr = $stl.domain.result.items[0].frame_handle }
+            }
+        }
+    }
+    Assert-Cond 'a16-locals-ok' 'locals page returned (budgets fields present)' "ok=$($lo4.domain.ok) depth_used=$($lo4.domain.result.budgets.depth_used) tries=$($lr+1)" ($lo4.domain.ok) @($lo4.rpc.resp)
     $e5 = Send-Rpc 'tools/call' @{ name = 'debug_get_locals'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100; depth = 5 } }
     $err5 = if ($e5.json -and $e5.json.error) { $e5.json.error.code } else { $null }
     Assert-Cond 'a16-depth5-32602' 'depth=5 = JSON-RPC -32602 (schema maximum 4)' "error=$err5" ("$err5" -eq '-32602') @($e5.resp)
