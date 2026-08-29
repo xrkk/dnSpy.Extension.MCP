@@ -583,7 +583,6 @@ public sealed class DebugSessionService : IDisposable {
 			default: return null;
 		}
 	}
-	readonly SideEffectRequestCache launchCache = new();
 
 	string Launch(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
