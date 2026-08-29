@@ -2298,8 +2298,15 @@ function Run-ACC010 {
     # FIXTURE module (by name), never on wherever the pause happened to land — a re-acquired
     # pause usually sits inside mscorlib's Thread.Sleep.
     $hotTok = $null; $hotOff = 0
-    $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-    $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+    # The held pause can land VERY early (only mscorlib registered yet). The fixture module's
+    # registration is an async dispatcher event — poll for it instead of anchoring on the
+    # paused frame's module (which may be mscorlib, yielding a sha/token mismatch).
+    $modEntry0 = $null
+    for ($mw = 0; $mw -lt 20 -and -not $modEntry0; $mw++) {
+        $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+        $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+        if (-not $modEntry0) { Start-Sleep -Milliseconds 300 }
+    }
     if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
     $mod = "$($modEntry0.module_handle)"
     # Deterministic token discovery: reflection over the fixture BYTES (Assembly.Load of a
