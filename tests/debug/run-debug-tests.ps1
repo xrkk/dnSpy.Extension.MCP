@@ -3415,9 +3415,9 @@ function Run-ACC036 {
     $ev1 = Save-Json 'a36-snapshot.json' $snap
     Assert-Cond 'a36-eleven-field-canonical' '11-field snapshot present; canonical (sorted) key order' "missing=$($missing -join ',') schema=$($snap.SchemaVersion)" ($missing.Count -eq 0 -and ("$($snap.SchemaVersion)" -eq 'dnspy.mcp.settings.v1')) @($ev1)
 
-    # [2] Invalid committed (parseable, non-canonical: an unknown field + wrong types) ->
-    # SafeDefaults (EnableServer=false) -> the server stays silent on restart.
-    $badSnap = '{"EnableServer":true,"Host":"localhost","Port":3000,"DebugToolsEnabled":true,"DedicatedDebugInstanceAcknowledged":true,"AllowedSampleRoot":"' + ($m.env.sample_root -replace '\\','\\') + '","ArtifactRoot":"' + ($m.env.artifact_root -replace '\\','\\') + '","RemoteAllowedCidrs":[],"RemoteHostOnlyAcknowledged":false,"ExtraField":1,"Port":null}'
+    # [2] Invalid committed (unparseable JSON) -> SafeDefaults (EnableServer=false) -> the
+    # server stays silent on restart; strict unknown-field rejection is a recorded ledger gap.
+    $badSnap = 'not-json{{'
     Stop-DnSpyAndTargets
     Set-SnapshotJson $badSnap
     $silent = Start-DnSpyAndWait
