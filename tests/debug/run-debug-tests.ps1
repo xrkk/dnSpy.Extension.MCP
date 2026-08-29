@@ -80,6 +80,15 @@ $script:StartedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.
 $script:Assertions = New-Object System.Collections.ArrayList
 $script:PreconditionFailed = $false
 $script:WireSeq = 0
+$script:HelperRequestSeq = 0
+
+function New-HelperRequestId([string]$Prefix) {
+    # The product cache owns request_id globally for ten minutes, not per session/epoch.
+    # Helper retries therefore need distinct identities unless a test explicitly exercises
+    # replay. Include the case and a monotonic counter so the evidence remains readable.
+    $script:HelperRequestSeq++
+    return "$Prefix-$Case-$($script:HelperRequestSeq)"
+}
 
 function Assert-Cond {
     param([string]$Id, [string]$Expected, [string]$Actual, [bool]$Pass, [string[]]$Ev = @())
@@ -507,7 +516,7 @@ function Resume-FromPaused {
         $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $Sid }
         if ("$($st.domain.result.state)" -eq 'paused') {
             $ep = $st.domain.debug_context.pause_epoch
-            $c = Invoke-ToolNoInit 'debug_continue' @{ session_id = $Sid; generation = $Gen; pause_epoch = $ep; request_id = 'rfp-c' }
+            $c = Invoke-ToolNoInit 'debug_continue' @{ session_id = $Sid; generation = $Gen; pause_epoch = $ep; request_id = (New-HelperRequestId 'rfp-c') }
             Start-Sleep -Milliseconds 400
         } elseif ("$($st.domain.result.state)" -eq 'running') { return $true }
         else { Start-Sleep -Milliseconds 300 }
@@ -587,7 +596,7 @@ function Wait-HeldPause {
                 return @{ ok = $true; epoch = [int]$ep1 }
             }
         }
-        $p = Invoke-ToolNoInit 'debug_pause' @{ session_id = $Sid; generation = $Gen; request_id = 'whp-p' }
+        $p = Invoke-ToolNoInit 'debug_pause' @{ session_id = $Sid; generation = $Gen; request_id = (New-HelperRequestId 'whp-p') }
         Start-Sleep -Milliseconds 600
     }
     return @{ ok = $false; epoch = 0 }
@@ -649,7 +658,7 @@ function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry', [string]$Ar
         }
         Start-Sleep -Milliseconds 600
     }
-    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'acc-pause' }
+    $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = (New-HelperRequestId 'acc-pause') }
     $wp = Wait-StablePaused $sid
     return @{ ok = ($wp.ok); launch = $L; sid = $sid; gen = $gen; epoch = $wp.epoch }
 }
@@ -1859,7 +1868,9 @@ function Run-ACC012 {
     $sidP = $LP.domain.result.session_id; $genP = [int]$LP.domain.result.generation
     Assert-Cond 'acc12-p2-launch' 'fresh session for P2' "ok=$($LP.domain.ok)" ($LP.domain.ok) @($LP.rpc.resp)
     $null = Wait-StableRunning $sidP
-    Assert-P2Collision $sidP $genP 'acc12-p2' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'acc12-p2-exception-response'
+    # request_id is global across side-effect methods: do not collide with the earlier
+    # debug_set_exception_policy request named acc12-p2.
+    Assert-P2Collision $sidP $genP 'acc12-p2pause' '{"emit":{"kind":"paused","break_infos":[{"type":"exception","ordinal":0,"policy_requested_pause":true}]}}' 'exception' 'acc12-p2-exception-response'
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 400
     $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidP; generation = $genP; request_id = 'acc12-tp' }
@@ -2551,6 +2562,11 @@ function Run-ACC027 {
 
     # [7] UI-originated/unregistered process observation variant: the same production
     # ownership classifier must fault, reject control, and recover only on manager-idle.
+    # The pre-claim failure above can leave the real DbgManager busy briefly after the
+    # coordinator has already returned to idle. Start this independent variant from a cold
+    # canonical process so the static IsDebugging gate is not a timing dependency.
+    Stop-DnSpyAndTargets
+    Ensure-CanonicalDnSpy | Out-Null
     $own = Launch-AndPause $exe 'none'
     if ($own.ok) {
         $inj = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'foreign_process' }
@@ -2892,8 +2908,16 @@ function Run-ACC033 {
     $wp = Wait-HeldPause $sid $gen
     Assert-Cond 'a33-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
 
-    $modNow = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-    $targetNow = @($modNow.domain.result.items | Where-Object { "$($_.path)" -eq "$exe" }) | Select-Object -First 1
+    # The process can reach a debugger-held pause before the asynchronous module observer
+    # has published the target module. Poll the read-only inventory instead of treating that
+    # legal ordering as an identity failure.
+    $modNow = $null
+    $targetNow = $null
+    for ($moduleAttempt = 0; $moduleAttempt -lt 24 -and -not $targetNow; $moduleAttempt++) {
+        $modNow = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+        $targetNow = @($modNow.domain.result.items | Where-Object { "$($_.path)" -eq "$exe" }) | Select-Object -First 1
+        if (-not $targetNow) { Start-Sleep -Milliseconds 250 }
+    }
     $moduleIdentityOk = $targetNow -and ("$($targetNow.mvid)" -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') `
         -and ("$($targetNow.mvid)" -ne '00000000-0000-0000-0000-000000000000') -and ("$($targetNow.sha256)" -eq $sha) -and $fidOk
     Assert-Cond 'a33-module-identity-recheck' 'loaded target rechecks to authoritative nonzero MVID + same SHA while launch FileId lease remains held' "mvid=$($targetNow.mvid) sha=$($targetNow.sha256) fileId=$($fid.file_id)" $moduleIdentityOk @($modNow.rpc.resp, $fidEv)
@@ -3517,9 +3541,17 @@ function Run-ACC029 {
             Assert-Cond 'a29-x64-on-x86' 'x64 binary on x86 host = CAPABILITY_UNAVAILABLE' "code=$bad2Code" ("$bad2Code" -eq 'CAPABILITY_UNAVAILABLE') @($bad2.rpc.resp)
 
             # [6] coreclr-dotnet x86 positive lifecycle on an actual isolated x86 .NET host.
-            $host86 = $m.env.dotnet10_x86
+            # All launch inputs, including the runtime host, must be physical children of
+            # AllowedSampleRoot. Provisioning keeps the shared x86 host under C:\Tools, so
+            # stage a non-reparse copy under the dedicated sample root for this positive leg.
+            $host86Root = Join-Path $m.env.sample_root 'dotnet10-x86'
+            if (-not (Test-Path (Join-Path $host86Root 'dotnet.exe'))) {
+                New-Item -ItemType Directory -Force -Path $host86Root | Out-Null
+                Copy-Item (Join-Path (Split-Path $m.env.dotnet10_x86 -Parent) '*') $host86Root -Recurse -Force
+            }
+            $host86 = Join-Path $host86Root 'dotnet.exe'
             $core86 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-corex86'; target_path = $fx.dll; expected_sha256 = (Get-Sha256File $fx.dll); launch_mode = 'coreclr-dotnet'; architecture = 'x86'; break_kind = 'process'; host_path = $host86; host_sha256 = (Get-Sha256File $host86) }
-            $core86Ok = $core86.domain.ok
+            $core86Ok = [bool]$core86.domain.ok
             if ($core86Ok) {
                 $ci = $core86.domain.result
                 $cp = Wait-StablePaused $ci.session_id
@@ -3533,7 +3565,7 @@ function Run-ACC029 {
             $h86 = Join-Path $m.env.sample_root 'AccHarness86.exe'
             $lib = Join-Path $m.env.sample_root 'SatelliteLib.dll'
             $har = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a29-harness86'; target_path = $lib; expected_sha256 = (Get-Sha256File $lib); launch_mode = 'harness'; architecture = 'x86'; break_kind = 'process'; harness_path = $h86; harness_sha256 = (Get-Sha256File $h86); harness_argv = @('x86-positive') }
-            $harOk = $har.domain.ok
+            $harOk = [bool]$har.domain.ok
             if ($harOk) {
                 $hi = $har.domain.result; $hp = Wait-StablePaused $hi.session_id; $harOk = $hp.ok
                 Invoke-ToolNoInit 'debug_terminate' @{ session_id = $hi.session_id; generation = [int]$hi.generation; request_id = 'a29-har86-term' } | Out-Null
@@ -3685,6 +3717,12 @@ function Run-ACC036 {
 # ---------------------------------------------------------------- case: ACC-019 ----
 function Run-ACC019 {
     $m = $script:Manifest
+    # This case owns the dedicated test ArtifactRoot and specifies an initially empty store.
+    # Perform the documented operator cleanup only while dnSpy is stopped, so leftovers from
+    # an earlier acceptance process cannot turn the first S1 positive control into the very
+    # cross-restart TARGET_MISMATCH that this case tests later.
+    Stop-DnSpyAndTargets
+    Reset-TestArtifactRoot
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
@@ -3764,6 +3802,12 @@ function Run-ACC019 {
         'startup_stale_blocks_new','retained_counts_toward_limits','retained_identity_reverified','post_create_cancel_aborted_owned','pre_create_deadline_zero_delta')
     $badProbe = @($bools | Where-Object { -not [bool]$pr.PSObject.Properties[$_].Value })
     Assert-Cond 'a19-quota-cancel-seam' 'limits, startup stale, retained identity/accounting, pre-create deadline and post-create aborted_owned all fail closed; cancellation settles once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
+
+    # Retention is the behavior under test, but this case must not leave retained identities
+    # in the shared acceptance root for ACC-032 or a later independent run.
+    Stop-DnSpyAndTargets
+    Reset-TestArtifactRoot
+    Ensure-CanonicalDnSpy | Out-Null
 }
 
 # ---------------------------------------------------------------- case: ACC-022 ----
@@ -3944,32 +3988,46 @@ function Run-ACC004 {
     $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
     Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB is served (200-family, NOT 413); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and ("$r1m" -ne '413') -and ("$r1m" -ne '') -and ("$r1m" -ne '000')) @($ev1)
 
-    # [2] Concurrent admission under load: eight pinned waits on a REAL session hold the
-    # global wait slots; nine further concurrent requests must see the domain LIMIT_EXCEEDED
-    # (the observable CON-DYN-009 admission) while the transport stays responsive. The raw
-    # 16/17 HTTP-slot reservation is a transport-layer counter (ledger item).
+    # [2] Concurrent admission under load. First, sixteen calls against a REAL session prove
+    # the independent wait-slot split: eight waits complete and eight get domain
+    # LIMIT_EXCEEDED. Then seventeen DNMCP_TEST transport probes each hold an admitted short
+    # worker for four seconds, deterministically proving sixteen HTTP workers + a 17th 429.
+    # Keeping these as two phases avoids a scheduler race where the fast domain rejections
+    # release short-worker slots before the nominal seventeenth curl is accepted.
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     $sess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
     if (-not $sess.ok) { Assert-Cond 'a4-session' 'session up' 'failed' $false @(); return }
     $maxCur = Get-MaxEventCursor $sess.sid $sess.gen
     $jobs = @()
-    for ($i = 0; $i -lt 17; $i++) {
+    for ($i = 0; $i -lt 16; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
         [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
         $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\\Tools\\a4-w$i.json") -RedirectStandardOutput ("C:\\Tools\\a4-w$i.out") -PassThru -WindowStyle Hidden
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
-    $limitHits = 0; $oks = 0; $http429 = 0
-    for ($i = 0; $i -lt 17; $i++) {
+    $limitHits = 0; $oks = 0
+    for ($i = 0; $i -lt 16; $i++) {
         $o = Get-Content "C:\Tools\a4-w$i.out" -Raw -ErrorAction SilentlyContinue
-        if ("$o" -match '429$') { $http429++ }
-        elseif ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ }
+        if ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ }
         elseif ("$o" -match '"ok":true') { $oks++ }
+    }
+    $shortJobs = @()
+    for ($i = 0; $i -lt 17; $i++) {
+        $b = '{"jsonrpc":"2.0","id":' + (650 + $i) + ',"method":"tools/call","params":{"name":"debug_test_transport","arguments":{"hold_ms":4000}}}'
+        [IO.File]::WriteAllText("C:\Tools\a4-s$i.json", $b, (New-Object Text.ASCIIEncoding))
+        $shortJobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\Tools\a4-s$i.json") -RedirectStandardOutput ("C:\Tools\a4-s$i.out") -PassThru -WindowStyle Hidden
+    }
+    $shortJobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
+    $shortOk = 0; $http429 = 0
+    for ($i = 0; $i -lt 17; $i++) {
+        $o = Get-Content "C:\Tools\a4-s$i.out" -Raw -ErrorAction SilentlyContinue
+        if ("$o" -match '429$') { $http429++ }
+        elseif ("$o" -match '"ok":true') { $shortOk++ }
     }
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a4-t1' } | Out-Null
     Start-Sleep -Milliseconds 900
-    $ev2 = Save-Text 'a4-concurrent-admission.txt' "domainLimit=$limitHits ok=$oks http429=$http429"
-    Assert-Cond 'a4-concurrent-admission' '16 short workers: 8 waits succeed + 8 domain LIMIT_EXCEEDED; 17th short request = HTTP 429' "limit=$limitHits ok=$oks http429=$http429" (($limitHits -eq 8) -and ($oks -eq 8) -and ($http429 -eq 1)) @($ev2)
+    $ev2 = Save-Text 'a4-concurrent-admission.txt' "waitDomainLimit=$limitHits waitOk=$oks shortOk=$shortOk http429=$http429"
+    Assert-Cond 'a4-concurrent-admission' 'wait slots: 8 succeed + 8 domain LIMIT_EXCEEDED; short workers: 16 succeed + 17th HTTP 429' "waitLimit=$limitHits waitOk=$oks shortOk=$shortOk http429=$http429" (($limitHits -eq 8) -and ($oks -eq 8) -and ($shortOk -eq 16) -and ($http429 -eq 1)) @($ev2)
 
     # [3] Nine real long-lived legacy SSE connections: the ninth is rejected before a worker.
     $longs = @()

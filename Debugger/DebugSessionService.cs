@@ -611,9 +611,17 @@ public sealed class DebugSessionService : IDisposable {
 	/// <summary>ACC-004 deterministic execution of transport limits which cannot be forged
 	/// through HttpListener after HTTP.sys has normalized framing.</summary>
 	string TestTransport(Dictionary<string, object>? args) {
-		_ = args;
 		if (!TestModeEnabled)
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		// Live ACC-004 uses this DNMCP_TEST-only delay to hold exactly sixteen real HTTP
+		// short-request workers at once. Without a holding handler, the eight wait-slot
+		// rejections finish before the seventeenth curl reaches the transport gate, so a
+		// scheduler race can turn the expected HTTP 429 into a ninth domain rejection.
+		var holdMs = (int)ArgLong(args, "hold_ms", 0);
+		if (holdMs is < 0 or > 10000)
+			throw new ArgumentException("hold_ms must be within 0..10000", "hold_ms");
+		if (holdMs > 0)
+			Thread.Sleep(holdMs);
 		var oversized = new byte[dnSpy.Extension.MCP.Transport.BoundedBodyReader.MaxBodyBytes + 1];
 		var fakeSmall = dnSpy.Extension.MCP.Transport.BoundedBodyReader.Read(new MemoryStream(oversized), 1);
 		var chunked = dnSpy.Extension.MCP.Transport.BoundedBodyReader.Read(new MemoryStream(oversized), null);
