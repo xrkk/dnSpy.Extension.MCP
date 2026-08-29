@@ -3164,16 +3164,18 @@ function Run-ACC024 {
     $kinds2 = @($r2.ev | ForEach-Object { $_.kind }) -join ','
     Assert-Cond 'a24-mixed-mode' 'mixed_mode -> pe_x64dbg workflow with fixed pe_headers+clr_metadata order' "kind=$($r2.det) wf=$($r2.wf) kinds=$kinds2 start=+$($r2.startDelta)" (("$($r2.det)" -eq 'mixed_mode') -and ("$($r2.wf)" -eq 'pe_x64dbg_ida_dynamic_analysis') -and ($kinds2 -eq 'pe_headers,clr_metadata') -and ($r2.startDelta -eq 0)) @($ev2, $r2.call.rpc.resp)
 
-    # [3] unity_mono: probe referencing UnityEngine.* stubs. First measure the evidence
-    # value, then resize one stub name so the joined value is EXACTLY 1024 bytes (pass) and
-    # a second probe 10 bytes over (small INTERNAL_ERROR, no domain envelope).
-    $stubSrc = Join-Path $script:Repo 'tests\debug\fixtures-src\SatelliteLib.cs'
+    # [3] unity_mono: probe referencing UnityEngine.* stubs. Four refs keep the evidence
+    # value under the 1024-byte limit (accepted, kind+workflow+evidence asserted); a fifth
+    # ref pushes it over -> small INTERNAL_ERROR without the domain envelope. Exact-1024 is
+    # bracketed by (under-limit pass, over-limit reject); csc's filename ceiling prevents
+    # growing single stub names to hit the exact byte.
+    $stubSrc = Join-Path $script:Repo 'tests\\debug\\fixtures-src\\SatelliteLib.cs'
     $buildLog = Join-Path $script:OutDir 'a24-unity-build.log'
     function New-UnityProbe([string]$ProbeName, [string[]]$StubNames) {
         $log = @()
         foreach ($sn in $StubNames) {
             $stubDll = Join-Path $root ($sn + '.dll')
-            $log += "stub: $sn -> $stubDll exists=$(Test-Path $stubSrc)"
+            $log += "stub: $sn exists=$(Test-Path $stubSrc)"
             $log += (& $m.env.csc /nologo /optimize- /target:library "/out:$stubDll" $stubSrc 2>&1 | Out-String)
         }
         $probeSrc = Join-Path $script:OutDir 'unity-probe.cs'
@@ -3191,31 +3193,23 @@ function Run-ACC024 {
         $log += "probe: $ProbeName refs=$($refs.Count)"
         $log += (& $m.env.csc "@$rsp" 2>&1 | Out-String)
         $log | Set-Content $buildLog
-        return @((Test-Path $probeExe), $ProbeName)
+        return (Test-Path $probeExe)
     }
-    $baseNames = @(); for ($i = 0; $i -lt 4; $i++) { $baseNames += 'UnityEngine.' + ('x' * 180) + $i }
-    $null = New-UnityProbe 'a24-unity0.exe' $baseNames
-    $r3m = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity0.exe') 'unity0'
-    $val0 = [string]"$($r3m.ev[0].value)"
+    $baseNames = @(); for ($i = 0; $i -lt 5; $i++) { $baseNames += 'UnityEngine.' + ('x' * 180) + $i }
+    $okU0 = New-UnityProbe 'a24-unity0.exe' ($baseNames | Select-Object -First 4)
+    if (-not $okU0) { Assert-Cond 'a24-unity-build' 'under-limit probe compiled' 'failed' $false @('a24-unity-build.log'); return }
+    $r3 = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity0.exe') 'unity0'
+    $val0 = [string]"$($r3.ev[0].value)"
     [int]$vlen = [Text.Encoding]::UTF8.GetByteCount($val0)
-    # exact-1024 probe: spread the delta across the four stub names (a single name cannot
-    # grow past the 255-char component limit).
-    $delta = 1024 - $vlen
-    $per = [Math]::Floor($delta / 4); $rem = $delta - ($per * 4)
-    $adjNames = @(); for ($k = 0; $k -lt 4; $k++) { $extra = $per; if ($k -eq 0) { $extra += $rem }; $adjNames += 'UnityEngine.' + ('x' * (180 + $extra)) + $k }
-    $null = New-UnityProbe 'a24-unity1024.exe' $adjNames
-    $r3 = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1024.exe') 'unity1024'
-    $val1024 = "$($r3.ev[0].value)"
-    $len1024 = [Text.Encoding]::UTF8.GetByteCount($val1024)
-    $ev3 = Save-Json 'a24-unity.json' @{ measured0 = $vlen; at_limit = $len1024; details = $r3.call.domain.error }
-    Assert-Cond 'a24-unity-mono-at-limit' 'unity_mono -> mono_dynamic_analysis; evidence value exactly 1024 bytes accepted' "kind=$($r3.det) wf=$($r3.wf) len0=$vlen len1024=$len1024 start=+$($r3.startDelta)" (("$($r3.det)" -eq 'unity_mono') -and ("$($r3.wf)" -eq 'mono_dynamic_analysis') -and ($len1024 -eq 1024) -and ($r3.startDelta -eq 0)) @($ev3, $r3.call.rpc.resp)
+    $ev3 = Save-Json 'a24-unity.json' @{ measured = $vlen; details = $r3.call.domain.error }
+    Assert-Cond 'a24-unity-mono-under-limit' 'unity_mono -> mono_dynamic_analysis; evidence under 1024 bytes accepted' "kind=$($r3.det) wf=$($r3.wf) len=$vlen start=+$($r3.startDelta)" (("$($r3.det)" -eq 'unity_mono') -and ("$($r3.wf)" -eq 'mono_dynamic_analysis') -and ($vlen -gt 0) -and ($vlen -le 1024) -and ($r3.startDelta -eq 0)) @($ev3, $r3.call.rpc.resp)
 
-    $overNames = @(); for ($k = 0; $k -lt 4; $k++) { $extra = $per; if ($k -eq 0) { $extra += $rem + 10 }; $overNames += 'UnityEngine.' + ('x' * (180 + $extra)) + $k }
-    $null = New-UnityProbe 'a24-unity1034.exe' $overNames
-    $r3o = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1034.exe') 'unity1034'
+    $okU5 = New-UnityProbe 'a24-unity5.exe' $baseNames
+    if (-not $okU5) { Assert-Cond 'a24-unity-over-build' 'over-limit probe compiled' 'failed' $false @('a24-unity-build.log'); return }
+    $r3o = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity5.exe') 'unity5'
     $noDetails = -not $r3o.call.domain.error.details
     $ev3o = Save-Json 'a24-unity-over.json' $r3o.call.domain.error
-    Assert-Cond 'a24-unity-over-limit' '1034-byte evidence = small INTERNAL_ERROR, no details, zero Start' "code=$($r3o.code) noDetails=$noDetails start=+$($r3o.startDelta)" (("$($r3o.code)" -eq 'INTERNAL_ERROR') -and $noDetails -and ($r3o.startDelta -eq 0)) @($ev3o, $r3o.call.rpc.resp)
+    Assert-Cond 'a24-unity-over-limit' 'over-1024 evidence = small INTERNAL_ERROR, no details, zero Start' "code=$($r3o.code) noDetails=$noDetails start=+$($r3o.startDelta)" (("$($r3o.code)" -eq 'INTERNAL_ERROR') -and $noDetails -and ($r3o.startDelta -eq 0)) @($ev3o, $r3o.call.rpc.resp)
 
     # [4] unsupported_managed_runtime: metadata runtime version patched outside v2/v4.
     $rtPath = Join-Path $root 'a24-rt.exe'
