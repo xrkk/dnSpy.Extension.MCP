@@ -2449,6 +2449,11 @@ public sealed class DebugSessionService : IDisposable {
 	/// </summary>
 	void OnAdapterObservation(ProcessObservation observation) {
 		if (observation.Kind == ProcessObservation.ObservationKind.Paused) {
+			// An accepted breakpoint hit settles bound=true for its owned breakpoint on the
+			// consumption side too (single producer both flips it in CollectBreakInfos).
+			foreach (var bi in observation.BreakInfos)
+				if (bi.OwnedBreakpointId is not null)
+					bpStore.MarkBound(bi.OwnedBreakpointId, true);
 			var result = coordinator.ObservePaused(coordinator.ActiveSessionId, coordinator.Generation,
 				ownedIdentityMatch: true, observation.BreakInfos);
 			if (result.Accepted && result.SettledPauseRecord) {
