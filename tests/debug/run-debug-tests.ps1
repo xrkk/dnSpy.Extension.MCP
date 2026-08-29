@@ -562,7 +562,11 @@ function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library
 function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry') {
     $v = $script:Manifest.protocol_versions[2]
     $sha = Get-Sha256File $Exe
-    $L = Invoke-Tool $v 'debug_launch' @{ request_id = ('acc-launch-' + (Split-Path $Exe -Leaf)); target_path = $Exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = $BreakKind }
+    # Unique per run: the side-effect cache replays settled launches for 10 minutes, and a
+    # recompiled fixture carries a fresh MVID/sha — a fixed id would trip REQUEST_ID_REUSE
+    # against the previous run's entry when dnSpy outlives a case.
+    $rid = 'acc-launch-' + (Split-Path $Exe -Leaf) + '-' + (Get-Date -Format 'HHmmssfff') + (Get-Random -Maximum 999)
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = $rid; target_path = $Exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = $BreakKind }
     if (-not $L.domain -or -not $L.domain.ok) { return @{ ok = $false; launch = $L } }
     $sid = $L.domain.result.session_id
     $gen = [int]$L.domain.result.generation
@@ -3080,13 +3084,14 @@ function Run-ACC028 {
 
     # [8] Cross-protocol idempotency: the SAME launch request_id on a second transport
     # version replays the settled response (same session_id), never a second process.
+    $idem = 'a28-idem-' + (Get-Date -Format 'HHmmssfff') + (Get-Random -Maximum 999)
     $sha = Get-Sha256File $exe
     $spy0 = Get-SpyCounters
-    $L1 = Invoke-Tool $v1 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $L1 = Invoke-Tool $v1 'debug_launch' @{ request_id = $idem; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidA = if ($L1.domain.ok) { "$($L1.domain.result.session_id)" } else { '' }
     $genA = if ($L1.domain.ok) { [int]$L1.domain.result.generation } else { 0 }
     Initialize-Protocol $v3 | Out-Null
-    $L2 = Invoke-Tool $v3 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $L2 = Invoke-Tool $v3 'debug_launch' @{ request_id = $idem; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidB = if ($L2.domain.ok) { "$($L2.domain.result.session_id)" } else { '' }
     $spy1 = Get-SpyCounters
     $startD = Get-SpyDelta $spy0 $spy1 'dbg_start_calls'
