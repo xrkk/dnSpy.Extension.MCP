@@ -83,10 +83,14 @@ $script:WireSeq = 0
 
 function Assert-Cond {
     param([string]$Id, [string]$Expected, [string]$Actual, [bool]$Pass, [string[]]$Ev = @('result.json'))
-    $script:Assertions.Add([pscustomobject]@{
+    $a = [pscustomobject]@{
         assertion_id = $Id; status = $(if ($Pass) { 'pass' } else { 'fail' })
-        expected = $Expected; actual = $Actual; evidence_paths = @($Ev)
-    }) | Out-Null
+        expected = $Expected; actual = $Actual; evidence_paths = $null
+    }
+    # Hashtable-literal array properties collapse single-element arrays to scalars (the real
+    # schema gate caught exactly this); the PSObject property setter preserves Object[].
+    $a.PSObject.Properties['evidence_paths'].Value = [object[]]@($Ev)
+    $script:Assertions.Add($a) | Out-Null
     if (-not $Pass) { [Console]::Error.WriteLine("ASSERT FAIL ${Id}: expected [$Expected] actual [$Actual]") }
 }
 function Fail-Precondition {
