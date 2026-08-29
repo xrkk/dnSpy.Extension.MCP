@@ -1738,11 +1738,11 @@ function Run-ACC012 {
 
     # [1] Policy read/switch round-trip: unhandled -> first_chance_and_unhandled -> unhandled.
     $P1 = Invoke-ToolNoInit 'debug_set_exception_policy' @{ session_id = $sid; generation = $gen; request_id = 'acc12-p1'; policy = 'first_chance_and_unhandled' }
-    $p1 = $P1.domain.result
-    Assert-Cond 'a12-policy-switch' 'previous=unhandled current=first_chance_and_unhandled' "prev=$($p1.previous.break_on) cur=$($p1.current.break_on)" (("$($p1.previous.break_on)" -eq 'unhandled') -and ("$($p1.current.break_on)" -eq 'first_chance_and_unhandled')) @($P1.rpc.resp)
+    $pol1 = $P1.domain.result
+    Assert-Cond 'a12-policy-switch' 'previous=unhandled current=first_chance_and_unhandled' "prev=$($pol1.previous.break_on) cur=$($pol1.current.break_on)" (("$($pol1.previous.break_on)" -eq 'unhandled') -and ("$($pol1.current.break_on)" -eq 'first_chance_and_unhandled')) @($P1.rpc.resp)
     $P2 = Invoke-ToolNoInit 'debug_set_exception_policy' @{ session_id = $sid; generation = $gen; request_id = 'acc12-p2'; policy = 'unhandled' }
-    $p2 = $P2.domain.result
-    Assert-Cond 'a12-policy-roundtrip' 'policy switches back with correct previous' "prev=$($p2.previous.break_on)" ("$($p2.previous.break_on)" -eq 'first_chance_and_unhandled') @($P2.rpc.resp)
+    $pol2 = $P2.domain.result
+    Assert-Cond 'a12-policy-roundtrip' 'policy switches back with correct previous' "prev=$($pol2.previous.break_on)" ("$($pol2.previous.break_on)" -eq 'first_chance_and_unhandled') @($P2.rpc.resp)
 
     # [2] Captured (first-chance) exception under unhandled policy: event only, NO pause.
     $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc12-c1' }
@@ -2255,16 +2255,16 @@ function Run-ACC005 {
     $wp3 = Wait-HeldPause $sid3 $gen3
     if ($wp3.ok) {
         $F = Invoke-ToolNoInit 'debug_test_flood' @{ count = 4500; bytes_per_event = 64 }
-        $f = $F.domain.result
+        $fl = $F.domain.result
         $evAfter = Read-EventKinds $sid3 $gen3 0
-        $evictionOk = ($f.written -eq 4500) -and ([long]$f.events_lost -gt 0) -and ([long]$f.earliest_cursor -gt 1) -and (@($evAfter.events).Count -gt 0)
-        Assert-Cond 'a5-eviction' '>4096 entries: oldest evicted (events_lost>0, earliest advances, log readable)' "written=$($f.written) lost=$($f.events_lost) earliest=$($f.earliest_cursor) readback=$(@($evAfter.events).Count)" $evictionOk @($F.rpc.resp, $evAfter.call.rpc.resp)
+        $evictionOk = ($fl.written -eq 4500) -and ([long]$fl.events_lost -gt 0) -and ([long]$fl.earliest_cursor -gt 1) -and (@($evAfter.events).Count -gt 0)
+        Assert-Cond 'a5-eviction' '>4096 entries: oldest evicted (events_lost>0, earliest advances, log readable)' "written=$($fl.written) lost=$($fl.events_lost) earliest=$($fl.earliest_cursor) readback=$(@($evAfter.events).Count)" $evictionOk @($F.rpc.resp, $evAfter.call.rpc.resp)
         # [6] Oversize single event: >8MiB payload becomes payload_omitted (kind rewritten).
         $F2 = Invoke-ToolNoInit 'debug_test_flood' @{ count = 1; bytes_per_event = 8500000 }
-        $f2 = $F2.domain.result
+        $fl2 = $F2.domain.result
         # The rewritten payload_omitted event is the NEWEST entry; the flood tool reports the
         # true last cursor (Get-MaxEventCursor under eviction only sees the first page).
-        $evBig = Read-EventKinds $sid3 $gen3 ([long]$f2.last_cursor - 2)
+        $evBig = Read-EventKinds $sid3 $gen3 ([long]$fl2.last_cursor - 2)
         $bigKinds = @($evBig.kinds | Where-Object { $_ -eq 'payload_omitted' }).Count
         Assert-Cond 'a5-payload-omitted' '>8MiB single event rewritten as payload_omitted; log stays readable' "omitted=$bigKinds tail=$($evBig.kinds -join ',')" ($bigKinds -ge 1) @($F2.rpc.resp, $evBig.call.rpc.resp)
         $null = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid3; generation = $gen3; request_id = 'a5-t3' }
@@ -3828,7 +3828,9 @@ $finishedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
 $missingEvidence = @()
 foreach ($a in $script:Assertions) {
     foreach ($ep in @($a.evidence_paths)) {
-        if ($ep -and ("$ep" -ne 'result.json') -and -not (Test-Path (Join-Path $script:OutDir "$ep"))) { $missingEvidence += "$($a.assertion_id):$ep" }
+        # CHK-014: null/empty evidence entries are MISSING, not skipped — the old
+        # truthiness guard let a null slip through with missing=0.
+        if (("$ep" -ne 'result.json') -and ("" -eq "$ep".Trim() -or -not (Test-Path (Join-Path $script:OutDir "$ep")))) { $missingEvidence += "$($a.assertion_id):[$ep]" }
     }
 }
 $missingEvidence | Set-Content (Join-Path $script:OutDir 'evidence-gate.log')
@@ -3886,13 +3888,14 @@ function Test-SchemaNode {
                     for ($i = 0; $i -lt $items.Count; $i++) { Test-SchemaNode -Value $items[$i] -Schema $Schema.items -Path "$Path[$i]" -Errors $Errors }
                 }
             }
-            'string' { if ($null -ne $Value -and $Value -isnot [string]) { [void]$Errors.Add("$Path is not a string") } }
+            'string' { if ($null -eq $Value -or $Value -isnot [string]) { [void]$Errors.Add("$Path is not a string") } }
             'integer' { if ($Value -isnot [int] -and $Value -isnot [long]) { [void]$Errors.Add("$Path is not an integer") } }
             'number' { if ($Value -isnot [int] -and $Value -isnot [long] -and $Value -isnot [double]) { [void]$Errors.Add("$Path is not a number") } }
             'boolean' { if ($Value -isnot [bool]) { [void]$Errors.Add("$Path is not a boolean") } }
         }
     }
     if ($Schema.PSObject.Properties['pattern'] -and "$Value" -notmatch $Schema.pattern) { [void]$Errors.Add("$Path pattern mismatch") }
+    if ($Schema.PSObject.Properties['minLength'] -and "$Value".Length -lt [int]$Schema.minLength) { [void]$Errors.Add("$Path below minLength") }
 }
 $shapeErrors = New-Object System.Collections.ArrayList
 $resultSchemaPath = Join-Path $script:Repo 'tests\debug\contracts\dnspy.debug.test.v1.schema.json'
