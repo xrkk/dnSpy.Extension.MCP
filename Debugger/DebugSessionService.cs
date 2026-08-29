@@ -448,7 +448,7 @@ public sealed class DebugSessionService : IDisposable {
 			Architecture = activePlan is null ? null : launchArchitecture,
 			StartKind = activePlan is null ? null : "launch",
 			LaunchMode = activePlan?.LaunchMode,
-			Fault = coordinator.State == DebugStates.Faulted ? coordinator.Fault.ToString() : null,
+			Fault = coordinator.State == DebugStates.Faulted ? (coordinator.Fault == DebugSessionCoordinator.FaultKind.OwnershipLost ? "ownership_lost" : "control_fault") : null,
 		});
 	}
 

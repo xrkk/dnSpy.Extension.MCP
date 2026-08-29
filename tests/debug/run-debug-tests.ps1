@@ -2618,7 +2618,10 @@ function Run-ACC025 {
     $hasRec = ($ev2.kinds -contains 'recovery') -and ($ev2.kinds -contains 'session_end')
     Assert-Cond 'a25-evt-recovery' 'EVT recovery + session_end(ownership_recovered) written once' "kinds=$($ev2.kinds -join ',')" $hasRec @($ev2File)
 
-    # Post-recovery: the server launches cleanly again (no lingering reservation).
+    # Post-recovery: the ambiguous target is resolved by the human (external kill) — the
+    # manager then stops debugging entirely — and the server launches cleanly again.
+    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Milliseconds 1500
     $again = Launch-AndPause $exe 'none'
     Assert-Cond 'a25-relaunch' 'clean relaunch after recovery' "ok=$($again.ok)" $again.ok
     if ($again.ok) {
