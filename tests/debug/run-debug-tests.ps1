@@ -2954,7 +2954,7 @@ function Run-ACC028 {
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
     $v3 = $m.protocol_versions[2]; $v1 = $m.protocol_versions[0]
-    $sessionTools = @('debug_capabilities','debug_status','debug_launch','debug_pause','debug_continue','debug_restart','debug_terminate','debug_read_events','debug_wait_event','debug_set_breakpoint','debug_list_breakpoints','debug_set_breakpoint_enabled','debug_remove_breakpoint','debug_list_threads','debug_get_stack','debug_step','debug_get_locals','debug_expand_value','debug_list_modules','debug_read_memory','debug_dump_module','debug_get_thread')
+    $sessionTools = @('debug_capabilities','debug_status','debug_launch','debug_pause','debug_continue','debug_restart','debug_terminate','debug_read_events','debug_wait_event','debug_set_breakpoint','debug_list_breakpoints','debug_set_breakpoint_enabled','debug_remove_breakpoint','debug_list_threads','debug_get_stack','debug_step','debug_get_locals','debug_expand_value','debug_list_modules','debug_read_memory','debug_dump_module','debug_set_exception_policy')
     $testTools = @('debug_test_spy','debug_test_clock','debug_test_adapter','debug_test_flood','debug_test_start','debug_test_dump')
 
     # [1] tools/list across the three protocol versions: same advertised set; the disabled
@@ -3021,9 +3021,10 @@ function Run-ACC028 {
     # [6] UTF-8 byte-vs-char boundary on an untrusted pointer (session_id): 341 non-BMP
     # chars = 1023 bytes passes structure (then NOT_FOUND for the unknown session); 343
     # chars = 1029 bytes is the byte-limit -32602 — character count stays under schema max.
-    $nb = [string]::Concat([char]0x1D11E, [char]0x1D11E, [char]0x1D11E)
-    $id1023 = ($nb * 113) + [string][char]0x1D11E + [string][char]0x1D11E   # 341 chars x3B
-    $id1029 = $nb * 114 + [string][char]0x1D11E                            # 343 chars x3B
+    # U+1D11E as a UTF-16 surrogate pair (PS [char] cannot hold > 0xFFFF).
+    $g = [string]::Concat([char]0xD834, [char]0xDD1E)
+    $id1023 = $g * 341    # 341 x 3 bytes = 1023 UTF-8 bytes (chars stay under the schema max)
+    $id1029 = $g * 343    # 343 x 3 = 1029 bytes -> byte-limit rejection
     $r1 = Send-Rpc 'tools/call' @{ name = 'debug_read_events'; arguments = @{ session_id = $id1023; generation = 1; after_cursor = 0 } }
     $c1 = if ($r1.json -and $r1.json.error) { "$($r1.json.error.code)" } else { '' }
     $dom1 = $null; try { $dom1 = ($r1.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }

@@ -500,7 +500,9 @@ public sealed class DebugSessionService : IDisposable {
 			ActiveSessionId = coordinator.ActiveSessionId,
 			LastSessionId = coordinator.LastSessionId,
 			OwnedProcess = owned,
-			ObservedProcessState = string.IsNullOrEmpty(coordinator.ObservedProcessState) ? null : coordinator.ObservedProcessState,
+			ObservedProcessState = coordinator.ActiveSessionId is not null && coordinator.State != DebugStates.Idle
+				? coordinator.ObservedProcessState
+				: null,
 			RuntimeFamily = activePlan?.RuntimeFamily,
 			Architecture = activePlan is null ? null : launchArchitecture,
 			StartKind = activePlan is null ? null : "launch",
