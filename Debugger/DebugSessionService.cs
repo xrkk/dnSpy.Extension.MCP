@@ -557,7 +557,40 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
+	readonly SideEffectRequestCache launchCache = new();
+
 	string Launch(Dictionary<string, object>? args) {
+		if (!gateService.Current.EffectiveDebugLaunch)
+			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		// CON-DYN-013 side-effect cache: identical (request_id, canonical args) replays the
+		// settled envelope across transports/protocol versions; a mismatched id is reuse.
+		var requestId = ArgString(args, "request_id", required: true);
+		var canonicalArgs = SideEffectRequestCache.CanonicalizeArguments(
+			args is null ? null : new Dictionary<string, object?>(args.ToDictionary(kv => kv.Key, kv => (object?)kv.Value), StringComparer.Ordinal));
+		var admit = launchCache.TryAdmit(requestId, "debug_launch", canonicalArgs, "{}", () => "{}");
+		switch (admit.Status) {
+			case SideEffectRequestCache.AdmitStatus.HitSettled:
+				return admit.SettledEnvelope!;
+			case SideEffectRequestCache.AdmitStatus.RequestIdReuse:
+				return Fail(coordinator, DomainErrorCodes.RequestIdReuse);
+			case SideEffectRequestCache.AdmitStatus.LimitExceeded:
+				return Fail(coordinator, DomainErrorCodes.LimitExceeded);
+			case SideEffectRequestCache.AdmitStatus.JoinedInFlight:
+				// Single-process in-flight join: poll until the original caller settles.
+				for (var spin = 0; spin < 1500; spin++) {
+					System.Threading.Thread.Sleep(20);
+					var reAdmit = launchCache.TryAdmit(requestId, "debug_launch", canonicalArgs, "{}", () => "{}");
+					if (reAdmit.Status == SideEffectRequestCache.AdmitStatus.HitSettled)
+						return reAdmit.SettledEnvelope!;
+				}
+				return Fail(coordinator, DomainErrorCodes.Timeout);
+		}
+		var envelope = LaunchCore(args);
+		launchCache.Settle(requestId, envelope);
+		return envelope;
+	}
+
+	string LaunchCore(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 

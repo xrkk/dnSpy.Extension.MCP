@@ -3035,9 +3035,12 @@ function Run-ACC028 {
     Assert-Cond 'a28-utf8-byte-boundary' '1023 UTF-8 bytes passes structure (NOT_FOUND), 1029 bytes = -32602 byte rejection' "1023=$c1/$d1 1029=$c2" (("$c2" -eq '-32602') -and ("$d1" -eq 'NOT_FOUND')) @($ev6)
 
     # [7] Wait cap (CON-DYN-009 global 8): nine concurrent waits -> the ninth LIMIT_EXCEEDED.
+    # Hold all nine: after_cursor at the session's current max cursor means no events are
+    # pending, so each admitted wait sleeps for its full timeout instead of returning at once.
+    $maxCur = Get-MaxEventCursor $sid $gen
     $jobs = @()
     for ($i = 0; $i -lt 9; $i++) {
-        $b = '{"jsonrpc":"2.0","id":' + (700 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"timeout_ms":4000,"limit":1}}}' 
+        $b = '{"jsonrpc":"2.0","id":' + (700 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}' 
         [IO.File]::WriteAllText("C:\Tools\a28-w$i.json", $b)
         $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-X','POST','http://localhost:3000/','-H','Content-Type: application/json','--data',("@C:\Tools\a28-w$i.json"),'-o',("C:\Tools\a28-w$i.out") -PassThru -WindowStyle Hidden
     }
