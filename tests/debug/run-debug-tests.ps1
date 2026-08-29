@@ -2346,6 +2346,87 @@ function Run-ACC027 {
     Assert-Cond 'a27-preclaim-idle' 'pre-claim exit: coordinator idle, no active session' "state=$($stP.domain.result.state) active=$($stP.domain.result.active_session_id)" ("$($stP.domain.result.state)" -eq 'idle') @($stP.rpc.resp)
 }
 
+
+# ---------------------------------------------------------------- case: ACC-030 ----
+function Run-ACC030 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'AccHarness.cs' 'AccHarness.exe')) { Assert-Cond 'fixture-build' 'AccHarness.exe compiled' 'failed' $false @('build-AccHarness.exe.log'); return }
+    if (-not (Compile-Fixture 'AccFixture.cs' 'AccFixture.exe')) { Assert-Cond 'fixture-build2' 'AccFixture.exe compiled' 'failed' $false @('build-AccFixture.exe.log'); return }
+    # Entry-less target: a plain library DLL (compile SatelliteLib or reuse a library).
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-build3' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    $harness = Join-Path $m.env.sample_root 'AccHarness.exe'
+    $targetDll = Join-Path $m.env.sample_root 'SatelliteLib.dll'
+    $harnessSha = Get-Sha256File $harness
+    $dllSha = Get-Sha256File $targetDll
+    $v = $m.protocol_versions[2]
+
+    function Invoke-HarnessLaunch([string]$Rid, [hashtable]$Extra) {
+        $a = @{ request_id = $Rid; target_path = $targetDll; expected_sha256 = $dllSha; launch_mode = 'harness'; architecture = 'x64'; harness_path = $harness; harness_sha256 = $harnessSha }
+        foreach ($k in $Extra.Keys) { $a[$k] = $Extra[$k] }
+        return Invoke-ToolNoInit 'debug_launch' $a
+    }
+    function Invoke-HarnessLifecycle([string]$Label) {
+        $L = Invoke-HarnessLaunch "a30-$Label" @{ harness_argv = @('plain', 'two words', 'q"uote') }
+        $li = $L.domain.result
+        Assert-Cond "a30-$Label-launch" 'harness launch ok (module loaded, running)' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
+        if (-not $L.domain.ok) { return }
+        $sid = $li.session_id; $gen = [int]$li.generation
+        # Target module is loaded INSIDE the harness process.
+        $deadline = (Get-Date).AddSeconds(6); $found = $false
+        while ((Get-Date) -lt $deadline -and -not $found) {
+            $wp = Wait-HeldPause $sid $gen
+            if (-not $wp.ok) { break }
+            $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+            $found = [bool](@($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'SatelliteLib*' })
+            if (-not $found) {
+                $epx = $wp.epoch
+                $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epx; request_id = "a30-$Label-c" }
+                Start-Sleep -Milliseconds 500
+            }
+        }
+        Assert-Cond "a30-$Label-module-loaded" 'target module loaded in the harness process' "found=$found" $found
+        # Transcript: harness received target_path as first arg, remaining argv verbatim.
+        $tr = Join-Path $m.env.sample_root 'harness-transcript.txt'
+        $lines = @(); if (Test-Path $tr) { $lines = @(Get-Content $tr) }
+        $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '7:q"uote')
+        Assert-Cond "a30-$Label-transcript" 'harness argv: first arg == target_path, rest verbatim' "lines=$($lines.Count) l0=$($lines[0])" $argvOk @(Save-Json "a30-$Label-transcript.json" $lines)
+        # Full lifecycle: pause/continue/terminate.
+        $wp2 = Wait-HeldPause $sid $gen
+        $pausedOk = $wp2.ok
+        if ($pausedOk) {
+            $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; request_id = "a30-$Label-c2" }
+        }
+        $T = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = "a30-$Label-t" }
+        Start-Sleep -Milliseconds 900
+        $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+        Assert-Cond "a30-$Label-lifecycle" 'pause/continue/terminate lifecycle completes to idle' "paused=$pausedOk term=$($T.domain.ok) state=$($stZ.domain.result.state)" ($stZ.domain.result.state -ne 'paused') @($T.rpc.resp, $stZ.rpc.resp)
+    }
+
+    # [1] Omitted break_kind (defaults to none) and [2] explicit none: both valid.
+    Invoke-HarnessLifecycle 'omit'
+    Invoke-HarnessLifecycle 'explicit'
+
+    # [3] The three forbidden break_kind values: -32602 pre-Start, zero side effects.
+    foreach ($bk in @('entry', 'process', 'module_cctor_or_entry')) {
+        $c = Invoke-HarnessLaunch "a30-bk-$bk" @{ break_kind = $bk }
+        $rpcE = if ($c.rpc.json -and $c.rpc.json.error) { $c.rpc.json.error.code } else { $null }
+        Assert-Cond "a30-bk-$bk" 'forbidden harness break_kind = JSON-RPC -32602' "rpc=$rpcE domain=$(Get-DomainError $c)" ("$rpcE" -eq '-32602') @($c.rpc.resp)
+    }
+    # Forbidden launches never started the harness: spy start count unchanged across them.
+    $spy1 = Get-SpyCounters
+    $s2 = Get-SpyCounters
+    if ($spy1 -and $s2) {
+        $d = Get-SpyDelta $spy1 $s2 'dbg_start_calls'
+        Assert-Cond 'a30-forbidden-no-start' 'forbidden values never reached Start' "delta=$d" ($d -eq 0) @(Save-Json 'a30-spy.json' $spy1)
+    }
+
+    # [4] Cross-bitness: x86 harness request on the x64 host rejected pre-Start.
+    $a = @{ request_id = 'a30-x86'; target_path = $targetDll; expected_sha256 = $dllSha; launch_mode = 'harness'; architecture = 'x86'; harness_path = $harness; harness_sha256 = $harnessSha }
+    $x86 = Invoke-ToolNoInit 'debug_launch' $a
+    Assert-Cond 'a30-cross-bitness' 'x86 harness request = CAPABILITY_UNAVAILABLE pre-Start' "code=$(Get-DomainError $x86)" ("$(Get-DomainError $x86)" -eq 'CAPABILITY_UNAVAILABLE') @($x86.rpc.resp)
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2363,6 +2444,7 @@ $handlers = @{
     'ACC-005' = ${function:Run-ACC005}
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
+    'ACC-030' = ${function:Run-ACC030}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
