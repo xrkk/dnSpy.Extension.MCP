@@ -3165,24 +3165,28 @@ function Run-ACC024 {
     # value, then resize one stub name so the joined value is EXACTLY 1024 bytes (pass) and
     # a second probe 10 bytes over (small INTERNAL_ERROR, no domain envelope).
     $stubSrc = Join-Path $script:Repo 'tests\debug\fixtures-src\SatelliteLib.cs'
+    $buildLog = Join-Path $script:OutDir 'a24-unity-build.log'
     function New-UnityProbe([string]$ProbeName, [string[]]$StubNames) {
+        $log = @()
         foreach ($sn in $StubNames) {
             $stubDll = Join-Path $root ($sn + '.dll')
-            & $m.env.csc /nologo /optimize- /target:library /out:$stubDll $stubSrc 2>&1 | Out-Null
-            # rename the assembly by recompiling with a title? csc uses filename for assembly name.
+            $log += "stub: $sn -> $stubDll exists=$(Test-Path $stubSrc)"
+            $log += (& $m.env.csc /nologo /optimize- /target:library "/out:$stubDll" $stubSrc 2>&1 | Out-String)
         }
         $probeSrc = Join-Path $script:OutDir 'unity-probe.cs'
-        $refs = ($StubNames | ForEach-Object { '/r:' + (Join-Path $root ($_ + '.dll')) })
+        $refs = @($StubNames | ForEach-Object { '/r:' + (Join-Path $root ($_ + '.dll')) })
         Set-Content $probeSrc 'internal static class U { private static void Main() { System.Console.WriteLine(Satellite.Satellite.Answer()); } }'
         $probeExe = Join-Path $root $ProbeName
-        & $m.env.csc /nologo /optimize- /platform:x64 /out:$probeExe @refs $probeSrc 2>&1 | Out-Null
+        $log += "probe: $ProbeName refs=$($refs.Count)"
+        $log += (& $m.env.csc /nologo /optimize- /platform:x64 "/out:$probeExe" @refs $probeSrc 2>&1 | Out-String)
+        $log | Set-Content $buildLog
         return @((Test-Path $probeExe), $ProbeName)
     }
     $baseNames = @(); for ($i = 0; $i -lt 4; $i++) { $baseNames += 'UnityEngine.' + ('x' * 180) + $i }
     $null = New-UnityProbe 'a24-unity0.exe' $baseNames
     $r3m = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity0.exe') 'unity0'
-    $val0 = "$($r3m.ev[0].value)"
-    $vlen = [Text.Encoding]::UTF8.GetByteCount($val0)
+    $val0 = [string]"$($r3m.ev[0].value)"
+    [int]$vlen = [Text.Encoding]::UTF8.GetByteCount($val0)
     # exact-1024 probe: adjust the first stub name by the delta.
     $delta = 1024 - $vlen
     $adjNames = @($baseNames.Clone())
