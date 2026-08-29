@@ -1,0 +1,37 @@
+{
+  "source": "VM C:\\Tools\\mcp-repo\\tests\\debug\\results\\c83bdd1008a47fce8a4133c5e2896ad133de549e\\",
+  "fetched_by": "executing party (main session), 2026-08-29, after third-party ZCode run",
+  "commit_sha": "c83bdd1008a47fce8a4133c5e2896ad133de549e",
+  "third_party_record": "PLAN/2026.08.26/2026.08.29-第三方核查记录-c83bdd1.md",
+  "extracts": {
+    "ACC-006": {
+      "exit_code": 1,
+      "status": "fail",
+      "fails": [
+        "running-state-rejected"
+      ],
+      "note": "running-state-rejected expected INVALID_STATE, actual stack=STALE_HANDLE locals=STALE_HANDLE (wire/0011,0012); all other 12 assertions pass incl. stale-handles-after-continue"
+    },
+    "ACC-008": {
+      "exit_code": 1,
+      "status": "fail",
+      "fails": [
+        "a08-apphost-launch",
+        "a08-p2-launch"
+      ],
+      "note": "apphost launch ok=False fam= (wire/0005); coreclr-dotnet mode passes (wire/0008); DLL-no-host/arch-mismatch/no-start-on-reject pass"
+    },
+    "ACC-034": {
+      "exit_code": 1,
+      "status": "fail",
+      "fails": [
+        "a34-launch3",
+        "a34-pending-restart-relaunch",
+        "a34-boundary",
+        "a34-claim-spy",
+        "result-evidence-complete"
+      ],
+      "note": "launch3/pending-restart relaunch ok=False (wire/0023,0029 INVALID_STATE state=idle); boundary waiting=False code=INVALID_STATE; claim-spy candidates=3 windows=3; evidence missing=3 (C:\\Tools\\dt-*.txt volatile paths)"
+    }
+  }
+}

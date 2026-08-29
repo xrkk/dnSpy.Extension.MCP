@@ -1,0 +1,32 @@
+{
+  "schema": "dnspy.mcp.independent-verification-loop.v1",
+  "object": {
+    "plan": "PLAN/2026.08.26/2026.08.26-01-dnSpy-MCP托管动态调试增强方案.md",
+    "implementation_record": "PLAN/2026.08.26/2026.08.26-01-dnSpy-MCP托管动态调试增强方案-实施记录.md",
+    "verification_guide": "PLAN/2026.08.26/2026.08.26-10-第三方核查指引.md",
+    "third_party_records": [
+      "PLAN/2026.08.26/2026.08.29-第三方核查记录-c83bdd1.md"
+    ],
+    "code_root": "/home/adminn/projects/dnSpy.Extension.MCP"
+  },
+  "identity": {
+    "branch": "main",
+    "round1_base_head": "c83bdd1008a47fce8a4133c5e2896ad133de549e",
+    "round1_dispatch_head": "174e722 (docs-only on top of c83bdd1: 固化第三方核查记录)",
+    "protected_scene": ["PLAN/dnSpy-MCP.md (user-owned, never committed by executor)"],
+    "exclusions": ["dist/ (gitignored)", "VM-side result artifacts (referenced via extracts)"]
+  },
+  "max_rounds": 5,
+  "completed_rounds": 0,
+  "verifier": {
+    "agent_type": "general-plan-acceptance-verifier",
+    "instance_identity": "round-1 dispatch 2026-08-29; continuity via full history chain in later task packages",
+    "record_dir": "PLAN/2026.08.26/独立核验/round-{n}/"
+  },
+  "claim_under_verification": "实施记录第 60 轮: 36/36 ACC 实跑 exit-0 + 11/11 IMP + 49 项产品修复; 第 61 轮: Codex 五项发现整改并复验(001/004/022/VerifyHarness)",
+  "adverse_evidence": "2026.08.29-第三方核查记录-c83bdd1.md (ZCode): 同 HEAD 顺序批跑 25/36; 11 案 exit 1 (8 案冷启动复现: 006/007/008/012/014/018/027/034; 3 案跨案污染: 028/029/035)",
+  "rounds": [],
+  "last_checkpoint": "round-1 dispatch prepared (state file + vm evidence + third-party record committed at 174e722)",
+  "stop_reason": null,
+  "status": "IN_PROGRESS_ROUND_1"
+}
