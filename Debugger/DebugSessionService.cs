@@ -99,11 +99,27 @@ public sealed class DebugSessionService : IDisposable {
 	readonly Dictionary<int, string> mcpIdByDnSpyBreakpoint = new();
 	readonly Dictionary<string, int> dnSpyIdByMcpBreakpoint = new();
 	readonly Dictionary<string, List<DbgCodeBreakpoint>> dnSpyBreakpointsByMcp = new();
+	/// <summary>ACC-035: owned breakpoint id -> the live module its module_handle addressed.
+	/// dnSpy binds one breakpoint against every ModuleId-equal module (same MVID/name), so hit
+	/// attribution is scoped here by object identity — a sibling module's hit never settles as
+	/// this breakpoint's EVT-DYN-013.</summary>
+	readonly Dictionary<string, DbgModule?> moduleByOwnedBp = new();
+
+	/// <summary>The upstream location identity for a live module. In-memory modules (no
+	/// filename) must carry the in-memory ModuleId flags or the engine never binds (ACC-035);
+	/// disk-backed modules keep the filename identity.</summary>
+	static ModuleId UpstreamIdOf(DbgModule module) =>
+		string.IsNullOrEmpty(module.Filename)
+			? ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true)
+			: (ModuleId)module.Filename;
 	readonly Dictionary<string, RegisteredModuleRecord> modulesByHandle = new();
 	string exceptionPolicy = "unhandled";
 
 	sealed class RegisteredModuleRecord {
 		public string ModuleHandle = string.Empty;
+		/// <summary>Live upstream module (dispatcher-only access): same-MVID sibling modules
+		/// are disambiguated by object identity for module_handle-scoped breakpoints (ACC-035).</summary>
+		public DbgModule? LiveModule;
 		public string RuntimeHandle = string.Empty;
 		public string Mvid = string.Empty;
 		public string? Sha256;
@@ -985,7 +1001,8 @@ public sealed class DebugSessionService : IDisposable {
 						Size = module.Size,
 						Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
 						Mvid = "00000000-0000-0000-0000-000000000000", // real MVID lands with DmdModule wiring (IMP-009 note)
-						UpstreamId = (ModuleId)(module.Filename ?? module.Name),
+						UpstreamId = UpstreamIdOf(module),
+						LiveModule = module,
 					};
 				}
 			}
@@ -1038,7 +1055,8 @@ public sealed class DebugSessionService : IDisposable {
 							Size = module.Size,
 							Layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
 							Mvid = "00000000-0000-0000-0000-000000000000",
-							UpstreamId = (ModuleId)(module.Filename ?? module.Name),
+							UpstreamId = UpstreamIdOf(module),
+							LiveModule = module,
 						};
 						// Preserve identity data registered by earlier set_breakpoint calls on the same handle.
 						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
@@ -1135,6 +1153,7 @@ public sealed class DebugSessionService : IDisposable {
 		foreach (var bp in created) {
 			bpStore.SetEnabled(entry.BreakpointId, enabled);
 			lock (sessionLock) {
+				moduleByOwnedBp[entry.BreakpointId] = module.LiveModule;
 				mcpIdByDnSpyBreakpoint[bp.Id] = entry.BreakpointId;
 				dnSpyIdByMcpBreakpoint[entry.BreakpointId] = bp.Id;
 				dnSpyBreakpointsByMcp.TryGetValue(entry.BreakpointId, out var list);
@@ -1228,6 +1247,7 @@ public sealed class DebugSessionService : IDisposable {
 			if (breakpointsService is null)
 				return null;
 			lock (sessionLock) {
+				moduleByOwnedBp.Remove(breakpointId);
 				if (dnSpyBreakpointsByMcp.TryGetValue(breakpointId, out var list)) {
 					breakpointsService.Remove(list.Where(b => b is not null).ToArray());
 					dnSpyBreakpointsByMcp.Remove(breakpointId);
@@ -2287,6 +2307,7 @@ public sealed class DebugSessionService : IDisposable {
 				ReleaseLeases();
 				lock (sessionLock) {
 					bpStore = new DebugBreakpointStore();
+					moduleByOwnedBp.Clear();
 					mcpIdByDnSpyBreakpoint.Clear();
 					dnSpyIdByMcpBreakpoint.Clear();
 					dnSpyBreakpointsByMcp.Clear();
@@ -2424,8 +2445,18 @@ public sealed class DebugSessionService : IDisposable {
 						case DbgMessageKind.BoundBreakpoint:
 							if (msg is DbgMessageBoundBreakpointEventArgs boundArgs) {
 								kind = "breakpoint";
-								lock (sessionLock)
+								lock (sessionLock) {
 									mcpIdByDnSpyBreakpoint.TryGetValue(boundArgs.BoundBreakpoint.Breakpoint.Id, out ownedId);
+									// ACC-035 module_handle scoping: the engine binds this
+									// breakpoint against every ModuleId-equal sibling (same
+									// MVID/name); only the module the creating handle addressed
+									// may settle as this breakpoint's hit.
+									if (ownedId is not null
+										&& moduleByOwnedBp.TryGetValue(ownedId, out var ownerModule)
+										&& ownerModule is not null
+										&& !ReferenceEquals(ownerModule, boundArgs.BoundBreakpoint.Module))
+										ownedId = null;
+								}
 								if (ownedId is not null)
 									bpStore.MarkBound(ownedId, true);
 							}

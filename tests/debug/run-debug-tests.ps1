@@ -2817,6 +2817,116 @@ function Run-ACC032 {
     Assert-Cond 'a32-branch-counters' 'spy recorded all exercised branches' "raw=$($spy.dump_branch_raw) recon=$($spy.dump_branch_reconstructed) unavail=$($spy.dump_branch_unavailable)" (($spy.dump_branch_raw -ge 1) -and ($spy.dump_branch_reconstructed -ge 1) -and ($spy.dump_branch_unavailable -ge 1)) @($spyEv)
 }
 
+# ---------------------------------------------------------------- case: ACC-035 ----
+function Run-ACC035 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-build-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    if (-not (Compile-Fixture 'DualDynFixture.cs' 'DualDynFixture.exe')) { Assert-Cond 'fixture-build' 'DualDynFixture.exe compiled' 'failed' $false @('build-DualDynFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'DualDynFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] Session with the SAME satellite bytes loaded twice in memory.
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a35-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    if (-not $L.domain.ok) { Assert-Cond 'a35-launch' 'DualDynFixture session running' "ok=$($L.domain.ok)" $false @($L.rpc.resp); return }
+    $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
+    Start-Sleep -Milliseconds 3500
+    Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'a35-p1' } | Out-Null
+    $wp = Wait-StablePaused $sid
+    Assert-Cond 'a35-pause' 'paused after the double-load window' "ok=$($wp.ok)" $wp.ok
+    $manPath = Join-Path $m.env.sample_root 'dualdyn-manifest.txt'
+    if (-not (Test-Path $manPath)) { Assert-Cond 'a35-manifest' 'fixture wrote its token manifest' 'absent' $false; return }
+    $man = @{}
+    foreach ($line in ([IO.File]::ReadAllLines($manPath))) { $kv = $line -split '=', 2; if ($kv.Count -eq 2) { $man[$kv[0]] = $kv[1] } }
+    Assert-Cond 'a35-manifest' 'manifest: same MVID twice, distinct assemblies, token present' "mvid=$($man['mvid']) mvid2=$($man['mvid2']) distinct=$($man['distinct']) token=$($man['token1'])" (($man['mvid'] -eq $man['mvid2']) -and ("$($man['distinct'])" -eq 'True') -and $man['token1'])
+    $manEv = Save-Json 'a35-fixture-manifest.json' $man
+
+    $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $sats = @($mods.domain.result.items) | Where-Object { "$($_.name)" -like 'Satellite*' }
+    Assert-Cond 'a35-two-modules' 'two same-MVID memory modules with distinct handles' "count=$(@($sats).Count) mvid=$($sats[0].mvid) handles=$(@($sats | ForEach-Object { $_.module_handle }) -join ',')" (@($sats).Count -eq 2 -and ("$($sats[0].mvid)" -eq "$($sats[1].mvid)")) @($mods.rpc.resp)
+    if (@($sats).Count -lt 2) { return }
+    $h1 = "$($sats[0].module_handle)"; $h2 = "$($sats[1].module_handle)"
+    $mvid = "$($sats[0].mvid)"
+    $token = "$($man['token1'])"
+
+    # [2] Valid runtime_weak breakpoint on the FIRST handle only (SHA omitted).
+    $bpArgs = @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; request_id = 'a35-bp1'; module_handle = $h1; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0 }
+    $b1 = Invoke-ToolNoInit 'debug_set_breakpoint' $bpArgs
+    if (-not $b1.domain.ok) { Assert-Cond 'a35-bp-create' 'breakpoint on first handle created' "ok=$($b1.domain.ok)" $false @($b1.rpc.resp); return }
+    $bp1 = "$($b1.domain.result.breakpoint.breakpoint_id)"
+    Start-Sleep -Milliseconds 800
+    $lb = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    Assert-Cond 'a35-bp-created' 'owned breakpoint listed (bound after engine bind)' "id=$bp1 bound=$($b1.domain.result.breakpoint.bound)" ($lb.domain.ok) @($lb.rpc.resp, $manEv)
+
+    # [3] Alternation: the fixture calls m1 then m2 each iteration, so consecutive pauses
+    # alternate modules. Only m1 turns may produce a breakpoint_hit carrying this id.
+    $hitPattern = @()
+    $cursor = Get-MaxEventCursor $sid $gen
+    for ($i = 0; $i -lt 4; $i++) {
+        Resume-FromPaused $sid $gen | Out-Null
+        Start-Sleep -Milliseconds 700
+        $held = Wait-HeldPause $sid $gen
+        if (-not $held.ok) { $hitPattern += 'no-pause'; break }
+        $ev = Read-EventKinds $sid $gen $cursor
+        $cursor = $ev.next
+        $hitEv = @($ev.events | Where-Object { $_.kind -eq 'breakpoint_hit' -and "$($_.payload.breakpoint_id)" -eq "$bp1" })
+        $hitPattern += if ($hitEv.Count -gt 0) { 'HIT' } else { 'miss' }
+    }
+    $patEv = Save-Json 'a35-hit-pattern.json' ($hitPattern -join ',')
+    $alternating = ($hitPattern.Count -ge 3) -and ($hitPattern[0] -eq 'HIT') -and ($hitPattern[1] -eq 'miss') -and ($hitPattern[2] -eq 'HIT')
+    Assert-Cond 'a35-module-scoped-hits' 'hits alternate with the fixture module order (m1 HIT, m2 miss, m1 HIT)' "pattern=$($hitPattern -join ',')" $alternating @($patEv)
+
+    # [4] Second handle with the shared identity is its OWN breakpoint: hits then belong to
+    # the second id on m2 turns (never re-attributed to the first).
+    $bp2Args = @{ session_id = $sid; generation = $gen; pause_epoch = $held.epoch; request_id = 'a35-bp2'; module_handle = $h2; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0 }
+    $b2 = Invoke-ToolNoInit 'debug_set_breakpoint' $bp2Args
+    $bp2Ok = $b2.domain.ok
+    $bp2 = if ($bp2Ok) { "$($b2.domain.result.breakpoint.breakpoint_id)" } else { '' }
+    Assert-Cond 'a35-second-handle-bp' 'breakpoint on the second handle creates a distinct id' "ok=$bp2Ok id=$bp2" ($bp2Ok -and ($bp2 -ne $bp1)) @($b2.rpc.resp)
+    if ($bp2Ok) {
+        $cursor2 = Get-MaxEventCursor $sid $gen
+        $saw2 = $false
+        for ($i = 0; $i -lt 4; $i++) {
+            Resume-FromPaused $sid $gen | Out-Null
+            Start-Sleep -Milliseconds 700
+            $held2 = Wait-HeldPause $sid $gen
+            if (-not $held2.ok) { break }
+            $ev2 = Read-EventKinds $sid $gen $cursor2
+            $cursor2 = $ev2.next
+            if (@($ev2.events | Where-Object { $_.kind -eq 'breakpoint_hit' -and "$($_.payload.breakpoint_id)" -eq "$bp2" }).Count -gt 0) { $saw2 = $true; break }
+        }
+        Assert-Cond 'a35-second-id-hits' 'second id hits on its own module turns' "saw=$saw2" $saw2
+        Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $held2.epoch; request_id = 'a35-rm2'; breakpoint_id = $bp2 } | Out-Null
+    }
+
+    # [5] runtime_weak + module_sha256 = -32602; owned set unchanged across the rejection.
+    $lbBefore = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $beforeIds = (@($lbBefore.domain.result.items) | ForEach-Object { $_.breakpoint_id }) -join ','
+    $shaBad = Send-Rpc 'tools/call' @{ name = 'debug_set_breakpoint'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $held.epoch; request_id = 'a35-sha'; module_handle = $h1; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0; module_sha256 = (Get-Sha256File (Join-Path $m.env.sample_root 'SatelliteLib.dll')) } }
+    $rpcSha = if ($shaBad.json -and $shaBad.json.error) { $shaBad.json.error.code } else { $null }
+    Assert-Cond 'a35-sha-rejected' 'runtime_weak with module_sha256 = -32602' "error=$rpcSha" ("$rpcSha" -eq '-32602') @($shaBad.resp)
+    $lbAfter = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $afterIds = (@($lbAfter.domain.result.items) | ForEach-Object { $_.breakpoint_id }) -join ','
+    Assert-Cond 'a35-set-unchanged' 'owned set unchanged by the rejection' "before=[$beforeIds] after=[$afterIds]" ($beforeIds -eq $afterIds)
+
+    # [6] Old-generation handle after restart: stale/mismatch, zero side effects.
+    Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $held.epoch; request_id = 'a35-rm1'; breakpoint_id = $bp1 } | Out-Null
+    $R = Invoke-Tool $v 'debug_restart' @{ session_id = $sid; generation = $gen; request_id = 'a35-restart' }
+    Assert-Cond 'a35-restart' 'restart enters a new generation' "ok=$($R.domain.ok)" ($R.domain.ok) @($R.rpc.resp)
+    Start-Sleep -Milliseconds 2500
+    if ($R.domain.ok) {
+        $newGen = [int]$R.domain.result.generation
+        $wp3 = Wait-HeldPause $sid $newGen
+        if ($wp3.ok) {
+            $old = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $newGen; pause_epoch = $wp3.epoch; request_id = 'a35-old'; module_handle = $h1; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0 }
+            $oldCode = Get-DomainError $old
+            Assert-Cond 'a35-old-handle-rejected' 'old-generation module_handle = TARGET_MISMATCH or STALE_HANDLE' "code=$oldCode" (("$oldCode" -eq 'TARGET_MISMATCH') -or ("$oldCode" -eq 'STALE_HANDLE')) @($old.rpc.resp)
+        }
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $newGen; request_id = 'a35-t1' } | Out-Null
+    }
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2835,7 +2945,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
