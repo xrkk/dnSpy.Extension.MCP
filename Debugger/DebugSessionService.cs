@@ -17,6 +17,7 @@ using dnSpy.Contracts.Debugger.DotNet;
 using dnSpy.Contracts.Debugger.Steppers;
 using dnSpy.Contracts.Debugger.DotNet.Code;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
+using dnSpy.Contracts.Debugger.DotNet.Metadata;
 using dnSpy.Contracts.Metadata;
 
 namespace dnSpy.Extension.MCP.Debugger;
@@ -90,6 +91,7 @@ public sealed class DebugSessionService : IDisposable {
 
 	readonly McpSettings settings;
 	readonly StaticWriteGate staticWriteGate;
+	readonly DbgMetadataService? metadataService;
 	readonly DbgCodeBreakpointsService? breakpointsService;
 	readonly DbgDotNetCodeLocationFactory? locationFactory;
 	readonly dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService;
@@ -120,9 +122,11 @@ public sealed class DebugSessionService : IDisposable {
 		[Import(AllowDefault = true)] dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService,
 		DebugGateService gateService,
 		McpSettings settings,
-		[Import(AllowDefault = true)] StaticWriteGate? staticWriteGate) {
+		[Import(AllowDefault = true)] StaticWriteGate? staticWriteGate,
+		[Import(AllowDefault = true)] DbgMetadataService? metadataService) {
 		this.dbgManager = dbgManager;
 		this.breakpointsService = breakpointsService;
+		this.metadataService = metadataService;
 		this.locationFactory = locationFactory;
 		this.languageService = languageService;
 		this.gateService = gateService;
@@ -325,6 +329,25 @@ public sealed class DebugSessionService : IDisposable {
 		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode });
 	}
 
+	string TestDump(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var mode = args is not null && args.TryGetValue("mode", out var m) && m is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } mj ? mj.GetString() : null;
+		switch (mode) {
+			case "raw":
+			case null:
+				testDumpMode = null;
+				break;
+			case "force_memory":
+			case "both_unavailable":
+				testDumpMode = mode;
+				break;
+			default:
+				throw new ArgumentException("mode must be raw, force_memory or both_unavailable", "mode");
+		}
+		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode ?? "raw" });
+	}
+
 
 	/// <summary>
 	/// ACC-016: value-tool arguments are closed (additionalProperties=false) with a depth
@@ -385,6 +408,7 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_test_adapter" => TestAdapter(arguments),
 				"debug_test_flood" => TestFlood(arguments),
 				"debug_test_start" => TestStart(arguments),
+				"debug_test_dump" => TestDump(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -1974,18 +1998,50 @@ public sealed class DebugSessionService : IDisposable {
 			if (!modulesByHandle.TryGetValue(moduleHandle, out module!))
 				return Fail(coordinator, DomainErrorCodes.NotFound, message: "unknown module_handle");
 		}
-		// IRawModuleBytesSource, raw state: a disk-backed module dumps its on-disk image bytes.
-		// In-memory/dynamic modules are raw_unavailable: v1 production returns the closed
-		// CAPABILITY_UNAVAILABLE state (the reconstructed path stays out of v1 wiring).
-		if (module.Layout != "file" || !File.Exists(module.Filename))
-			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "module has no on-disk raw image (dynamic/in-memory)");
-		var sourceBytes = File.ReadAllBytes(module.Filename);
-		if (sourceBytes.Length > ArtifactStoreLedger.MaxFileBytes)
+		// FB-001 three-branch flow over the injectable IRawModuleBytesSource seam: raw bytes
+		// win when available (source_exact); otherwise a ForceMemory metadata reconstruction
+		// produces a NOT source-equivalent PE; when both are unavailable the closed
+		// CAPABILITY_UNAVAILABLE answer never leaves an artifact and never shells out.
+		byte[] artifactBytes;
+		string kind, equivalence, artifactLayout, reconstructionMethod;
+		var rawBytes = ReadRawModuleBytes(module);
+		if (rawBytes is not null) {
+			SpyInc("dump_branch_raw");
+			artifactBytes = rawBytes;
+			kind = "raw";
+			equivalence = "source_exact";
+			artifactLayout = "file";
+			reconstructionMethod = null!;
+		}
+		else {
+			if (testDumpMode == "both_unavailable") {
+				SpyInc("dump_branch_unavailable");
+				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "raw bytes unavailable and ForceMemory reconstruction disabled (test injection)");
+			}
+			var reconstructed = ReconstructViaForceMemory(module);
+			if (reconstructed is null) {
+				SpyInc("dump_branch_unavailable");
+				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "module has no raw image and ForceMemory reconstruction failed");
+			}
+			SpyInc("dump_branch_reconstructed");
+			artifactBytes = reconstructed;
+			kind = "reconstructed";
+			equivalence = "reconstructed_not_source_equivalent";
+			artifactLayout = "memory";
+			reconstructionMethod = "dnspy-force-memory";
+		}
+		if (artifactBytes.Length > ArtifactStoreLedger.MaxFileBytes)
 			return Fail(coordinator, DomainErrorCodes.LimitExceeded, message: "module exceeds the 512 MiB artifact file cap");
 
 		var sessionId = coordinator.ActiveSessionId!;
-		if (string.IsNullOrEmpty(relativeName))
-			relativeName = Path.GetFileName(module.Filename);
+		if (string.IsNullOrEmpty(relativeName)) {
+			if (kind == "raw")
+				relativeName = Path.GetFileName(module.Filename);
+			else {
+				using (var sha12 = SHA256.Create())
+					relativeName = $"{module.Mvid}-{ConvertHexShim.ToHexString(sha12.ComputeHash(System.Text.Encoding.UTF8.GetBytes(moduleHandle))).ToLowerInvariant().Substring(0, 12)}";
+			}
+		}
 		relativeName = relativeName.Replace("..", "_").Replace('/', '_').Replace('\\', '_');
 		var childName = relativeName + ".bin";
 
@@ -2019,26 +2075,31 @@ public sealed class DebugSessionService : IDisposable {
 
 			string sha256;
 			using (var sha = SHA256.Create())
-				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(sourceBytes)).ToLowerInvariant();
+				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(artifactBytes)).ToLowerInvariant();
 			// The admission reserves the quota and creates the empty child; this call is its
 			// active writer, so the bytes go straight into the ledgered file.
-			var admit = ledger.AdmitArtifactWrite(sessionId, childName, sourceBytes.Length,
-				new ArtifactStoreLedger.ChildRecord(childName, "0x0", new string('0', 32), sourceBytes.Length, sha256));
+			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes.Length,
+				new ArtifactStoreLedger.ChildRecord(childName, "0x0", new string('0', 32), artifactBytes.Length, sha256));
 			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(admit));
 			var finalPath = Path.Combine(root, sessionId, childName);
-			File.WriteAllBytes(finalPath, sourceBytes);
+			File.WriteAllBytes(finalPath, artifactBytes);
 
 			var manifestName = childName + ".manifest.json";
+			// FB-001: the manifest declares the exact byte-equivalence class and, for the
+			// reconstructed branch, the producing API — a reconstruction is never presented as
+			// a source-equivalent image.
 			var manifest = System.Text.Json.JsonSerializer.Serialize(new {
 				schema_version = "dnspy.mcp.artifact.v1",
 				session_id = sessionId,
 				module = module.Name,
 				module_path = module.Filename,
-				kind = "raw",
-				layout = "file",
-				size = sourceBytes.Length,
+				kind,
+				layout = artifactLayout,
+				size = artifactBytes.Length,
 				sha256,
+				byte_equivalence = equivalence,
+				reconstruction_method = reconstructionMethod,
 				created_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
 			});
 			var manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest);
@@ -2052,9 +2113,9 @@ public sealed class DebugSessionService : IDisposable {
 				Artifact = new ArtifactDto {
 					ArtifactId = sessionId + "/" + childName,
 					Path = finalPath,
-					Kind = "raw",
-					Layout = "file",
-					Size = sourceBytes.Length,
+					Kind = kind,
+					Layout = artifactLayout,
+					Size = artifactBytes.Length,
 					Sha256 = sha256,
 					SourceModule = ModuleDtoOf(module),
 					ManifestPath = Path.Combine(root, sessionId, manifestName),
@@ -2072,6 +2133,73 @@ public sealed class DebugSessionService : IDisposable {
 		ArtifactStoreLedger.AdmitResult.TargetMismatch => DomainErrorCodes.TargetMismatch,
 		_ => DomainErrorCodes.InternalError,
 	};
+
+	// DNMCP_TEST-only: fixed by debug_test_dump — null/"raw" is the production behavior.
+	volatile string? testDumpMode;
+
+	/// <summary>
+	/// FB-001 seam (ACC-032): the raw-bytes side of debug_dump_module. Production reads the
+	/// on-disk image of file-layout modules; the DNMCP_TEST injection can force raw
+	/// unavailable so the ForceMemory reconstruction / both-unavailable branches are live.
+	/// </summary>
+	public interface IRawModuleBytesSource {
+		/// <summary>Raw image bytes, or null when unavailable (dynamic/in-memory or injected).</summary>
+		byte[]? TryReadRawBytes(string filename, string layout);
+	}
+
+	sealed class ProductionRawModuleBytesSource : IRawModuleBytesSource {
+		public byte[]? TryReadRawBytes(string filename, string layout) {
+			try {
+				if (layout != "file" || !File.Exists(filename))
+					return null;
+				return File.ReadAllBytes(filename);
+			}
+			catch {
+				return null;
+			}
+		}
+	}
+
+	readonly IRawModuleBytesSource rawBytesSource = new ProductionRawModuleBytesSource();
+
+	byte[]? ReadRawModuleBytes(RegisteredModuleRecord module) {
+		if (testDumpMode is "force_memory" or "both_unavailable")
+			return null;
+		return rawBytesSource.TryReadRawBytes(module.Filename, module.Layout);
+	}
+
+	/// <summary>
+	/// FB-001 branch 2 (ACC-032): reconstruct a managed PE from the module's ForceMemory
+	/// metadata (DbgMetadataService on the DbgManager dispatcher) via dnlib's writer. The
+	/// output is a valid PE but by construction NOT source-equivalent.
+	/// </summary>
+	byte[]? ReconstructViaForceMemory(RegisteredModuleRecord module) {
+		if (metadataService is null)
+			return null;
+		byte[]? result = null;
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is null)
+				return;
+			foreach (var runtime in process.Runtimes) {
+				foreach (var live in runtime.Modules) {
+					bool match = string.Equals(live.Filename ?? string.Empty, module.Filename, StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(live.Name, module.Name, StringComparison.OrdinalIgnoreCase);
+					if (!match)
+						continue;
+					var moduleDef = metadataService.TryGetMetadata(live, DbgLoadModuleOptions.ForceMemory | DbgLoadModuleOptions.AutoLoaded);
+					if (moduleDef is null)
+						return;
+					using var ms = new MemoryStream();
+					moduleDef.Write(ms);
+					result = ms.ToArray();
+					return;
+				}
+			}
+		});
+		return result;
+	}
 
 	// ---- observation pump (DbgManager dispatcher thread) ----
 

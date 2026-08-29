@@ -2732,6 +2732,91 @@ function Run-ACC033 {
     Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe' | Out-Null
 }
 
+# ---------------------------------------------------------------- case: ACC-032 ----
+function Run-ACC032 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-build-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    if (-not (Compile-Fixture 'DualDynFixture.cs' 'DualDynFixture.exe')) { Assert-Cond 'fixture-build-dual' 'DualDynFixture.exe compiled' 'failed' $false @('build-DualDynFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] Paused session with a disk-backed module: the raw branch (production, no injection).
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'a32-session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen; $ep = $sess.epoch
+    $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $main = @($mods.domain.result.items) | Where-Object { "$($_.name)" -like 'ArgvFixture*' } | Select-Object -First 1
+    if (-not $main) { Assert-Cond 'a32-main-module' 'ArgvFixture module listed' 'absent' $false @($mods.rpc.resp); return }
+    $mh = "$($main.module_handle)"
+
+    $d1 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a32-raw'; module_handle = $mh }
+    $a1ok = $d1.domain.ok
+    $art1 = $d1.domain.result.artifact
+    $fileSha = if ($art1 -and (Test-Path "$($art1.path)")) { (Get-FileHash "$($art1.path)" -Algorithm SHA256).Hash.ToLower() } else { '' }
+    $man1 = if ($art1 -and (Test-Path "$($art1.manifest_path)")) { Get-Content "$($art1.manifest_path)" -Raw | ConvertFrom-Json } else { $null }
+    $man1Ev = if ($man1) { Save-Json 'a32-manifest-raw.json' $man1 } else { $null }
+    $rawOk = $a1ok -and ("$($art1.kind)" -eq 'raw') -and ("$($art1.sha256)" -eq $sha) -and ($fileSha -eq $sha) -and $man1 -and ("$($man1.byte_equivalence)" -eq 'source_exact') -and (-not $man1.reconstruction_method)
+    Assert-Cond 'a32-branch-raw' 'raw: kind=raw, bytes/SHA equal source, manifest source_exact, no reconstruction_method' "kind=$($art1.kind) sha_eq=$("$($art1.sha256)" -eq $sha) file_eq=$($fileSha -eq $sha) equiv=$($man1.byte_equivalence)" $rawOk @($d1.rpc.resp, $man1Ev)
+
+    # [2] Injected branch 2: raw forced unavailable -> ForceMemory reconstruction.
+    $inj = Invoke-ToolNoInit 'debug_test_dump' @{ mode = 'force_memory' }
+    Assert-Cond 'a32-inject-force' 'force_memory injection armed' "ok=$($inj.domain.ok)" ($inj.domain.ok) @($inj.rpc.resp)
+    $d2 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a32-recon'; module_handle = $mh; relative_name = 'a32-recon' }
+    $art2 = $d2.domain.result.artifact
+    $man2 = if ($art2 -and (Test-Path "$($art2.manifest_path)")) { Get-Content "$($art2.manifest_path)" -Raw | ConvertFrom-Json } else { $null }
+    $man2Ev = if ($man2) { Save-Json 'a32-manifest-recon.json' $man2 } else { $null }
+    $head = if ($art2 -and (Test-Path "$($art2.path)")) { [IO.File]::ReadAllBytes("$($art2.path)")[0..1] -join ',' } else { '' }
+    $reconOk = $d2.domain.ok -and ("$($art2.kind)" -eq 'reconstructed') -and ("$($art2.layout)" -eq 'memory') -and ("$($art2.sha256)" -ne $sha) -and ($head -eq '77,90') -and $man2 -and ("$($man2.byte_equivalence)" -eq 'reconstructed_not_source_equivalent') -and ("$($man2.reconstruction_method)" -eq 'dnspy-force-memory')
+    Assert-Cond 'a32-branch-reconstructed' 'reconstructed: kind/layout, MZ header, NOT source-equivalent, dnspy-force-memory' "kind=$($art2.kind) head=$head equiv=$($man2.byte_equivalence) method=$($man2.reconstruction_method)" $reconOk @($d2.rpc.resp, $man2Ev)
+
+    # [3] Injected branch 3: both unavailable -> CAPABILITY_UNAVAILABLE, no artifact left.
+    $inj3 = Invoke-ToolNoInit 'debug_test_dump' @{ mode = 'both_unavailable' }
+    $d3 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a32-dead'; module_handle = $mh; relative_name = 'a32-dead' }
+    $d3code = Get-DomainError $d3
+    $deadPath = Join-Path $m.env.artifact_root (Join-Path $sid 'a32-dead.bin')
+    $deadOk = ("$d3code" -eq 'CAPABILITY_UNAVAILABLE') -and (-not (Test-Path $deadPath))
+    Assert-Cond 'a32-branch-both-unavailable' 'both unavailable: CAPABILITY_UNAVAILABLE and no artifact child' "code=$d3code child_exists=$(Test-Path $deadPath)" $deadOk @($d3.rpc.resp)
+
+    # Reset the injection, close the first session.
+    Invoke-ToolNoInit 'debug_test_dump' @{ mode = 'raw' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a32-t1' } | Out-Null
+    Start-Sleep -Milliseconds 1200
+
+    # [4] Natural branch on an in-memory module (DualDynFixture loads the same bytes twice):
+    # raw is unavailable by construction, so the dump either reconstructs via ForceMemory
+    # (FB-001 branch 2) or fails closed CAPABILITY_UNAVAILABLE (branch 3) — never a fake raw.
+    $dualExe = Join-Path $m.env.sample_root 'DualDynFixture.exe'
+    $dualSha = Get-Sha256File $dualExe
+    $L2 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a32-la2'; target_path = $dualExe; expected_sha256 = $dualSha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    if (-not $L2.domain.ok) { Assert-Cond 'a32-dual-launch' 'DualDynFixture session running' "ok=$($L2.domain.ok)" $false @($L2.rpc.resp); return }
+    $sid2 = $L2.domain.result.session_id; $gen2 = [int]$L2.domain.result.generation
+    Start-Sleep -Milliseconds 3200
+    Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid2; generation = $gen2; request_id = 'a32-p2' } | Out-Null
+    $wp2 = Wait-StablePaused $sid2
+    Assert-Cond 'a32-dual-pause' 'dual session paused after load window' "ok=$($wp2.ok)" $wp2.ok
+    $mods2 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid2; generation = $gen2 }
+    $satMods = @($mods2.domain.result.items) | Where-Object { "$($_.name)" -like 'Satellite*' }
+    Assert-Cond 'a32-two-memory-modules' 'two Satellite memory modules with distinct handles' "count=$(@($satMods).Count) handles=$(@($satMods | ForEach-Object { $_.module_handle }) -join ',')" (@($satMods).Count -ge 2) @($mods2.rpc.resp)
+    if (@($satMods).Count -ge 2) {
+        $d4 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sid2; generation = $gen2; pause_epoch = $wp2.epoch; request_id = 'a32-nat'; module_handle = "$($satMods[0].module_handle)"; relative_name = 'a32-nat' }
+        $art4 = $d4.domain.result.artifact
+        $natCode = Get-DomainError $d4
+        $man4 = if ($art4 -and (Test-Path "$($art4.manifest_path)")) { Get-Content "$($art4.manifest_path)" -Raw | ConvertFrom-Json } else { $null }
+        $man4Ev = if ($man4) { Save-Json 'a32-manifest-natural.json' $man4 } else { $null }
+        $diskSatSha = Get-Sha256File (Join-Path $m.env.sample_root 'SatelliteLib.dll')
+        $natOk = ($d4.domain.ok -and "$($art4.kind)" -eq 'reconstructed' -and ("$($art4.sha256)" -ne $diskSatSha)) -or ("$natCode" -eq 'CAPABILITY_UNAVAILABLE')
+        Assert-Cond 'a32-natural-memory-module' 'in-memory module: reconstructed (not disk-equivalent) or fail-closed — never fake raw' "ok=$($d4.domain.ok) kind=$($art4.kind) code=$natCode" $natOk @($d4.rpc.resp, $man4Ev)
+    }
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid2; generation = $gen2; request_id = 'a32-t2' } | Out-Null
+
+    $spy = Get-SpyCounters
+    $spyEv = Save-Json 'a32-spy.json' $spy
+    Assert-Cond 'a32-branch-counters' 'spy recorded all exercised branches' "raw=$($spy.dump_branch_raw) recon=$($spy.dump_branch_reconstructed) unavail=$($spy.dump_branch_unavailable)" (($spy.dump_branch_raw -ge 1) -and ($spy.dump_branch_reconstructed -ge 1) -and ($spy.dump_branch_unavailable -ge 1)) @($spyEv)
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2750,7 +2835,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {

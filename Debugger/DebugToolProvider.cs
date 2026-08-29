@@ -45,7 +45,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
-				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter", "debug_test_flood", "debug_test_start" });
+				names.AddRange(new[] { "debug_test_spy", "debug_test_clock", "debug_test_adapter", "debug_test_flood", "debug_test_start", "debug_test_dump" });
 			return names;
 		}
 	}
@@ -95,11 +95,22 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			});
 			tools.Add(new ToolInfo {
 				Name = "debug_test_start",
-				Description = "DNMCP_TEST-only: arm the NEXT launch with fail_start (synchronous Start error) or exit_before_claim (process vanishes pre-claim).",
+				Description = "DNMCP_TEST-only: arm the NEXT launch with fail_start (synchronous Start error), exit_before_claim, ui_debugging/ui_debugging_off (simulated human UI debug session), foreign_process (unregistered process observation -> ownership lost) or manager_idle (recovery).",
 				InputSchema = new Dictionary<string, object> {
 					["type"] = "object",
 					["properties"] = new Dictionary<string, object> {
-						["mode"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "fail_start", "exit_before_claim" } },
+						["mode"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "fail_start", "exit_before_claim", "ui_debugging", "ui_debugging_off", "foreign_process", "manager_idle" } },
+					},
+					["additionalProperties"] = false,
+				},
+			});
+			tools.Add(new ToolInfo {
+				Name = "debug_test_dump",
+				Description = "DNMCP_TEST-only: fix the NEXT debug_dump_module raw-bytes branch over the IRawModuleBytesSource seam: raw (production), force_memory (raw unavailable + ForceMemory reconstruction) or both_unavailable.",
+				InputSchema = new Dictionary<string, object> {
+					["type"] = "object",
+					["properties"] = new Dictionary<string, object> {
+						["mode"] = new Dictionary<string, object> { ["type"] = "string", ["enum"] = new List<string> { "raw", "force_memory", "both_unavailable" } },
 					},
 					["additionalProperties"] = false,
 				},
@@ -165,7 +176,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start")
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);
