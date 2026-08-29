@@ -3104,6 +3104,135 @@ function Run-ACC028 {
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidA; generation = $genA; request_id = 'a28-t1' } | Out-Null
     Start-Sleep -Milliseconds 900
 }
+# ---------------------------------------------------------------- case: ACC-024 ----
+function Get-CorFlagsOffset([byte[]]$b) {
+    $peOff = [BitConverter]::ToInt32($b, 0x3C)
+    $magic = [BitConverter]::ToUInt16($b, $peOff + 24)
+    $dirBase = 112; if ($magic -ne 0x20B) { $dirBase = 96 }
+    $clrRva = [BitConverter]::ToUInt32($b, $peOff + 24 + $dirBase + 14 * 8)
+    $optSize = [BitConverter]::ToUInt16($b, $peOff + 20)
+    $numSec = [BitConverter]::ToUInt16($b, $peOff + 6)
+    $secAt = $peOff + 24 + $optSize
+    for ($i = 0; $i -lt $numSec; $i++) {
+        $sec = $secAt + $i * 40
+        $virtSize = [BitConverter]::ToUInt32($b, $sec + 8)
+        $virtAddr = [BitConverter]::ToUInt32($b, $sec + 12)
+        $rawSize = [BitConverter]::ToUInt32($b, $sec + 16)
+        $rawPtr = [BitConverter]::ToUInt32($b, $sec + 20)
+        $span = [Math]::Max($virtSize, $rawSize)
+        if ($clrRva -ge $virtAddr -and $clrRva -lt ($virtAddr + $span)) { return @($rawPtr + ($clrRva - $virtAddr), $clrRva) }
+    }
+    return $null
+}
+
+function Run-ACC024 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $root = $m.env.sample_root
+    $v = $m.protocol_versions[2]
+
+    function Invoke-UnsupportedLaunch([string]$ProbePath, [string]$Tag) {
+        $spy0 = Get-SpyCounters
+        $L = Invoke-Tool $v 'debug_launch' @{ request_id = "a24-$Tag-" + (Get-Random -Maximum 99999); target_path = $ProbePath; expected_sha256 = (Get-Sha256File $ProbePath); launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+        $spy1 = Get-SpyCounters
+        $st = Invoke-ToolNoInit 'debug_status' @{ }
+        return @{ call = $L; code = (Get-DomainError $L); det = $L.domain.error.details.detected_target_kind; wf = $L.domain.error.details.recommended_workflow; ev = @($L.domain.error.details.evidence); untrusted = $L.domain.untrusted_sample_data; state = "$($st.domain.result.state)"; startDelta = (Get-SpyDelta $spy0 $spy1 'dbg_start_calls') }
+    }
+
+    # [1] pure_native: a real native system binary copied into the sample root.
+    Copy-Item C:\Windows\System32\where.exe (Join-Path $root 'a24-native.exe') -Force
+    $r1 = Invoke-UnsupportedLaunch (Join-Path $root 'a24-native.exe') 'native'
+    $ev1 = Save-Json 'a24-native.json' $r1.call.domain.error
+    Assert-Cond 'a24-pure-native' 'pure_native -> pe_x64dbg_ida_dynamic_analysis, pe_headers evidence, untrusted, zero Start' "code=$($r1.code) kind=$($r1.det) wf=$($r1.wf) ev0=$($r1.ev[0].kind) untrusted=$($r1.untrusted) start=+$($r1.startDelta)" (("$($r1.code)" -eq 'CAPABILITY_UNAVAILABLE') -and ("$($r1.det)" -eq 'pure_native') -and ("$($r1.wf)" -eq 'pe_x64dbg_ida_dynamic_analysis') -and ("$($r1.ev[0].kind)" -eq 'pe_headers') -and $r1.untrusted -and ($r1.startDelta -eq 0)) @($ev1, $r1.call.rpc.resp)
+
+    # [2] mixed_mode: ArgvFixture with the COR20 ILOnly bit cleared.
+    $mixedPath = Join-Path $root 'a24-mixed.exe'
+    [IO.File]::WriteAllBytes($mixedPath, [IO.File]::ReadAllBytes((Join-Path $root 'ArgvFixture.exe')))
+    $b = [IO.File]::ReadAllBytes($mixedPath)
+    $co = Get-CorFlagsOffset $b
+    if ($co) {
+        $flags = [BitConverter]::ToUInt32($b, $co[0] + 16)
+        [BitConverter]::GetBytes($flags -band 0xFFFFFFFE).CopyTo($b, $co[0] + 16)
+        [IO.File]::WriteAllBytes($mixedPath, $b)
+    }
+    $r2 = Invoke-UnsupportedLaunch $mixedPath 'mixed'
+    $ev2 = Save-Json 'a24-mixed.json' $r2.call.domain.error
+    $kinds2 = @($r2.ev | ForEach-Object { $_.kind }) -join ','
+    Assert-Cond 'a24-mixed-mode' 'mixed_mode -> pe_x64dbg workflow with fixed pe_headers+clr_metadata order' "kind=$($r2.det) wf=$($r2.wf) kinds=$kinds2 start=+$($r2.startDelta)" (("$($r2.det)" -eq 'mixed_mode') -and ("$($r2.wf)" -eq 'pe_x64dbg_ida_dynamic_analysis') -and ($kinds2 -eq 'pe_headers,clr_metadata') -and ($r2.startDelta -eq 0)) @($ev2, $r2.call.rpc.resp)
+
+    # [3] unity_mono: probe referencing UnityEngine.* stubs. First measure the evidence
+    # value, then resize one stub name so the joined value is EXACTLY 1024 bytes (pass) and
+    # a second probe 10 bytes over (small INTERNAL_ERROR, no domain envelope).
+    $stubSrc = Join-Path $script:Repo 'tests\debug\fixtures-src\SatelliteLib.cs'
+    function New-UnityProbe([string]$ProbeName, [string[]]$StubNames) {
+        foreach ($sn in $StubNames) {
+            $stubDll = Join-Path $root ($sn + '.dll')
+            & $m.env.csc /nologo /optimize- /target:library /out:$stubDll $stubSrc 2>&1 | Out-Null
+            # rename the assembly by recompiling with a title? csc uses filename for assembly name.
+        }
+        $probeSrc = Join-Path $script:OutDir 'unity-probe.cs'
+        $refs = ($StubNames | ForEach-Object { '/r:' + (Join-Path $root ($_ + '.dll')) })
+        Set-Content $probeSrc 'internal static class U { private static void Main() { System.Console.WriteLine(Satellite.Satellite.Answer()); } }'
+        $probeExe = Join-Path $root $ProbeName
+        & $m.env.csc /nologo /optimize- /platform:x64 /out:$probeExe @refs $probeSrc 2>&1 | Out-Null
+        return @((Test-Path $probeExe), $ProbeName)
+    }
+    $baseNames = @(); for ($i = 0; $i -lt 4; $i++) { $baseNames += 'UnityEngine.' + ('x' * 180) + $i }
+    $null = New-UnityProbe 'a24-unity0.exe' $baseNames
+    $r3m = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity0.exe') 'unity0'
+    $val0 = "$($r3m.ev[0].value)"
+    $vlen = [Text.Encoding]::UTF8.GetByteCount($val0)
+    # exact-1024 probe: adjust the first stub name by the delta.
+    $delta = 1024 - $vlen
+    $adjNames = @($baseNames.Clone())
+    $adjNames[0] = 'UnityEngine.' + ('x' * (180 + $delta)) + '0'
+    $null = New-UnityProbe 'a24-unity1024.exe' $adjNames
+    $r3 = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1024.exe') 'unity1024'
+    $val1024 = "$($r3.ev[0].value)"
+    $len1024 = [Text.Encoding]::UTF8.GetByteCount($val1024)
+    $ev3 = Save-Json 'a24-unity.json' @{ measured0 = $vlen; at_limit = $len1024; details = $r3.call.domain.error }
+    Assert-Cond 'a24-unity-mono-at-limit' 'unity_mono -> mono_dynamic_analysis; evidence value exactly 1024 bytes accepted' "kind=$($r3.det) wf=$($r3.wf) len0=$vlen len1024=$len1024 start=+$($r3.startDelta)" (("$($r3.det)" -eq 'unity_mono') -and ("$($r3.wf)" -eq 'mono_dynamic_analysis') -and ($len1024 -eq 1024) -and ($r3.startDelta -eq 0)) @($ev3, $r3.call.rpc.resp)
+
+    $overNames = @($adjNames.Clone())
+    $overNames[0] = 'UnityEngine.' + ('x' * (190 + $delta)) + '0'
+    $null = New-UnityProbe 'a24-unity1034.exe' $overNames
+    $r3o = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1034.exe') 'unity1034'
+    $noDetails = -not $r3o.call.domain.error.details
+    $ev3o = Save-Json 'a24-unity-over.json' $r3o.call.domain.error
+    Assert-Cond 'a24-unity-over-limit' '1034-byte evidence = small INTERNAL_ERROR, no details, zero Start' "code=$($r3o.code) noDetails=$noDetails start=+$($r3o.startDelta)" (("$($r3o.code)" -eq 'INTERNAL_ERROR') -and $noDetails -and ($r3o.startDelta -eq 0)) @($ev3o, $r3o.call.rpc.resp)
+
+    # [4] unsupported_managed_runtime: metadata runtime version patched outside v2/v4.
+    $rtPath = Join-Path $root 'a24-rt.exe'
+    [IO.File]::WriteAllBytes($rtPath, [IO.File]::ReadAllBytes((Join-Path $root 'ArgvFixture.exe')))
+    $b2 = [IO.File]::ReadAllBytes($rtPath)
+    $bsjb = -1
+    for ($i = 0; $i -lt $b2.Length - 4; $i++) { if ($b2[$i] -eq 0x42 -and $b2[$i+1] -eq 0x53 -and $b2[$i+2] -eq 0x4A -and $b2[$i+3] -eq 0x42) { $bsjb = $i; break } }
+    if ($bsjb -ge 0) {
+        $vlen2 = [BitConverter]::ToUInt32($b2, $bsjb + 12)
+        $newVer = [Text.Encoding]::ASCII.GetBytes('v6.6.9')
+        for ($i = 0; $i -lt $vlen2; $i++) { $b2[$bsjb + 16 + $i] = 0 }
+        for ($i = 0; $i -lt $newVer.Length; $i++) { $b2[$bsjb + 16 + $i] = $newVer[$i] }
+        [IO.File]::WriteAllBytes($rtPath, $b2)
+    }
+    $r4 = Invoke-UnsupportedLaunch $rtPath 'rt'
+    $ev4 = Save-Json 'a24-rt.json' $r4.call.domain.error
+    Assert-Cond 'a24-unsupported-runtime' 'unsupported_managed_runtime -> managed_static_analysis, runtime_contract evidence' "kind=$($r4.det) wf=$($r4.wf) ev0=$($r4.ev[0].kind) start=+$($r4.startDelta)" (("$($r4.det)" -eq 'unsupported_managed_runtime') -and ("$($r4.wf)" -eq 'managed_static_analysis') -and ("$($r4.ev[0].kind)" -eq 'runtime_contract') -and ($r4.startDelta -eq 0)) @($ev4, $r4.call.rpc.resp)
+
+    # [5] The three fixed disabled APIs stay CAPABILITY_UNAVAILABLE WITHOUT details.
+    foreach ($d in @('debug_attach', 'debug_detach', 'debug_list_attachable_processes')) {
+        $dc = Invoke-ToolNoInit $d @{ request_id = "a24-$d"; pid = 4242 }
+        $dcode = Get-DomainError $dc
+        $dDet = [bool]($dc.domain -and $dc.domain.error -and $dc.domain.error.details)
+        Assert-Cond "a24-disabled-$d" 'CAPABILITY_UNAVAILABLE and NO details' "code=$dcode details=$dDet" (("$dcode" -eq 'CAPABILITY_UNAVAILABLE') -and (-not $dDet)) @($dc.rpc.resp)
+    }
+
+    # [6] spy: all four kinds rejected, zero Starts across the whole case.
+    $spy = Get-SpyCounters
+    $evS = Save-Json 'a24-spy.json' $spy
+    $kinds = @('pure_native', 'mixed_mode', 'unity_mono', 'unsupported_managed_runtime') | ForEach-Object { $spy."unsupported_target_rejections:$_" }
+    Assert-Cond 'a24-all-kinds-rejected' 'spy recorded every rejected kind with zero Start calls' "kinds=$($kinds -join '/') starts=$($spy.dbg_start_calls)" (($kinds | Where-Object { $_ -ge 1 }).Count -eq 4 -and ($spy.dbg_start_calls -eq 0)) @($evS)
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3122,7 +3251,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {

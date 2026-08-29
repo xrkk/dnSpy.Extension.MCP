@@ -508,13 +508,19 @@ public sealed class DebugSessionService : IDisposable {
 		return JsonSerializer.Serialize(envelope, CanonicalOptions);
 	}
 
-	static string Fail(DebugSessionCoordinator c, string code, List<string>? requiredStates = null, string? message = null) {
+	static string Fail(DebugSessionCoordinator c, string code, List<string>? requiredStates = null, string? message = null) =>
+		Fail(c, code, requiredStates, message, details: null, untrustedSampleData: false);
+
+	static string Fail(DebugSessionCoordinator c, string code, List<string>? requiredStates, string? message,
+		UnsupportedTargetDetailsDto? details, bool untrustedSampleData) {
 		var error = DomainErrorDto.Create(code, c.State, requiredStates);
 		if (message is not null)
 			error.Message = message;
+		error.Details = details;
 		return JsonSerializer.Serialize(new DebugFailureEnvelope {
 			DebugContext = c.ContextSnapshot(),
 			Error = error,
+			UntrustedSampleData = untrustedSampleData,
 		}, CanonicalOptions);
 	}
 
@@ -696,6 +702,29 @@ public sealed class DebugSessionService : IDisposable {
 					return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path is outside AllowedSampleRoot: {candidate}");
 			}
 		}
+		// FB-002 / ACC-024: deterministic unsupported-target detection over the target's own
+		// bytes — CAPABILITY_UNAVAILABLE with the TYPE-DYN-019 evidence chain, zero session.
+		// An over-limit evidence value answers a small INTERNAL_ERROR instead of shipping an
+		// over-limit untrusted domain envelope.
+		var unsupported = UnsupportedTargetDetector.Detect(targetPath);
+		if (unsupported is not null && unsupported.EvidenceOverLimit) {
+			SpyInc("unsupported_target_evidence_overflow");
+			return Fail(coordinator, DomainErrorCodes.InternalError, null,
+				"unsupported-target evidence exceeds the 1024 UTF-8 byte limit", null, false);
+		}
+		if (unsupported is not null) {
+			SpyInc("unsupported_target_rejections:" + unsupported.DetectedTargetKind);
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, null,
+				$"unsupported target kind: {unsupported.DetectedTargetKind} (use {unsupported.RecommendedWorkflow})",
+				new UnsupportedTargetDetailsDto {
+					DetectedTargetKind = unsupported.DetectedTargetKind,
+					RecommendedWorkflow = unsupported.RecommendedWorkflow,
+					Evidence = unsupported.Evidence
+						.Select(e => new UnsupportedTargetDetailsDto.EvidenceItem { Kind = e.Kind, Value = e.Value })
+						.ToList(),
+				}, true);
+		}
+
 		var detected = launchMode is LaunchModes.Auto or LaunchModes.Harness
 			? DetectRuntimeFamily(harnessPath ?? targetPath)
 			: null;
