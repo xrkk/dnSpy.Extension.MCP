@@ -2429,20 +2429,20 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	/// <summary>ACC-033: non-NTFS volumes lack stable FILE_ID_INFO/share semantics — every
-	/// launch input must sit on NTFS. Returns the offending filesystem name, or null.</summary>
+	/// launch input must sit on NTFS. Returns the offending filesystem name (or a not-ready
+	/// marker), or null when the volume is NTFS. DriveInfo throws for a no-media device, which
+	/// is itself an unsupported volume.</summary>
 	static string? FindUnsupportedVolume(string? path) {
 		if (string.IsNullOrEmpty(path))
 			return null;
 		try {
 			var full = System.IO.Path.GetFullPath(path);
-			var sb = new System.Text.StringBuilder(32);
-			if (!GetVolumeInformationByPathW(full, sb, (uint)sb.Capacity, out _, out _, out _, null, 0))
-				return "unqueryable";
-			var fs = sb.ToString();
-			return string.Equals(fs, "NTFS", StringComparison.OrdinalIgnoreCase) ? null : fs;
+			var drive = new System.IO.DriveInfo(System.IO.Path.GetPathRoot(full));
+			var format = drive.DriveFormat;
+			return string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase) ? null : format;
 		}
-		catch {
-			return null;
+		catch (Exception ex) {
+			return ex.GetType().Name;
 		}
 	}
 
@@ -2455,12 +2455,6 @@ public sealed class DebugSessionService : IDisposable {
 	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 	static extern IntPtr CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
 		IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
-
-	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-	static extern bool GetVolumeInformationByPathW(string lpszFilePath,
-		System.Text.StringBuilder lpFileSystemNameBuffer, uint nFileSystemNameSize,
-		out uint lpVolumeSerialNumber, out uint lpMaximumComponentLength, out uint lpFileSystemFlags,
-		System.Text.StringBuilder? lpVolumeNameBuffer, uint nVolumeNameSize);
 
 	[DllImport("kernel32.dll", SetLastError = true)]
 	static extern bool GetFileInformationByHandle(IntPtr hFile, out BY_HANDLE_FILE_INFORMATION lpFileInformation);
