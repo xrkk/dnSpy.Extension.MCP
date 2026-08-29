@@ -1,0 +1,231 @@
+{
+  "run": "batch11 (CHK-014/015/016 rectification batch)",
+  "commit": "70f8b7a",
+  "dll": "e322f19b9224809512673606579dbf3e53e6805b5c28c8691d11e58b9a8873ac",
+  "vm_results_root": "C:\\Tools\\mcp-repo\\tests\\debug\\results\\70f8b7a…\\",
+  "started": "2026-08-29 21:15 local",
+  "finished": "2026-08-29 21:27 local",
+  "protocol": "v2 指引 §C 单次连续 36 案顺序批跑(案间强制冷启动)",
+  "final": "36/36 exit 0, 490 assertions 0 failed",
+  "independent_jsonschema_validation": "Draft202012Validator full-doc iter_errors on all 36 latest result.json (utf-8-sig): checked=36 invalid=0 (R5 同款方法;R5 时 34/36)",
+  "null_gate_proof": "ACC-012 a12-policy-switch evidence=[wire/0010-tools-call.resp.txt](原[null]);ACC-005 a5-eviction evidence=[wire/0030,wire/0031](原[null,wire/0031])——大小写碰撞根修后四 site 全为真实 wire 证据",
+  "total_assertions": 490,
+  "cases": [
+    {
+      "case": "ACC-001",
+      "exit": 0,
+      "total": 5,
+      "failed": 0
+    },
+    {
+      "case": "ACC-002",
+      "exit": 0,
+      "total": 76,
+      "failed": 0
+    },
+    {
+      "case": "ACC-003",
+      "exit": 0,
+      "total": 7,
+      "failed": 0
+    },
+    {
+      "case": "ACC-004",
+      "exit": 0,
+      "total": 5,
+      "failed": 0
+    },
+    {
+      "case": "ACC-005",
+      "exit": 0,
+      "total": 12,
+      "failed": 0
+    },
+    {
+      "case": "ACC-006",
+      "exit": 0,
+      "total": 13,
+      "failed": 0
+    },
+    {
+      "case": "ACC-007",
+      "exit": 0,
+      "total": 21,
+      "failed": 0
+    },
+    {
+      "case": "ACC-008",
+      "exit": 0,
+      "total": 17,
+      "failed": 0
+    },
+    {
+      "case": "ACC-009",
+      "exit": 0,
+      "total": 16,
+      "failed": 0
+    },
+    {
+      "case": "ACC-010",
+      "exit": 0,
+      "total": 11,
+      "failed": 0
+    },
+    {
+      "case": "ACC-011",
+      "exit": 0,
+      "total": 11,
+      "failed": 0
+    },
+    {
+      "case": "ACC-012",
+      "exit": 0,
+      "total": 14,
+      "failed": 0
+    },
+    {
+      "case": "ACC-013",
+      "exit": 0,
+      "total": 7,
+      "failed": 0
+    },
+    {
+      "case": "ACC-014",
+      "exit": 0,
+      "total": 13,
+      "failed": 0
+    },
+    {
+      "case": "ACC-015",
+      "exit": 0,
+      "total": 7,
+      "failed": 0
+    },
+    {
+      "case": "ACC-016",
+      "exit": 0,
+      "total": 12,
+      "failed": 0
+    },
+    {
+      "case": "ACC-017",
+      "exit": 0,
+      "total": 7,
+      "failed": 0
+    },
+    {
+      "case": "ACC-018",
+      "exit": 0,
+      "total": 14,
+      "failed": 0
+    },
+    {
+      "case": "ACC-019",
+      "exit": 0,
+      "total": 8,
+      "failed": 0
+    },
+    {
+      "case": "ACC-020",
+      "exit": 0,
+      "total": 22,
+      "failed": 0
+    },
+    {
+      "case": "ACC-021",
+      "exit": 0,
+      "total": 10,
+      "failed": 0
+    },
+    {
+      "case": "ACC-022",
+      "exit": 0,
+      "total": 6,
+      "failed": 0
+    },
+    {
+      "case": "ACC-023",
+      "exit": 0,
+      "total": 5,
+      "failed": 0
+    },
+    {
+      "case": "ACC-024",
+      "exit": 0,
+      "total": 11,
+      "failed": 0
+    },
+    {
+      "case": "ACC-025",
+      "exit": 0,
+      "total": 28,
+      "failed": 0
+    },
+    {
+      "case": "ACC-026",
+      "exit": 0,
+      "total": 9,
+      "failed": 0
+    },
+    {
+      "case": "ACC-027",
+      "exit": 0,
+      "total": 19,
+      "failed": 0
+    },
+    {
+      "case": "ACC-028",
+      "exit": 0,
+      "total": 13,
+      "failed": 0
+    },
+    {
+      "case": "ACC-029",
+      "exit": 0,
+      "total": 9,
+      "failed": 0
+    },
+    {
+      "case": "ACC-030",
+      "exit": 0,
+      "total": 15,
+      "failed": 0
+    },
+    {
+      "case": "ACC-031",
+      "exit": 0,
+      "total": 13,
+      "failed": 0
+    },
+    {
+      "case": "ACC-032",
+      "exit": 0,
+      "total": 10,
+      "failed": 0
+    },
+    {
+      "case": "ACC-033",
+      "exit": 0,
+      "total": 10,
+      "failed": 0
+    },
+    {
+      "case": "ACC-034",
+      "exit": 0,
+      "total": 14,
+      "failed": 0
+    },
+    {
+      "case": "ACC-035",
+      "exit": 0,
+      "total": 13,
+      "failed": 0
+    },
+    {
+      "case": "ACC-036",
+      "exit": 0,
+      "total": 7,
+      "failed": 0
+    }
+  ]
+}

@@ -100,9 +100,9 @@
       "round_cap_note": "原 5 轮上限已达;用户 2026-08-29 指令'执行整改,整改后让子智能体审核,通过后才算任务结束'明确延伸闭环至通过,继续轮次不重置已完成计数"
     }
   ],
-  "last_checkpoint": "R5 CHK-014/015/016 整改中(第 66 轮);待批 11+R6",
+  "last_checkpoint": "第 66 轮完结;READY_TO_REVERIFY;R6 待发(轮次延伸已获用户指令授权)",
   "stop_reason": null,
-  "status": "RECTIFYING_AFTER_ROUND_5",
+  "status": "READY_TO_REVERIFY",
   "rectification": {
     "commits": [
       "05f884f",
@@ -180,5 +180,12 @@
       "39193f8"
     ],
     "batch": "batch10 36/36(490 断言 0 失败)@39193f8 真 schema 门禁——独立核验/round-5/batch-evidence/batch10-summary.json"
+  },
+  "rectification_r6": {
+    "trigger": "R5 CHK-014/015/016",
+    "commits": [
+      "70f8b7a"
+    ],
+    "batch": "batch11 36/36(490/0)@70f8b7a+独立 jsonschema 36/36 VALID——独立核验/round-6/batch-evidence/batch11-summary.json"
   }
 }
