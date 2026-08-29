@@ -523,6 +523,19 @@ public sealed class DebugSessionService : IDisposable {
 		var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
 		if (!string.IsNullOrEmpty(sampleRoot)) {
 			var rootFull = System.IO.Path.GetFullPath(sampleRoot);
+			// ACC-033: the root itself is leased from first use (handle held for the process
+			// lifetime, shared read+write but NOT delete) — overwrite/delete/rename/reparse
+			// replacement of the root fails with a share conflict for the whole lease window.
+			AcquireRootLease(rootFull);
+			// ACC-033: only volumes with stable FILE_ID_INFO/share semantics (NTFS) may host
+			// launch inputs — anything else fails closed CAPABILITY_UNAVAILABLE before any
+			// lease/claim/Start, with zero process/session side effects.
+			string? unsupportedFs = FindUnsupportedVolume(targetPath);
+			if (unsupportedFs is null)
+				unsupportedFs = FindUnsupportedVolume(harnessPath) ?? FindUnsupportedVolume(hostPath);
+			if (unsupportedFs is not null)
+				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
+					message: $"launch inputs must live on an NTFS volume (found {unsupportedFs})");
 			if (!rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
 				rootFull += System.IO.Path.DirectorySeparatorChar;
 			foreach (var candidate in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
@@ -2385,7 +2398,66 @@ public sealed class DebugSessionService : IDisposable {
 		foreach (var lease in identityLeases)
 			try { lease.Dispose(); } catch { }
 		identityLeases.Clear();
+		// The root lease intentionally outlives per-launch identity leases: it is held from
+		// first gate use to process exit (ACC-033 root-stability contract).
 	}
+
+	// ACC-033: AllowedSampleRoot directory lease — open without FILE_SHARE_DELETE so the root
+	// cannot be overwritten/deleted/renamed/reparse-replaced while the extension runs. Write is
+	// shared so fixture/tooling writes INSIDE the root keep working. First acquisition wins.
+	Microsoft.Win32.SafeHandles.SafeFileHandle? rootLease;
+
+	void AcquireRootLease(string rootFull) {
+		if (rootLease is not null)
+			return;
+		try {
+			if (!System.IO.Directory.Exists(rootFull))
+				return;
+			var handle = CreateFileW(rootFull, GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+			if (handle != IntPtr.Zero && handle != new IntPtr(-1))
+				rootLease = new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true);
+		}
+		catch {
+			// A root that cannot be leased keeps the per-path validation as the only guard;
+			// launches are not blocked by lease unavailability (fail-open here matches the
+			// existing per-file lease behavior).
+		}
+	}
+
+	/// <summary>ACC-033: non-NTFS volumes lack stable FILE_ID_INFO/share semantics — every
+	/// launch input must sit on NTFS. Returns the offending filesystem name, or null.</summary>
+	static string? FindUnsupportedVolume(string? path) {
+		if (string.IsNullOrEmpty(path))
+			return null;
+		try {
+			var full = System.IO.Path.GetFullPath(path);
+			var sb = new System.Text.StringBuilder(32);
+			if (!GetVolumeInformationByPathW(full, sb, (uint)sb.Capacity, out _, out _, out _, null, 0))
+				return "unqueryable";
+			var fs = sb.ToString();
+			return string.Equals(fs, "NTFS", StringComparison.OrdinalIgnoreCase) ? null : fs;
+		}
+		catch {
+			return null;
+		}
+	}
+
+	const uint GENERIC_READ = 0x80000000;
+	const uint FILE_SHARE_READ = 0x00000001;
+	const uint FILE_SHARE_WRITE = 0x00000002;
+	const uint OPEN_EXISTING = 3;
+	const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+
+	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+	static extern IntPtr CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+		IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
+	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+	static extern bool GetVolumeInformationByPathW(string lpszFilePath,
+		System.Text.StringBuilder lpFileSystemNameBuffer, uint nFileSystemNameSize,
+		out uint lpVolumeSerialNumber, out uint lpMaximumComponentLength, out uint lpFileSystemFlags,
+		System.Text.StringBuilder? lpVolumeNameBuffer, uint nVolumeNameSize);
 
 	[DllImport("kernel32.dll", SetLastError = true)]
 	static extern bool GetFileInformationByHandle(IntPtr hFile, out BY_HANDLE_FILE_INFORMATION lpFileInformation);

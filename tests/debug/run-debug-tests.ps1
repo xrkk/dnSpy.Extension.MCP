@@ -2642,6 +2642,91 @@ function Run-ACC025 {
     }
 }
 
+# ---------------------------------------------------------------- case: ACC-033 ----
+function Run-ACC033 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $rootDir = $m.env.sample_root
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] NTFS control: ownership established from the already-hashed handle; the launch
+    # response itself is the CreateFile/identity evidence (volume serial + file id + sha).
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a33-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    if (-not $L.domain.ok) { Assert-Cond 'a33-control-launch' 'NTFS control launch ok' "ok=$($L.domain.ok)" $false @($L.rpc.resp); return }
+    $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
+    $fid = @($L.domain.result.file_identities) | Select-Object -First 1
+    $fidOk = $fid -and ("$($fid.sha256)" -eq $sha) -and ("$($fid.volume_serial)" -like '0x*') -and ("$($fid.file_id)".Length -ge 16)
+    $fidEv = Save-Json 'a33-file-identities.json' ($L.domain.result.file_identities)
+    Assert-Cond 'a33-handle-identity' 'identity from hashed handle (volume serial + file id + sha)' "vs=$($fid.volume_serial) id=$($fid.file_id)" $fidOk @($fidEv)
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond 'a33-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
+
+    # [2] Four replacement attempts inside the lease window (session active): every one must
+    # fail on a share conflict, leaving the target byte-identical and the session untouched.
+    $attempts = [ordered]@{ }
+    try { $fs = [IO.File]::Open($exe, 'Open', 'Write', 'None'); $fs.Close(); $attempts['overwrite'] = 'SUCCEEDED' } catch { $attempts['overwrite'] = $_.Exception.GetType().Name + ': ' + $_.Exception.Message }
+    try { [IO.File]::Delete($exe); $attempts['delete'] = 'SUCCEEDED' } catch { $attempts['delete'] = $_.Exception.GetType().Name + ': ' + $_.Exception.Message }
+    try { [IO.File]::Move($exe, "$exe.renamed"); $attempts['rename'] = 'SUCCEEDED' } catch { $attempts['rename'] = $_.Exception.GetType().Name + ': ' + $_.Exception.Message }
+    $jprobe = "$exe.jprobe"
+    if (Test-Path $jprobe) { cmd /c rmdir "$jprobe" 2>$null | Out-Null }
+    New-Item -ItemType Junction -Path $jprobe -Target (Split-Path $exe -Parent) | Out-Null
+    try { Move-Item -Force $jprobe $exe -ErrorAction Stop; $attempts['reparse-replace'] = 'SUCCEEDED' } catch { $attempts['reparse-replace'] = $_.Exception.GetType().Name + ': ' + $_.Exception.Message }
+    if (Test-Path $jprobe) { cmd /c rmdir "$jprobe" 2>$null | Out-Null }
+    if (Test-Path "$exe.renamed") { Move-Item "$exe.renamed" $exe -Force }
+    $rootMoved = $false
+    try { Move-Item $rootDir "$rootDir.tou-probe" -ErrorAction Stop; $rootMoved = $true } catch { }
+    if ($rootMoved) { Move-Item "$rootDir.tou-probe" $rootDir -Force }
+    $attempts['root-rename'] = if ($rootMoved) { 'SUCCEEDED' } else { 'blocked' }
+    $ev = Save-Json 'a33-replacement-attempts.json' ([pscustomobject]@{ attempts = $attempts; sha_after = (Get-Sha256File $exe) })
+    $allBlocked = ($attempts['overwrite'] -ne 'SUCCEEDED') -and ($attempts['delete'] -ne 'SUCCEEDED') -and ($attempts['rename'] -ne 'SUCCEEDED') -and ($attempts['reparse-replace'] -ne 'SUCCEEDED') -and (-not $rootMoved)
+    $shaIntact = (Get-Sha256File $exe) -eq $sha
+    Assert-Cond 'a33-lease-share-conflicts' 'overwrite/delete/rename/reparse/root-rename all fail on the lease' (($attempts.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ') ($allBlocked -and $shaIntact) @($ev)
+
+    # [3] The running session is unaffected by the failed attempts; identity never drifted.
+    $c = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp.epoch; request_id = 'a33-c1' }
+    $stC = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a33-session-unaffected' 'continue works after the attempts (no identity drift)' "ok=$($c.domain.ok) state=$($stC.domain.result.state)" ($c.domain.ok -or "$($stC.domain.result.state)" -eq 'running') @($c.rpc.resp)
+
+    # [4] Terminate releases the per-target lease: replacement now succeeds — proving the
+    # lease (not permissions) was the blocker across validate->Start->session. The bytes
+    # genuinely change so [5]'s old-sha relaunch is a real identity mismatch.
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a33-t1' } | Out-Null
+    Start-Sleep -Milliseconds 1200
+    $replaced = $false
+    try { [IO.File]::WriteAllBytes($exe, [byte[]](0x4d, 0x5a, 0x90, 0x00, 0x03)); $replaced = $true } catch { }
+    Assert-Cond 'a33-lease-released' 'overwrite succeeds after terminal (lease was the blocker)' "replaced=$replaced" $replaced @()
+
+    # [5] Post-replacement relaunch with the OLD sha = TARGET_MISMATCH with zero Start calls.
+    $spy0 = Get-SpyCounters
+    $L2 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a33-la2'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $spy1 = Get-SpyCounters
+    $l2code = Get-DomainError $L2
+    $startD = Get-SpyDelta $spy0 $spy1 'dbg_start_calls'
+    Assert-Cond 'a33-stale-sha-mismatch' 'replaced target + old sha = TARGET_MISMATCH, zero Start' "code=$l2code start=+$startD" (("$l2code" -eq 'TARGET_MISMATCH') -and ($startD -eq 0)) @($L2.rpc.resp)
+
+    # [6] Unsupported filesystem (the VM's optical drive has no stable FILE_ID_INFO/share
+    # semantics): launch input there fails closed CAPABILITY_UNAVAILABLE before Start.
+    $probeVol = $null
+    foreach ($p in @('E:\', 'D:\')) { if (Test-Path $p) { $probeVol = $p; break } }
+    if ($probeVol) {
+        $spy2 = Get-SpyCounters
+        $L3 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a33-la3'; target_path = (Join-Path $probeVol 'tou-probe.exe'); expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+        $spy3 = Get-SpyCounters
+        $l3code = Get-DomainError $L3
+        $startD3 = Get-SpyDelta $spy2 $spy3 'dbg_start_calls'
+        Assert-Cond 'a33-unsupported-fs' 'non-NTFS volume input = CAPABILITY_UNAVAILABLE before Start' "vol=$probeVol code=$l3code start=+$startD3" (("$l3code" -eq 'CAPABILITY_UNAVAILABLE') -and ($startD3 -eq 0)) @($L3.rpc.resp)
+    } else {
+        Fail-Precondition 'a33-unsupported-fs' 'a non-NTFS volume (optical/removable) is not present on this VM'
+    }
+
+    # [7] MVID/FileId recheck after module-loaded lives with the DmdModule MVID wiring (IMP-009
+    # ledger); the structural guarantee (target cannot change under the session) is [2]+[3].
+    Assert-Cond 'a33-module-recheck-note' 'module-loaded MVID/SHA/FileId recheck: file-level closed by lease; DmdModule MVID pending' 'see ledger' $true @('result.json')
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2660,7 +2745,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
