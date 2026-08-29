@@ -2861,8 +2861,10 @@ function Run-ACC035 {
     $spyEv = Save-Json 'a35-spy-after-bp.json' $spyAfterBp
     Assert-Cond 'a35-bp-created' 'owned breakpoint listed (bound after engine bind)' "id=$bp1 bound=$($b1.domain.result.breakpoint.bound)" ($lb.domain.ok) @($lb.rpc.resp, $manEv, $spyEv)
 
-    # [3] Alternation: the fixture calls m1 then m2 each iteration, so consecutive pauses
-    # alternate modules. Only m1 turns may produce a breakpoint_hit carrying this id.
+    # [3] The engine id is instance-unique ("<name> (id=N)"), so the breakpoint binds ONLY
+    # the addressed sibling. Every continue therefore runs through the OTHER module's
+    # invocation unpaused and stops at the next m1 call: consecutive pauses must all be
+    # breakpoint_hits carrying exactly this id — the sibling never produces one.
     $hitPattern = @()
     $cursor = Get-MaxEventCursor $sid $gen
     for ($i = 0; $i -lt 4; $i++) {
@@ -2873,11 +2875,15 @@ function Run-ACC035 {
         $ev = Read-EventKinds $sid $gen $cursor
         $cursor = $ev.next
         $hitEv = @($ev.events | Where-Object { $_.kind -eq 'breakpoint_hit' -and "$($_.payload.breakpoint_id)" -eq "$bp1" })
-        $hitPattern += if ($hitEv.Count -gt 0) { 'HIT' } else { 'miss' }
+        $foreign = @($ev.events | Where-Object { $_.kind -eq 'breakpoint_hit' -and "$($_.payload.breakpoint_id)" -ne "$bp1" })
+        $hitPattern += if ($hitEv.Count -gt 0 -and $foreign.Count -eq 0) { 'HIT' } else { 'miss' }
     }
     $patEv = Save-Json 'a35-hit-pattern.json' ($hitPattern -join ',')
-    $alternating = ($hitPattern.Count -ge 3) -and ($hitPattern[0] -eq 'HIT') -and ($hitPattern[1] -eq 'miss') -and ($hitPattern[2] -eq 'HIT')
-    Assert-Cond 'a35-module-scoped-hits' 'hits alternate with the fixture module order (m1 HIT, m2 miss, m1 HIT)' "pattern=$($hitPattern -join ',')" $alternating @($patEv)
+    $allHits = ($hitPattern.Count -eq 4) -and (@($hitPattern | Where-Object { $_ -eq 'HIT' }).Count -eq 4)
+    # Engine-id evidence: the two same-MVID siblings carry DISTINCT instance-unique ids.
+    $idKeys = @($spyAfterBp.PSObject.Properties | Where-Object { $_.Name -like 'upstream_id:*' } | ForEach-Object { $_.Name })
+    $distinctIds = ($idKeys.Count -eq 2) -and ($idKeys[0] -ne $idKeys[1])
+    Assert-Cond 'a35-module-scoped-hits' 'every stop is this bp id (sibling runs through unpaused); distinct engine ids per sibling' "pattern=$($hitPattern -join ',') ids=$($idKeys -join ' ; ')" ($allHits -and $distinctIds) @($patEv, $spyEv)
 
     # [4] Second handle retrying the shared identity (same MVID/token/offset): exactly one
     # engine location exists, so this is a cross-module TARGET_MISMATCH — never a second
