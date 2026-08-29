@@ -1176,6 +1176,10 @@ public sealed class DebugSessionService : IDisposable {
 			var location = locationFactory.Create(module.UpstreamId, tokenValue, (uint)ilOffset);
 			var bp = breakpointsService.Add(new DbgCodeBreakpointInfo(location,
 				new DbgCodeBreakpointSettings { IsEnabled = enabled }, 0));
+			// dnSpy's Add answers null when a breakpoint ALREADY exists at this location —
+			// reuse that live breakpoint instead of failing the create (multiple owned ids may
+			// share one engine breakpoint; removal stays per-owned-id).
+			bp ??= breakpointsService.TryGetBreakpoint(location);
 			return bp is null ? null : new[] { bp };
 		});
 		if (created is null or { Length: 0 }) {
@@ -2337,7 +2341,14 @@ public sealed class DebugSessionService : IDisposable {
 			else {
 				controlTcs?.TrySetResult("removed");
 				ReleaseLeases();
+				// Session teardown must remove the OWNED dnSpy breakpoints too — clearing only
+				// the maps would leak engine breakpoints that then collide with the next
+				// session's Add at the same location (dnSpy returns null for duplicates).
+				DbgCodeBreakpoint[]? leaked = null;
 				lock (sessionLock) {
+					var ownedDnSpy = dnSpyBreakpointsByMcp.Values.SelectMany(v => v).Where(b => b is not null).ToArray();
+					if (ownedDnSpy.Length > 0)
+						leaked = ownedDnSpy;
 					bpStore = new DebugBreakpointStore();
 					moduleByOwnedBp.Clear();
 					mcpIdByDnSpyBreakpoint.Clear();
@@ -2345,6 +2356,8 @@ public sealed class DebugSessionService : IDisposable {
 					dnSpyBreakpointsByMcp.Clear();
 					modulesByHandle.Clear();
 				}
+				if (leaked is not null)
+					breakpointsService?.Remove(leaked);
 			}
 			}
 		}
