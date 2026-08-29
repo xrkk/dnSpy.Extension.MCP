@@ -709,11 +709,14 @@ public sealed class DebugSessionService : IDisposable {
 		var unsupported = UnsupportedTargetDetector.Detect(targetPath);
 		if (unsupported is not null && unsupported.EvidenceOverLimit) {
 			SpyInc("unsupported_target_evidence_overflow");
+			ReleaseLeases();
 			return Fail(coordinator, DomainErrorCodes.InternalError, null,
 				"unsupported-target evidence exceeds the 1024 UTF-8 byte limit", null, false);
 		}
 		if (unsupported is not null) {
 			SpyInc("unsupported_target_rejections:" + unsupported.DetectedTargetKind);
+			// A rejected target keeps no lease (same rule as the identity rejections).
+			ReleaseLeases();
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, null,
 				$"unsupported target kind: {unsupported.DetectedTargetKind} (use {unsupported.RecommendedWorkflow})",
 				new UnsupportedTargetDetailsDto {
