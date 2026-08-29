@@ -1198,9 +1198,21 @@ function Run-ACC020 {
         Assert-Cond "gated-$t" 'INVALID_STATE while a debug session is active' "code=$code" ("$code" -eq 'INVALID_STATE') @($c.rpc.resp)
     }
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'acc20-term' } | Out-Null
+    Start-Sleep -Milliseconds 900
 
-    # The UI-debugging OR branch (coordinator idle + IsDebugging=true) needs an in-process probe.
-    Fail-Precondition 'ui-debugging-branch' 'in-process DbgManager.IsDebugging probe with idle coordinator'
+    # The UI-debugging OR branch: coordinator back to idle + a human UI debug session active
+    # (debug_test_start ui_debugging simulates DbgManager.IsDebugging through the same seam).
+    $arm = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'ui_debugging' }
+    Assert-Cond 'ui-arm' 'ui_debugging seam armed' "ok=$($arm.domain.ok)" ($arm.domain.ok) @($arm.rpc.resp)
+    $stIdle = Invoke-ToolNoInit 'debug_status' @{ }
+    $coordIdle = "$($stIdle.domain.result.state)" -eq 'idle'
+    foreach ($t in $six) {
+        $c = Invoke-ToolNoInit $t @{ name = 'Never' }
+        $code = Get-DomainError $c
+        Assert-Cond "ui-gated-$t" 'INVALID_STATE while UI debugging (coordinator idle)' "code=$code idle=$coordIdle" (("$code" -eq 'INVALID_STATE') -and $coordIdle) @($c.rpc.resp)
+    }
+    $off = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'ui_debugging_off' }
+    Assert-Cond 'ui-disarm' 'ui_debugging seam disarmed' "ok=$($off.domain.ok)" ($off.domain.ok) @($off.rpc.resp)
 }
 
 # ---------------------------------------------------------------- case: ACC-021 ----
