@@ -47,12 +47,10 @@ if ($VerifyHarness) {
     foreach ($hid in $handlerIds) {
         if ($manifests.Name -notcontains "$hid.json") { $errors += "manifest missing: $hid" }
     }
-    # Handler wiring is enforced by the dispatch table content check below.
-    $dispatchStart = $driverText.IndexOf('$handlers = @{')
-    $dispatchEnd = $driverText.IndexOf('}', $dispatchStart)
-    $dispatchBody = $driverText.Substring($dispatchStart, $dispatchEnd - $dispatchStart)
+    # Handler wiring: each case must have a dispatch-table entry of the exact
+    # "'ACC-xxx' = ${function:Run-ACCxxx}" shape (not merely a textual mention).
     foreach ($hid in $handlerIds) {
-        if ($dispatchBody -notmatch [regex]::Escape("'$hid'")) { $errors += "dispatch handler missing: $hid" }
+        if ($driverText -notmatch [regex]::Escape(("'{0}' = " + '${{function:Run-') + $hid)) { $errors += "dispatch handler missing: $hid" }
     }
     if (-not (Test-Path (Join-Path $repo 'tests\debug\contracts\dnspy.debug.test.v1.schema.json'))) { $errors += 'result schema file missing' }
     if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
