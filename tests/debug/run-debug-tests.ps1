@@ -3366,7 +3366,7 @@ function Run-ACC023 {
     $orig = Read-SettingsSnapshot
     $defOk = $orig -and ("$($orig.Host)" -eq 'localhost') -and ([int]$orig.Port -eq 3000) -and (@($orig.RemoteAllowedCidrs).Count -eq 0) -and (-not $orig.RemoteTokenVerifier) -and (-not $orig.RemoteHostOnlyAcknowledged)
     $ev1 = Save-Json 'a23-defaults.json' $orig
-    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack (no VM IP in the default posture)' "ok=$defOk" $defOk @
+    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack (no VM IP in the default posture)' "ok=$defOk" $defOk @ ($ev1)
 
     # [2] Provision remote (urlacl + firewall + single ApplySnapshot) and prove authenticated
     # reachability with unauthenticated 401.
