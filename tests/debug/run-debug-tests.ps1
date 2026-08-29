@@ -2707,10 +2707,12 @@ function Run-ACC033 {
     $startD = Get-SpyDelta $spy0 $spy1 'dbg_start_calls'
     Assert-Cond 'a33-stale-sha-mismatch' 'replaced target + old sha = TARGET_MISMATCH, zero Start' "code=$l2code start=+$startD" (("$l2code" -eq 'TARGET_MISMATCH') -and ($startD -eq 0)) @($L2.rpc.resp)
 
-    # [6] Unsupported filesystem (the VM's optical drive has no stable FILE_ID_INFO/share
-    # semantics): launch input there fails closed CAPABILITY_UNAVAILABLE before Start.
+    # [6] Unsupported filesystem: a volume without stable FILE_ID_INFO/share semantics (the
+    # VM's no-media CD-ROM D:) fails closed CAPABILITY_UNAVAILABLE before any lease/Start.
     $probeVol = $null
-    foreach ($p in @('E:\', 'D:\')) { if (Test-Path $p) { $probeVol = $p; break } }
+    foreach ($vol in (Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter)) {
+        if ("$($vol.FileSystem)" -ne 'NTFS') { $probeVol = "$($vol.DriveLetter):\"; break }
+    }
     if ($probeVol) {
         $spy2 = Get-SpyCounters
         $L3 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a33-la3'; target_path = (Join-Path $probeVol 'tou-probe.exe'); expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }

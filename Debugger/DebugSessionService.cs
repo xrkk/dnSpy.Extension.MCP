@@ -486,6 +486,18 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
 				message: $"requested architecture {architecture} does not match the debugging dnSpy process ({hostArch})");
 
+		// ACC-033: only volumes with stable FILE_ID_INFO/share semantics (NTFS) may host
+		// launch inputs — fail closed before any lease/claim/Start, zero side effects.
+		{
+			var hostPathEarly = ArgString(args, "host_path");
+			var harnessPathEarly = ArgString(args, "harness_path");
+			var unsupportedFs = FindUnsupportedVolume(targetPath)
+				?? FindUnsupportedVolume(harnessPathEarly) ?? FindUnsupportedVolume(hostPathEarly);
+			if (unsupportedFs is not null)
+				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
+					message: $"launch inputs must live on an NTFS volume (found {unsupportedFs})");
+		}
+
 		// Target identity + lease (the Start call must not race a file replacement).
 		if (!TryLeaseIdentity(targetPath, "target", "file", expectedSha, out var targetIdentity, out var identityError))
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
@@ -527,15 +539,6 @@ public sealed class DebugSessionService : IDisposable {
 			// lifetime, shared read+write but NOT delete) — overwrite/delete/rename/reparse
 			// replacement of the root fails with a share conflict for the whole lease window.
 			AcquireRootLease(rootFull);
-			// ACC-033: only volumes with stable FILE_ID_INFO/share semantics (NTFS) may host
-			// launch inputs — anything else fails closed CAPABILITY_UNAVAILABLE before any
-			// lease/claim/Start, with zero process/session side effects.
-			string? unsupportedFs = FindUnsupportedVolume(targetPath);
-			if (unsupportedFs is null)
-				unsupportedFs = FindUnsupportedVolume(harnessPath) ?? FindUnsupportedVolume(hostPath);
-			if (unsupportedFs is not null)
-				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
-					message: $"launch inputs must live on an NTFS volume (found {unsupportedFs})");
 			if (!rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
 				rootFull += System.IO.Path.DirectorySeparatorChar;
 			foreach (var candidate in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
