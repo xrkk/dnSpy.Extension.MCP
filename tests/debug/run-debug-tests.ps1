@@ -3608,7 +3608,7 @@ function Run-ACC003 {
     Assert-Cond 'a3-401-shape' '401: fixed WWW-Authenticate Bearer realm, empty body' "www=$www bodyLen=$($body401.Length)" ($www -and ($body401.Length -eq 0)) @($ev2)
 
     # Health endpoint honors the same wall; a valid token passes it.
-    $hNo = Probe $remoteUrl @() ''
+    $hNo = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $remoteUrl 2>$null
     $hOk = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $remoteUrl -H "Authorization: Bearer $goodTok" 2>$null
     Assert-Cond 'a3-health-endpoint' 'health: 401 unauthenticated, 200 authenticated' "no=$hNo ok=$hOk" (($hNo -eq '401') -and ("$hOk" -eq '200')) @()
 
