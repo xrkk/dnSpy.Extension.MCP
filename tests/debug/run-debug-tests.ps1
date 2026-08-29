@@ -3239,8 +3239,9 @@ function Run-ACC024 {
     # [6] spy: all four kinds rejected, zero Starts across the whole case.
     $spy = Get-SpyCounters
     $evS = Save-Json 'a24-spy.json' $spy
-    $kinds = @('pure_native', 'mixed_mode', 'unity_mono', 'unsupported_managed_runtime') | ForEach-Object { $spy."unsupported_target_rejections:$_" }
-    Assert-Cond 'a24-all-kinds-rejected' 'spy recorded every rejected kind with zero Start calls' "kinds=$($kinds -join '/') starts=$($spy.dbg_start_calls)" (($kinds | Where-Object { $_ -ge 1 }).Count -eq 4 -and ($spy.dbg_start_calls -eq 0)) @($evS)
+    $kinds = @('pure_native', 'mixed_mode', 'unity_mono', 'unsupported_managed_runtime') | ForEach-Object { [int]$spy."unsupported_target_rejections:$_" }
+    $starts = if ($spy.PSObject.Properties.Name -contains 'dbg_start_calls') { [int]$spy.dbg_start_calls } else { 0 }
+    Assert-Cond 'a24-all-kinds-rejected' 'spy recorded every rejected kind with zero Start calls' "kinds=$($kinds -join '/') starts=$starts" ((@($kinds | Where-Object { $_ -ge 1 }).Count -eq 4) -and ($starts -eq 0)) @($evS)
 }
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
