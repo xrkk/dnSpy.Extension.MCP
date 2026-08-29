@@ -806,8 +806,23 @@ function Run-ACC002 {
             Assert-Cond 'remote-restart' 'health 200 on remote snapshot' 'failed to come up' $false @('urlacl-add.log')
         }
 
-        # (true,true,startup IsDebugging=true) needs the in-process gate fixture.
-        Fail-Precondition 'combo-D-startup-debugging' 'in-process startup IsDebugging=true injection'
+        # (true, true, startup IsDebugging=true): the startup gate sample freezes CLOSED
+        # (EffectiveDebugLaunch=false) - simulated through the DNMCP_TEST_STARTUP_DEBUGGING
+        # seam inherited by the spawned dnSpy.
+        $env:DNMCP_TEST_STARTUP_DEBUGGING = '1'
+        $comboDJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+        if (Restart-WithSnapshot $comboDJson) {
+            $tlD = Get-ToolList $v
+            $namesD = @($tlD.tools | ForEach-Object { $_.name })
+            $debugD = @($namesD | Where-Object { $_ -like 'debug_*' })
+            $capD = Invoke-ToolNoInit 'debug_capabilities' @{ }
+            $enabledD = "$($capD.domain.result.debug_enabled)"
+            $comboDOk = ($enabledD -eq 'False') -and ($debugD.Count -eq 1) -and ($debugD[0] -eq 'debug_capabilities')
+            Assert-Cond 'combo-D-startup-debugging' 'startup-busy gate freezes closed: debug_enabled=false, only debug_capabilities advertised' "enabled=$enabledD debugTools=$($debugD -join ',')" $comboDOk @($capD.rpc.resp)
+        } else {
+            Assert-Cond 'combo-D-startup-debugging' 'combo-D dnSpy restart succeeded' 'failed' $false @()
+        }
+        Remove-Item Env:\DNMCP_TEST_STARTUP_DEBUGGING -ErrorAction SilentlyContinue
     } finally {
         if ($orig) {
             try { Restart-WithSnapshot $orig | Out-Null } catch { }
