@@ -462,7 +462,13 @@ public sealed class DebugSessionService : IDisposable {
 		if (!string.IsNullOrEmpty(harnessPath) && !TryLeaseIdentity(harnessPath, "harness", "file", harnessSha, out harnessIdentity, out identityError))
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
 
-		var breakKind = ArgString(args, "break_kind") ?? BreakKinds.None;
+		var breakKind = ArgString(args, "break_kind");
+		if (string.IsNullOrEmpty(breakKind))
+			breakKind = BreakKinds.None;
+		// ACC-030: harness launches accept only none/omitted break_kind — the other three
+		// values are -32602 (ArgumentException) before any lease or Start.
+		if (launchMode == LaunchModes.Harness && breakKind != BreakKinds.None)
+			throw new ArgumentException("harness launch_mode allows only break_kind=none", "break_kind");
 		// CON-DYN-011 / ACC-026: reparse points (junctions/symlinks) in any component of the
 		// target/host/harness/working-directory paths are rejected before the identity lease —
 		// identity must resolve on a reparse-free path, never through substitution.
