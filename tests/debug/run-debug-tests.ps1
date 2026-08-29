@@ -3025,14 +3025,24 @@ function Run-ACC028 {
     $g = [string]::Concat([char]0xD834, [char]0xDD1E)
     $id1023 = $g * 341    # 341 x 3 bytes = 1023 UTF-8 bytes (chars stay under the schema max)
     $id1029 = $g * 343    # 343 x 3 = 1029 bytes -> byte-limit rejection
-    $r1 = Send-Rpc 'tools/call' @{ name = 'debug_read_events'; arguments = @{ session_id = $id1023; generation = 1; after_cursor = 0 } }
-    $c1 = if ($r1.json -and $r1.json.error) { "$($r1.json.error.code)" } else { '' }
-    $dom1 = $null; try { $dom1 = ($r1.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
-    $d1 = if ($dom1 -and $dom1.error) { "$($dom1.error.code)" } else { '' }
-    $r2 = Send-Rpc 'tools/call' @{ name = 'debug_read_events'; arguments = @{ session_id = $id1029; generation = 1; after_cursor = 0 } }
-    $c2 = if ($r2.json -and $r2.json.error) { "$($r2.json.error.code)" } else { '' }
-    $ev6 = Save-Text 'a28-utf8-boundary.txt' "1023B: rpc=$c1 domain=$d1`n1029B: rpc=$c2"
-    Assert-Cond 'a28-utf8-byte-boundary' '1023 UTF-8 bytes passes structure (NOT_FOUND), 1029 bytes = -32602 byte rejection' "1023=$c1/$d1 1029=$c2" (("$c2" -eq '-32602') -and ("$d1" -eq 'NOT_FOUND')) @($ev6)
+    # Send-Rpc writes bodies with an ASCII encoding that mangles non-BMP input, so these
+    # probes go through curl with properly UTF-8-encoded body files.
+    function Invoke-ByteProbe([string]$IdValue, [int]$ProbeId) {
+        $body = '{"jsonrpc":"2.0","id":' + $ProbeId + ',"method":"tools/call","params":{"name":"debug_read_events","arguments":{"session_id":"' + $IdValue + '","generation":1,"after_cursor":0}}}'
+        $f = Join-Path $script:OutDir ("wire\a28-byte-$ProbeId.req.json")
+        [IO.File]::WriteAllText($f, $body, (New-Object System.Text.UTF8Encoding($false)))
+        $raw = & curl.exe -s --max-time 20 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary "@$f" 2>$null
+        Save-Text ("a28-byte-$ProbeId.resp.txt") "$raw" | Out-Null
+        $o = $null; try { $o = $raw | ConvertFrom-Json } catch { }
+        if ($o -and $o.error) { return "rpc:$($o.error.code)" }
+        $dom = $null; try { $dom = ($o.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
+        if ($dom -and $dom.error) { return "domain:$($dom.error.code)" }
+        return 'other'
+    }
+    $c1 = Invoke-ByteProbe $id1023 81
+    $c2 = Invoke-ByteProbe $id1029 82
+    $ev6 = Save-Text 'a28-utf8-boundary.txt' "1023B: $c1`n1029B: $c2"
+    Assert-Cond 'a28-utf8-byte-boundary' '1023 UTF-8 bytes passes structure (NOT_FOUND), 1029 bytes = -32602 byte rejection' "1023=$c1 1029=$c2" (("$c2" -eq 'rpc:-32602') -and ("$c1" -eq 'domain:NOT_FOUND')) @($ev6)
 
     # [7] Wait cap (CON-DYN-009 global 8): nine concurrent waits -> the ninth LIMIT_EXCEEDED.
     # Hold all nine: after_cursor at the session's current max cursor means no events are
