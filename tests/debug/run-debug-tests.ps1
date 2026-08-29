@@ -2243,7 +2243,10 @@ function Run-ACC010 {
             # yields non-0x06 or foreign-module tokens the bp identity cannot use).
             if ($candTok -like '0x06*' -and $candMod -eq $mod) {
                 $hotTok = $candTok
-                $hotOff = [int]$sy.domain.result.items[0].location.il_offset
+                # Pin to offset 0 — the method's first IL instruction is always a real
+                # boundary; a stepped-to frame offset can fall mid-instruction (e.g. inside
+                # a ldstr) where a CorDebug breakpoint never triggers (known ledger item).
+                $hotOff = 0
             }
         }
     }
