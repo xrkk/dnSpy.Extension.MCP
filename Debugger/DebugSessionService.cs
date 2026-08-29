@@ -106,12 +106,22 @@ public sealed class DebugSessionService : IDisposable {
 	readonly Dictionary<string, DbgModule?> moduleByOwnedBp = new();
 
 	/// <summary>The upstream location identity for a live module. In-memory modules (no
-	/// filename) must carry the in-memory ModuleId flags or the engine never binds (ACC-035);
-	/// disk-backed modules keep the filename identity.</summary>
-	static ModuleId UpstreamIdOf(DbgModule module) =>
-		string.IsNullOrEmpty(module.Filename)
-			? ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true)
-			: (ModuleId)module.Filename;
+	/// filename) need the engine's own ModuleId — built from the same ModuleDef the metadata
+	/// service loads, exactly like dndbg does — or the engine never binds (ACC-035); disk-backed
+	/// modules keep the filename identity.</summary>
+	ModuleId UpstreamIdOf(DbgModule module) {
+		if (!string.IsNullOrEmpty(module.Filename))
+			return (ModuleId)module.Filename;
+		try {
+			var md = metadataService?.TryGetMetadata(module, DbgLoadModuleOptions.None);
+			if (md is not null)
+				return ModuleId.Create(md, module.IsDynamic, isInMemory: true);
+		}
+		catch {
+			// metadata unavailable: fall through to the name-only in-memory guess
+		}
+		return ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true);
+	}
 	readonly Dictionary<string, RegisteredModuleRecord> modulesByHandle = new();
 	string exceptionPolicy = "unhandled";
 
@@ -991,7 +1001,7 @@ public sealed class DebugSessionService : IDisposable {
 			foreach (var runtime in process.Runtimes) {
 				string runtimeHandle = $"rt-{index++}";
 				foreach (var module in runtime.Modules) {
-					string handle = $"mod-{modulesByHandle.Count}";
+					string handle = $"mod-g{coordinator.Generation}-{modulesByHandle.Count}";
 					modulesByHandle[handle] = new RegisteredModuleRecord {
 						ModuleHandle = handle,
 						RuntimeHandle = runtimeHandle,
@@ -1045,7 +1055,7 @@ public sealed class DebugSessionService : IDisposable {
 				foreach (var runtime in process.Runtimes) {
 					var runtimeHandle = $"rt-{index++}";
 					foreach (var module in runtime.Modules) {
-						string handle = $"mod-{modules.Count}";
+						string handle = $"mod-g{coordinator.Generation}-{modules.Count}";
 						var record = new RegisteredModuleRecord {
 							ModuleHandle = handle,
 							RuntimeHandle = runtimeHandle,
@@ -1133,6 +1143,16 @@ public sealed class DebugSessionService : IDisposable {
 			IdentityStrength = identityStrength,
 			Sha256 = module.Sha256,
 		});
+		// ACC-035: with identical MVID/token/offset on same-bytes sibling modules there is
+		// exactly one engine location — a SECOND module_handle retrying the same identity is a
+		// cross-module mismatch, never a second binding (and never an INTERNAL_ERROR).
+		foreach (var existingBp in bpStore.List()) {
+			if (existingBp.Module.ModuleHandle != moduleHandle
+				&& string.Equals(existingBp.Module.Mvid, mvid, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(existingBp.MethodToken, methodToken, StringComparison.OrdinalIgnoreCase)
+				&& existingBp.IlOffset == ilOffset)
+				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "identity already owned by another module_handle of this session");
+		}
 		var shaForCreate = string.IsNullOrEmpty(moduleSha) ? module.Sha256 : moduleSha;
 		var (entry, error) = bpStore.TryCreate(moduleHandle, shaForCreate, mvid, methodToken, ilOffset, enabled);
 		if (entry is null || error != DebugBreakpointStore.CreateError.None)

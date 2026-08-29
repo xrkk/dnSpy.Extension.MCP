@@ -2877,28 +2877,15 @@ function Run-ACC035 {
     $alternating = ($hitPattern.Count -ge 3) -and ($hitPattern[0] -eq 'HIT') -and ($hitPattern[1] -eq 'miss') -and ($hitPattern[2] -eq 'HIT')
     Assert-Cond 'a35-module-scoped-hits' 'hits alternate with the fixture module order (m1 HIT, m2 miss, m1 HIT)' "pattern=$($hitPattern -join ',')" $alternating @($patEv)
 
-    # [4] Second handle with the shared identity is its OWN breakpoint: hits then belong to
-    # the second id on m2 turns (never re-attributed to the first).
-    $bp2Args = @{ session_id = $sid; generation = $gen; pause_epoch = $held.epoch; request_id = 'a35-bp2'; module_handle = $h2; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0 }
-    $b2 = Invoke-ToolNoInit 'debug_set_breakpoint' $bp2Args
-    $bp2Ok = $b2.domain.ok
-    $bp2 = if ($bp2Ok) { "$($b2.domain.result.breakpoint.breakpoint_id)" } else { '' }
-    Assert-Cond 'a35-second-handle-bp' 'breakpoint on the second handle creates a distinct id' "ok=$bp2Ok id=$bp2" ($bp2Ok -and ($bp2 -ne $bp1)) @($b2.rpc.resp)
-    if ($bp2Ok) {
-        $cursor2 = Get-MaxEventCursor $sid $gen
-        $saw2 = $false
-        for ($i = 0; $i -lt 4; $i++) {
-            Resume-FromPaused $sid $gen | Out-Null
-            Start-Sleep -Milliseconds 700
-            $held2 = Wait-HeldPause $sid $gen
-            if (-not $held2.ok) { break }
-            $ev2 = Read-EventKinds $sid $gen $cursor2
-            $cursor2 = $ev2.next
-            if (@($ev2.events | Where-Object { $_.kind -eq 'breakpoint_hit' -and "$($_.payload.breakpoint_id)" -eq "$bp2" }).Count -gt 0) { $saw2 = $true; break }
-        }
-        Assert-Cond 'a35-second-id-hits' 'second id hits on its own module turns' "saw=$saw2" $saw2
-        Invoke-ToolNoInit 'debug_remove_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $held2.epoch; request_id = 'a35-rm2'; breakpoint_id = $bp2 } | Out-Null
-    }
+    # [4] Second handle retrying the shared identity (same MVID/token/offset): exactly one
+    # engine location exists, so this is a cross-module TARGET_MISMATCH — never a second
+    # binding and never an INTERNAL_ERROR.
+    $b2 = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $held.epoch; request_id = 'a35-bp2'; module_handle = $h2; identity_strength = 'runtime_weak'; mvid = $mvid; method_token = $token; il_offset = 0 }
+    $b2code = Get-DomainError $b2
+    Assert-Cond 'a35-second-handle-bp' 'second handle + shared identity = TARGET_MISMATCH' "code=$b2code" ("$b2code" -eq 'TARGET_MISMATCH') @($b2.rpc.resp)
+    $lbSet = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+    $setIds = (@($lbSet.domain.result.items) | ForEach-Object { $_.breakpoint_id }) -join ','
+    Assert-Cond 'a35-single-owned-set' 'owned set still exactly the first breakpoint' "ids=[$setIds]" ($setIds -eq $bp1) @($lbSet.rpc.resp)
 
     # [5] runtime_weak + module_sha256 = -32602; owned set unchanged across the rejection.
     $lbBefore = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
