@@ -2279,11 +2279,12 @@ public sealed class DebugSessionService : IDisposable {
 			using var br = new BinaryReader(fs);
 			fs.Position = 0x3C;
 			var peOffset = br.ReadInt32();
-			fs.Position = peOffset + 4;
+			// "PE\0\0" sits AT peOffset (Machine follows at +4); the optional header magic
+			// decides the data-directory base: PE32 (0x10b) at 96, PE32+ (0x20b) at 112;
+			// the CLR header is directory index 14.
+			fs.Position = peOffset;
 			if (br.ReadInt32() != 0x4550)
 				return null;
-			// Optional header magic decides the data-directory base: PE32 (0x10b) at 96,
-			// PE32+ (0x20b) at 112; the CLR header is directory index 14.
 			fs.Position = peOffset + 24;
 			var magic = br.ReadUInt16();
 			var dirBase = magic == 0x20B ? 112 : 96;
