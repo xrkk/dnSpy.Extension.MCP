@@ -2755,7 +2755,7 @@ function Run-ACC032 {
     $d1 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a32-raw'; module_handle = $mh }
     $a1ok = $d1.domain.ok
     $art1 = $d1.domain.result.artifact
-    $fileSha = if ($art1 -and (Test-Path "$($art1.path)")) { (Get-FileHash "$($art1.path)" -Algorithm SHA256).Hash.ToLower() } else { '' }
+    $fileSha = if ($art1 -and (Test-Path "$($art1.path)")) { Get-Sha256File "$($art1.path)" } else { '' }
     $man1 = if ($art1 -and (Test-Path "$($art1.manifest_path)")) { Get-Content "$($art1.manifest_path)" -Raw | ConvertFrom-Json } else { $null }
     $man1Ev = if ($man1) { Save-Json 'a32-manifest-raw.json' $man1 } else { $null }
     $rawOk = $a1ok -and ("$($art1.kind)" -eq 'raw') -and ("$($art1.sha256)" -eq $sha) -and ($fileSha -eq $sha) -and $man1 -and ("$($man1.byte_equivalence)" -eq 'source_exact') -and (-not $man1.reconstruction_method)
