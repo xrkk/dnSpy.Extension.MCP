@@ -3120,7 +3120,10 @@ function Get-CorFlagsOffset([byte[]]$b) {
         $rawSize = [BitConverter]::ToUInt32($b, $sec + 16)
         $rawPtr = [BitConverter]::ToUInt32($b, $sec + 20)
         $span = [Math]::Max($virtSize, $rawSize)
-        if ($clrRva -ge $virtAddr -and $clrRva -lt ($virtAddr + $span)) { return @($rawPtr + ($clrRva - $virtAddr), $clrRva) }
+        if ($clrRva -ge $virtAddr -and $clrRva -lt ($virtAddr + $span)) {
+            [uint32]$corOff = [uint32]$rawPtr + ([uint32]$clrRva - [uint32]$virtAddr)
+            return @{ CorOff = $corOff; ClrRva = $clrRva }
+        }
     }
     return $null
 }
@@ -3152,8 +3155,8 @@ function Run-ACC024 {
     $b = [IO.File]::ReadAllBytes($mixedPath)
     $co = Get-CorFlagsOffset $b
     if ($co) {
-        $flags = [BitConverter]::ToUInt32($b, $co[0] + 16)
-        [BitConverter]::GetBytes($flags -band 0xFFFFFFFE).CopyTo($b, $co[0] + 16)
+        $flags = [BitConverter]::ToUInt32($b, [int]$co.CorOff + 16)
+        [BitConverter]::GetBytes($flags -band 0xFFFFFFFE).CopyTo($b, [int]$co.CorOff + 16)
         [IO.File]::WriteAllBytes($mixedPath, $b)
     }
     $r2 = Invoke-UnsupportedLaunch $mixedPath 'mixed'
