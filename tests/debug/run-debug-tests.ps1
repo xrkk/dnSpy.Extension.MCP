@@ -1096,7 +1096,11 @@ function Run-ACC011 {
         Assert-Cond "bp-$Id" "$ExpectKind $ExpectCode" "domain=$code rpc=$rpcErr" $ok @($c.rpc.resp)
     }
     $goodMvid = $mvid
-    $badMvid = if ($mvid -match '^[0-9a-f-]+$') { ($mvid -replace '^[0-9a-f]', 'f') } else { '00000000-0000-0000-0000-00000000bad0' }
+    $badMvid = if ($mvid -match '^[0-9a-f-]+$') {
+        # Always change the first nibble; replacing it with f was a no-op for MVIDs that
+        # already began with f and accidentally created a valid breakpoint.
+        $(if ($mvid[0] -eq 'f') { 'e' } else { 'f' }) + $mvid.Substring(1)
+    } else { '00000000-0000-0000-0000-00000000bad0' }
     Try-Bp 'wrong-sha' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badsha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; module_sha256 = ('0' * 64) } 'domain' 'TARGET_MISMATCH'
     Try-Bp 'wrong-mvid' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badmvid'; module_handle = $mod; mvid = $badMvid; method_token = $token; il_offset = 0; module_sha256 = $sha } 'domain' 'TARGET_MISMATCH'
     Try-Bp 'stale-module-handle' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badmod'; module_handle = 'mod-99999'; mvid = $goodMvid; method_token = $token; il_offset = 0; module_sha256 = $sha } 'domain' 'TARGET_MISMATCH'
@@ -2461,8 +2465,13 @@ function Run-ACC010 {
     $evj = ConvertTo-Json @($w.domain.result.events) -Depth 10 -Compress
     $stH = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
     Assert-Cond 'a10-hit-evt' 'breakpoint hit (EVT breakpoint_hit / paused)' "state=$($stH.domain.result.state) hit=$($evj -match 'breakpoint_hit')" (($stH.domain.result.state -eq 'paused') -or ($evj -match 'breakpoint_hit')) @($w.rpc.resp, $stH.rpc.resp)
-    $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
-    $e2 = @($lst2.domain.result.items | Where-Object breakpoint_id -eq $bpid)[0]
+    $lst2 = $null; $e2 = $null
+    $boundDeadline = (Get-Date).AddSeconds(5)
+    do {
+        $lst2 = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
+        $e2 = @($lst2.domain.result.items | Where-Object breakpoint_id -eq $bpid)[0]
+        if ("$($e2.bound)" -ne 'True') { Start-Sleep -Milliseconds 200 }
+    } while ("$($e2.bound)" -ne 'True' -and (Get-Date) -lt $boundDeadline)
     Assert-Cond 'a10-bound-after-hit' 'bound=true after the bound/hit event' "bound=$($e2.bound)" ("$($e2.bound)" -eq 'True') @($lst2.rpc.resp)
 
     # remove: only the owned bp disappears (list empty of it; no other entries changed).
