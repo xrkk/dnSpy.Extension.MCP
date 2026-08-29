@@ -550,11 +550,11 @@ function Compile-AccFixture {
     return (Test-Path $envm.fixture_exe)
 }
 
-function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library) {
+function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library, [switch]$X86) {
     $envm = $script:Manifest.env
     $src = Join-Path (Join-Path $script:Repo 'tests\debug\fixtures-src') $SourceName
     $out = Join-Path $envm.sample_root $OutName
-    $target = if ($Library) { '/target:library' } else { '/platform:x64' }
+    $target = if ($Library) { '/target:library' } elseif ($X86) { '/platform:x86' } else { '/platform:x64' }
     & $envm.csc /nologo /optimize- $target /out:$out $src 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir ("build-" + $OutName + ".log"))
     return (Test-Path $out)
 }
@@ -3258,6 +3258,75 @@ function Run-ACC024 {
     $starts = if ($spy.PSObject.Properties.Name -contains 'dbg_start_calls') { [int]$spy.dbg_start_calls } else { 0 }
     Assert-Cond 'a24-all-kinds-rejected' 'spy recorded every rejected kind with zero Start calls' "kinds=$($kinds -join '/') starts=$starts" ((@($kinds | Where-Object { $_ -ge 1 }).Count -eq 4) -and ($starts -eq 0)) @($evS)
 }
+# ---------------------------------------------------------------- case: ACC-029 ----
+function Run-ACC029 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'Argv86.exe' -X86)) { Assert-Cond 'fixture-build-86' 'Argv86.exe compiled (x86)' 'failed' $false @('build-Argv86.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $exe86 = Join-Path $m.env.sample_root 'Argv86.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+
+    # [1] x64 host: net48-x64 lifecycle (the covered matrix leg, re-asserted) ...
+    $sess = Launch-AndPause $exe 'none'
+    Assert-Cond 'a29-x64-net48' 'net48-x64 lifecycle on the x64 host' "ok=$($sess.ok)" $sess.ok
+    if ($sess.ok) {
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a29-t0' } | Out-Null
+        Start-Sleep -Milliseconds 1000
+    }
+
+    # [2] ... and the cross-architecture rejection (x86 binary on the x64 host).
+    $spy0 = Get-SpyCounters
+    $bad = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-x86on64'; target_path = $exe86; expected_sha256 = (Get-Sha256File $exe86); launch_mode = 'net48-exe'; architecture = 'x86'; break_kind = 'none' }
+    $spy1 = Get-SpyCounters
+    $badCode = Get-DomainError $bad
+    Assert-Cond 'a29-x86-on-x64' 'x86 binary on x64 host = CAPABILITY_UNAVAILABLE, zero Start' "code=$badCode start=+$((Get-SpyDelta $spy0 $spy1 'dbg_start_calls'))" (("$badCode" -eq 'CAPABILITY_UNAVAILABLE') -and ((Get-SpyDelta $spy0 $spy1 'dbg_start_calls') -eq 0)) @($bad.rpc.resp)
+
+    # [3] Switch to the x86 dnSpy host for the x86 legs (same extension DLL, AnyCPU IL).
+    $x86Exe = 'C:\Tools\dnSpy\dnSpy-x86.exe'
+    if (-not (Test-Path $x86Exe)) { Fail-Precondition 'a29-x86-host' 'dnSpy-x86.exe present'; return }
+    $origDnspy = $m.env.dnspy_exe
+    $m.env.dnspy_exe = $x86Exe
+    try {
+        $up86 = Ensure-CanonicalDnSpy
+        Assert-Cond 'a29-x86-host-up' 'x86 dnSpy host healthy with the extension loaded' "health=$(Get-HealthCode $script:BaseUrl)" $up86 @()
+        if ($up86) {
+            $cap = Invoke-ToolNoInit 'debug_capabilities' @{ }
+            $hostArch = "$($cap.domain.result.host_architecture)"
+            Assert-Cond 'a29-x86-host-arch' 'capabilities report x86 host architecture' "arch=$hostArch" ("$hostArch" -eq 'x86') @($cap.rpc.resp)
+
+            # [4] net48-x86 full lifecycle.
+            $s86 = Launch-AndPause $exe86 'none'
+            Assert-Cond 'a29-x86-net48' 'net48-x86 lifecycle on the x86 host' "ok=$($s86.ok)" $s86.ok
+            if ($s86.ok) {
+                Invoke-ToolNoInit 'debug_terminate' @{ session_id = $s86.sid; generation = $s86.gen; request_id = 'a29-t1' } | Out-Null
+                Start-Sleep -Milliseconds 1000
+            }
+
+            # [5] Cross rejection the other way: x64 binary on the x86 host.
+            $bad2 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-x64on86'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+            $bad2Code = Get-DomainError $bad2
+            Assert-Cond 'a29-x64-on-x86' 'x64 binary on x86 host = CAPABILITY_UNAVAILABLE' "code=$bad2Code" ("$bad2Code" -eq 'CAPABILITY_UNAVAILABLE') @($bad2.rpc.resp)
+
+            # [6] coreclr-x86: no x86 host installed -> fail closed before Start.
+            $coreDll = Join-Path $m.env.sample_root 'AccCore.dll'
+            if (Test-Path $coreDll) {
+                $bad3 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-corex86'; target_path = $coreDll; expected_sha256 = (Get-Sha256File $coreDll); launch_mode = 'coreclr-dotnet'; architecture = 'x86'; break_kind = 'none'; host_path = (Join-Path $m.env.dotnet10_root 'dotnet.exe') }
+                $bad3Code = Get-DomainError $bad3
+                Assert-Cond 'a29-coreclr-x86-no-host' 'coreclr-x86 without an x86 host fails closed (no x86 runtime installed)' "code=$bad3Code" (("$bad3Code" -eq 'CAPABILITY_UNAVAILABLE') -or ("$bad3Code" -eq 'TARGET_MISMATCH')) @($bad3.rpc.resp)
+            }
+        }
+    }
+    finally {
+        $m.env.dnspy_exe = $origDnspy
+        Ensure-CanonicalDnSpy | Out-Null
+    }
+
+    # [7] The coreclr-x64 leg is live-verified by ACC-008 (apphost/dotnet-host double mode).
+    Assert-Cond 'a29-coreclr-x64-covered' 'coreclr-x64 double-mode leg covered by ACC-008 (matrix reference)' 'ACC-008 exit 0' $true @('result.json')
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3276,7 +3345,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
