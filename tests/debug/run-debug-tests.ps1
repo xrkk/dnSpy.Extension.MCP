@@ -1587,7 +1587,10 @@ function Run-ACC026 {
     $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'acc26-argv'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none'; target_argv = $argv }
     $sid = $L.domain.result.session_id; $gen = [int]$L.domain.result.generation
     Assert-Cond 'argv-launch-ok' 'launch accepted with argv matrix' "ok=$($L.domain.ok)" $L.domain.ok @($L.rpc.resp)
-    Start-Sleep -Milliseconds 900
+    $argvDeadline = (Get-Date).AddSeconds(5)
+    while (-not (Test-Path $out) -and (Get-Date) -lt $argvDeadline) {
+        Start-Sleep -Milliseconds 200
+    }
     $lines = @()
     if (Test-Path $out) { $lines = @(Get-Content $out) }
     $expected = @(); for ($i = 0; $i -lt $argv.Count; $i++) { $expected += ("$($argv[$i].Length):$($argv[$i])") }
