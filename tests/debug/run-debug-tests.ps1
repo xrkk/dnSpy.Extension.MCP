@@ -2009,18 +2009,19 @@ function Run-ACC034 {
     $null = Test-Adapter '{"fail_next":"none"}'
     $curB = Get-MaxEventCursor $sid2 $gen2b
     $rReq = '{"jsonrpc":"2.0","id":781,"method":"tools/call","params":{"name":"debug_restart","arguments":{"session_id":"' + $sid2 + '","generation":' + $gen2b + ',"request_id":"a34-r2"}}}'
-    Set-Content C:\Tools\a34-req.json $rReq -Encoding ascii
-    Remove-Item C:\Tools\a34-resp.txt -Force -ErrorAction SilentlyContinue
-    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-req.json','-o','C:\Tools\a34-resp.txt' -PassThru -WindowStyle Hidden
+    Set-Content (Join-Path $script:OutDir 'a34-req.json') $rReq -Encoding ascii
+    $a34ReqF1 = Join-Path $script:OutDir 'a34-req.json'; $a34RespF1 = Join-Path $script:OutDir 'a34-resp.txt'
+    Remove-Item $a34RespF1 -Force -ErrorAction SilentlyContinue
+    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$a34ReqF1",'-o',$a34RespF1 -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
     $dl = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $dl -and -not (Test-Path C:\Tools\a34-resp.txt)) { Start-Sleep -Milliseconds 400 }
+    while ((Get-Date) -lt $dl -and -not (Test-Path $a34RespF1)) { Start-Sleep -Milliseconds 400 }
     $dom = $null
-    if (Test-Path C:\Tools\a34-resp.txt) {
+    if (Test-Path $a34RespF1) {
         for ($i = 0; $i -lt 12 -and $null -eq $dom; $i++) {
             try {
-                $lines = [IO.File]::ReadAllLines('C:\Tools\a34-resp.txt')
+                $lines = [IO.File]::ReadAllLines($a34RespF1)
                 if ($lines.Count -ge 1) {
                     $body = ($lines | Select-Object -First ($lines.Count - 1)) -join "`n"
                     if (-not $body) { $body = $lines[0] }
