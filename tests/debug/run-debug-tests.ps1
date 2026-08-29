@@ -2078,7 +2078,14 @@ function Run-ACC034 {
     $t2Ok = $t2ok -and ($ends -eq 1) -and ($evC.raw -match '"reason":"terminated"') -and (-not ($evC.raw -match '"reason":"restart_failed"'))
     Assert-Cond 'a34-t2-settled' 'T2 settles once as terminated; restart never revives' "ok=$t2ok ends=$ends" $t2Ok @($evC.call.rpc.resp)
     $null = Test-Adapter '{"install":false}'
-    Start-Sleep -Milliseconds 500
+    # T2 settled through the FAKE adapter's synthetic removal, so the REAL launch-2 target
+    # was never terminated: ownedProcess stays set and DbgManager.IsDebugging stays true,
+    # which correctly blocks further launches (CON-DYN-003 precheck). Resolve the orphan
+    # the way an operator would — kill the abandoned target and let the manager observe the
+    # removal — before the next launch (CHK-005 root cause; the precheck is right, the
+    # scenario was leaking a live orphan).
+    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Milliseconds 1800
 
     # [4] Pending-restart relaunch: emit removed while restart waits -> generation+1, no fault.
     # CHK-005: the fault->recovery->terminal transition is asynchronously settled upstream;
@@ -2304,56 +2311,27 @@ function Run-ACC010 {
     $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
     if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
     $mod = "$($modEntry0.module_handle)"
-    # Outer discovery rounds (CHK batch flake): a step can transiently answer INVALID_STATE
-    # when the pause anchor races the previous step's completion; on exhaustion or a step
-    # error, re-anchor with a fresh held pause and retry the walk instead of failing.
-    for ($rnd = 0; $rnd -lt 3 -and -not $hotTok; $rnd++) {
-        if ($rnd -gt 0) {
-            Resume-FromPaused $sid $gen | Out-Null
-            $reheld = Wait-HeldPause $sid $gen
-            if (-not $reheld.ok) { break }
-        }
-    for ($i = 0; $i -lt 8 -and -not $hotTok; $i++) {
-        $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
-        $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
-        # Step OUT of framework frames (foreign module / non-MethodDef tops) and only step
-        # INTO from fixture frames — a blind into-chain buries itself in mscorlib.
-        $kind = 'into'
-        if ($i -gt 0 -and $sy -and $sy.domain.ok) {
-            $topMod = "$($sy.domain.result.items[0].location.module_handle)"
-            $topTok = "$($sy.domain.result.items[0].location.method_token)"
-            if (($topMod -ne $mod) -or ($topTok -notlike '0x06*')) { $kind = 'out' }
-        }
-        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$rnd-$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = $kind }
-        if (-not $stx.domain.ok) { break }
-        $paused = $false
-        for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
-            Start-Sleep -Milliseconds 300
-            $stq = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
-            if ("$($stq.domain.result.state)" -eq 'paused') { $paused = $true; $cur = $stq.domain.debug_context.pause_epoch }
-        }
-        if (-not $paused) { break }
-        $tly = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $cur }
-        $sy = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $tly.domain.result.items[0].thread_handle }
-        if ($sy.domain.ok) {
-            $candTok = "$($sy.domain.result.items[0].location.method_token)"
-            $candMod = "$($sy.domain.result.items[0].location.module_handle)"
-            # Main's token = the BOTTOM-most fixture frame; its IL offset 0 never executes
-            # again (infinite loop already past it), so only a DIFFERENT fixture method
-            # (Hot) is an acceptable hit target.
-            $fixF = @($sy.domain.result.items | Where-Object { "$($_.location.module_handle)" -eq $mod -and "$($_.location.method_token)" -like '0x06*' })
-            $mainTok = if ($fixF.Count -gt 0) { "$($fixF[-1].location.method_token)" } else { '' }
-            if ($candTok -like '0x06*' -and $candMod -eq $mod -and $candTok -ne $mainTok) {
-                $hotTok = $candTok
-                # Pin to offset 0 — the method's first IL instruction is always a real
-                # boundary; a stepped-to frame offset can fall mid-instruction (e.g. inside
-                # a ldstr) where a CorDebug breakpoint never triggers (known ledger item).
-                $hotOff = 0
-            }
-        }
+    # Deterministic token discovery (CHK batch flake root fix): stepping could never find a
+    # Hot frame when the JIT inlines Hot into Main. The fixture publishes its real MethodDef
+    # tokens in a startup manifest; resume the entry pause so Main runs (writing it), poll
+    # for the file, then re-pause and read Hot's token directly. No stepping involved.
+    $manPath = Join-Path $m.env.sample_root 'accfix-manifest.txt'
+    Remove-Item $manPath -Force -ErrorAction SilentlyContinue
+    Resume-FromPaused $sid $gen | Out-Null
+    $manReady = $false
+    for ($w = 0; $w -lt 20 -and -not $manReady; $w++) {
+        Start-Sleep -Milliseconds 200
+        if (Test-Path $manPath) { $manReady = $true }
     }
+    $reheld = Wait-HeldPause $sid $gen
+    $hotTok = $null; $hotOff = 0; $rnd = 0
+    if ($manReady) {
+        $fixMan = @{}
+        foreach ($line in ([IO.File]::ReadAllLines($manPath))) { $kv = $line -split '=', 2; if ($kv.Count -eq 2) { $fixMan[$kv[0]] = $kv[1] } }
+        if ($fixMan['hot'] -and ($fixMan['hot'] -ne $fixMan['main'])) { $hotTok = "$($fixMan['hot'])"; $hotOff = 0 }
     }
-    Assert-Cond 'a10-entered-hot' 'stepped into a second method (3 re-anchoring rounds allowed)' "hot=$hotTok rounds=$rnd" ([bool]$hotTok) @($st.rpc.resp)
+    Save-Json 'a10-token-manifest.json' @{ ready = $manReady; hot = $hotTok; reheld = $reheld.ok } | Out-Null
+    Assert-Cond 'a10-entered-hot' 'Hot token resolved deterministically from the fixture manifest' "hot=$hotTok manifest=$manReady reheld=$($reheld.ok)" ([bool]$hotTok) @('a10-token-manifest.json')
     if (-not $hotTok) { return }
 
     # Create with the FULL five-part identity (module/mvid/token/offset/sha from disk).
