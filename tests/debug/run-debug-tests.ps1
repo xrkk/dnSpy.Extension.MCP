@@ -2392,7 +2392,11 @@ function Run-ACC030 {
         # Transcript: harness received target_path as first arg, remaining argv verbatim.
         [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T5-pretranscript-$Label`r`n")
         $tr = Join-Path $m.env.sample_root 'harness-transcript.txt'
-        $lines = @(); if (Test-Path $tr) { $lines = @(Get-Content $tr) }
+        # ReadAllLines instead of Get-Content: the driver process hung at 100% CPU inside
+        # Get-Content on this file twice (T5 marker reached, no further wire/trace activity);
+        # the same Get-Content runs in 3ms from an interactive session — provider quirk under
+        # redirected stdio. ReadAllLines reads identically.
+        $lines = @(); if (Test-Path $tr) { $lines = @([IO.File]::ReadAllLines($tr)) }
         $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '7:q"uote')
         Assert-Cond "a30-$Label-transcript" 'harness argv: first arg == target_path, rest verbatim' "lines=$($lines.Count) l0=$($lines[0])" $argvOk @(Save-Json "a30-$Label-transcript.json" $lines)
         # Full lifecycle: pause/continue/terminate.
