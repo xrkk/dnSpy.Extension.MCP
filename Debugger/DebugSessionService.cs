@@ -44,7 +44,7 @@ public sealed class DebugSessionService : IDisposable {
 	// the debug_test_spy tool which is gated on DNMCP_TEST=1 and answers CAPABILITY_UNAVAILABLE
 	// otherwise. These are the in-process counters the ACC fixtures assert deltas on.
 	static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> SpyCounters = new();
-	static void SpyInc(string name) => SpyCounters.AddOrUpdate(name, 1, (_, v) => v + 1);
+	internal static void SpyInc(string name) => SpyCounters.AddOrUpdate(name, 1, (_, v) => v + 1);
 	public static bool TestModeEnabled => Environment.GetEnvironmentVariable("DNMCP_TEST") == "1";
 
 	// Injection surface increment 2: virtual clock offset (ms) and the installed fake control
@@ -89,6 +89,7 @@ public sealed class DebugSessionService : IDisposable {
 	public bool Handles(string toolName) => HandledTools.Contains(toolName);
 
 	readonly McpSettings settings;
+	readonly StaticWriteGate staticWriteGate;
 	readonly DbgCodeBreakpointsService? breakpointsService;
 	readonly DbgDotNetCodeLocationFactory? locationFactory;
 	readonly dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService;
@@ -118,13 +119,15 @@ public sealed class DebugSessionService : IDisposable {
 		[Import(AllowDefault = true)] DbgDotNetCodeLocationFactory? locationFactory,
 		[Import(AllowDefault = true)] dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService,
 		DebugGateService gateService,
-		McpSettings settings) {
+		McpSettings settings,
+		[Import(AllowDefault = true)] StaticWriteGate? staticWriteGate) {
 		this.dbgManager = dbgManager;
 		this.breakpointsService = breakpointsService;
 		this.locationFactory = locationFactory;
 		this.languageService = languageService;
 		this.gateService = gateService;
 		this.settings = settings;
+		this.staticWriteGate = staticWriteGate ?? new StaticWriteGate(() => false);
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
 			dbgManager.IsDebuggingChanged += OnIsDebuggingChanged;
@@ -299,8 +302,25 @@ public sealed class DebugSessionService : IDisposable {
 			case "exit_before_claim":
 				testExitBeforeClaim = true;
 				break;
+			case "ui_debugging":
+				testUiDebugging = true;
+				staticWriteGate.TestUiDebuggingHook = () => testUiDebugging;
+				break;
+			case "ui_debugging_off":
+				testUiDebugging = false;
+				break;
+			case "foreign_process":
+				// ACC-025-B injection: a process/runtime event the session never registered
+				// (same classification path OnProcessesChanged uses for real foreign arrivals).
+				MarkForeignProcessObserved(-1, sessionStartedUtc, "test://foreign-runtime", "test_family", "x64");
+				break;
+			case "manager_idle":
+				// ACC-025-B recovery injection: the manager stopped debugging with no new
+				// objects (UI ended all debugging) — same path OnIsDebuggingChanged uses.
+				HandleManagerDebuggingChanged(false);
+				break;
 			default:
-				throw new ArgumentException("mode must be fail_start or exit_before_claim", "mode");
+				throw new ArgumentException("mode must be fail_start, exit_before_claim, ui_debugging, ui_debugging_off, foreign_process or manager_idle", "mode");
 		}
 		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode });
 	}
@@ -564,10 +584,13 @@ public sealed class DebugSessionService : IDisposable {
 
 		var startError = StartViaWpf(plan);
 		if (startError is not null) {
-			coordinator.MarkLaunchFailed("INTERNAL_ERROR");
+			bool uiBusy = startError == UiDebuggingBusy;
+			coordinator.MarkLaunchFailed(uiBusy ? "INVALID_STATE" : "INTERNAL_ERROR");
 			lock (sessionLock) { launchClaimTcs = null; activePlan = null; }
 			ReleaseLeases();
-			return Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
+			return uiBusy
+				? Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Idle })
+				: Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
 		}
 
 		// Task.Wait reports completion, not the value: a negatively-settled claim (test
@@ -598,6 +621,13 @@ public sealed class DebugSessionService : IDisposable {
 	// synchronously (Start-error path: EVT start_failed + MarkLaunchFailed).
 	volatile bool testFailNextStart;
 	volatile bool testExitBeforeClaim;
+	// DNMCP_TEST-only: simulates a human UI debug session being active (DbgManager.IsDebugging
+	// reads true for the launch precheck and the static write gate) without a real UI session.
+	volatile bool testUiDebugging;
+
+	// Marker for the CON-DYN-003 pre-Start check: a UI (or other-extension) debug session is
+	// already active — the launch answers INVALID_STATE, not the Start-error INTERNAL_ERROR.
+	const string UiDebuggingBusy = "\u0001UI_DEBUGGING_ACTIVE";
 
 	string? StartViaWpf(LaunchPlan plan) {
 		if (dbgManager is null)
@@ -610,6 +640,12 @@ public sealed class DebugSessionService : IDisposable {
 		DebugProgramOptions options = BuildOptions(plan);
 		var uiDispatcher = Application.Current?.Dispatcher;
 		Func<string?> start = () => {
+			// Same WPF callback as Start (CON-DYN-003): claim established, precheck IsDebugging,
+			// then Start — a busy manager means INVALID_STATE with zero Start side effects.
+			if (dbgManager.IsDebugging || testUiDebugging) {
+				SpyInc("ui_debugging_blocks");
+				return UiDebuggingBusy;
+			}
 			SpyInc("dbg_start_calls");
 			SpyCounters["start_thread_is_wpf"] = uiDispatcher is not null && uiDispatcher.Thread == System.Threading.Thread.CurrentThread ? 1 : 0;
 			return dbgManager.Start(options);
@@ -679,6 +715,10 @@ public sealed class DebugSessionService : IDisposable {
 		var admission = coordinator.TryBeginControl(operation, requestId);
 		if (!admission.Admitted || admission.Record is null) {
 			ticket?.TryRelease();
+			// ACC-025-B: while faulted(ownership_lost) every enabled control answers
+			// OWNERSHIP_LOST (manual resolve then wait idle), never a bare INVALID_STATE.
+			if (coordinator.OwnershipLostFaulted)
+				return Fail(coordinator, DomainErrorCodes.OwnershipLost);
 			return Fail(coordinator, DomainErrorCodes.InvalidState, admission.RequiredStates.ToList());
 		}
 		var record = admission.Record;
@@ -743,6 +783,8 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, identityErr, message: "request names a different session than the active one");
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		if (coordinator.OwnershipLostFaulted)
+			return Fail(coordinator, DomainErrorCodes.OwnershipLost);
 		var pauseEpoch = ArgInt(args, "pause_epoch", required: true);
 		if (coordinator.State != DebugStates.Paused || coordinator.PauseEpoch != pauseEpoch)
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
@@ -804,10 +846,13 @@ public sealed class DebugSessionService : IDisposable {
 		var plan = activePlan!;
 		var startError = StartViaWpf(plan);
 		if (startError is not null) {
-			coordinator.MarkLaunchFailed("INTERNAL_ERROR");
+			bool uiBusy = startError == UiDebuggingBusy;
+			coordinator.MarkLaunchFailed(uiBusy ? "INVALID_STATE" : "INTERNAL_ERROR");
 			lock (sessionLock) { launchClaimTcs = null; activePlan = null; }
 			ReleaseLeases();
-			return Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
+			return uiBusy
+				? Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Idle })
+				: Fail(coordinator, DomainErrorCodes.InternalError, message: startError);
 		}
 		// Task.Wait reports completion, not the value: a negatively-settled claim (test
 		// pre-claim exit) must still surface as !claimed.
@@ -2063,6 +2108,14 @@ public sealed class DebugSessionService : IDisposable {
 				coordinator.MarkLaunchClaimSucceeded(startsPaused, reason);
 				claimTcs.TrySetResult(true);
 				}
+				else if (coordinator.State != DebugStates.Idle) {
+					// A process event outside any claim window while a session is active is a
+					// detectable ownership ambiguity (CON-DYN-012): EVT-DYN-017 + faulted. The
+					// unowned object itself is never touched.
+					MarkForeignProcessObserved(process.Id, sessionStartedUtc,
+						process.Runtimes.Length == 0 ? "" : process.Runtimes[0].Name,
+						activePlan?.RuntimeFamily ?? "", launchArchitecture ?? "");
+				}
 			}
 			else {
 				DbgProcess? owned;
@@ -2265,7 +2318,32 @@ public sealed class DebugSessionService : IDisposable {
 		return list;
 	}
 
-	void OnIsDebuggingChanged(object? sender, EventArgs e) { }
+	void OnIsDebuggingChanged(object? sender, EventArgs e) =>
+		HandleManagerDebuggingChanged(dbgManager is not null && dbgManager.IsDebugging);
+
+	/// <summary>
+	/// DbgManager debugging-state transitions (dispatcher thread). The only coordinator-visible
+	/// effect is ownership recovery: when the manager stops debugging without any new object
+	/// having appeared (the human UI ended all debugging), a faulted(ownership_lost) session
+	/// recovers per §3.2 — EVT-DYN-018 then EVT-DYN-020(ownership_recovered), back to idle.
+	/// Normal MCP terminal transitions are already idle here, so Recover no-ops for them.
+	/// </summary>
+	void HandleManagerDebuggingChanged(bool debugging) {
+		if (!debugging && coordinator.OwnershipLostFaulted) {
+			SpyInc("ownership_recovered_manager_idle");
+			coordinator.Recover("manager_became_idle_without_new_objects");
+		}
+	}
+
+	/// <summary>
+	/// DbgManager dispatcher: an unregistered process/runtime observation while a session is
+	/// active (outside any claim window). EVT-DYN-017 + faulted(ownership_lost); the ambiguous
+	/// object is never operated on (ACC-025-B). Also the DNMCP_TEST injection target.
+	/// </summary>
+	void MarkForeignProcessObserved(int pid, DateTime startedUtc, string runtimeIdentity, string family, string arch) {
+		SpyInc("foreign_process_observations");
+		coordinator.MarkOwnershipLost(null, new[] { (pid, runtimeIdentity, family, arch) });
+	}
 
 	// ---- file identity leases ----
 

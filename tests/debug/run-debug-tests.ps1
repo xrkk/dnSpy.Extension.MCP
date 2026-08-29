@@ -2529,6 +2529,104 @@ function Run-ACC016 {
     Assert-Cond 'a16-deep-matrices' '4096-handle accumulation + 8MiB envelope: contract fixtures + limits DTO' 'covered by schema/limits + live caps' $true @('result.json')
 }
 
+# ---------------------------------------------------------------- case: ACC-025 ----
+function Run-ACC025 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe
+    $six = @('patch_method_il', 'force_return', 'nop_method', 'revert_method_il', 'rename_symbol_by_token', 'save_assembly')
+
+    # ---------- Scenario A: a human UI debug session is already active ----------
+    $spyA0 = Get-SpyCounters
+    $arm = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'ui_debugging' }
+    Assert-Cond 'a25-arm' 'ui_debugging seam armed (DNMCP_TEST)' "ok=$($arm.domain.ok)" ($arm.domain.ok) @($arm.rpc.resp)
+
+    foreach ($t in $six) {
+        $c = Invoke-ToolNoInit $t @{ name = 'Never' }
+        $code = Get-DomainError $c
+        Assert-Cond "a25-write-$t" 'INVALID_STATE while UI debugging (coordinator idle)' "code=$code" ("$code" -eq 'INVALID_STATE') @($c.rpc.resp)
+    }
+
+    foreach ($d in @('debug_attach', 'debug_detach', 'debug_list_attachable_processes')) {
+        $dc = Invoke-ToolNoInit $d @{ request_id = "a25-$d"; pid = 1234 }
+        $dcode = Get-DomainError $dc
+        $hasDetails = [bool]($dc.domain -and $dc.domain.error -and $dc.domain.error.details)
+        Assert-Cond "a25-disabled-$d" 'CAPABILITY_UNAVAILABLE and NO details' "code=$dcode details=$hasDetails" (("$dcode" -eq 'CAPABILITY_UNAVAILABLE') -and (-not $hasDetails)) @($dc.rpc.resp)
+    }
+
+    $spyA1 = Get-SpyCounters
+    $startDelta = Get-SpyDelta $spyA0 $spyA1 'dbg_start_calls'
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a25-la'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $lcode = Get-DomainError $L
+    $reqStates = if ($L.domain -and $L.domain.error) { @($L.domain.error.required_states) -join ',' } else { '' }
+    $spyA2 = Get-SpyCounters
+    $startDelta2 = Get-SpyDelta $spyA1 $spyA2 'dbg_start_calls'
+    Assert-Cond 'a25-launch-invalid-state' 'launch while UI debugging = INVALID_STATE [idle]' "code=$lcode required=[$reqStates] start_calls=+$startDelta2" (("$lcode" -eq 'INVALID_STATE') -and ($reqStates -eq 'idle') -and ($startDelta2 -eq 0)) @($L.rpc.resp)
+    Assert-Cond 'a25-ui-target-untouched' 'zero Start calls across the whole UI scenario' "delta=$startDelta+$startDelta2" (($startDelta + $startDelta2) -eq 0) @()
+
+    $off = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'ui_debugging_off' }
+    Assert-Cond 'a25-disarm' 'ui_debugging seam disarmed' "ok=$($off.domain.ok)" ($off.domain.ok) @($off.rpc.resp)
+    $reopen = Invoke-ToolNoInit 'patch_method_il' @{ name = 'Never' }
+    $reopenCode = Get-DomainError $reopen
+    Assert-Cond 'a25-gate-reopens' 'static gate open again after disarm (not INVALID_STATE)' "code=$reopenCode" ("$reopenCode" -ne 'INVALID_STATE') @($reopen.rpc.resp)
+
+    # ---------- Scenario B: ownership lost on an unregistered process observation ----------
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'a25-session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen; $ep = $sess.epoch
+    # Snapshot AFTER the session's own legitimate pause post so only unowned-operation
+    # attempts during the OWNERSHIP_LOST window land in the delta.
+    $spyB0 = Get-SpyCounters
+
+    $inj = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'foreign_process' }
+    Assert-Cond 'a25-foreign-inject' 'foreign process observation injected' "ok=$($inj.domain.ok)" ($inj.domain.ok) @($inj.rpc.resp)
+    Start-Sleep -Milliseconds 300
+    $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a25-faulted' 'coordinator enters faulted' "state=$($st.domain.result.state) fault=$($st.domain.result.fault)" ("$($st.domain.result.state)" -eq 'faulted' -and "$($st.domain.result.fault)" -eq 'ownership_lost') @($st.rpc.resp)
+
+    $ev = Read-EventKinds $sid $gen 0
+    $evFile = Save-Json 'a25-events-ownership.json' ($ev.events | Select-Object kind, cursor, payload)
+    $hasOwn = $ev.kinds -contains 'ownership_lost'
+    Assert-Cond 'a25-evt-ownership-lost' 'EVT ownership_lost present (unregistered observation)' "kinds=$($ev.kinds -join ',')" $hasOwn @($evFile)
+
+    # All four enabled controls answer OWNERSHIP_LOST — never a bare INVALID_STATE.
+    $ctlPause = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = 'a25-p1' }
+    Assert-CtrlFail $ctlPause 'OWNERSHIP_LOST' 'a25-ctl-pause' 'state=faulted(ownership_lost)'
+    $ctlCont = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a25-c1' }
+    Assert-CtrlFail $ctlCont 'OWNERSHIP_LOST' 'a25-ctl-continue' 'state=faulted(ownership_lost)'
+    $ctlTerm = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a25-t1' }
+    Assert-CtrlFail $ctlTerm 'OWNERSHIP_LOST' 'a25-ctl-terminate' 'terminate@faulted reserved for control-fault'
+    $ctlRst = Invoke-ToolNoInit 'debug_restart' @{ session_id = $sid; generation = $gen; request_id = 'a25-r1' }
+    Assert-CtrlFail $ctlRst 'OWNERSHIP_LOST' 'a25-ctl-restart' 'state=faulted(ownership_lost)'
+
+    $spyB1 = Get-SpyCounters
+    $bp = Get-SpyDelta $spyB0 $spyB1 'adapter_break_posts'
+    $tp = Get-SpyDelta $spyB0 $spyB1 'adapter_terminate_posts'
+    Assert-Cond 'a25-no-unowned-operation' 'zero Break/Terminate posts on the ambiguous target' "break=+$bp terminate=+$tp" (($bp -eq 0) -and ($tp -eq 0)) @()
+
+    # Recovery: the manager stopped debugging without new objects (UI ended all debugging).
+    $rec = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'manager_idle' }
+    Assert-Cond 'a25-recovery-inject' 'manager-idle recovery injected' "ok=$($rec.domain.ok)" ($rec.domain.ok) @($rec.rpc.resp)
+    Start-Sleep -Milliseconds 300
+    $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    Assert-Cond 'a25-recovered-idle' 'coordinator back to idle after recovery' "state=$($st2.domain.result.state)" ("$($st2.domain.result.state)" -eq 'idle') @($st2.rpc.resp)
+    $ev2 = Read-EventKinds $sid $gen 0
+    $ev2File = Save-Json 'a25-events-recovery.json' ($ev2.events | Select-Object kind, cursor, payload)
+    $hasRec = ($ev2.kinds -contains 'recovery') -and ($ev2.kinds -contains 'session_end')
+    Assert-Cond 'a25-evt-recovery' 'EVT recovery + session_end(ownership_recovered) written once' "kinds=$($ev2.kinds -join ',')" $hasRec @($ev2File)
+
+    # Post-recovery: the server launches cleanly again (no lingering reservation).
+    $again = Launch-AndPause $exe 'none'
+    Assert-Cond 'a25-relaunch' 'clean relaunch after recovery' "ok=$($again.ok)" $again.ok
+    if ($again.ok) {
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $again.sid; generation = $again.gen; request_id = 'a25-t2' } | Out-Null
+        Start-Sleep -Milliseconds 900
+    }
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2547,7 +2645,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {

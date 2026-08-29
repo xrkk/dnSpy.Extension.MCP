@@ -31,6 +31,12 @@ public sealed class StaticWriteGate {
 	/// </summary>
 	public Func<string>? CoordinatorStateProvider { get; set; }
 
+	/// <summary>
+	/// DNMCP_TEST-only seam (never set in production): simulates the DbgManager side of the OR
+	/// (a human UI debug session) so the idle-coordinator branch of the gate is observable.
+	/// </summary>
+	public Func<bool>? TestUiDebuggingHook { get; set; }
+
 	[ImportingConstructor]
 	public StaticWriteGate([Import(AllowDefault = true)] DbgManager? dbgManager)
 		: this(() => dbgManager is not null && dbgManager.IsDebugging) {
@@ -44,5 +50,7 @@ public sealed class StaticWriteGate {
 	public string CurrentCoordinatorState => CoordinatorStateProvider?.Invoke() ?? DebugStates.Idle;
 
 	/// <summary>(coordinator state != idle) OR DbgManager.IsDebugging.</summary>
-	public bool IsBlocked => CurrentCoordinatorState != DebugStates.Idle || (isDebugging?.Invoke() ?? false);
+	public bool IsBlocked => CurrentCoordinatorState != DebugStates.Idle
+		|| (isDebugging?.Invoke() ?? false)
+		|| (TestUiDebuggingHook?.Invoke() ?? false);
 }

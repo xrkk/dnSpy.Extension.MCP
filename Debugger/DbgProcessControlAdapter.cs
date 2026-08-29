@@ -59,6 +59,7 @@ public sealed class DbgProcessControlAdapter : IDbgProcessControlAdapter {
 
 	public IDbgProcessControlAdapter.PostResult PostBreak(ControlOperationRecord forRecord) {
 		try {
+			DebugSessionService.SpyInc("adapter_break_posts");
 			ownedProcess.Break();
 			return IDbgProcessControlAdapter.PostResult.Delivered;
 		}
@@ -71,6 +72,7 @@ public sealed class DbgProcessControlAdapter : IDbgProcessControlAdapter {
 
 	public IDbgProcessControlAdapter.PostResult PostTerminate(ControlOperationRecord forRecord) {
 		try {
+			DebugSessionService.SpyInc("adapter_terminate_posts");
 			ownedProcess.Terminate();
 			return IDbgProcessControlAdapter.PostResult.Delivered;
 		}
