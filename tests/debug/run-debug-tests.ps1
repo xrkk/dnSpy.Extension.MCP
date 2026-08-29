@@ -4156,7 +4156,7 @@ $result = [ordered]@{
     status = $status
     exit_code = $exit
     assertions = @($script:Assertions)
-    evidence = $evidencePaths
+    evidence_paths = $evidencePaths
 }
 if ($resultSchema) { Test-SchemaNode -Value $result -Schema $resultSchema -Path '$' -Errors $shapeErrors }
 @($shapeErrors) | Set-Content (Join-Path $script:OutDir 'shape-gate.log')

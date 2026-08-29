@@ -14,7 +14,7 @@
     "status",
     "exit_code",
     "assertions",
-    "evidence"
+    "evidence_paths"
   ],
   "properties": {
     "schema_version": {
@@ -92,7 +92,7 @@
         }
       }
     },
-    "evidence": {
+    "evidence_paths": {
       "type": "array",
       "minItems": 1,
       "items": {
