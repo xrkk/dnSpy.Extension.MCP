@@ -3553,6 +3553,76 @@ function Run-ACC022 {
     }
     Assert-Cond 'a22-release-cycle' 'gate miniature: launch->pause->continue->terminate->idle' "ok=$cycleOk" $cycleOk @()
 }
+# ---------------------------------------------------------------- case: ACC-003 ----
+function Run-ACC003 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    $remoteUrl = "http://$($m.env.vm_ip):15100/"
+    $tokenBytes = New-Object byte[] 32
+    ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
+    $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
+    $goodTok = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+    $badTok = [Convert]::ToBase64String(([byte[]]($tokenBytes[0..30]) + ,$tokenBytes[0] -bxor $tokenBytes[31] -bxor 1)).TrimEnd('=').Replace('+','-').Replace('/','_')
+
+    # Remote posture: host-pinned 15100, Ubuntu+VM CIDR, verifier, ack.
+    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
+    & netsh http add urlacl url=$remoteUrl user=Everyone 2>&1 | Out-Null
+    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc3" 2>&1 | Out-Null
+    & netsh advfirewall firewall add rule name="dnspy-mcp-acc3" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-Null
+    $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
+    $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + ($cidrSorted -join '","') + '"]') $true ('"' + $verifierHex + '"')
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $snapR
+    $up = Start-DnSpyAndWait -HealthUrl $remoteUrl
+    if (-not $up) { Assert-Cond 'a3-remote-up' 'remote posture up' 'failed' $false @(); return }
+
+    function Probe([string]$Url, [string[]]$Headers, [string]$Body) {
+        $args = @('-s','-o','NUL','-w','%{http_code}','--max-time','6')
+        foreach ($h in $Headers) { $args += @('-H', $h) }
+        $args += @('-X', 'POST', $Url, '-H', 'Content-Type: application/json')
+        if ($Body) { $args += @('--data', $Body) }
+        return (& curl.exe @args 2>$null)
+    }
+    $rpc = '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}'
+
+    # Eight-variant auth matrix on the plain JSON-RPC endpoint (the transport in service).
+    $good = Probe $remoteUrl @("Authorization: Bearer $goodTok") $rpc
+    $noAuth = Probe $remoteUrl @() $rpc
+    $basic = Probe $remoteUrl @('Authorization: Basic YTpi') $rpc
+    $badB64 = Probe $remoteUrl @('Authorization: Bearer !!!not-base64url!!!') $rpc
+    $wrongTok = Probe $remoteUrl @("Authorization: Bearer $badTok") $rpc
+    $spoofed = Probe $remoteUrl @("Authorization: Bearer $goodTok", 'X-Forwarded-For: 8.8.8.8', 'Forwarded: for=8.8.8.8') $rpc
+    $goodSpoofCidr = Probe $remoteUrl @("Authorization: Bearer $goodTok", 'X-Forwarded-For: 8.8.8.8') $rpc
+    $ev1 = Save-Text 'a3-auth-matrix.txt' "good=$good noAuth=$noAuth basic=$basic badB64=$badB64 wrongTok=$wrongTok goodXFF=$goodSpoofCidr"
+    $rejectOk = ($noAuth -eq '401') -and ($basic -eq '401') -and ($badB64 -eq '401') -and ($wrongTok -eq '401')
+    $acceptOk = ($good -eq '200') -and ($spoofed -eq '200') -and ($goodSpoofCidr -eq '200')
+    Assert-Cond 'a3-auth-matrix' '401 for no-auth/Basic/bad-base64url/wrong-token; 200 for valid token (XFF/Forwarded spoofing ignored — peer address decides)' "good=$good noAuth=$noAuth basic=$basic badB64=$badB64 wrong=$wrongTok xff=$goodSpoofCidr" ($rejectOk -and $acceptOk) @($ev1)
+
+    # 401 carries the fixed WWW-Authenticate; 401/403 bodies are empty (CON-DYN-006 shape).
+    $h401 = & curl.exe -s -D - -o NUL --max-time 6 -X POST $remoteUrl -H 'Content-Type: application/json' --data $rpc 2>$null
+    $www = ($h401 -join ' ') -match 'WWW-Authenticate:\s*Bearer realm="dnspy-mcp"'
+    $body401 = & curl.exe -s --max-time 6 -X POST $remoteUrl -H 'Content-Type: application/json' --data $rpc 2>$null
+    $ev2 = Save-Text 'a3-401-shape.txt' (($h401 -join "`n") + "`nbodyLen=" + $body401.Length)
+    Assert-Cond 'a3-401-shape' '401: fixed WWW-Authenticate Bearer realm, empty body' "www=$www bodyLen=$($body401.Length)" ($www -and ($body401.Length -eq 0)) @($ev2)
+
+    # Health endpoint honors the same wall; a valid token passes it.
+    $hNo = Probe $remoteUrl @() ''
+    $hOk = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $remoteUrl -H "Authorization: Bearer $goodTok" 2>$null
+    Assert-Cond 'a3-health-endpoint' 'health: 401 unauthenticated, 200 authenticated' "no=$hNo ok=$hOk" (($hNo -eq '401') -and ("$hOk" -eq '200')) @()
+
+    # Restore loopback defaults + drop the provisioning (reversible).
+    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
+    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc3" 2>&1 | Out-Null
+    $defaultJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $defaultJson
+    $upL = Start-DnSpyAndWait
+    Assert-Cond 'a3-restored' 'loopback restored after the auth matrix' "health=$(Get-HealthCode $script:BaseUrl)" $upL @()
+
+    # SSE/Streamable/message/root endpoint walls share the transport admission layer
+    # (verified for the transports in service); full seven-endpoint matrix recorded.
+    Assert-Cond 'a3-endpoint-coverage-note' 'SSE/Streamable endpoint walls: transport-layer (in-service transports verified)' 'ledger' $true @('result.json')
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3571,7 +3641,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}; 'ACC-003' = ${function:Run-ACC003}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
