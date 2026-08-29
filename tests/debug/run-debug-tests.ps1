@@ -1164,13 +1164,33 @@ function Run-ACC031 {
     $ep = $wp.epoch
     Assert-Cond 'launch-entry-paused' 'entry break settles into a stable paused (Main)' "initial=$($li.state) stable_paused=$($wp.ok) epoch=$ep" ($wp.ok -and $ep -ge 1) @($L.rpc.resp)
 
-    $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
-    $th = $T.domain.result.items[0].thread_handle
-    $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
-    $mainFrame = $S.domain.result.items[0]
-    $mainToken = "$($mainFrame.location.method_token)"
-    $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-    $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.location.module_handle)[0]
+    # The entry pause can be the empty transient (no frames yet) — retry with resume/repause
+    # rounds until a stack frame exists (same pattern as ACC-010's frame acquisition).
+    $mainFrame = $null
+    for ($fr31 = 0; $fr31 -lt 6 -and -not $mainFrame; $fr31++) {
+        $T = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+        if ($T.domain.ok -and @($T.domain.result.items).Count -gt 0) {
+            $th = $T.domain.result.items[0].thread_handle
+            $S = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
+            if ($S.domain.ok -and @($S.domain.result.items).Count -gt 0) { $mainFrame = $S.domain.result.items[0] }
+        }
+        if (-not $mainFrame) {
+            $stq31 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+            if ("$($stq31.domain.result.state)" -eq 'paused') { $ep = $stq31.domain.debug_context.pause_epoch }
+            $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = "acc31-fr$fr31" }
+            $wp31b = Wait-StablePaused $sid
+            if ($wp31b.ok) { $ep = $wp31b.epoch }
+        }
+    }
+    $mainToken = if ($mainFrame) { "$($mainFrame.location.method_token)" } else { '' }
+    # Anchor on the FIXTURE module BY NAME with registration polling (an ultra-early pause
+    # can precede the module-load event; the frame's module may be empty or mscorlib).
+    $modEntry = $null
+    for ($mw31 = 0; $mw31 -lt 20 -and -not $modEntry; $mw31++) {
+        $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+        $modEntry = @($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+        if (-not $modEntry) { Start-Sleep -Milliseconds 300 }
+    }
     $mvid = "$($modEntry.mvid)"
 
     # Deterministic Hot discovery: reflection over the fixture bytes (same MethodDef tokens
