@@ -213,8 +213,8 @@ function Get-Sha256File([string]$Path) {
     } finally { $sha.Dispose() }
 }
 function Stop-DnSpyAndTargets {
-    Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process AccFixture,AccHarness,AccCore,ThreadsStackFixture,ArgvFixture,SampleDataFixture,DynLoadFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process AccFixture,AccHarness,AccCore,ThreadsStackFixture,ArgvFixture,SampleDataFixture,DynLoadFixture,DualDynFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 1500
 }
 function Set-SnapshotJson {
