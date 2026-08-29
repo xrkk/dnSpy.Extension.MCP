@@ -400,6 +400,33 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
+	/// <summary>
+	/// dnspy.debug.utf8-limits.v1 input side (ACC-028): deterministic UTF-8 byte ceilings on
+	/// the input pointers — session_id/opaque handles/page_cursor 1024, relative_name 128,
+	/// name_filter 256. Over-limit strings are -32602 regardless of character count (the
+	/// standard schema maxLength counts characters and never substitutes for this).
+	/// </summary>
+	static void ValidateInputUtf8Limits(string tool, Dictionary<string, object>? args) {
+		if (args is null)
+			return;
+		foreach (var (key, raw) in args) {
+			if (raw is not System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } je)
+				continue;
+			var value = je.GetString();
+			if (value is null)
+				continue;
+			int limit = key switch {
+				"session_id" or "page_cursor" or "thread_handle" or "frame_handle" or "value_handle"
+					or "module_handle" or "runtime_handle" or "process_handle" => 1024,
+				"relative_name" => 128,
+				"name_filter" => 256,
+				_ => 0,
+			};
+			if (limit > 0 && System.Text.Encoding.UTF8.GetByteCount(value) > limit)
+				throw new ArgumentException($"{tool}.{key} exceeds {limit} UTF-8 bytes", key);
+		}
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -412,6 +439,7 @@ public sealed class DebugSessionService : IDisposable {
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? arguments) {
 		if (RequestIdRequired.Contains(toolName))
 			ArgString(arguments, "request_id", required: true);
+		ValidateInputUtf8Limits(toolName, arguments);
 		string? envelope;
 		try {
 			envelope = toolName switch {
@@ -957,7 +985,9 @@ public sealed class DebugSessionService : IDisposable {
 		DebugEventBuffer.ReadResult? read = null;
 		if (wait) {
 			var timeoutMs = (int)Math.Min(120000, ArgLong(args, "timeout_ms", 10000));
-			if (!await waitSlots.WaitAsync(timeoutMs + 1000).ConfigureAwait(false))
+			// CON-DYN-009 global wait cap: admission is instantaneous — the 9th concurrent
+			// wait is LIMIT_EXCEEDED (queuing for a slot would make the cap unobservable).
+			if (!await waitSlots.WaitAsync(0).ConfigureAwait(false))
 				return Fail(coordinator, DomainErrorCodes.LimitExceeded);
 			try {
 				var deadlineTicks = Stopwatch.GetTimestamp() + timeoutMs * Stopwatch.Frequency / 1000;

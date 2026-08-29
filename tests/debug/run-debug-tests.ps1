@@ -3051,12 +3051,27 @@ function Run-ACC028 {
     $ev7 = Save-Text 'a28-wait-cap.txt' "limit=$limitHits ok=$okCount"
     Assert-Cond 'a28-wait-cap-9th' 'ninth concurrent wait = LIMIT_EXCEEDED (8 admitted)' "limit=$limitHits ok=$okCount" (($limitHits -ge 1) -and (($limitHits + $okCount) -ge 8)) @($ev7)
 
+    # [9] Reason sets run BEFORE the idempotency launch: observed paused reasons from THIS
+    # session must stay inside the seven-value API set (the eighth exists only in the launch
+    # event per schema).
+    $evAll = Read-EventKinds $sid $gen 0
+    $apiReasons = @('manual','process','entry','breakpoint','exception','step','unknown')
+    $observed = @($evAll.events | Where-Object { $_.kind -eq 'paused' } | ForEach-Object { "$($_.payload.reason)" }) | Select-Object -Unique
+    $reasonsOk = $true
+    foreach ($r in $observed) { if ($apiReasons -notcontains $r) { $reasonsOk = $false } }
+    Assert-Cond 'a28-reason-sets' 'observed paused reasons stay inside the seven-value API set' "observed=$($observed -join ',')" ($reasonsOk -and ($observed.Count -ge 1)) @((Save-Json 'a28-events.json' ($evAll.events | Select-Object kind, cursor)))
+
+    # Close the matrix session before the idempotency launches (one active session at a time).
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a28-t0' } | Out-Null
+    Start-Sleep -Milliseconds 1100
+
     # [8] Cross-protocol idempotency: the SAME launch request_id on a second transport
     # version replays the settled response (same session_id), never a second process.
     $sha = Get-Sha256File $exe
     $spy0 = Get-SpyCounters
     $L1 = Invoke-Tool $v1 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidA = if ($L1.domain.ok) { "$($L1.domain.result.session_id)" } else { '' }
+    $genA = if ($L1.domain.ok) { [int]$L1.domain.result.generation } else { 0 }
     Initialize-Protocol $v3 | Out-Null
     $L2 = Invoke-Tool $v3 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     $sidB = if ($L2.domain.ok) { "$($L2.domain.result.session_id)" } else { '' }
@@ -3065,17 +3080,8 @@ function Run-ACC028 {
     $ev8 = Save-Json 'a28-idem.json' @{ v1 = $L1.domain.result; v3 = $L2.domain.result }
     Assert-Cond 'a28-cross-protocol-idempotent' 'same request_id across versions replays one settled launch (same session, zero extra Start)' "sidA=$sidA sidB=$sidB start=+$startD" (($sidA -ne '') -and ("$sidA" -eq "$sidB") -and ($startD -eq 1)) @($ev8)
 
-    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidA; generation = $gen; request_id = 'a28-t1' } | Out-Null
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidA; generation = $genA; request_id = 'a28-t1' } | Out-Null
     Start-Sleep -Milliseconds 900
-
-    # [9] Reason sets: API pause responses only carry the seven API reasons; the eighth
-    # (module_cctor_or_entry) exists ONLY in the initial launch event (schema-enforced).
-    $evAll = Read-EventKinds $sidA $gen 0
-    $apiReasons = @('manual','process','entry','breakpoint','exception','step','unknown')
-    $observed = @($evAll.events | Where-Object { $_.kind -eq 'paused' } | ForEach-Object { "$($_.payload.reason)" }) | Select-Object -Unique
-    $reasonsOk = $true
-    foreach ($r in $observed) { if ($apiReasons -notcontains $r) { $reasonsOk = $false } }
-    Assert-Cond 'a28-reason-sets' 'observed paused reasons stay inside the seven-value API set' "observed=$($observed -join ',')" ($reasonsOk -and ($observed.Count -ge 1)) @((Save-Json 'a28-events.json' ($evAll.events | Select-Object kind, cursor)))
 }
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
