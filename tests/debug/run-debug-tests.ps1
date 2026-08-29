@@ -3198,10 +3198,11 @@ function Run-ACC024 {
     $r3m = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity0.exe') 'unity0'
     $val0 = [string]"$($r3m.ev[0].value)"
     [int]$vlen = [Text.Encoding]::UTF8.GetByteCount($val0)
-    # exact-1024 probe: adjust the first stub name by the delta.
+    # exact-1024 probe: spread the delta across the four stub names (a single name cannot
+    # grow past the 255-char component limit).
     $delta = 1024 - $vlen
-    $adjNames = @($baseNames.Clone())
-    $adjNames[0] = 'UnityEngine.' + ('x' * (180 + $delta)) + '0'
+    $per = [Math]::Floor($delta / 4); $rem = $delta - ($per * 4)
+    $adjNames = @(); for ($k = 0; $k -lt 4; $k++) { $extra = $per; if ($k -eq 0) { $extra += $rem }; $adjNames += 'UnityEngine.' + ('x' * (180 + $extra)) + $k }
     $null = New-UnityProbe 'a24-unity1024.exe' $adjNames
     $r3 = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1024.exe') 'unity1024'
     $val1024 = "$($r3.ev[0].value)"
@@ -3209,8 +3210,7 @@ function Run-ACC024 {
     $ev3 = Save-Json 'a24-unity.json' @{ measured0 = $vlen; at_limit = $len1024; details = $r3.call.domain.error }
     Assert-Cond 'a24-unity-mono-at-limit' 'unity_mono -> mono_dynamic_analysis; evidence value exactly 1024 bytes accepted' "kind=$($r3.det) wf=$($r3.wf) len0=$vlen len1024=$len1024 start=+$($r3.startDelta)" (("$($r3.det)" -eq 'unity_mono') -and ("$($r3.wf)" -eq 'mono_dynamic_analysis') -and ($len1024 -eq 1024) -and ($r3.startDelta -eq 0)) @($ev3, $r3.call.rpc.resp)
 
-    $overNames = @($adjNames.Clone())
-    $overNames[0] = 'UnityEngine.' + ('x' * (190 + $delta)) + '0'
+    $overNames = @(); for ($k = 0; $k -lt 4; $k++) { $extra = $per; if ($k -eq 0) { $extra += $rem + 10 }; $overNames += 'UnityEngine.' + ('x' * (180 + $extra)) + $k }
     $null = New-UnityProbe 'a24-unity1034.exe' $overNames
     $r3o = Invoke-UnsupportedLaunch (Join-Path $root 'a24-unity1034.exe') 'unity1034'
     $noDetails = -not $r3o.call.domain.error.details
