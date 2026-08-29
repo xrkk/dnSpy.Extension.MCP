@@ -2376,26 +2376,33 @@ function Run-ACC030 {
         $sid = $li.session_id; $gen = [int]$li.generation
         # Target module is loaded INSIDE the harness process: fixed settle window, one probe.
         Start-Sleep -Seconds 3
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T1-prepause-$Label`r`n")
         $wp = Wait-HeldPause $sid $gen
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T2-postpause-$Label ok=$($wp.ok)`r`n")
         $found = $false
         if ($wp.ok) {
             $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+            [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T3-postmodules-$Label`r`n")
             if ($MODS.domain -and $MODS.domain.ok) {
                 $found = [bool](@($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'SatelliteLib*' })
             }
         }
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T4-found-$Label found=$found`r`n")
         Assert-Cond "a30-$Label-module-loaded" 'target module loaded in the harness process' "found=$found paused=$($wp.ok)" $found
         # Transcript: harness received target_path as first arg, remaining argv verbatim.
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T5-pretranscript-$Label`r`n")
         $tr = Join-Path $m.env.sample_root 'harness-transcript.txt'
         $lines = @(); if (Test-Path $tr) { $lines = @(Get-Content $tr) }
         $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '7:q"uote')
         Assert-Cond "a30-$Label-transcript" 'harness argv: first arg == target_path, rest verbatim' "lines=$($lines.Count) l0=$($lines[0])" $argvOk @(Save-Json "a30-$Label-transcript.json" $lines)
         # Full lifecycle: pause/continue/terminate.
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T6-pretranscriptassert-done-$Label`r`n")
         $wp2 = Wait-HeldPause $sid $gen
         $pausedOk = $wp2.ok
         if ($pausedOk) {
             $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; request_id = "a30-$Label-c2" }
         }
+        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T7-preterminate-$Label paused=$pausedOk`r`n")
         $T = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = "a30-$Label-t" }
         Start-Sleep -Milliseconds 900
         $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
