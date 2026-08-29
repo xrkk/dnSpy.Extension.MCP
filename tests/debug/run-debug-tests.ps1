@@ -50,7 +50,8 @@ if ($VerifyHarness) {
     # Handler wiring: each case must have a dispatch-table entry of the exact
     # "'ACC-xxx' = ${function:Run-ACCxxx}" shape (not merely a textual mention).
     foreach ($hid in $handlerIds) {
-        if ($driverText -notmatch [regex]::Escape(("'{0}' = " + '${{function:Run-') + $hid)) { $errors += "dispatch handler missing: $hid" }
+        $entry = ("'" + $hid + "' = " + '$' + '{function:Run-' + $hid)
+        if ($driverText.IndexOf($entry, [StringComparison]::Ordinal) -lt 0) { $errors += "dispatch handler missing: $hid" }
     }
     if (-not (Test-Path (Join-Path $repo 'tests\debug\contracts\dnspy.debug.test.v1.schema.json'))) { $errors += 'result schema file missing' }
     if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
