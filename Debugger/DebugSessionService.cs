@@ -890,6 +890,28 @@ public sealed class DebugSessionService : IDisposable {
 
 	/// <summary>JsonElement → primitive tree for the cache's JCS canonicalizer.</summary>
 	static object? NormalizeJsonValue(object? v) {
+		// System.Text.Json normally leaves object-valued numbers as JsonElement, but the
+		// net48 request path can materialize schema "integer" values as CLR Double during
+		// the Params → CallToolRequest round trip. Preserve the cache's integer-only JCS
+		// domain by losslessly folding those representations back to Int64. Rejecting a
+		// fractional or non-finite value here is deliberate: side-effect schemas expose
+		// integers only, and admitting an imprecise cache identity would be unsafe.
+		if (v is double d) {
+			if (double.IsNaN(d) || double.IsInfinity(d) || d != Math.Truncate(d)
+				|| d < -9007199254740991d || d > 9007199254740991d)
+				throw new ArgumentException("side-effect numeric argument is not a lossless JSON integer");
+			return (long)d;
+		}
+		if (v is float f) {
+			if (float.IsNaN(f) || float.IsInfinity(f) || f != Math.Truncate(f))
+				throw new ArgumentException("side-effect numeric argument is not a JSON integer");
+			return (long)f;
+		}
+		if (v is decimal m) {
+			if (m != decimal.Truncate(m) || m < long.MinValue || m > long.MaxValue)
+				throw new ArgumentException("side-effect numeric argument is not a JSON integer");
+			return (long)m;
+		}
 		if (v is not System.Text.Json.JsonElement je)
 			return v;
 		switch (je.ValueKind) {
@@ -897,7 +919,7 @@ public sealed class DebugSessionService : IDisposable {
 			case System.Text.Json.JsonValueKind.True: return true;
 			case System.Text.Json.JsonValueKind.False: return false;
 			case System.Text.Json.JsonValueKind.Number:
-				return je.TryGetInt64(out var l) ? l : je.GetDouble();
+				return je.TryGetInt64(out var l) ? l : NormalizeJsonValue(je.GetDouble());
 			case System.Text.Json.JsonValueKind.Null: return null;
 			case System.Text.Json.JsonValueKind.Array: {
 				var list = new List<object?>();
