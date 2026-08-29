@@ -14,7 +14,7 @@
     "round1_base_head": "c83bdd1008a47fce8a4133c5e2896ad133de549e",
     "round1_dispatch_head": "174e722 (docs-only on top of c83bdd1: 固化第三方核查记录)",
     "protected_scene": [
-      "PLAN/dnSpy-MCP.md (user-owned, never committed by executor)"
+      "PLAN/dnSpy-MCP.md (user-owned; 勘误:历史提交 2947543 曾误混入 3 行,现 HEAD 与用户工作区一致,此后以路径排除)"
     ],
     "exclusions": [
       "dist/ (gitignored)",
@@ -22,7 +22,7 @@
     ]
   },
   "max_rounds": 5,
-  "completed_rounds": 1,
+  "completed_rounds": 2,
   "verifier": {
     "agent_type": "general-plan-acceptance-verifier",
     "instance_identity": "round-1 dispatch 2026-08-29; continuity via full history chain in later task packages",
@@ -53,19 +53,30 @@
         "CHK-010 UIA归属标注"
       ],
       "executor_response": "全部接受并整改完毕: 修复链 05f884f..e9bff3b(13 提交); 终版单次连续批跑 36/36(490 断言 0 失败)@e9bff3b, 证据 PLAN/2026.08.26/独立核验/round-2/batch-evidence/batch8-summary.json; 实施记录第 62 轮完结"
+    },
+    {
+      "round": 2,
+      "mode": "定向复核",
+      "verdict": "核查不通过(CHK-001 独立证实关闭;007/009 维持-虚假闭合;011 新增轻微)",
+      "head_at_dispatch": "99f1cc5",
+      "anchor": "e9bff3b",
+      "record": "PLAN/2026.08.26/独立核验/round-2/核查记录-第2轮-定向复核.md",
+      "record_blob": "4b929190c27a653d91dffc71f27342e5031fc018",
+      "verifier_agent": "agent_98ab2ef9-d8c5-4bba-98d2-a298289eaa8d(恢复实例,接续 agent_ae530c8a 第 1 轮)",
+      "executor_response": "CHK-007/009/011 全部接受:第 63 轮实写勘误/FB-002/簿记补全;纯记录修复无代码变更,批 8 证据继续有效"
     }
   ],
   "last_checkpoint": "R1 十项 CHK 全部整改; 批8 单次连续 36/36 全绿; READY_TO_REVERIFY——待 R2 定向复核",
   "stop_reason": null,
-  "status": "READY_TO_REVERIFY",
+  "status": "RECTIFYING_AFTER_ROUND_2",
   "rectification": {
     "commits": [
       "05f884f",
-      "5b2ae2e",
-      "590ccb6",
       "2211831",
       "9c36b97",
+      "36cd126",
       "843a353",
+      "2131ada",
       "7bb4c54",
       "a19b0c0",
       "00ba6ad",
@@ -95,7 +106,9 @@
       "35/36@e5a15f2(仅016)",
       "35/36@261d3df(仅010)",
       "36/36@e9bff3b 终版"
-    ]
+    ],
+    "commit_count_note": "修复提交 12 个(c83bdd1..e9bff3b 共 19 提交含 7 个核验簿记提交);此前\"13 提交\"口径有误(CHK-011 勘误)",
+    "false_closure_lesson": "5b2ae2e python 断言中止致 CHK-007/009 未落盘而声明已改——第 63 轮实写"
   },
   "pending_after_restart": [
     "1) 读 VM C:\\Tools\\batch62\\summary.json+DONE: 若 ACC-034 过→仅剩 010; 若 034 仍败→取 2211831 结果目录 wire 诊断 launch3",
