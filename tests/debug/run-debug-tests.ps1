@@ -3291,13 +3291,26 @@ function Run-ACC029 {
     $m.env.dnspy_exe = $x86Exe
     try {
         # Ensure-CanonicalDnSpy reuses a healthy dnSpy when the snapshot matches — force the
-        # handover by stopping the x64 instance first.
+        # handover by stopping the x64 instance first, and keep killing stragglers until the
+        # server consistently answers x86 (http.sys can briefly serve a dying registration).
         Stop-DnSpyAndTargets
         $up86 = Ensure-CanonicalDnSpy
-        Assert-Cond 'a29-x86-host-up' 'x86 dnSpy host healthy with the extension loaded' "health=$(Get-HealthCode $script:BaseUrl)" $up86 @()
+        $hostArch = ''
         if ($up86) {
+            for ($w = 0; $w -lt 10; $w++) {
+                $capP = Invoke-ToolNoInit 'debug_capabilities' @{ }
+                $hostArch = "$($capP.domain.result.host_architecture)"
+                if ("$hostArch" -eq 'x86') { break }
+                Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Milliseconds 800
+                Stop-DnSpyAndTargets
+                $up86 = Ensure-CanonicalDnSpy
+                if (-not $up86) { break }
+            }
+        }
+        Assert-Cond 'a29-x86-host-up' 'x86 dnSpy host healthy with the extension loaded' "health=$(Get-HealthCode $script:BaseUrl) arch=$hostArch" ($up86 -and ("$hostArch" -eq 'x86')) @()
+        if ($up86 -and "$hostArch" -eq 'x86') {
             $cap = Invoke-ToolNoInit 'debug_capabilities' @{ }
-            $hostArch = "$($cap.domain.result.host_architecture)"
             Assert-Cond 'a29-x86-host-arch' 'capabilities report x86 host architecture' "arch=$hostArch" ("$hostArch" -eq 'x86') @($cap.rpc.resp)
 
             # [4] net48-x86 full lifecycle.
