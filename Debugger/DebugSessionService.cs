@@ -116,9 +116,12 @@ public sealed class DebugSessionService : IDisposable {
 		// serializes them as "<name> (id=N)" so same-bytes siblings get distinct ids, which is
 		// exactly the module_handle disambiguation ACC-035 needs.
 		try {
-			return module.Runtime.GetDotNetRuntime().GetModuleId(module);
+			var id = module.Runtime.GetDotNetRuntime().GetModuleId(module);
+			SpyCounters["upstream_id:" + id.ModuleName + "|mem" + (id.IsInMemory ? 1 : 0) + "dyn" + (id.IsDynamic ? 1 : 0) + "nameOnly" + (id.ModuleNameOnly ? 1 : 0)] = 1;
+			return id;
 		}
-		catch {
+		catch (Exception ex) {
+			SpyCounters["upstream_id_exc:" + ex.GetType().Name] = 1;
 			// non-dotnet runtime or engine refusal: name-only in-memory guess (won't bind)
 			return ModuleId.Create(null, module.Name, module.IsDynamic, isInMemory: true, moduleNameOnly: true);
 		}
