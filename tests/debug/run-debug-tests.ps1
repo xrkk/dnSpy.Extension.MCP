@@ -2397,7 +2397,7 @@ function Run-ACC030 {
         # the same Get-Content runs in 3ms from an interactive session — provider quirk under
         # redirected stdio. ReadAllLines reads identically.
         $lines = @(); if (Test-Path $tr) { $lines = @([IO.File]::ReadAllLines($tr)) }
-        $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '7:q"uote')
+        $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '6:q"uote')
         Assert-Cond "a30-$Label-transcript" 'harness argv: first arg == target_path, rest verbatim' "lines=$($lines.Count) l0=$($lines[0])" $argvOk @(Save-Json "a30-$Label-transcript.json" $lines)
         # Full lifecycle: pause/continue/terminate.
         [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T6-pretranscriptassert-done-$Label`r`n")
