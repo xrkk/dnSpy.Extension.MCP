@@ -3156,7 +3156,7 @@ function Run-ACC024 {
     $co = Get-CorFlagsOffset $b
     if ($co) {
         $flags = [BitConverter]::ToUInt32($b, [int]$co.CorOff + 16)
-        [BitConverter]::GetBytes($flags -band 0xFFFFFFFE).CopyTo($b, [int]$co.CorOff + 16)
+        [BitConverter]::GetBytes([uint32]0x00000002).CopyTo($b, [int]$co.CorOff + 16)
         [IO.File]::WriteAllBytes($mixedPath, $b)
     }
     $r2 = Invoke-UnsupportedLaunch $mixedPath 'mixed'
