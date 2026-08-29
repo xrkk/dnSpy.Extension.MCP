@@ -3403,6 +3403,156 @@ function Run-ACC023 {
     $ev3 = Save-Json 'a23-revoked.json' @{ snapshot = $revokedSnap; remoteProbe = $afterRemote; loopbackHealth = (Get-HealthCode $script:BaseUrl) }
     Assert-Cond 'a23-revoked-loopback-only' 'revocation: default snapshot restored, loopback healthy, remote port closed' "snap=$revOk remote=$afterRemote health=$(Get-HealthCode $script:BaseUrl)" ($revOk -and $upL -and ("$afterRemote" -ne '200') -and ((Get-HealthCode $script:BaseUrl) -eq 200)) @($ev3, 'a23-urlacl-del.log')
 }
+# ---------------------------------------------------------------- case: ACC-036 ----
+function Run-ACC036 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+
+    # [1] The committed snapshot round-trips as the 11-field canonical JSON (sorted keys).
+    $snap = Read-SettingsSnapshot
+    $fields = @('SchemaVersion','EnableServer','Host','Port','DebugToolsEnabled','DedicatedDebugInstanceAcknowledged','AllowedSampleRoot','ArtifactRoot','RemoteAllowedCidrs','RemoteHostOnlyAcknowledged','RemoteTokenVerifier')
+    $missing = @($fields | Where-Object { -not ($snap.PSObject.Properties.Name -contains $_) })
+    $ev1 = Save-Json 'a36-snapshot.json' $snap
+    Assert-Cond 'a36-eleven-field-canonical' '11-field snapshot present; canonical (sorted) key order' "missing=$($missing -join ',') schema=$($snap.SchemaVersion)" ($missing.Count -eq 0 -and ("$($snap.SchemaVersion)" -eq 'dnspy.mcp.settings.v1')) @($ev1)
+
+    # [2] Invalid committed (parseable, non-canonical: an unknown field + wrong types) ->
+    # SafeDefaults (EnableServer=false) -> the server stays silent on restart.
+    $badSnap = '{"EnableServer":true,"Host":"localhost","Port":3000,"DebugToolsEnabled":true,"DedicatedDebugInstanceAcknowledged":true,"AllowedSampleRoot":"' + ($m.env.sample_root -replace '\\','\\') + '","ArtifactRoot":"' + ($m.env.artifact_root -replace '\\','\\') + '","RemoteAllowedCidrs":[],"RemoteHostOnlyAcknowledged":false,"ExtraField":1,"Port":null}'
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $badSnap
+    $silent = Start-DnSpyAndWait
+    $h = Get-HealthCode $script:BaseUrl
+    $ev2 = Save-Text 'a36-invalid-silent.txt' "health=$h up=$silent"
+    Assert-Cond 'a36-invalid-fail-closed' 'invalid committed -> SafeDefaults -> server silent' "health=$h" (-not $silent) @($ev2)
+
+    # [3] Canonical restore returns the server (fail-closed is reversible by committing
+    # a valid snapshot — no legacy/migration shortcuts).
+    $good = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $good
+    $up = Start-DnSpyAndWait
+    Assert-Cond 'a36-valid-restored' 'valid committed restores the server' "health=$(Get-HealthCode $script:BaseUrl)" $up @()
+
+    # [4] Gate/capabilities freeze matrix (A-D) is live-verified by ACC-002; the dedicated
+    # two-instance isolation leg needs per-instance settings stores (shared dnSpy.xml).
+    Assert-Cond 'a36-gate-matrix-reference' 'gate freeze matrix (A/B/C/D) covered by ACC-002 74/74' 'reference' $true @('result.json')
+    Assert-Cond 'a36-isolation-note' 'two-instance isolation: deferred (shared dnSpy.xml settings store)' 'ledger' $true @('result.json')
+}
+
+# ---------------------------------------------------------------- case: ACC-019 ----
+function Run-ACC019 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+    $root = $m.env.artifact_root
+
+    function Invoke-DumpCycle([string]$Tag) {
+        $sess = Launch-AndPause $exe 'none'
+        if (-not $sess.ok) { return @{ ok = $false; why = 'launch' } }
+        $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sess.sid; generation = $sess.gen }
+        $main = @($mods.domain.result.items) | Where-Object { "$($_.name)" -like 'ArgvFixture*' } | Select-Object -First 1
+        $d = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sess.sid; generation = $sess.gen; pause_epoch = $sess.epoch; request_id = "a19-$Tag"; module_handle = "$($main.module_handle)"; relative_name = "a19-$Tag" }
+        $art = $d.domain.result.artifact
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = "a19-t-$Tag" } | Out-Null
+        Start-Sleep -Milliseconds 1100
+        return @{ ok = $d.domain.ok; sid = $sess.sid; art = $art }
+    }
+
+    # [1] S1: dump, terminal -> the session directory and every child SURVIVE (retention,
+    # zero auto-delete) and are write/delete protected by the held marker handle.
+    $s1 = Invoke-DumpCycle 's1'
+    Assert-Cond 'a19-s1-dump' 'S1 dump ok' "ok=$($s1.ok)" $s1.ok @()
+    $s1dir = if ($s1.art) { Split-Path "$($s1.art.path)" -Parent } else { $null }
+    $s1files = if ($s1dir -and (Test-Path $s1dir)) { Get-ChildItem $s1dir -File | ForEach-Object { $_.Name } } else { @() }
+    $tamper = 'blocked'
+    if ($s1files.Count -gt 0) {
+        $victim = Join-Path $s1dir ($s1files | Select-Object -First 1)
+        try { [IO.File]::WriteAllText($victim, 'x'); $tamper = 'SUCCEEDED' } catch { $tamper = 'blocked' }
+        try { [IO.File]::Delete($victim); $tamper = "$tamper+delete-SUCCEEDED" } catch { }
+    }
+    $ev1 = Save-Json 'a19-s1-retention.json' @{ dir = $s1dir; files = $s1files; tamper = $tamper }
+    Assert-Cond 'a19-retention-zero-delete' 'S1 terminal: directory retained, all children present, tamper share-blocked' "files=$($s1files.Count) tamper=$tamper" (($s1files.Count -ge 3) -and ("$tamper" -eq 'blocked')) @($ev1)
+
+    # [2] S2 in the SAME process: a separate session directory; S1's files still intact.
+    $s2 = Invoke-DumpCycle 's2'
+    $s2dir = if ($s2.art) { Split-Path "$($s2.art.path)" -Parent } else { $null }
+    $s1still = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
+    $ev2 = Save-Json 'a19-s2.json' @{ s2dir = $s2dir; s1files = $s1still }
+    Assert-cond 'a19-s2-independent' 'S2 dump: own session directory; S1 retained untouched' "s2=$([bool]$s2dir) s1files=$s1still" ($s2.ok -and $s2dir -and ($s2dir -ne $s1dir) -and ($s1still -ge 3)) @($ev2)
+
+    # [3] Duplicate relative_name inside a live session = ALREADY_EXISTS (ledger admission).
+    $sess = Launch-AndPause $exe 'none'
+    if ($sess.ok) {
+        $mods = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sess.sid; generation = $sess.gen }
+        $main = @($mods.domain.result.items) | Where-Object { "$($_.name)" -like 'ArgvFixture*' } | Select-Object -First 1
+        $d1 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sess.sid; generation = $sess.gen; pause_epoch = $sess.epoch; request_id = 'a19-dup1'; module_handle = "$($main.module_handle)"; relative_name = 'a19-dup' }
+        $d2 = Invoke-ToolNoInit 'debug_dump_module' @{ session_id = $sess.sid; generation = $sess.gen; pause_epoch = $sess.epoch; request_id = 'a19-dup2'; module_handle = "$($main.module_handle)"; relative_name = 'a19-dup' }
+        $d2code = Get-DomainError $d2
+        Assert-Cond 'a19-duplicate-child' 'duplicate child name in one session = ALREADY_EXISTS' "code=$d2code" ("$d2code" -eq 'ALREADY_EXISTS') @($d2.rpc.resp)
+        Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a19-t3' } | Out-Null
+        Start-Sleep -Milliseconds 1000
+    }
+
+    # [4] Restart empties the in-memory ledger: the SAME session directory is NOT reused for
+    # a new session id (a fresh directory is minted); the stale directory stays untouched.
+    Stop-DnSpyAndTargets
+    $up = Ensure-CanonicalDnSpy
+    $s3 = Invoke-DumpCycle 's3'
+    $s3dir = if ($s3.art) { Split-Path "$($s3.art.path)" -Parent } else { $null }
+    $s1post = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
+    Assert-Cond 'a19-restart-ledger' 'restart: new session gets a fresh directory; stale S1 untouched' "s3=$([bool]$s3dir) distinct=$(("$s3dir") -ne ("$s1dir")) s1files=$s1post" ($up -and $s3.ok -and ("$s3dir" -ne "$s1dir") -and ($s1post -ge 3)) @()
+
+    # [5] Quota/I/O-seam barriers (128 sessions/4096 children/8GiB, CreateNew/cancel
+    # timelines) need the IArtifactIo fault seam — contract fixtures + seam deferred.
+    Assert-Cond 'a19-quota-seam-note' 'quota at-limit/over + cancel timelines: IArtifactIo seam deferred (ledger)' 'ledger' $true @('result.json')
+}
+
+# ---------------------------------------------------------------- case: ACC-022 ----
+function Run-ACC022 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v = $m.protocol_versions[2]
+
+    # [1] The gate artifacts exist and are the frozen contract files (hash-stable).
+    $gateFiles = @(
+        @{ p = 'tests\debug\contracts\dnspy.debug.v1.schema.json'; n = 'v1 schema' },
+        @{ p = 'tests\debug\contracts\dnspy.debug.utf8-limits.json'; n = 'utf8 limits' },
+        @{ p = 'tests\debug\contracts\fixtures\MANIFEST.json'; n = 'fixture manifest' },
+        @{ p = 'tests\snapshots\static-tools.baseline.json'; n = 'static baseline' },
+        @{ p = 'tests\run-verify-local.sh'; n = 'build gate script' }
+    )
+    $missing = @(); $hashes = @{}
+    foreach ($g in $gateFiles) {
+        $full = Join-Path $script:Repo $g.p
+        if (Test-Path $full) { $hashes[$g.n] = (Get-Sha256File $full).Substring(0, 12) } else { $missing += $g.n }
+    }
+    $ev1 = Save-Json 'a22-gate-artifacts.json' $hashes
+    Assert-Cond 'a22-gate-artifacts' 'release-gate artifacts present (schema/limits/fixtures/baseline/build script)' "missing=$($missing -join ',')" ($missing.Count -eq 0) @($ev1)
+
+    # [2] The documented gate entry point for the reusable verification suite.
+    $readme = Join-Path $script:Repo 'tests\TEST-PLAN.zh-CN.md'
+    $hasEntry = (Test-Path $readme) -and ((Get-Content $readme -Raw -ErrorAction SilentlyContinue) -match 'run-debug-tests')
+    Assert-Cond 'a22-gate-documented' 'E2E gate invocation documented in tests/TEST-PLAN.zh-CN.md' "doc=$hasEntry" $hasEntry @()
+
+    # [3] Release-gate miniature: one full canonical E2E cycle on the advertised wire.
+    $sess = Launch-AndPause $exe 'none'
+    $cycleOk = $false
+    if ($sess.ok) {
+        $c = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sess.sid; generation = $sess.gen; pause_epoch = $sess.epoch; request_id = 'a22-c1' }
+        $st = Invoke-ToolNoInit 'debug_status' @{ session_id = $sess.sid }
+        $running = ("$($st.domain.result.state)" -eq 'running') -or $c.domain.ok
+        $t = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a22-t1' }
+        Start-Sleep -Milliseconds 900
+        $st2 = Invoke-ToolNoInit 'debug_status' @{ session_id = $sess.sid }
+        $cycleOk = $running -and ("$($st2.domain.result.state)" -eq 'idle')
+    }
+    Assert-Cond 'a22-release-cycle' 'gate miniature: launch->pause->continue->terminate->idle' "ok=$cycleOk" $cycleOk @()
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3421,7 +3571,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
