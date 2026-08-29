@@ -2319,17 +2319,25 @@ function Run-ACC010 {
     # FIXTURE module (by name), never on wherever the pause happened to land — a re-acquired
     # pause usually sits inside mscorlib's Thread.Sleep.
     $hotTok = $null; $hotOff = 0
-    # The held pause can land VERY early (only mscorlib registered yet). The fixture module's
-    # registration is an async dispatcher event — poll for it instead of anchoring on the
-    # paused frame's module (which may be mscorlib, yielding a sha/token mismatch).
+    # The held pause can land VERY early — before the AccFixture module-load event fires.
+    # While paused that event can NEVER fire (the loader is frozen): poll briefly, and if
+    # still absent, CONTINUE (letting the loader proceed) and re-anchor on a fresh held
+    # pause. Never fall back to the paused frame's module (it can be mscorlib).
     $modEntry0 = $null
-    for ($mw = 0; $mw -lt 20 -and -not $modEntry0; $mw++) {
-        $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-        $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
-        if (-not $modEntry0) { Start-Sleep -Milliseconds 300 }
+    for ($mw = 0; $mw -lt 6 -and -not $modEntry0; $mw++) {
+        for ($pw = 0; $pw -lt 4 -and -not $modEntry0; $pw++) {
+            $MODS0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+            $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+            if (-not $modEntry0) { Start-Sleep -Milliseconds 300 }
+        }
+        if (-not $modEntry0) {
+            $epm = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
+            $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epm; request_id = "a16-anchor$mw" }
+            $wpm = Wait-HeldPause $sid $gen
+            if ($wpm.ok) { $cur = $wpm.epoch }
+        }
     }
-    if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
-    $mod = "$($modEntry0.module_handle)"
+    $mod = if ($modEntry0) { "$($modEntry0.module_handle)" } else { '' }
     # Deterministic token discovery: reflection over the fixture BYTES (Assembly.Load of a
     # byte[] does not lock the file) yields the same MethodDef tokens the debugged process
     # carries. Immune to JIT inlining (no Hot frame on the stack) and to fixture layout
