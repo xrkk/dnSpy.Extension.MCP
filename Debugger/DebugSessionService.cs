@@ -409,8 +409,8 @@ public sealed class DebugSessionService : IDisposable {
 	static void ValidateInputUtf8Limits(string tool, Dictionary<string, object>? args) {
 		if (args is null)
 			return;
-		foreach (var (key, raw) in args) {
-			if (raw is not System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } je)
+		foreach (var key in args.Keys) {
+			if (!(args.TryGetValue(key, out var raw) && raw is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } je))
 				continue;
 			var value = je.GetString();
 			if (value is null)
