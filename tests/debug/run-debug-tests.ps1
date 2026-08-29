@@ -2369,7 +2369,9 @@ function Run-ACC030 {
     function Invoke-HarnessLifecycle([string]$Label) {
         $L = Invoke-HarnessLaunch "a30-$Label" @{ harness_argv = @('plain', 'two words', 'q"uote') }
         $li = $L.domain.result
-        Assert-Cond "a30-$Label-launch" 'harness launch ok (module loaded, running)' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
+        $okLaunch = ("$($L.domain.ok)" -eq 'True')
+        $rpcE30 = if ($L.rpc.json -and $L.rpc.json.error) { $L.rpc.json.error.code } else { '' }
+        Assert-Cond "a30-$Label-launch" 'harness launch ok (module loaded, running)' "ok=$($L.domain.ok) rpc=$rpcE30 state=$($li.state)" $okLaunch @($L.rpc.resp)
         if (-not $L.domain.ok) { return }
         $sid = $li.session_id; $gen = [int]$li.generation
         # Target module is loaded INSIDE the harness process.
