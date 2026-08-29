@@ -3589,7 +3589,8 @@ function Run-ACC022 {
     $ev3 = Save-Text 'a22-verify-workflow.yml' $wf
     $wfInvokes = ($wf -match 'run-debug-tests\.ps1\s+(-Case\s+ACC-\d{3}|-VerifyHarness)')
     $wfNoHashGate = ($wf -notmatch "if:\s*hashFiles\('tests/debug/run-debug-tests\.ps1'\)")
-    $wfStatusStrict = @(); foreach ($jid in @('contracts', 'build', 'e2e')) { if ($wf -match [regex]::Escape("needs.$jid.result") + "[^\n]*!=\s*["']success["']") { $wfStatusStrict += $jid } }
+    $strictPattern = '[^\n]*!=\s*["'']success["'']'
+    $wfStatusStrict = @(); foreach ($jid in @('contracts', 'build', 'e2e')) { if ($wf -match ([regex]::Escape("needs.$jid.result") + $strictPattern)) { $wfStatusStrict += $jid } }
     Assert-Cond 'a22-ci-workflow-hard-gate' 'E2E job invokes the driver explicitly; no hashFiles skip; verify-status rejects non-success (incl. skipped) for contracts/build/e2e' "invoke=$wfInvokes noHashGate=$wfNoHashGate strict=$($wfStatusStrict -join ',')" ($wfInvokes -and $wfNoHashGate -and ($wfStatusStrict.Count -eq 3)) @($ev3)
 
     # [4] Release-gate miniature: one full canonical E2E cycle on the advertised wire.
