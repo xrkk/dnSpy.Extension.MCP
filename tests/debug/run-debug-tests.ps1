@@ -2453,10 +2453,27 @@ function Run-ACC016 {
     $wp = Wait-HeldPause $sid $gen
     Assert-Cond 'a16-pause' 'held pause' "ok=$($wp.ok)" $wp.ok
     $ep = $wp.epoch
-    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
-    $th = $tl.domain.result.items[0].thread_handle
-    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
-    $fr = $st.domain.result.items[0].frame_handle
+    # The held pause can be the empty transient — re-acquire until a frame exists.
+    $fr = $null; $th = $null
+    for ($i = 0; $i -lt 6 -and -not $fr; $i++) {
+        $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+        if ($tl.domain.ok -and @($tl.domain.result.items).Count -gt 0) {
+            $th = $tl.domain.result.items[0].thread_handle
+            $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
+            if ($st.domain.ok -and @($st.domain.result.items).Count -gt 0) { $fr = $st.domain.result.items[0].frame_handle }
+        }
+        if (-not $fr) {
+            $stx = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+            if ("$($stx.domain.result.state)" -eq 'paused') {
+                $epx = $stx.domain.debug_context.pause_epoch
+                $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epx; request_id = 'a16-cx' }
+            }
+            $wp2 = Wait-HeldPause $sid $gen
+            if ($wp2.ok) { $ep = $wp2.epoch }
+        }
+    }
+    Assert-Cond 'a16-frame' 'held pause yields a frame' "ok=$([bool]$fr)" ([bool]$fr) @()
+    if (-not $fr) { Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a16-t0' } | Out-Null; return }
 
     # [1] depth=4 valid / depth=5 rejected as JSON-RPC -32602 (schema maximum).
     $lo4 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100 }
