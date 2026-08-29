@@ -1173,33 +1173,27 @@ function Run-ACC031 {
     $modEntry = @($MODS.domain.result.items | Where-Object module_handle -eq $mainFrame.location.module_handle)[0]
     $mvid = "$($modEntry.mvid)"
 
-    # Step-into until the current method is no longer Main (enter Hot). Each step resumes the
-    # process, so thread handles are re-minted every pause: re-list before every step.
-    $hotToken = $null; $hotOff = $null; $mod = "$($mainFrame.location.module_handle)"
-    $curEp = $ep
-    for ($i = 0; $i -lt 14 -and -not $hotToken; $i++) {
-        $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp }
-        if (-not $tl.domain.ok) { break }
-        $curTh = $tl.domain.result.items[0].thread_handle
-        $st = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = "acc31-step$i"; thread_handle = $curTh; kind = 'into' }
-        if (-not $st.domain.ok) { break }
-        $paused = $false
-        for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
-            Start-Sleep -Milliseconds 300
-            $stt = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
-            if ("$($stt.domain.result.state)" -eq 'paused') { $paused = $true; $curEp = $stt.domain.debug_context.pause_epoch }
-        }
-        if (-not $paused) { break }
-        $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp }
-        if (-not $tl2.domain.ok) { break }
-        $curTh = $tl2.domain.result.items[0].thread_handle
-        $s2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; thread_handle = $curTh }
-        if ($s2.domain.ok) {
-            $f0 = $s2.domain.result.items[0]
-            if ("$($f0.location.method_token)" -ne $mainToken) { $hotToken = "$($f0.location.method_token)"; $hotOff = [int]$f0.location.il_offset; $mod = "$($f0.location.module_handle)" }
-        }
+    # Deterministic Hot discovery: the fixture publishes its MethodDef tokens at startup
+    # (stepping could land in the manifest writer or an inlined frame instead of Hot).
+    # Resume the entry pause so Main runs and writes the manifest, poll for it, re-pause.
+    $manPath31 = Join-Path $m.env.sample_root 'accfix-manifest.txt'
+    Remove-Item $manPath31 -Force -ErrorAction SilentlyContinue
+    $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc31-c0' }
+    $manReady31 = $false
+    for ($w = 0; $w -lt 20 -and -not $manReady31; $w++) {
+        Start-Sleep -Milliseconds 200
+        if (Test-Path $manPath31) { $manReady31 = $true }
     }
-    Assert-Cond 'entered-hot' 'stepped from Main into Hot (frame token changed)' "hot_token=$hotToken off=$hotOff" ([bool]$hotToken) @($S.rpc.resp)
+    $wp31 = Wait-StablePaused $sid
+    $curEp = $wp31.epoch
+    $hotToken = $null; $hotOff = 0; $mod = "$($mainFrame.location.module_handle)"
+    if ($manReady31) {
+        $fixMan31 = @{}
+        foreach ($line in ([IO.File]::ReadAllLines($manPath31))) { $kv = $line -split '=', 2; if ($kv.Count -eq 2) { $fixMan31[$kv[0]] = $kv[1] } }
+        if ($fixMan31['hot'] -and ("$($fixMan31['hot'])" -ne "$($fixMan31['main'])")) { $hotToken = "$($fixMan31['hot'])" }
+    }
+    Save-Json 'acc31-token-manifest.json' @{ ready = $manReady31; hot = $hotToken } | Out-Null
+    Assert-Cond 'entered-hot' 'Hot token resolved deterministically from the fixture manifest' "hot_token=$hotToken manifest=$manReady31 paused=$($wp31.ok)" ([bool]$hotToken) @('acc31-token-manifest.json')
 
     if ($hotToken) {
         $bp = Invoke-ToolNoInit 'debug_set_breakpoint' @{ session_id = $sid; generation = $gen; pause_epoch = $curEp; request_id = 'acc31-bp'; module_handle = $mod; mvid = $mvid; method_token = $hotToken; il_offset = $hotOff; module_sha256 = $sha; enabled = $true }
@@ -2111,7 +2105,11 @@ function Run-ACC034 {
     Remove-Item $a34Resp3 -Force -ErrorAction SilentlyContinue
     $cp3 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$a34Req3F",'-o',$a34Resp3 -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 900
-    $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
+    # The restart Terminate went to the FAKE adapter (swallowed). Kill the REAL target so the
+    # manager observes a genuine removal: the pending restart relaunches through the Start
+    # precheck (owned process cleared, manager teardown covered by the product's bounded
+    # wait). A synthetic emit would leave the live process blocking the internal relaunch.
+    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
     $dl3 = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $dl3 -and -not (Test-Path $a34Resp3)) { Start-Sleep -Milliseconds 500 }
     $dom3 = $null
@@ -2160,7 +2158,8 @@ function Run-ACC034 {
     $t2b = '{"jsonrpc":"2.0","id":785,"method":"tools/call","params":{"name":"debug_terminate","arguments":{"session_id":"' + $sid4 + '","generation":' + $gen4 + ',"request_id":"a34-t2b"}}}'
     $rf5 = Invoke-Detached $t2b 'a34t2b'
     Start-Sleep -Milliseconds 900
-    $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
+    # T2b also posted to the fake — settle with a REAL removal (kill), leaving no orphan.
+    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
     $null = Read-DetachedResp $rf5
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 600

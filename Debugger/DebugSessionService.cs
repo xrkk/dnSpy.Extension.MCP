@@ -848,7 +848,9 @@ public sealed class DebugSessionService : IDisposable {
 			if (dbgManager.IsDebugging && !testUiDebugging) {
 				DbgProcess? ownedPeek;
 				lock (sessionLock) ownedPeek = ownedProcess;
-				if (coordinator.State == DebugStates.Idle && ownedPeek is null) {
+				// owned==null covers both post-terminal launches and the restart-internal
+				// relaunch right after a REAL removal (state=restarting there, not idle).
+				if (ownedPeek is null) {
 					SpyInc("manager_teardown_waits");
 					var swWait = System.Diagnostics.Stopwatch.StartNew();
 					while (dbgManager.IsDebugging && swWait.ElapsedMilliseconds < 3000)
