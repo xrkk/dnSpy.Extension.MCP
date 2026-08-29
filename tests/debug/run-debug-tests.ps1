@@ -2324,6 +2324,7 @@ function Run-ACC010 {
         if (Test-Path $manPath) { $manReady = $true }
     }
     $reheld = Wait-HeldPause $sid $gen
+    if ($reheld.ok) { $cur = $reheld.epoch }
     $hotTok = $null; $hotOff = 0; $rnd = 0
     if ($manReady) {
         $fixMan = @{}
