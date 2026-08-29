@@ -1192,6 +1192,7 @@ function Run-ACC031 {
         if (-not $modEntry) { Start-Sleep -Milliseconds 300 }
     }
     $mvid = "$($modEntry.mvid)"
+    $mod = "$($modEntry.module_handle)"
 
     # Deterministic Hot discovery: reflection over the fixture bytes (same MethodDef tokens
     # as the debugged process; no stepping, no dependence on JIT inlining). The process
