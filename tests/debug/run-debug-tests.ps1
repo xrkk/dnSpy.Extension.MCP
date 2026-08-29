@@ -3830,15 +3830,74 @@ foreach ($a in $script:Assertions) {
 $missingEvidence | Set-Content (Join-Path $script:OutDir 'evidence-gate.log')
 Assert-Cond 'result-evidence-complete' 'every assertion evidence path exists under the result directory' "missing=$($missingEvidence.Count)" ($missingEvidence.Count -eq 0) @('evidence-gate.log')
 
-$shapeErrors = @()
-foreach ($a in $script:Assertions) {
-    foreach ($f in @('assertion_id', 'status', 'expected', 'actual')) {
-        if ($null -eq $a.PSObject.Properties[$f]) { $shapeErrors += "$($a.assertion_id):$f" }
-    }
-    if ($null -eq $a.PSObject.Properties['evidence_paths']) { $shapeErrors += "$($a.assertion_id):evidence_paths" }
+# Schema-driven conformance gate (external finding: the former shape check only inspected
+# assertion fields and never loaded the contract — a self-referential hollow gate). This
+# validator READS the committed dnspy.debug.test.v1 schema and validates the FINAL result
+# object against it (subset: type/const/enum/required/additionalProperties/properties/items/
+# pattern/minItems — every keyword the schema uses).
+function Get-ValueProp {
+    param($Obj, [string]$Name)
+    if ($Obj -is [System.Collections.IDictionary]) { return $Obj[$Name] } else { return $Obj.$Name }
 }
-$shapeErrors | Set-Content (Join-Path $script:OutDir 'shape-gate.log')
-Assert-Cond 'result-schema-shape' 'result satisfies dnspy.debug.test.v1 (id/status/expected/actual/evidence_paths per assertion)' "errors=$($shapeErrors.Count) schema=tests/debug/contracts/dnspy.debug.test.v1.schema.json" ($shapeErrors.Count -eq 0) @('shape-gate.log')
+function Get-ValueProps {
+    param($Obj)
+    if ($Obj -is [System.Collections.IDictionary]) { return @($Obj.Keys) } else { return @($Obj.PSObject.Properties.Name) }
+}
+function Test-SchemaNode {
+    param($Value, $Schema, [string]$Path, [System.Collections.ArrayList]$Errors)
+    if ($null -eq $Schema) { return }
+    if ($Schema.PSObject.Properties['const'] -and ("$Value" -ne "$($Schema.const)")) { [void]$Errors.Add("$Path const mismatch") }
+    if ($Schema.PSObject.Properties['enum']) {
+        $inEnum = $false
+        foreach ($e in $Schema.enum) { if ("$Value" -eq "$e") { $inEnum = $true; break } }
+        if (-not $inEnum) { [void]$Errors.Add("$Path not in enum") }
+    }
+    if ($Schema.PSObject.Properties['type']) {
+        $t = "$($Schema.type)"
+        switch ($t) {
+            'object' {
+                if ($Value -isnot [System.Collections.IDictionary] -and $Value -isnot [System.Management.Automation.PSCustomObject]) { [void]$Errors.Add("$Path is not an object"); return }
+                $props = Get-ValueProps $Value
+                if ($Schema.PSObject.Properties['required']) {
+                    foreach ($r in @($Schema.required)) { if ($props -notcontains $r) { [void]$Errors.Add("$Path missing required '$r'") } }
+                }
+                if ("$($Schema.additionalProperties)" -eq 'False' -and $Schema.PSObject.Properties['properties']) {
+                    $allowed = @($Schema.properties.PSObject.Properties.Name)
+                    foreach ($pr in $props) { if ($allowed -notcontains $pr) { [void]$Errors.Add("$Path unexpected property '$pr'") } }
+                }
+                if ($Schema.PSObject.Properties['properties']) {
+                    foreach ($pr in $props) {
+                        $sub = $Schema.properties.PSObject.Properties[$pr]
+                        if ($sub) { Test-SchemaNode -Value (Get-ValueProp $Value $pr) -Schema $sub.Value -Path "$Path.$pr" -Errors $Errors }
+                    }
+                }
+            }
+            'array' {
+                if ($Value -isnot [System.Collections.IList]) { [void]$Errors.Add("$Path is not an array"); return }
+                $items = @($Value)
+                if ($Schema.PSObject.Properties['minItems'] -and $items.Count -lt [int]$Schema.minItems) { [void]$Errors.Add("$Path below minItems") }
+                if ($Schema.PSObject.Properties['items']) {
+                    for ($i = 0; $i -lt $items.Count; $i++) { Test-SchemaNode -Value $items[$i] -Schema $Schema.items -Path "$Path[$i]" -Errors $Errors }
+                }
+            }
+            'string' { if ($null -ne $Value -and $Value -isnot [string]) { [void]$Errors.Add("$Path is not a string") } }
+            'integer' { if ($Value -isnot [int] -and $Value -isnot [long]) { [void]$Errors.Add("$Path is not an integer") } }
+            'number' { if ($Value -isnot [int] -and $Value -isnot [long] -and $Value -isnot [double]) { [void]$Errors.Add("$Path is not a number") } }
+            'boolean' { if ($Value -isnot [bool]) { [void]$Errors.Add("$Path is not a boolean") } }
+        }
+    }
+    if ($Schema.PSObject.Properties['pattern'] -and "$Value" -notmatch $Schema.pattern) { [void]$Errors.Add("$Path pattern mismatch") }
+}
+$shapeErrors = New-Object System.Collections.ArrayList
+$resultSchemaPath = Join-Path $script:Repo 'tests\debug\contracts\dnspy.debug.test.v1.schema.json'
+$resultSchema = $null
+try { $resultSchema = Get-Content $resultSchemaPath -Raw | ConvertFrom-Json } catch { [void]$shapeErrors.Add("schema load failed: $($_.Exception.Message)") }
+
+# Provisional gate assertion (shape-identical to every assertion); flipped to fail if the
+# schema validation below reports errors, then status/exit are recomputed — the structure
+# is value-independent, so the recorded object still conforms.
+Assert-Cond 'result-schema-shape' 'result object validated against committed dnspy.debug.test.v1.schema.json' 'pending' $true @('shape-gate.log')
+$gateAssertion = $script:Assertions[$script:Assertions.Count - 1]
 
 $allPass = (@($script:Assertions | Where-Object status -ne 'pass').Count -eq 0) -and ($script:Assertions.Count -gt 0)
 $status = if ($allPass) { 'pass' } else { 'fail' }
@@ -3857,8 +3916,19 @@ $result = [ordered]@{
     finished_utc = $finishedUtc
     status = $status
     exit_code = $exit
-    assertions = $script:Assertions
-    evidence_paths = $evidencePaths
+    assertions = @($script:Assertions)
+    evidence = $evidencePaths
+}
+if ($resultSchema) { Test-SchemaNode -Value $result -Schema $resultSchema -Path '$' -Errors $shapeErrors }
+@($shapeErrors) | Set-Content (Join-Path $script:OutDir 'shape-gate.log')
+if (@($shapeErrors).Count -gt 0) {
+    $gateAssertion.status = 'fail'
+    $gateAssertion.actual = (@($shapeErrors) | Select-Object -First 5) -join '; '
+    $allPass = $false; $status = 'fail'
+    $exit = if ($script:PreconditionFailed) { 2 } else { 1 }
+    $result.status = $status; $result.exit_code = $exit
+} else {
+    $gateAssertion.actual = "valid against dnspy.debug.test.v1.schema.json"
 }
 $resultPath = Join-Path $script:OutDir 'result.json'
 ConvertTo-Json $result -Depth 40 | Set-Content $resultPath -Encoding UTF8

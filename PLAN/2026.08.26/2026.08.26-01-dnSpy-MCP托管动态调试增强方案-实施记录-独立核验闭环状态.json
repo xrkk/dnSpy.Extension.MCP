@@ -88,9 +88,9 @@
       "executor_response": "无待办——核验方明示闭环可关闭,R1..R4 四份记录构成完整验收证据链"
     }
   ],
-  "last_checkpoint": "COMPLETE——R4 核查通过,全部历史 CHK 关闭,无核验后漂移(HEAD 与派发时一致)",
+  "last_checkpoint": "第 65 轮整改中:驱动 schema 真门禁+evidence 字段+validate.py 三重检查已落;CI 诚实化+状态降格+v2 补披露已落;待 VM 重跑批 9+R5",
   "stop_reason": null,
-  "status": "COMPLETE",
+  "status": "RECTIFYING_AFTER_EXTERNAL_FINDINGS",
   "rectification": {
     "commits": [
       "05f884f",
@@ -150,5 +150,14 @@
       "round-3/核查记录-第3轮-定向复核.md blob 5e85e9b1",
       "round-4/核查记录-第4轮-定向复核.md blob 22ff1a67"
     ]
-  }
+  },
+  "complete_vacated": {
+    "reason": "R4 通过后被第三方按 v2 复核证伪(schema 空门禁/CI 静态/IMP-003 披露缺失)",
+    "record": "PLAN/2026.08.26/独立核验/前置/第三方复核记录-417e1b2-执行方转述固化.md"
+  },
+  "external_findings": [
+    "EF-1 result-schema-shape 空门禁(schema 要求 evidence/驱动输出 evidence_paths/门禁未加载 schema)",
+    "EF-2 CI e2e=-VerifyHarness 静态,IMP-011/ACC-022 CI 动态维度未落地",
+    "EF-3 IMP-003 尾差未入 v2 披露清单"
+  ]
 }

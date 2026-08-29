@@ -29,6 +29,30 @@ def main():
     limits = json.load(open(os.path.join(HERE, "dnspy.debug.utf8-limits.json"), encoding="utf-8"))
 
     jsonschema.validators.validator_for(schema).check_schema(schema)
+
+    # The RESULT contract (dnspy.debug.test.v1) is part of the frozen artifacts too: the
+    # schema itself must be valid, a canonical conforming sample must validate, and the
+    # previous nonconforming shape (top-level evidence_paths / missing evidence) must be
+    # rejected — guarding against a hollow driver gate regressing (external finding).
+    result_schema = json.load(open(os.path.join(HERE, "dnspy.debug.test.v1.schema.json"), encoding="utf-8"))
+    jsonschema.validators.validator_for(result_schema).check_schema(result_schema)
+    result_validator = jsonschema.Draft202012Validator(result_schema)
+    conforming = {
+        "schema_version": "dnspy.debug.test.v1", "repository": "C:\\repo", "commit_sha": "0" * 40,
+        "case_id": "ACC-001", "started_utc": "t", "finished_utc": "t", "status": "pass",
+        "exit_code": 0, "assertions": [{"assertion_id": "a", "status": "pass", "expected": "e",
+        "actual": "a", "evidence_paths": ["wire/x.txt"]}], "evidence": ["result.json"],
+    }
+    result_validator.validate(conforming)
+    for mutant_key, mutant in [
+        ("evidence_paths-instead-of-evidence", {k: v for k, v in conforming.items() if k != "evidence"} | {"evidence_paths": []}),
+        ("missing-assertion-field", {**conforming, "assertions": [{k: v for k, v in conforming["assertions"][0].items() if k != "expected"}]}),
+    ]:
+        try:
+            result_validator.validate(mutant)
+            fail(f"result schema accepts nonconforming sample: {mutant_key}")
+        except jsonschema.ValidationError:
+            pass
     defs = schema["$defs"]
 
     def resolve(pointer):

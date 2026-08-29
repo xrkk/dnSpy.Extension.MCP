@@ -5,7 +5,7 @@ name: Verify
 #   contracts  - frozen dnspy.debug.v1 schema + byte limits + 189 canonical fixtures
 #                (deterministic regeneration + full invariant validation)
 #   build      - net48 dependency guard + dual-TFM Release build on Windows
-#   e2e        - dynamic launch/E2E matrix via tests/debug/run-debug-tests.ps1; runs only once
+#   e2e        - STATIC harness gate only (-VerifyHarness): driver completeness (manifests/handlers/syntax/result schema presence). Dynamic ACC execution is NOT run in CI — disclosed gap (IMP-011/ACC-022 tail): dynamic E2E requires a provisioned Windows VM per the third-party guide §C
 #                the driver exists (hashFiles guard keeps the gate honest while it is staged).
 on:
   workflow_call:
