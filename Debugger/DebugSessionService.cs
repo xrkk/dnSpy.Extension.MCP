@@ -305,6 +305,25 @@ public sealed class DebugSessionService : IDisposable {
 		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode });
 	}
 
+
+	/// <summary>
+	/// ACC-016: value-tool arguments are closed (additionalProperties=false) with a depth
+	/// maximum of 4 — unknown budget fields or out-of-range depth are -32602 (ArgumentException),
+	/// not silently ignored.
+	/// </summary>
+	static void ValidateValueToolArgs(Dictionary<string, object>? args, string tool, IEnumerable<string> allowedKeys, int? depthKey = null) {
+		if (args is null)
+			return;
+		var allowed = new HashSet<string>(allowedKeys, StringComparer.Ordinal);
+		foreach (var key in args.Keys)
+			if (!allowed.Contains(key))
+				throw new ArgumentException($"{tool} rejects unknown field: {key}", key);
+		if (depthKey is not null && args.TryGetValue("depth", out var d) && d is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Number } dj) {
+			if (!dj.TryGetInt32(out var depth) || depth < 1 || depth > 4)
+				throw new ArgumentException("depth must be within 1..4", "depth");
+		}
+	}
+
 	// Tools whose request_id is structurally required: the -32602 shape rejection precedes
 	// every gate/state semantic (ACC-002: invalid-gate continue is DEBUG_DISABLED only for
 	// schema-valid requests).
@@ -1493,6 +1512,7 @@ public sealed class DebugSessionService : IDisposable {
 	string GetLocals(Dictionary<string, object>? args) {
 		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		ValidateValueToolArgs(args, "debug_get_locals", new[] { "session_id", "generation", "pause_epoch", "frame_handle", "page_size", "page_cursor" });
 		var frameHandle = ArgString(args, "frame_handle", required: true);
 		var frameError = ClassifyFrameHandle(frameHandle, out var frameIndex);
 		if (frameError is not null)
@@ -1604,6 +1624,7 @@ public sealed class DebugSessionService : IDisposable {
 	string ExpandValue(Dictionary<string, object>? args) {
 		if (!SessionAndGenerationMatch(args) || !PausedEpochMatches(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		ValidateValueToolArgs(args, "debug_expand_value", new[] { "session_id", "generation", "pause_epoch", "value_handle", "depth", "page_size", "page_cursor" }, depthKey: 1);
 		var valueHandle = ArgString(args, "value_handle", required: true);
 		ValueHandleEntry? parent;
 		lock (sessionLock)
