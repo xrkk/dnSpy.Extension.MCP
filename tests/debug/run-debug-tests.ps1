@@ -559,14 +559,14 @@ function Compile-Fixture([string]$SourceName, [string]$OutName, [switch]$Library
     return (Test-Path $out)
 }
 
-function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry') {
+function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry', [string]$Architecture = 'x64') {
     $v = $script:Manifest.protocol_versions[2]
     $sha = Get-Sha256File $Exe
     # Unique per run: the side-effect cache replays settled launches for 10 minutes, and a
     # recompiled fixture carries a fresh MVID/sha — a fixed id would trip REQUEST_ID_REUSE
     # against the previous run's entry when dnSpy outlives a case.
     $rid = 'acc-launch-' + (Split-Path $Exe -Leaf) + '-' + (Get-Date -Format 'HHmmssfff') + (Get-Random -Maximum 999)
-    $L = Invoke-Tool $v 'debug_launch' @{ request_id = $rid; target_path = $Exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = $BreakKind }
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = $rid; target_path = $Exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = $Architecture; break_kind = $BreakKind }
     if (-not $L.domain -or -not $L.domain.ok) { return @{ ok = $false; launch = $L } }
     $sid = $L.domain.result.session_id
     $gen = [int]$L.domain.result.generation
@@ -3314,7 +3314,7 @@ function Run-ACC029 {
             Assert-Cond 'a29-x86-host-arch' 'capabilities report x86 host architecture' "arch=$hostArch" ("$hostArch" -eq 'x86') @($cap.rpc.resp)
 
             # [4] net48-x86 full lifecycle.
-            $s86 = Launch-AndPause $exe86 'none'
+            $s86 = Launch-AndPause $exe86 'none' 'x86'
             Assert-Cond 'a29-x86-net48' 'net48-x86 lifecycle on the x86 host' "ok=$($s86.ok)" $s86.ok
             if ($s86.ok) {
                 Invoke-ToolNoInit 'debug_terminate' @{ session_id = $s86.sid; generation = $s86.gen; request_id = 'a29-t1' } | Out-Null
