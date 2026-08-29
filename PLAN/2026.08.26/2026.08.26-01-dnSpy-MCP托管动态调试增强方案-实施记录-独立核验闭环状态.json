@@ -22,7 +22,7 @@
     ]
   },
   "max_rounds": 5,
-  "completed_rounds": 5,
+  "completed_rounds": 6,
   "verifier": {
     "agent_type": "general-plan-acceptance-verifier",
     "instance_identity": "round-1 dispatch 2026-08-29; continuity via full history chain in later task packages",
@@ -98,11 +98,22 @@
       "verifier_agent": "agent_77136524-fb70-41e1-90ad-22f23c637884(再恢复实例)",
       "executor_response": "CHK-014/015/016 全部接受:第 66 轮修复(大小写碰撞根因+null 双侧拒止+minLength+verify.yml 命名)",
       "round_cap_note": "原 5 轮上限已达;用户 2026-08-29 指令'执行整改,整改后让子智能体审核,通过后才算任务结束'明确延伸闭环至通过,继续轮次不重置已完成计数"
+    },
+    {
+      "round": 6,
+      "mode": "定向复核",
+      "verdict": "核查通过(CHK-014/015/016 全关;CHK-001..016 全链闭合;无新发现;既有项零回归)",
+      "head_at_dispatch": "8a788a2",
+      "anchor": "70f8b7a",
+      "record": "PLAN/2026.08.26/独立核验/round-6/核查记录-第6轮-定向复核.md",
+      "record_blob": "28286ceaf5e1a9ff1a1e17a49b602e5f4dbb92588",
+      "verifier_agent": "agent_77136524-fb70-41e1-90ad-22f23c637884",
+      "executor_response": "无待办——核验方明示六轮记录链+整改链构成完整闭合证据链"
     }
   ],
-  "last_checkpoint": "第 66 轮完结;READY_TO_REVERIFY;R6 待发(轮次延伸已获用户指令授权)",
+  "last_checkpoint": "COMPLETE——R6 核查通过,CHK-001..016 全关,无核验后漂移(HEAD 与派发时一致)",
   "stop_reason": null,
-  "status": "READY_TO_REVERIFY",
+  "status": "COMPLETE",
   "rectification": {
     "commits": [
       "05f884f",
@@ -153,14 +164,20 @@
     "保护现场: PLAN/dnSpy-MCP.md 用户自有; VM runner 为分离进程会自行完成"
   ],
   "final": {
-    "claim_verified": "36/36 ACC 实跑 exit 0(490 断言 0 失败)@e9bff3b 单次连续顺序批跑(VM 原始产物经核验方 R2 逐案直读独立证实;DLL e322f19b… 本地构建确定性复现);11/11 IMP 落点;7 子集案披露无隐藏;本地门禁复跑全绿",
-    "rounds_consumed": "4/5(R1 全面不通过→R2 定向不通过(001 关闭)→R3 定向不通过(007/009/011 关闭)→R4 定向通过)",
-    "verification_head": "92b9d9e(核验时点;其后仅核验记录入库与状态 COMPLETE 簿记)",
+    "claim_verified": "36/36 ACC 实跑 exit 0(490 断言 0 失败)@70f8b7a 单次连续批跑(VM 原始产物经 R6 直读;独立 jsonschema 全量对拍 36/36 VALID;DLL e322f19b… 本地构建确定性复现);result-schema-shape 为 schema 驱动真验证(string-null 拒止/minLength/证据门禁 null 计 missing);11/11 IMP 主体落地(IMP-003/IMP-011 尾差+7 子集案 CI 动态维度挂账披露在册);Linux 门禁双绿",
+    "rounds_consumed": "6(R1 全面不通过→R2 不通过→R3 不通过→R4 通过[后被第三方证伪作废]→R5 不通过→R6 通过;第 6 轮依据用户指令延伸,前 5 轮计数不重置)",
+    "verification_head": "8a788a2(核验时点;其后仅核验记录入库与状态 COMPLETE 簿记)",
     "records": [
-      "round-1/核查记录-第1轮-全面核查.md blob 67cf2059",
-      "round-2/核查记录-第2轮-定向复核.md blob 4b929190",
-      "round-3/核查记录-第3轮-定向复核.md blob 5e85e9b1",
-      "round-4/核查记录-第4轮-定向复核.md blob 22ff1a67"
+      "round-1 67cf2059",
+      "round-2 4b929190",
+      "round-3 5e85e9b1",
+      "round-4 22ff1a67[通过后被作废]",
+      "round-5 dee82237",
+      "round-6 28286cea"
+    ],
+    "external_third_party_records": [
+      "独立核验/前置/第三方复核记录-417e1b2-执行方转述固化.md(v2 复核不通过→驱动第 65/66 轮)",
+      "独立核验/前置/codex-核查记录-e849377-执行方转述固化.md"
     ]
   },
   "complete_vacated": {
