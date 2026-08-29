@@ -840,6 +840,21 @@ public sealed class DebugSessionService : IDisposable {
 		Func<string?> start = () => {
 			// Same WPF callback as Start (CON-DYN-003): claim established, precheck IsDebugging,
 			// then Start — a busy manager means INVALID_STATE with zero Start side effects.
+			// Bounded teardown wait: right after OUR terminal transition the manager can still
+			// report IsDebugging while tearing the previous session down; when the coordinator
+			// is idle with no owned process that residue is not a competing debug session, so
+			// wait for quiescence instead of failing the immediately following launch/restart
+			// (CHK-005 / ACC-034). The test seam never waits.
+			if (dbgManager.IsDebugging && !testUiDebugging) {
+				DbgProcess? ownedPeek;
+				lock (sessionLock) ownedPeek = ownedProcess;
+				if (coordinator.State == DebugStates.Idle && ownedPeek is null) {
+					SpyInc("manager_teardown_waits");
+					var swWait = System.Diagnostics.Stopwatch.StartNew();
+					while (dbgManager.IsDebugging && swWait.ElapsedMilliseconds < 3000)
+						System.Threading.Thread.Sleep(50);
+				}
+			}
 			if (dbgManager.IsDebugging || testUiDebugging) {
 				SpyInc("ui_debugging_blocks");
 				return UiDebuggingBusy;

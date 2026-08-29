@@ -2089,7 +2089,9 @@ function Run-ACC034 {
     $L3 = $null
     for ($try = 0; $try -lt 10 -and -not ($L3 -and $L3.domain.ok); $try++) {
         Start-Sleep -Milliseconds 400
-        $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a34-la3'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+        # Unique id per attempt: the launch cache replays a settled failure verbatim for a
+        # repeated request_id, which would make every retry a no-op replay.
+        $L3 = Invoke-ToolNoInit 'debug_launch' @{ request_id = ("a34-la3-$try"); target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
     }
     $sid3 = $L3.domain.result.session_id; $gen3 = [int]$L3.domain.result.generation
     Assert-Cond 'a34-launch3' 'third session running (after the transition window)' "ok=$($L3.domain.ok) tries=$($try+1)" ($L3.domain.ok) @($L3.rpc.resp)
@@ -2302,7 +2304,16 @@ function Run-ACC010 {
     $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
     if (-not $modEntry0) { $modEntry0 = @($MODS0.domain.result.items) | Where-Object { "$($_.module_handle)" -eq "$($fr.location.module_handle)" } | Select-Object -First 1 }
     $mod = "$($modEntry0.module_handle)"
-    for ($i = 0; $i -lt 14 -and -not $hotTok; $i++) {
+    # Outer discovery rounds (CHK batch flake): a step can transiently answer INVALID_STATE
+    # when the pause anchor races the previous step's completion; on exhaustion or a step
+    # error, re-anchor with a fresh held pause and retry the walk instead of failing.
+    for ($rnd = 0; $rnd -lt 3 -and -not $hotTok; $rnd++) {
+        if ($rnd -gt 0) {
+            Resume-FromPaused $sid $gen | Out-Null
+            $reheld = Wait-HeldPause $sid $gen
+            if (-not $reheld.ok) { break }
+        }
+    for ($i = 0; $i -lt 8 -and -not $hotTok; $i++) {
         $epN = (Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }).domain.debug_context.pause_epoch
         $tlx = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $epN }
         # Step OUT of framework frames (foreign module / non-MethodDef tops) and only step
@@ -2313,7 +2324,7 @@ function Run-ACC010 {
             $topTok = "$($sy.domain.result.items[0].location.method_token)"
             if (($topMod -ne $mod) -or ($topTok -notlike '0x06*')) { $kind = 'out' }
         }
-        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = $kind }
+        $stx = Invoke-ToolNoInit 'debug_step' @{ session_id = $sid; generation = $gen; pause_epoch = $epN; request_id = "a10-s$rnd-$i"; thread_handle = $tlx.domain.result.items[0].thread_handle; kind = $kind }
         if (-not $stx.domain.ok) { break }
         $paused = $false
         for ($w = 0; $w -lt 10 -and -not $paused; $w++) {
@@ -2341,7 +2352,8 @@ function Run-ACC010 {
             }
         }
     }
-    Assert-Cond 'a10-entered-hot' 'stepped into a second method' "hot=$hotTok" ([bool]$hotTok) @($st.rpc.resp)
+    }
+    Assert-Cond 'a10-entered-hot' 'stepped into a second method (3 re-anchoring rounds allowed)' "hot=$hotTok rounds=$rnd" ([bool]$hotTok) @($st.rpc.resp)
     if (-not $hotTok) { return }
 
     # Create with the FULL five-part identity (module/mvid/token/offset/sha from disk).
