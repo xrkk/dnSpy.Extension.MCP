@@ -2947,6 +2947,136 @@ function Run-ACC035 {
     }
 }
 
+# ---------------------------------------------------------------- case: ACC-028 ----
+function Run-ACC028 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
+    $v3 = $m.protocol_versions[2]; $v1 = $m.protocol_versions[0]
+    $sessionTools = @('debug_capabilities','debug_status','debug_launch','debug_pause','debug_continue','debug_restart','debug_terminate','debug_read_events','debug_wait_event','debug_set_breakpoint','debug_list_breakpoints','debug_set_breakpoint_enabled','debug_remove_breakpoint','debug_list_threads','debug_get_stack','debug_step','debug_get_locals','debug_expand_value','debug_list_modules','debug_read_memory','debug_dump_module','debug_get_thread')
+    $testTools = @('debug_test_spy','debug_test_clock','debug_test_adapter','debug_test_flood','debug_test_start','debug_test_dump')
+
+    # [1] tools/list across the three protocol versions: same advertised set; the disabled
+    # three never appear; outputSchema exists ONLY on 2025-06-18; input schemas closed.
+    $lists = @{}
+    foreach ($v in $m.protocol_versions) {
+        Initialize-Protocol $v | Out-Null
+        $lists[$v] = Get-ToolList $v
+    }
+    $tlv3 = $lists[$v3]; $names3 = @($tlv3.tools | ForEach-Object { $_.name })
+    $tlv1 = $lists[$v1]; $names1 = @($tlv1.tools | ForEach-Object { $_.name })
+    $ev1 = Save-Json 'a28-tools-v3.json' ($tlv3.tools | Select-Object name, description)
+    $advertisedOk = $true
+    foreach ($t in $sessionTools + $testTools) { if ($names3 -notcontains $t) { $advertisedOk = $false } }
+    $disabledLeak = @('debug_attach','debug_detach','debug_list_attachable_processes') | Where-Object { ($names3 -contains $_) -or ($names1 -contains $_) }
+    $sameSet = (@($names1 | Sort-Object) -join ',') -eq (@($names3 | Sort-Object) -join ',')
+    Assert-Cond 'a28-tools-three-versions' '22 session + test tools advertised, disabled 3 absent, same set across versions' "count=$($names3.Count) same=$sameSet disabledLeak=$($disabledLeak -join ',')" ($advertisedOk -and $sameSet -and ($disabledLeak.Count -eq 0)) @($ev1)
+
+    $withOutSchema = @($tlv1.tools | Where-Object { $_.PSObject.Properties.Name -contains 'outputSchema' })
+    $outV3 = @($tlv3.tools | Where-Object { $_.PSObject.Properties.Name -contains 'outputSchema' })
+    $outV3Dyn = @($outV3 | Where-Object { $_.name -like 'debug_*' })
+    Assert-Cond 'a28-outputschema-versions' 'outputSchema only on 2025-06-18 (v1 has none; dynamic tools carry it)' "v1=$($withOutSchema.Count) v3dyn=$($outV3Dyn.Count)" (($withOutSchema.Count -eq 0) -and ($outV3Dyn.Count -ge 22)) @()
+
+    $closedOk = $true
+    foreach ($t in @('debug_launch', 'debug_get_locals', 'debug_wait_event', 'debug_step')) {
+        $live = $tlv3.tools | Where-Object name -eq $t | Select-Object -First 1
+        if (-not $live -or -not ($live.inputSchema.PSObject.Properties.Name -contains 'additionalProperties') -or ($live.inputSchema.additionalProperties -ne $false)) { $closedOk = $false }
+    }
+    Assert-Cond 'a28-input-schemas-closed' 'spot input schemas carry additionalProperties=false' "closed=$closedOk" $closedOk @()
+
+    # [2] Contract cross-check: the frozen v1 schema file exists with its $defs count.
+    $schemaPath = Join-Path $script:Repo 'tests\debug\contracts\dnspy.debug.v1.schema.json'
+    $schema = if (Test-Path $schemaPath) { Get-Content $schemaPath -Raw | ConvertFrom-Json } else { $null }
+    $defs = if ($schema -and $schema.'$defs') { @($schema.'$defs'.PSObject.Properties).Count } else { 0 }
+    Assert-Cond 'a28-contract-schema-frozen' 'contract schema present with 110 $defs (19 TYPE + 25 API + 22 result + 21 EVT + envelope/scalars)' "defs=$defs" ($defs -eq 110) @()
+
+    # [3] capabilities: artifact_policy fixed values + limits spot checks + unsupported list.
+    $cap = Invoke-ToolNoInit 'debug_capabilities' @{ }
+    $c = $cap.domain.result
+    $evC = Save-Json 'a28-capabilities.json' $c
+    $apOk = ($c.artifact_policy.retention_scope -eq 'current_extension_process') -and (-not $c.artifact_policy.automatic_cleanup) -and ("$($c.artifact_policy.restart_existing)" -eq 'stale_untrusted_fail_closed')
+    $limOk = ($c.limits.request_body_bytes -eq 1048576) -and ($c.limits.tool_result_bytes -eq 8388608) -and ($c.limits.command_queue_entries -eq 64) -and ($c.limits.control_queue_entries -eq 8) -and ($c.limits.general_queue_entries -eq 56) -and ($c.limits.waits -eq 8) -and ($c.limits.value_snapshots_per_pause -eq 2) -and ($c.limits.value_handles_per_pause -eq 4096) -and ($c.limits.artifact_cancel_grace_ms -eq 2000)
+    $unsup = @($c.unsupported) -join ','
+    Assert-Cond 'a28-capabilities-policy-limits' 'artifact_policy + limits + unsupported fixed objects equal the contract' "policy=$apOk limits=$limOk unsup=$unsup" ($apOk -and $limOk -and ($unsup -eq 'debug_list_attachable_processes,debug_attach,debug_detach')) @($evC)
+
+    # [4] API-DYN-002 conditional observed_process_state: omitted idle, present active-owned.
+    $stIdle = Invoke-ToolNoInit 'debug_status' @{ }
+    $idleHas = $stIdle.domain.result.PSObject.Properties.Name -contains 'observed_process_state'
+    $sess = Launch-AndPause $exe 'none'
+    if (-not $sess.ok) { Assert-Cond 'a28-session-up' 'fixture session paused' "ok=$($sess.ok)" $false; return }
+    $sid = $sess.sid; $gen = $sess.gen
+    $stAct = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
+    $actHas = ($stAct.domain.result.PSObject.Properties.Name -contains 'observed_process_state') -and "$($stAct.domain.result.observed_process_state)"
+    Assert-Cond 'a28-observed-state-conditional' 'observed_process_state omitted idle, present active-owned' "idle=$idleHas active=$actHas" ((-not $idleHas) -and $actHas) @($stIdle.rpc.resp, $stAct.rpc.resp)
+
+    # [5] Raw malformed JSON (unbalanced object as the params string breaks the whole body):
+    # -32700 with id=null, business counters untouched.
+    $bad = Send-Rpc 'tools/call' '{"name":"debug_status"'
+    $badObj = $null; try { $badObj = $bad.body | ConvertFrom-Json } catch { }
+    $badCode = if ($badObj -and $badObj.error) { "$($badObj.error.code)" } else { '' }
+    $badId = if ($badObj) { "$($badObj.id)" } else { 'null' }
+    Assert-Cond 'a28-raw-32700' 'malformed JSON = -32700 with id null' "code=$badCode id=$badId" (($badCode -eq '-32700') -and ($badId -in @('', 'null'))) @($bad.resp)
+
+    # [6] UTF-8 byte-vs-char boundary on an untrusted pointer (session_id): 341 non-BMP
+    # chars = 1023 bytes passes structure (then NOT_FOUND for the unknown session); 343
+    # chars = 1029 bytes is the byte-limit -32602 — character count stays under schema max.
+    $nb = [string]::Concat([char]0x1D11E, [char]0x1D11E, [char]0x1D11E)
+    $id1023 = ($nb * 113) + [string][char]0x1D11E + [string][char]0x1D11E   # 341 chars x3B
+    $id1029 = $nb * 114 + [string][char]0x1D11E                            # 343 chars x3B
+    $r1 = Send-Rpc 'tools/call' @{ name = 'debug_read_events'; arguments = @{ session_id = $id1023; generation = 1; after_cursor = 0 } }
+    $c1 = if ($r1.json -and $r1.json.error) { "$($r1.json.error.code)" } else { '' }
+    $dom1 = $null; try { $dom1 = ($r1.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
+    $d1 = if ($dom1 -and $dom1.error) { "$($dom1.error.code)" } else { '' }
+    $r2 = Send-Rpc 'tools/call' @{ name = 'debug_read_events'; arguments = @{ session_id = $id1029; generation = 1; after_cursor = 0 } }
+    $c2 = if ($r2.json -and $r2.json.error) { "$($r2.json.error.code)" } else { '' }
+    $ev6 = Save-Text 'a28-utf8-boundary.txt' "1023B: rpc=$c1 domain=$d1`n1029B: rpc=$c2"
+    Assert-Cond 'a28-utf8-byte-boundary' '1023 UTF-8 bytes passes structure (NOT_FOUND), 1029 bytes = -32602 byte rejection' "1023=$c1/$d1 1029=$c2" (("$c2" -eq '-32602') -and ("$d1" -eq 'NOT_FOUND')) @($ev6)
+
+    # [7] Wait cap (CON-DYN-009 global 8): nine concurrent waits -> the ninth LIMIT_EXCEEDED.
+    $bodyFn = { param($i) '{"jsonrpc":"2.0","id":' + (700 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"timeout_ms":4000,"limit":1}}}' }
+    $jobs = @()
+    for ($i = 0; $i -lt 9; $i++) {
+        $b = $bodyFn($i)
+        [IO.File]::WriteAllText("C:\Tools\a28-w$i.json", $b)
+        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-X','POST','http://localhost:3000/','-H','Content-Type: application/json','--data',("@C:\Tools\a28-w$i.json"),'-o',("C:\Tools\a28-w$i.out") -PassThru -WindowStyle Hidden
+    }
+    $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
+    $limitHits = 0; $okCount = 0
+    for ($i = 0; $i -lt 9; $i++) {
+        $o = Get-Content "C:\Tools\a28-w$i.out" -Raw -ErrorAction SilentlyContinue
+        if ($o -match 'LIMIT_EXCEEDED') { $limitHits++ }
+        elseif ($o -match '"ok":true') { $okCount++ }
+    }
+    $ev7 = Save-Text 'a28-wait-cap.txt' "limit=$limitHits ok=$okCount"
+    Assert-Cond 'a28-wait-cap-9th' 'ninth concurrent wait = LIMIT_EXCEEDED (8 admitted)' "limit=$limitHits ok=$okCount" (($limitHits -ge 1) -and (($limitHits + $okCount) -ge 8)) @($ev7)
+
+    # [8] Cross-protocol idempotency: the SAME launch request_id on a second transport
+    # version replays the settled response (same session_id), never a second process.
+    $sha = Get-Sha256File $exe
+    $spy0 = Get-SpyCounters
+    $L1 = Invoke-Tool $v1 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sidA = if ($L1.domain.ok) { "$($L1.domain.result.session_id)" } else { '' }
+    Initialize-Protocol $v3 | Out-Null
+    $L2 = Invoke-Tool $v3 'debug_launch' @{ request_id = 'a28-idem'; target_path = $exe; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $sidB = if ($L2.domain.ok) { "$($L2.domain.result.session_id)" } else { '' }
+    $spy1 = Get-SpyCounters
+    $startD = Get-SpyDelta $spy0 $spy1 'dbg_start_calls'
+    $ev8 = Save-Json 'a28-idem.json' @{ v1 = $L1.domain.result; v3 = $L2.domain.result }
+    Assert-Cond 'a28-cross-protocol-idempotent' 'same request_id across versions replays one settled launch (same session, zero extra Start)' "sidA=$sidA sidB=$sidB start=+$startD" (($sidA -ne '') -and ("$sidA" -eq "$sidB") -and ($startD -eq 1)) @($ev8)
+
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sidA; generation = $gen; request_id = 'a28-t1' } | Out-Null
+    Start-Sleep -Milliseconds 900
+
+    # [9] Reason sets: API pause responses only carry the seven API reasons; the eighth
+    # (module_cctor_or_entry) exists ONLY in the initial launch event (schema-enforced).
+    $evAll = Read-EventKinds $sidA $gen 0
+    $apiReasons = @('manual','process','entry','breakpoint','exception','step','unknown')
+    $observed = @($evAll.events | Where-Object { $_.kind -eq 'paused' } | ForEach-Object { "$($_.payload.reason)" }) | Select-Object -Unique
+    $reasonsOk = $true
+    foreach ($r in $observed) { if ($apiReasons -notcontains $r) { $reasonsOk = $false } }
+    Assert-Cond 'a28-reason-sets' 'observed paused reasons stay inside the seven-value API set' "observed=$($observed -join ',')" ($reasonsOk -and ($observed.Count -ge 1)) @((Save-Json 'a28-events.json' ($evAll.events | Select-Object kind, cursor)))
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2965,7 +3095,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {

@@ -500,7 +500,7 @@ public sealed class DebugSessionService : IDisposable {
 			ActiveSessionId = coordinator.ActiveSessionId,
 			LastSessionId = coordinator.LastSessionId,
 			OwnedProcess = owned,
-			ObservedProcessState = coordinator.ObservedProcessState,
+			ObservedProcessState = string.IsNullOrEmpty(coordinator.ObservedProcessState) ? null : coordinator.ObservedProcessState,
 			RuntimeFamily = activePlan?.RuntimeFamily,
 			Architecture = activePlan is null ? null : launchArchitecture,
 			StartKind = activePlan is null ? null : "launch",
@@ -2830,7 +2830,10 @@ public sealed class DebugSessionService : IDisposable {
 		[System.Text.Json.Serialization.JsonPropertyName("active_session_id")] public string? ActiveSessionId { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("last_session_id")] public string? LastSessionId { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("owned_process")] public OwdProcessDto? OwnedProcess { get; set; }
-		[System.Text.Json.Serialization.JsonPropertyName("observed_process_state")] public string ObservedProcessState { get; set; } = string.Empty;
+		// API-DYN-002: present only while a process is actively owned; null (omitted by the
+		// canonical null-ignoring options) otherwise.
+		[System.Text.Json.Serialization.JsonPropertyName("observed_process_state")]
+		public string? ObservedProcessState { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("runtime_family")] public string? RuntimeFamily { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("architecture")] public string? Architecture { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("start_kind")] public string? StartKind { get; set; }
