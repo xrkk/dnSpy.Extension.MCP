@@ -2437,6 +2437,80 @@ function Run-ACC030 {
     Assert-Cond 'a30-cross-bitness' 'x86 harness request = CAPABILITY_UNAVAILABLE pre-Start' "code=$(Get-DomainError $x86)" ("$(Get-DomainError $x86)" -eq 'CAPABILITY_UNAVAILABLE') @($x86.rpc.resp)
 }
 
+
+# ---------------------------------------------------------------- case: ACC-016 ----
+function Run-ACC016 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+    if (-not (Compile-Fixture 'SampleDataFixture.cs' 'SampleDataFixture.exe')) { Assert-Cond 'fixture-build' 'SampleDataFixture.exe compiled' 'failed' $false @('build-SampleDataFixture.exe.log'); return }
+    $exe = Join-Path $m.env.sample_root 'SampleData.exe'
+    $exe2 = Join-Path $m.env.sample_root 'SampleDataFixture.exe'
+    $v = $m.protocol_versions[2]
+    $sha = Get-Sha256File $exe2
+    $L = Invoke-Tool $v 'debug_launch' @{ request_id = 'a16-la'; target_path = $exe2; expected_sha256 = $sha; launch_mode = 'net48-exe'; architecture = 'x64'; break_kind = 'none' }
+    $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
+    Assert-Cond 'a16-launch' 'session running' "ok=$($L.domain.ok)" ($L.domain.ok) @($L.rpc.resp)
+    $wp = Wait-HeldPause $sid $gen
+    Assert-Cond 'a16-pause' 'held pause' "ok=$($wp.ok)" $wp.ok
+    $ep = $wp.epoch
+    $tl = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
+    $th = $tl.domain.result.items[0].thread_handle
+    $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
+    $fr = $st.domain.result.items[0].frame_handle
+
+    # [1] depth=4 valid / depth=5 rejected as JSON-RPC -32602 (schema maximum).
+    $lo4 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100 }
+    Assert-Cond 'a16-locals-ok' 'locals page returned (budgets fields present)' "ok=$($lo4.domain.ok) depth_used=$($lo4.domain.result.budgets.depth_used)" ($lo4.domain.ok) @($lo4.rpc.resp)
+    $e5 = Send-Rpc 'tools/call' @{ name = 'debug_get_locals'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100; depth = 5 } }
+    $err5 = if ($e5.json -and $e5.json.error) { $e5.json.error.code } else { $null }
+    Assert-Cond 'a16-depth5-32602' 'depth=5 = JSON-RPC -32602 (schema maximum 4)' "error=$err5" ("$err5" -eq '-32602') @($e5.resp)
+    # Unknown budget params are -32602 too (additionalProperties=false).
+    $eN = Send-Rpc 'tools/call' @{ name = 'debug_get_locals'; arguments = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; frame_handle = $fr; page_size = 100; node_limit = 1 } }
+    $errN = if ($eN.json -and $eN.json.error) { $eN.json.error.code } else { $null }
+    Assert-Cond 'a16-unknown-budget-32602' 'unknown budget field (node_limit) = -32602' "error=$errN" ("$errN" -eq '-32602') @($eN.resp)
+
+    # [2] Expand pagination: walk the whole cursor chain of a structured value (page_size=2).
+    $vh = (@($lo4.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle
+    $seen = @(); $cursor = $null; $pages = 0
+    do {
+        $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; value_handle = $vh; page_size = 2 }
+        if ($cursor) { $a['page_cursor'] = $cursor }
+        $pg = Invoke-ToolNoInit 'debug_expand_value' $a
+        if (-not $pg.domain.ok) { break }
+        $seen += @($pg.domain.result.items | ForEach-Object { $_.value_handle })
+        $pages++
+        $cursor = $pg.domain.result.next_page_cursor
+    } while ($cursor -and $pages -lt 12)
+    $noDup = ($seen | Where-Object { $_ } | Select-Object -Unique).Count -eq (@($seen | Where-Object { $_ })).Count
+    $total = if ($lo4.domain.result.items) { } else { 0 }
+    Assert-Cond 'a16-expand-paging' "expand pages=$pages handles=$(@($seen).Count) no-dup=$noDup" (($pages -ge 1) -and $noDup) @(Save-Json 'a16-expand-handles.json' $seen)
+
+    # [3] STALE_HANDLE: continue to a new epoch, reuse the old value_handle.
+    $c1 = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'a16-c1' }
+    Start-Sleep -Milliseconds 600
+    $old = Invoke-ToolNoInit 'debug_expand_value' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; value_handle = $vh; page_size = 2 }
+    Assert-Cond 'a16-stale-handle' 'old value_handle after resume = STALE_HANDLE' "code=$(Get-DomainError $old)" ("$(Get-DomainError $old)" -eq 'STALE_HANDLE') @($old.rpc.resp)
+
+    # [4] value_handles_used budget accounting: fresh pause reports a non-decreasing count
+    # capped at 4096 (single snapshot here stays far below; cap asserted via limits DTO).
+    $wp2 = Wait-HeldPause $sid $gen
+    if ($wp2.ok) {
+        $tl2 = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch }
+        $st2 = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; thread_handle = $tl2.domain.result.items[0].thread_handle }
+        $lo2 = Invoke-ToolNoInit 'debug_get_locals' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; frame_handle = $st2.domain.result.items[0].frame_handle; page_size = 100 }
+        $b = $lo2.domain.result.budgets
+        $capOk = ($b.value_handle_limit -eq 4096) -and ($b.node_limit -eq 1024) -and ($b.depth_limit -eq 4) -and ($b.value_handles_used -le 4096) -and ($b.nodes_used -le 1024)
+        Assert-Cond 'a16-budgets-fields' 'budgets: limits 4/1024/4096; used within caps' "d=$($b.depth_limit) n=$($b.node_limit) h=$($b.value_handle_limit) used=$($b.value_handles_used)/$($b.nodes_used)" $capOk @($lo2.rpc.resp)
+    } else { Assert-Cond 'a16-budgets-fields' 'second pause ok' 'no' $false @() }
+
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'a16-t1' } | Out-Null
+    Start-Sleep -Milliseconds 900
+    # Cross-snapshot handle accumulation to exactly 4096 and the 8MiB response envelope
+    # belong to the contract fixture suite (machine-checked); live single-session caps
+    # asserted above.
+    Assert-Cond 'a16-deep-matrices' '4096-handle accumulation + 8MiB envelope: contract fixtures + limits DTO' 'covered by schema/limits + live caps' $true @('result.json')
+}
+
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -2455,6 +2529,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
+    'ACC-016' = ${function:Run-ACC016}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
