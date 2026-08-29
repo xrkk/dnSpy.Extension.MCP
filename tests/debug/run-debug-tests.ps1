@@ -214,7 +214,7 @@ function Get-Sha256File([string]$Path) {
 }
 function Stop-DnSpyAndTargets {
     Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process AccFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process AccFixture,AccHarness,AccCore,ThreadsStackFixture,ArgvFixture,SampleDataFixture,DynLoadFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 1500
 }
 function Set-SnapshotJson {
