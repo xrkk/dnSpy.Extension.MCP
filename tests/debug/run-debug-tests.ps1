@@ -2857,7 +2857,9 @@ function Run-ACC035 {
     $bp1 = "$($b1.domain.result.breakpoint.breakpoint_id)"
     Start-Sleep -Milliseconds 800
     $lb = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
-    Assert-Cond 'a35-bp-created' 'owned breakpoint listed (bound after engine bind)' "id=$bp1 bound=$($b1.domain.result.breakpoint.bound)" ($lb.domain.ok) @($lb.rpc.resp, $manEv)
+    $spyAfterBp = Get-SpyCounters
+    $spyEv = Save-Json 'a35-spy-after-bp.json' $spyAfterBp
+    Assert-Cond 'a35-bp-created' 'owned breakpoint listed (bound after engine bind)' "id=$bp1 bound=$($b1.domain.result.breakpoint.bound)" ($lb.domain.ok) @($lb.rpc.resp, $manEv, $spyEv)
 
     # [3] Alternation: the fixture calls m1 then m2 each iteration, so consecutive pauses
     # alternate modules. Only m1 turns may produce a breakpoint_hit carrying this id.
