@@ -22,7 +22,7 @@
     ]
   },
   "max_rounds": 5,
-  "completed_rounds": 2,
+  "completed_rounds": 3,
   "verifier": {
     "agent_type": "general-plan-acceptance-verifier",
     "instance_identity": "round-1 dispatch 2026-08-29; continuity via full history chain in later task packages",
@@ -64,9 +64,20 @@
       "record_blob": "4b929190c27a653d91dffc71f27342e5031fc018",
       "verifier_agent": "agent_98ab2ef9-d8c5-4bba-98d2-a298289eaa8d(恢复实例,接续 agent_ae530c8a 第 1 轮)",
       "executor_response": "CHK-007/009/011 全部接受:第 63 轮实写勘误/FB-002/簿记补全;纯记录修复无代码变更,批 8 证据继续有效"
+    },
+    {
+      "round": 3,
+      "mode": "定向复核",
+      "verdict": "核查不通过(CHK-012 一行描述不符;CHK-007/009/011 关闭,001..006/008/010 维持关闭)",
+      "head_at_dispatch": "ded689c",
+      "anchor": "e9bff3b",
+      "record": "PLAN/2026.08.26/独立核验/round-3/核查记录-第3轮-定向复核.md",
+      "record_blob": "5e85e9b14f1d3f30766b715847120888453722de",
+      "verifier_agent": "agent_98ab2ef9-d8c5-4bba-98d2-a298289eaa8d",
+      "executor_response": "CHK-012 接受:第 64 轮一行勘误(9c36b97 描述更正并附勘误注);纯 PLAN 修改,批 8 证据不变"
     }
   ],
-  "last_checkpoint": "R2 维持项(CHK-007/009/011)已实写修复于 97781c7;批8 证据不变;待 R3 定向复核",
+  "last_checkpoint": "R3 仅余 CHK-012 已勘误(第 64 轮,提交 40119be);待 R4 定向复核(已消耗 3/5 轮)",
   "stop_reason": null,
   "status": "READY_TO_REVERIFY",
   "rectification": {
