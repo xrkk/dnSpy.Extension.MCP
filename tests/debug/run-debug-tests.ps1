@@ -2175,6 +2175,9 @@ function Run-ACC010 {
     $li = $L.domain.result; $sid = $li.session_id; $gen = [int]$li.generation
     Assert-Cond 'a10-launch' 'entry pause in Main' "ok=$($L.domain.ok) state=$($li.state)" ($L.domain.ok) @($L.rpc.resp)
     $wp = Wait-HeldPause $sid $gen
+    $MODSF0 = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $fixEntry0 = @($MODSF0.domain.result.items) | Where-Object { "$($_.name)" -like 'AccFixture*' } | Select-Object -First 1
+    $script:A10FixtureHandle = if ($fixEntry0) { "$($fixEntry0.module_handle)" } else { '' }
     # The held pause can be the empty transient create-break: re-acquire until the stack
     # yields a frame (resume + held-pause retry loop).
     $fr = $null; $th = $null; $st = $null; $cur = $wp.epoch
@@ -2183,7 +2186,12 @@ function Run-ACC010 {
         if ($tl.domain.ok -and @($tl.domain.result.items).Count -gt 0) {
             $th = $tl.domain.result.items[0].thread_handle
             $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $cur; thread_handle = $th }
-            if ($st.domain.ok -and @($st.domain.result.items).Count -gt 0) { $fr = $st.domain.result.items[0] }
+            if ($st.domain.ok -and @($st.domain.result.items).Count -gt 0) {
+                # Prefer a FIXTURE frame: a re-acquired pause usually sits inside mscorlib's
+                # Thread.Sleep, which makes the step-into walk start from framework code.
+                $fixFrames = @($st.domain.result.items | Where-Object { "$($_.location.module_handle)" -ne '' -and (("$($_.location.module_handle)" -eq $script:A10FixtureHandle)) })
+                $fr = if ($fixFrames.Count -gt 0) { $fixFrames[0] } else { $st.domain.result.items[0] }
+            }
         }
         if (-not $fr) {
             $stx = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
