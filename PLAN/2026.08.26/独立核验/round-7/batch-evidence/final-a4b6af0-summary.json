@@ -1,0 +1,85 @@
+{
+  "schema_version": "dnspy.mcp.third-party-review.v2",
+  "review_date": "2026-08-30",
+  "verdict": "pass",
+  "scope": "2026.08.26-11-第三方复核指引-v2.md",
+  "code_anchor": "a4b6af07b2d9e6728e72df91ff4a17fdf71481c4",
+  "supersedes": {
+    "code_anchor": "e9bff3b",
+    "assertion_count": 490,
+    "reason": "本轮实际整改包含产品、契约与验收驱动改动，旧锚点及旧批跑不得继续用于当前代码裁定。"
+  },
+  "local_verification": {
+    "contracts": 189,
+    "static_tools": 32,
+    "net48_dependency_guard": "pass",
+    "net10_release": "0 warnings, 0 errors",
+    "net48_release": "0 warnings, 0 errors",
+    "result": "LOCAL VERIFY PASSED"
+  },
+  "deployment": {
+    "vm": "Win10 x64 / 192.168.204.149",
+    "repo": "C:\\Tools\\mcp-repo-a4b6af0-full",
+    "bundle_sha256": "af86427f6d17d233c280939f97791c3de5a90c10016d1406f559d9f5932c40dd",
+    "dll_sha256": "2b1c1a6ecdfe3aee1b3ed02d184839299ff099d6aa8cec002723a4873cfa1aa8",
+    "runner_sha256": "bcfabcd7d2180f868156b9d79b798f452753be193e9055265d38bea57255b329",
+    "harness_verify": "pass",
+    "repo_status": "clean"
+  },
+  "continuous_batch": {
+    "control_dir": "C:\\Tools\\dnspy-full-a4b6af0",
+    "summary_path": "C:\\Tools\\dnspy-full-a4b6af0\\summary.json",
+    "summary_sha256": "d79aa7e9ea7392ceda0f6341be3ed0e853310c1af334e820a4c5df7066a108a8",
+    "result_hash_aggregate_sha256": "84087473e5fb9df17ceadf035834047aa8054762a33a6358a2716c7a19410d6d",
+    "started_utc": "2026-08-29T17:36:16.7442991Z",
+    "finished_utc": "2026-08-29T17:52:46.1659282Z",
+    "elapsed_seconds": 989.422,
+    "total": 36,
+    "passed": 36,
+    "failed": [],
+    "assertions": 500,
+    "result_files": 36,
+    "commit_sha_all_same": true,
+    "timestamps_overlap": false,
+    "all_result_hashes_present": true,
+    "bad_result_status": [],
+    "bad_result_gates": [],
+    "runner_errors": []
+  },
+  "key_assertions": [
+    { "case": "ACC-004", "id": "a4-body-limit-413", "status": "pass", "actual": "at=200 over=413" },
+    { "case": "ACC-008", "id": "a08-apphost-launch", "status": "pass", "actual": "ok=True fam=coreclr mode=coreclr-apphost" },
+    { "case": "ACC-016", "id": "a16-stale-handle", "status": "pass", "actual": "code=STALE_HANDLE" },
+    { "case": "ACC-024", "id": "a24-unity-over-limit", "status": "pass", "actual": "code=INTERNAL_ERROR noDetails=True start=+0" },
+    { "case": "ACC-025", "id": "a25-ctl-terminate", "status": "pass", "actual": "code=OWNERSHIP_LOST" },
+    { "case": "ACC-025", "id": "a25-no-unowned-operation", "status": "pass", "actual": "break=+0 terminate=+0" },
+    { "case": "ACC-033", "id": "a33-lease-share-conflicts", "status": "pass", "actual": "overwrite/delete/rename/reparse/root-rename all blocked" }
+  ],
+  "no_test_environment_check": {
+    "inherited_DNMCP_TEST": null,
+    "removed_before_start": true,
+    "health_status": 200,
+    "advertised_tools": 54,
+    "advertised_debug_tools": 22,
+    "advertised_debug_test_tools": [],
+    "required_six_test_tools_advertised_count": 0
+  },
+  "canonical_vm_settings": {
+    "SchemaVersion": "dnspy.mcp.settings.v1",
+    "EnableServer": true,
+    "Host": "localhost",
+    "Port": 3000,
+    "DebugToolsEnabled": true,
+    "DedicatedDebugInstanceAcknowledged": true
+  },
+  "historical_review_blob_ids": [
+    "67cf20597f9bcb9dc4d5bbd0d8d4d00fd174b390",
+    "4b929190c27a653d91dffc71f27342e5031fc018",
+    "5e85e9b14f1d3f30766b715847120888453722de",
+    "22ff1a67f29d15ecc7a74d53f63eac10dbb92588",
+    "dee82237023f45ade90795e51365648528bf4309",
+    "28286ceaee6ad617c1032c90147a7723569a4129"
+  ],
+  "disclosed_gaps_retained": true,
+  "note": "通过结论严格按 v2 第4节判定；v2 第5节列出的子集案、过程性挂账、IMP-003 UI/一次性 token 与 IMP-011/ACC-022 CI 动态编排尾差仍保留，不被本记录改写为已实现。"
+}
