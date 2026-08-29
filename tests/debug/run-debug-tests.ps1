@@ -3177,8 +3177,14 @@ function Run-ACC024 {
             $log += (& $m.env.csc /nologo /optimize- /target:library "/out:$stubDll" $stubSrc 2>&1 | Out-String)
         }
         $probeSrc = Join-Path $script:OutDir 'unity-probe.cs'
-        $refs = @($StubNames | ForEach-Object { '/r:"' + (Join-Path $root ($_ + '.dll')) + '"' })
-        Set-Content $probeSrc 'internal static class U { private static void Main() { System.Console.WriteLine(Satellite.Satellite.Answer()); } }'
+        $src = @(); $refs = @()
+        for ($k = 0; $k -lt $StubNames.Count; $k++) {
+            $src += "extern alias X$k;"
+            $refs += '/r:X' + $k + '="' + (Join-Path $root ($StubNames[$k] + '.dll')) + '"'
+        }
+        $calls = @(); for ($k = 0; $k -lt $StubNames.Count; $k++) { $calls += "X$k" + '::Satellite.Satellite.Answer()' }
+        $src += 'internal static class U { private static void Main() { var s = ' + ($calls -join ' + ') + '; System.Console.WriteLine(s); } }'
+        Set-Content $probeSrc ($src -join "`r`n")
         $probeExe = Join-Path $root $ProbeName
         $rsp = Join-Path $script:OutDir 'unity-probe.rsp'
         @('/nologo', '/optimize-', '/platform:x64', "/out:`"$probeExe`"", "`"$probeSrc`"") + $refs | Set-Content $rsp -Encoding ASCII
