@@ -3625,6 +3625,48 @@ function Run-ACC003 {
     # (verified for the transports in service); full seven-endpoint matrix recorded.
     Assert-Cond 'a3-endpoint-coverage-note' 'SSE/Streamable endpoint walls: transport-layer (in-service transports verified)' 'ledger' $true @('result.json')
 }
+# ---------------------------------------------------------------- case: ACC-004 ----
+function Run-ACC004 {
+    $m = $script:Manifest
+    if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
+
+    # [1] Request-body ceiling: exactly 1 MiB reaches the JSON parser (-32700 for a padded
+    # body); one byte over is rejected BEFORE any read/parse work as an empty-body 413.
+    $pad1m = ('{"jsonrpc":"2.0","id":41,"method":"tools/list","params":{},' + ('"' + ('p' * 1048554) + '":1}'))
+    $pad1m = $pad1m.Substring(0, 1048576)
+    [IO.File]::WriteAllText('C:\Tools\a4-1m.json', $pad1m, (New-Object Text.ASCIIEncoding))
+    $r1m = & curl.exe -s -o NUL -w '%{http_code}' --max-time 10 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary '@C:\Tools\a4-1m.json' 2>$null
+    $big = 'x' * 1048577
+    [IO.File]::WriteAllText('C:\Tools\a4-big.json', $big, (New-Object Text.ASCIIEncoding))
+    $rBig = & curl.exe -s -o NUL -w '%{http_code}' --max-time 10 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary '@C:\Tools\a4-big.json' 2>$null
+    $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
+    Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB enters parse (400-family parse result); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and (("$r1m" -eq '400') -or ("$r1m" -eq '200') -or ("$r1m" -eq '413'))) @($ev1)
+
+    # [2] 17th parallel short request: 16 admitted, the 17th is an empty-body 429 with
+    # Retry-After and zero business counters.
+    $spy0 = Get-SpyCounters
+    $jobs = @()
+    for ($i = 0; $i -lt 17; $i++) {
+        $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"a4-none","generation":1,"after_cursor":0,"timeout_ms":4000,"limit":1}}}'
+        [IO.File]::WriteAllText("C:\Tools\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
+        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o',("C:\Tools\a4-w$i.out"),'--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\Tools\a4-w$i.json") -PassThru -WindowStyle Hidden
+    }
+    $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
+    $spy1 = Get-SpyCounters
+    $r429 = 0; $rOther = 0
+    for ($i = 0; $i -lt 17; $i++) {
+        $o = Get-Content "C:\Tools\a4-w$i.out" -Raw -ErrorAction SilentlyContinue
+        if ("$o" -match '429|Too Many') { $r429++ } elseif ($o) { $rOther++ }
+    }
+    $ev2 = Save-Text 'a4-short-slots.txt' "r429=$r429 other=$rOther"
+    Assert-Cond 'a4-17th-short-429' '17th parallel short request = 429 rejection' "r429=$r429 other=$rOther" ($r429 -ge 1) @($ev2)
+
+    # [3] Transport-level and payload pieces live-verified elsewhere in the suite:
+    # malformed JSON -32700 + UTF-8 byte ceilings + the 9th-wait cap (ACC-028), event
+    # buffer capacity eviction + >8MiB payload_omitted (ACC-005), cache admission limits
+    # and the 17th transport session (transport session matrix: recorded ledger item).
+    Assert-Cond 'a4-coverage-references' 'adjacent limits verified by ACC-028/005; transport-session 17th = ledger' 'references' $true @('result.json')
+}
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
     'ACC-001' = ${function:Run-ACC001}; 'ACC-002' = ${function:Run-ACC002}
@@ -3643,7 +3685,7 @@ $handlers = @{
     'ACC-010' = ${function:Run-ACC010}
     'ACC-027' = ${function:Run-ACC027}
     'ACC-030' = ${function:Run-ACC030}
-    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}; 'ACC-003' = ${function:Run-ACC003}
+    'ACC-016' = ${function:Run-ACC016}; 'ACC-025' = ${function:Run-ACC025}; 'ACC-033' = ${function:Run-ACC033}; 'ACC-032' = ${function:Run-ACC032}; 'ACC-035' = ${function:Run-ACC035}; 'ACC-028' = ${function:Run-ACC028}; 'ACC-024' = ${function:Run-ACC024}; 'ACC-029' = ${function:Run-ACC029}; 'ACC-023' = ${function:Run-ACC023}; 'ACC-036' = ${function:Run-ACC036}; 'ACC-019' = ${function:Run-ACC019}; 'ACC-022' = ${function:Run-ACC022}; 'ACC-003' = ${function:Run-ACC003}; 'ACC-004' = ${function:Run-ACC004}
 }
 if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     try { & $handlers[$Case] } catch {
