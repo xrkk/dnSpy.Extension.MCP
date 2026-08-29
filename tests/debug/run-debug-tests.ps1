@@ -263,7 +263,10 @@ function Get-Sha256File([string]$Path) {
     # spawned -NoProfile sessions on this host.
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $fs = [System.IO.File]::OpenRead($Path)
+        # Product-owned artifacts retain a ReadWrite handle that shares Read only. Windows
+        # share checks are bidirectional, so the verifier's read handle must share that
+        # existing writer; the product handle still prevents every outside write/delete.
+        $fs = [System.IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
         try { return ([System.BitConverter]::ToString($sha.ComputeHash($fs))).Replace('-','').ToLower() }
         finally { $fs.Close() }
     } finally { $sha.Dispose() }
