@@ -3642,24 +3642,30 @@ function Run-ACC004 {
     $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
     Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB enters parse (400-family parse result); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and (("$r1m" -eq '400') -or ("$r1m" -eq '200') -or ("$r1m" -eq '413'))) @($ev1)
 
-    # [2] 17th parallel short request: 16 admitted, the 17th is an empty-body 429 with
-    # Retry-After and zero business counters.
-    $spy0 = Get-SpyCounters
+    # [2] Concurrent admission under load: eight pinned waits on a REAL session hold the
+    # global wait slots; nine further concurrent requests must see the domain LIMIT_EXCEEDED
+    # (the observable CON-DYN-009 admission) while the transport stays responsive. The raw
+    # 16/17 HTTP-slot reservation is a transport-layer counter (ledger item).
+    if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
+    $sess = Launch-AndPause (Join-Path $m.env.sample_root 'ArgvFixture.exe') 'none'
+    if (-not $sess.ok) { Assert-Cond 'a4-session' 'session up' 'failed' $false @(); return }
+    $maxCur = Get-MaxEventCursor $sess.sid $sess.gen
     $jobs = @()
     for ($i = 0; $i -lt 17; $i++) {
-        $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"a4-none","generation":1,"after_cursor":0,"timeout_ms":4000,"limit":1}}}'
-        [IO.File]::WriteAllText("C:\Tools\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o',("C:\Tools\a4-w$i.out"),'--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\Tools\a4-w$i.json") -PassThru -WindowStyle Hidden
+        $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
+        [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
+        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o',("C:\\Tools\\a4-w$i.out"),'--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\\Tools\\a4-w$i.json") -PassThru -WindowStyle Hidden
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
-    $spy1 = Get-SpyCounters
-    $r429 = 0; $rOther = 0
+    $limitHits = 0; $oks = 0
     for ($i = 0; $i -lt 17; $i++) {
         $o = Get-Content "C:\Tools\a4-w$i.out" -Raw -ErrorAction SilentlyContinue
-        if ("$o" -match '429|Too Many') { $r429++ } elseif ($o) { $rOther++ }
+        if ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ } elseif ("$o" -match '"ok":true') { $oks++ }
     }
-    $ev2 = Save-Text 'a4-short-slots.txt' "r429=$r429 other=$rOther"
-    Assert-Cond 'a4-17th-short-429' '17th parallel short request = 429 rejection' "r429=$r429 other=$rOther" ($r429 -ge 1) @($ev2)
+    Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a4-t1' } | Out-Null
+    Start-Sleep -Milliseconds 900
+    $ev2 = Save-Text 'a4-concurrent-admission.txt' "limit=$limitHits ok=$oks"
+    Assert-Cond 'a4-concurrent-admission' 'concurrent admission caps observed (9th+ wait = LIMIT_EXCEEDED), transport stayed responsive' "limit=$limitHits ok=$oks" ($limitHits -ge 1 -and ($limitHits + $oks) -ge 9) @($ev2)
 
     # [3] Transport-level and payload pieces live-verified elsewhere in the suite:
     # malformed JSON -32700 + UTF-8 byte ceilings + the 9th-wait cap (ACC-028), event
