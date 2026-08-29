@@ -23,10 +23,28 @@ public sealed class DualLaneQueue : IDisposable {
 	public sealed class Ticket {
 		public long Id { get; }
 		public Lane Lane { get; }
+		public long AdmissionTimestamp { get; }
 		readonly DualLaneQueue owner;
+		readonly ManualResetEventSlim turn = new(false);
 		int released;
+		int mutationCompleted;
 		internal Ticket(DualLaneQueue owner, Lane lane, long id) {
 			this.owner = owner; Lane = lane; Id = id;
+			AdmissionTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+		}
+		/// <summary>Blocks until this ticket owns the single side-effect mutation turn.</summary>
+		public void WaitForTurn() => turn.Wait();
+		internal void GrantTurn() => turn.Set();
+		/// <summary>
+		/// Leaves the atomic coordinator mutation boundary while retaining the in-flight
+		/// capacity slot. Artifact I/O uses this after its immutable debugger snapshot has
+		/// been captured so a queued control operation can run during the write.
+		/// </summary>
+		public bool TryCompleteMutation() {
+			if (Interlocked.Exchange(ref mutationCompleted, 1) == 1)
+				return false;
+			owner.CompleteMutation(this);
+			return true;
 		}
 		/// <summary>Releases the slot exactly once; a second release is rejected.</summary>
 		public bool TryRelease() {
@@ -41,6 +59,7 @@ public sealed class DualLaneQueue : IDisposable {
 	readonly Queue<long> controlOrder = new();
 	readonly Queue<long> generalOrder = new();
 	readonly Dictionary<long, Ticket> inFlight = new();
+	long? runningId;
 	int controlCount, generalCount;
 	long ticketSeq;
 
@@ -61,6 +80,7 @@ public sealed class DualLaneQueue : IDisposable {
 			(lane == Lane.Control ? controlOrder : generalOrder).Enqueue(t.Id);
 			inFlight[t.Id] = t;
 			if (lane == Lane.Control) controlCount++; else generalCount++;
+			PromoteNextLocked();
 			ticket = t;
 			return true;
 		}
@@ -71,7 +91,44 @@ public sealed class DualLaneQueue : IDisposable {
 			if (!inFlight.Remove(ticket.Id))
 				return;
 			if (ticket.Lane == Lane.Control) controlCount--; else generalCount--;
+			if (runningId == ticket.Id) {
+				runningId = null;
+				PromoteNextLocked();
+			}
 		}
+	}
+
+	internal void CompleteMutation(Ticket ticket) {
+		lock (gate) {
+			if (runningId != ticket.Id || !inFlight.ContainsKey(ticket.Id))
+				return;
+			runningId = null;
+			PromoteNextLocked();
+		}
+	}
+
+	void PromoteNextLocked() {
+		if (runningId is not null)
+			return;
+		var next = TakeNextLocked();
+		if (next is null)
+			return;
+		runningId = next.Id;
+		next.GrantTurn();
+	}
+
+	Ticket? TakeNextLocked() {
+		while (controlOrder.Count > 0) {
+			var id = controlOrder.Dequeue();
+			if (inFlight.TryGetValue(id, out var t))
+				return t;
+		}
+		while (generalOrder.Count > 0) {
+			var id = generalOrder.Dequeue();
+			if (inFlight.TryGetValue(id, out var t))
+				return t;
+		}
+		return null;
 	}
 
 	/// <summary>
@@ -80,17 +137,8 @@ public sealed class DualLaneQueue : IDisposable {
 	/// </summary>
 	public Ticket? DequeueNext() {
 		lock (gate) {
-			while (controlOrder.Count > 0) {
-				var id = controlOrder.Dequeue();
-				if (inFlight.TryGetValue(id, out var t))
-					return t;
-			}
-			while (generalOrder.Count > 0) {
-				var id = generalOrder.Dequeue();
-				if (inFlight.TryGetValue(id, out var t))
-					return t;
-			}
-			return null;
+			PromoteNextLocked();
+			return runningId is { } id && inFlight.TryGetValue(id, out var current) ? current : null;
 		}
 	}
 

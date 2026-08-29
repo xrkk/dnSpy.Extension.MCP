@@ -60,11 +60,13 @@ public sealed class ControlOperationRecord {
 	}
 
 	public static ControlOperationRecord Begin(string sessionId, int generation, long controlEpoch,
-		string requestId, ControlOperation operation, string priorState, TimeSpan? deadline = null) {
+		string requestId, ControlOperation operation, string priorState, TimeSpan? deadline = null,
+		long? admissionTimestamp = null) {
 		// Stopwatch timestamps are monotonic per machine; the deadline is a raw timestamp
 		// comparison so the timer never needs to touch any dnSpy object.
 		var duration = deadline ?? DefaultDeadline;
-		var deadlineTimestamp = Stopwatch.GetTimestamp() + (long)(duration.TotalSeconds * Stopwatch.Frequency);
+		var deadlineTimestamp = (admissionTimestamp ?? Stopwatch.GetTimestamp())
+			+ (long)(duration.TotalSeconds * Stopwatch.Frequency);
 		return new ControlOperationRecord(sessionId, generation, controlEpoch, requestId, operation, priorState, deadlineTimestamp);
 	}
 

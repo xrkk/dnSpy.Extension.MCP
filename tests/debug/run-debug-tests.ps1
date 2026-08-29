@@ -264,6 +264,20 @@ function Stop-DnSpyAndTargets {
     Get-Process AccFixture,AccHarness,AccCore,ThreadsStackFixture,ArgvFixture,SampleDataFixture,DynLoadFixture,DualDynFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 1500
 }
+function Reset-TestArtifactRoot {
+    # Acceptance cleanup is deliberately out-of-process. The extension itself never deletes
+    # artifact data; each cold case receives an empty dedicated harness root.
+    $path = [IO.Path]::GetFullPath("$($script:Manifest.env.artifact_root)").TrimEnd('\')
+    $volume = [IO.Path]::GetPathRoot($path).TrimEnd('\')
+    if (-not $path -or $path.Length -le 3 -or $path -eq $volume) {
+        throw "refusing to clean unsafe artifact test root: $path"
+    }
+    if (Test-Path -LiteralPath $path) {
+        Get-ChildItem -LiteralPath $path -Force | Remove-Item -Recurse -Force
+    } else {
+        New-Item -ItemType Directory -Path $path | Out-Null
+    }
+}
 function Set-SnapshotJson {
     param([string]$Json)
     $xmlPath = [Environment]::ExpandEnvironmentVariables($script:Manifest.env.settings_xml)
@@ -3687,7 +3701,7 @@ function Run-ACC019 {
         $art = $d.domain.result.artifact
         Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = "a19-t-$Tag" } | Out-Null
         Start-Sleep -Milliseconds 1100
-        return @{ ok = $d.domain.ok; sid = $sess.sid; art = $art }
+        return @{ ok = $d.domain.ok; code = (Get-DomainError $d); sid = $sess.sid; art = $art }
     }
 
     # [1] S1: dump, terminal -> the session directory and every child SURVIVE (retention,
@@ -3725,23 +3739,31 @@ function Run-ACC019 {
         Start-Sleep -Milliseconds 1000
     }
 
-    # [4] Restart empties the in-memory ledger: the SAME session directory is NOT reused for
-    # a new session id (a fresh directory is minted); the stale directory stays untouched.
+    # [4] Restart empties the in-memory ledger. Existing directories have no current-process
+    # provenance, remain untouched, and block new store mutation until stopped-process
+    # operator cleanup.
     Stop-DnSpyAndTargets
     $up = Ensure-CanonicalDnSpy
+    $stale = Invoke-DumpCycle 'stale'
+    $s1post = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
+    Assert-Cond 'a19-restart-stale-blocks' 'restart: pre-existing session remains untouched and next dump is TARGET_MISMATCH' "up=$up code=$($stale.code) s1files=$s1post" ($up -and (-not $stale.ok) -and ("$($stale.code)" -eq 'TARGET_MISMATCH') -and ($s1post -ge 3)) @()
+
+    Stop-DnSpyAndTargets
+    Reset-TestArtifactRoot
+    $up2 = Ensure-CanonicalDnSpy
     $s3 = Invoke-DumpCycle 's3'
     $s3dir = if ($s3.art) { Split-Path "$($s3.art.path)" -Parent } else { $null }
-    $s1post = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
-    Assert-Cond 'a19-restart-ledger' 'restart: new session gets a fresh directory; stale S1 untouched' "s3=$([bool]$s3dir) distinct=$(("$s3dir") -ne ("$s1dir")) s1files=$s1post" ($up -and $s3.ok -and ("$s3dir" -ne "$s1dir") -and ($s1post -ge 3)) @()
+    Assert-Cond 'a19-operator-clean-recovery' 'stopped-process operator cleanup restores an empty root and fresh dump succeeds' "up=$up2 s3=$([bool]$s3dir)" ($up2 -and $s3.ok -and [bool]$s3dir) @()
 
     # [5] Execute quota at/over and cancellation settlement through the product's
     # IArtifactStoreFs/ArtifactOperationRecord seams inside the extension process.
     $probe = Invoke-ToolNoInit 'debug_test_artifact' @{}
     $pr = $probe.domain.result
     $probeEv = Save-Json 'a19-artifact-seam-matrix.json' $pr
-    $bools = @('session_admitted','file_at_limit','file_over_rejected_zero_delta','session_over_rejected_zero_delta','second_session_admitted','store_at_limit','store_over_rejected','external_child_fail_closed_zero_delta','cancel_timeline_exactly_once')
+    $bools = @('session_admitted','file_at_limit','file_over_rejected_zero_delta','session_over_rejected_zero_delta','second_session_admitted','store_at_limit','store_over_rejected','external_child_fail_closed_zero_delta','cancel_timeline_exactly_once',
+        'startup_stale_blocks_new','retained_counts_toward_limits','retained_identity_reverified','post_create_cancel_aborted_owned','pre_create_deadline_zero_delta')
     $badProbe = @($bools | Where-Object { -not [bool]$pr.PSObject.Properties[$_].Value })
-    Assert-Cond 'a19-quota-cancel-seam' 'file/session/store at-limit succeeds; over-limit and external child reject with zero delta; cancel settles exactly once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
+    Assert-Cond 'a19-quota-cancel-seam' 'limits, startup stale, retained identity/accounting, pre-create deadline and post-create aborted_owned all fail closed; cancellation settles once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
 }
 
 # ---------------------------------------------------------------- case: ACC-022 ----
@@ -4009,6 +4031,7 @@ if ($handlers.ContainsKey($Case) -and $script:Manifest) {
     # snapshot matches, so a previous case's lingering transitions could bleed into the next
     # case's first launch in sequential batch runs; stopping here makes batch == cold start.
     Stop-DnSpyAndTargets
+    Reset-TestArtifactRoot
     try { & $handlers[$Case] } catch {
         $_ | Out-String | Set-Content (Join-Path $script:OutDir 'harness-error.log')
         Assert-Cond 'harness-exception' 'case body completes without harness exception' $_.Exception.Message $false @('harness-error.log')

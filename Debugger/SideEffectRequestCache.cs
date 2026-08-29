@@ -116,10 +116,23 @@ public sealed class SideEffectRequestCache {
 		lock (gate) {
 			if (!entries.TryGetValue(requestId, out var entry) || entry.Envelope != null)
 				return false;
+			if (Utf8Len(finalEnvelope) > MaxEnvelopeBytes)
+				throw new InvalidOperationException("side-effect envelope exceeded its preflight bound");
 			entry.Envelope = finalEnvelope;
 			entry.ReservedBytes = Utf8Len(entry.Method) + Utf8Len(entry.CanonicalArgs) + Utf8Len(finalEnvelope);
 			entry.CompletedAtUtc = wallClock();
 			entry.SessionTerminalUtc = entry.CompletedAtUtc.Value;
+			return true;
+		}
+	}
+
+	/// <summary>Removes an admitted-but-unsettled entry when semantic argument validation
+	/// throws -32602 before any side effect. A settled entry is never removed here.</summary>
+	public bool RemoveInFlight(string requestId) {
+		lock (gate) {
+			if (!entries.TryGetValue(requestId, out var entry) || entry.Envelope != null)
+				return false;
+			entries.Remove(requestId);
 			return true;
 		}
 	}

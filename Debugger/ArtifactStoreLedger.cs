@@ -26,7 +26,7 @@ public interface IArtifactStoreFs {
 	/// seam and must never be used by the production implementation.
 	/// </summary>
 	ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName,
-		long length, byte[]? payload);
+		long length, byte[]? payload, ArtifactOperationRecord? operation);
 }
 
 /// <summary>
@@ -54,16 +54,27 @@ public sealed class ArtifactStoreLedger {
 		public string FileId { get; }
 		public long Length { get; }
 		public string Sha256 { get; }
-		public ChildRecord(string relativeName, string volumeSerial, string fileId, long length, string sha256) {
-			RelativeName = relativeName; VolumeSerial = volumeSerial; FileId = fileId; Length = length; Sha256 = sha256;
+		public string Status { get; }
+		public ChildRecord(string relativeName, string volumeSerial, string fileId, long length,
+			string sha256, string status = "committed") {
+			RelativeName = relativeName; VolumeSerial = volumeSerial; FileId = fileId;
+			Length = length; Sha256 = sha256; Status = status;
+		}
+	}
+
+	public sealed class ArtifactWriteInterruptedException : Exception {
+		public ChildRecord Record { get; }
+		public AdmitResult Result { get; }
+		public ArtifactWriteInterruptedException(ChildRecord record, AdmitResult result) {
+			Record = record; Result = result;
 		}
 	}
 
 	readonly object gate = new();
 	readonly IArtifactStoreFs fs;
-	// Session state: ledger sessions (active_writer + known_retained) and stale names.
+	// Session state: active writers, process-lifetime known-retained ledgers, and stale names.
 	readonly Dictionary<string, List<ChildRecord>> ledgerSessions = new(StringComparer.Ordinal);
-	readonly HashSet<string> retainedSessions = new(StringComparer.Ordinal);
+	readonly Dictionary<string, List<ChildRecord>> retainedSessions = new(StringComparer.Ordinal);
 	readonly HashSet<string> staleNames = new(StringComparer.Ordinal);
 	readonly long maxFile, maxSession, maxStore;
 	readonly int maxSessions;
@@ -79,9 +90,10 @@ public sealed class ArtifactStoreLedger {
 		this.maxStore = maxStore;
 	}
 
-	public int LedgerSessionCount { get { lock (gate) return ledgerSessions.Count; } }
+	public int LedgerSessionCount { get { lock (gate) return ledgerSessions.Count + retainedSessions.Count; } }
 	public int StaleCount { get { lock (gate) return staleNames.Count; } }
-	public long LedgerBytes { get { lock (gate) return ledgerSessions.Values.SelectMany(v => v).Sum(c => c.Length); } }
+	public long LedgerBytes { get { lock (gate) return AllLedgerChildren().Sum(c => c.Length); } }
+	public int AbortedOwnedCount { get { lock (gate) return AllLedgerChildren().Count(c => c.Status == "aborted_owned"); } }
 	/// <summary>Retained bytes never re-read or re-hashed after commit (retained_bytes_hashed=0).</summary>
 	public long RetainedBytesHashed => 0;
 
@@ -97,7 +109,8 @@ public sealed class ArtifactStoreLedger {
 		}
 	}
 
-	public enum AdmitResult { Ok, NotInitialized, LimitExceeded, AlreadyExists, TargetMismatch, SessionNotFound }
+	public enum AdmitResult { Ok, NotInitialized, LimitExceeded, AlreadyExists, TargetMismatch,
+		SessionNotFound, OperationTimedOut, OperationCanceled }
 
 	/// <summary>
 	/// Creates a session directory (CreateDirectory as a direct child, name == session_id).
@@ -113,7 +126,7 @@ public sealed class ArtifactStoreLedger {
 				return verify;
 			if (fs.SessionDirectoryExists(sessionId) || ledgerSessions.ContainsKey(sessionId))
 				return AdmitResult.AlreadyExists;
-			if (ledgerSessions.Count + 1 > maxSessions)
+			if (ledgerSessions.Count + retainedSessions.Count + 1 > maxSessions)
 				return AdmitResult.LimitExceeded;
 			fs.CreateSessionDirectory(sessionId);
 			ledgerSessions[sessionId] = new List<ChildRecord>();
@@ -126,14 +139,16 @@ public sealed class ArtifactStoreLedger {
 	/// re-verification, then the checked-add quotas (per file / per session / whole store), then
 	/// the creation. Existing names are ALREADY_EXISTS; quota failures have zero side effects.
 	/// </summary>
-	public AdmitResult AdmitArtifactWrite(string sessionId, string relativeName, byte[] payload) =>
-		AdmitArtifactWriteCore(sessionId, relativeName, payload.LongLength, payload);
+	public AdmitResult AdmitArtifactWrite(string sessionId, string relativeName, byte[] payload,
+		ArtifactOperationRecord? operation = null) =>
+		AdmitArtifactWriteCore(sessionId, relativeName, payload.LongLength, payload, operation);
 
 	/// <summary>Deterministic quota seam; production callers must use the byte[] overload.</summary>
 	public AdmitResult AdmitArtifactReservationForTest(string sessionId, string relativeName, long length) =>
-		AdmitArtifactWriteCore(sessionId, relativeName, length, null);
+		AdmitArtifactWriteCore(sessionId, relativeName, length, null, null);
 
-	AdmitResult AdmitArtifactWriteCore(string sessionId, string relativeName, long length, byte[]? payload) {
+	AdmitResult AdmitArtifactWriteCore(string sessionId, string relativeName, long length,
+		byte[]? payload, ArtifactOperationRecord? operation) {
 		lock (gate) {
 			if (!initialized)
 				return AdmitResult.NotInitialized;
@@ -146,17 +161,28 @@ public sealed class ArtifactStoreLedger {
 				return AdmitResult.AlreadyExists;
 			if (fs.EnumerateSessionChildren(sessionId).Contains(relativeName))
 				return AdmitResult.AlreadyExists;
-			if (length > maxFile)
+			if (length < 0 || length > maxFile)
 				return AdmitResult.LimitExceeded;
-			if (children.Sum(c => c.Length) + length > maxSession)
+			if (WouldExceed(children.Sum(c => c.Length), length, maxSession))
 				return AdmitResult.LimitExceeded;
-			if (LedgerBytes + length > maxStore)
+			if (WouldExceed(AllLedgerChildren().Sum(c => c.Length), length, maxStore))
 				return AdmitResult.LimitExceeded;
 			if (children.Count + 1 > MaxSessionChildren)
 				return AdmitResult.LimitExceeded;
-			if (ledgerSessions.Values.Sum(v => v.Count) + 1 > MaxStoreChildren)
+			if (AllLedgerChildren().Count() + 1 > MaxStoreChildren)
 				return AdmitResult.LimitExceeded;
-			var committed = fs.CreateChildFile(sessionId, relativeName, length, payload);
+			if (operation?.IsExpiredNow == true)
+				return AdmitResult.OperationTimedOut;
+			if (operation?.CancellationRequested == true)
+				return AdmitResult.OperationCanceled;
+			ChildRecord committed;
+			try {
+				committed = fs.CreateChildFile(sessionId, relativeName, length, payload, operation);
+			}
+			catch (ArtifactWriteInterruptedException interrupted) {
+				children.Add(interrupted.Record);
+				return interrupted.Result;
+			}
 			if (committed.RelativeName != relativeName || committed.Length != length)
 				throw new InvalidOperationException("artifact filesystem returned a mismatched committed record");
 			children.Add(committed);
@@ -206,7 +232,7 @@ public sealed class ArtifactStoreLedger {
 			}
 			ledgerSessions.Remove(sessionId);
 			if (exact) {
-				retainedSessions.Add(sessionId);
+				retainedSessions.Add(sessionId, children);
 				return TerminalResult.Retained;
 			}
 			staleNames.Add(sessionId);
@@ -221,14 +247,19 @@ public sealed class ArtifactStoreLedger {
 	/// </summary>
 	AdmitResult VerifyForAdmission() {
 		var rootChildren = fs.EnumerateRootChildren();
-		if (rootChildren.Count > MaxRootChildren + 1)
+		if (rootChildren.Count > MaxRootChildren)
 			return AdmitResult.LimitExceeded;
+		// Startup/pre-existing and any subsequently classified stale object is never a
+		// provenance root.  It counts toward the read-only root limit but blocks every new
+		// extension delta until the operator stops the extension and empties the root.
+		if (staleNames.Count != 0)
+			return AdmitResult.TargetMismatch;
 		// known_retained sessions stay in the re-verification set for the whole process
 		// lifetime (retention lease) — leaving them out would flag them as unknown siblings.
-		var known = new HashSet<string>(ledgerSessions.Keys.Concat(retainedSessions).Concat(staleNames), StringComparer.Ordinal);
+		var known = new HashSet<string>(ledgerSessions.Keys.Concat(retainedSessions.Keys), StringComparer.Ordinal);
 		if (!rootChildren.All(known.Contains))
 			return AdmitResult.TargetMismatch;
-		foreach (var pair in ledgerSessions) {
+		foreach (var pair in ledgerSessions.Concat(retainedSessions)) {
 			var sessionId = pair.Key;
 			var children = pair.Value;
 			var observed = fs.EnumerateSessionChildren(sessionId);
@@ -236,9 +267,21 @@ public sealed class ArtifactStoreLedger {
 				return AdmitResult.TargetMismatch;
 			if (!observed.All(name => children.Any(c => c.RelativeName == name)))
 				return AdmitResult.TargetMismatch;
+			foreach (var child in children) {
+				var identity = fs.ObserveChild(sessionId, child.RelativeName);
+				if (identity is null || identity.Value.VolumeSerial != child.VolumeSerial
+					|| identity.Value.FileId != child.FileId || identity.Value.Length != child.Length)
+					return AdmitResult.TargetMismatch;
+			}
 		}
 		return AdmitResult.Ok;
 	}
+
+	IEnumerable<ChildRecord> AllLedgerChildren() =>
+		ledgerSessions.Values.Concat(retainedSessions.Values).SelectMany(v => v);
+
+	static bool WouldExceed(long current, long add, long limit) =>
+		current < 0 || add < 0 || current > limit || add > limit - current;
 }
 
 /// <summary>
@@ -254,13 +297,17 @@ public sealed class ArtifactOperationRecord {
 	public string SessionId { get; }
 	public long DeadlineTimestamp { get; }
 	int phase;
+	int cancellationRequested;
+	readonly System.Threading.CancellationTokenSource cancellation = new();
 	readonly long deadline;
 
-	public ArtifactOperationRecord(string requestId, string sessionId, TimeSpan? deadlineOverride = null) {
+	public ArtifactOperationRecord(string requestId, string sessionId, TimeSpan? deadlineOverride = null,
+		long? admissionTimestamp = null) {
 		RequestId = requestId;
 		SessionId = sessionId;
 		var duration = deadlineOverride ?? TimeSpan.FromSeconds(30);
-		deadline = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(duration.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+		deadline = (admissionTimestamp ?? System.Diagnostics.Stopwatch.GetTimestamp())
+			+ (long)(duration.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
 		DeadlineTimestamp = deadline;
 		phase = (int)Phase.Scheduled;
 	}
@@ -268,6 +315,14 @@ public sealed class ArtifactOperationRecord {
 	public Phase CurrentPhase => (Phase)System.Threading.Volatile.Read(ref phase);
 	public bool IsExpired(long now) => now >= deadline;
 	public bool IsExpiredNow => IsExpired(System.Diagnostics.Stopwatch.GetTimestamp());
+	public bool CancellationRequested => System.Threading.Volatile.Read(ref cancellationRequested) != 0;
+	public System.Threading.CancellationToken CancellationToken => cancellation.Token;
+	public bool RequestCancellation() {
+		if (System.Threading.Interlocked.Exchange(ref cancellationRequested, 1) != 0)
+			return false;
+		cancellation.Cancel();
+		return true;
+	}
 
 	public bool TryMarkActive() => Cas(Phase.Scheduled, Phase.Active);
 	/// <summary>Post-CreateNew timeout/cancellation: no further writes, manifest or commit.</summary>

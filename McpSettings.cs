@@ -277,6 +277,9 @@ namespace dnSpy.Extension.MCP {
 
 		/// <summary>Returns a newly generated raw token once, then irreversibly clears it.</summary>
 		public virtual string? ConsumeOneTimeRemoteToken() => null;
+
+		/// <summary>Wires the live MCP-session save gate after the debug service is composed.</summary>
+		internal virtual void SetActiveSessionProbe(McpSettingsStore.ActiveSessionProbe probe) { }
 	}
 
 	/// <summary>
@@ -289,11 +292,14 @@ namespace dnSpy.Extension.MCP {
 		readonly McpSettingsStore store;
 		McpServer? mcpServer;
 		string? oneTimeRemoteToken;
+		McpSettingsStore.ActiveSessionProbe? activeSessionProbe;
+		Debugger.SettingsRootLease? activeRootLease;
 
 		[ImportingConstructor]
 		McpSettingsImpl(dnSpy.Contracts.Settings.ISettingsService settingsService) {
 			// Authoritative load: two-key staged/committed recovery with the one-shot legacy
 			// fallback (CON-DYN-014). UI fields mirror the snapshot without persistence events.
+			Debugger.SettingsRootLease? startupLease = null;
 			store = new McpSettingsStore(
 				new SettingsSectionSnapshotIO(settingsService, SETTINGS_GUID),
 				() => {
@@ -301,7 +307,8 @@ namespace dnSpy.Extension.MCP {
 					return (sect.Attribute<bool?>(nameof(EnableServer)),
 						sect.Attribute<string>(nameof(Host)),
 						sect.Attribute<int?>(nameof(Port)));
-				});
+				}, snapshot => Debugger.SettingsRootLease.TryAcquire(snapshot, out startupLease, out _));
+			activeRootLease = startupLease;
 			LoadFieldsFromSnapshot();
 			if (store.StartupWarning != null)
 				Log(store.StartupWarning);
@@ -352,6 +359,9 @@ namespace dnSpy.Extension.MCP {
 			mcpServer = server;
 		}
 
+		internal override void SetActiveSessionProbe(McpSettingsStore.ActiveSessionProbe probe) =>
+			activeSessionProbe = probe;
+
 		/// <summary>
 		/// Single Apply entry point: builds a candidate from the edited legacy fields plus the
 		/// eight non-UI snapshot fields, then runs the five-step ApplySnapshot transaction.
@@ -389,14 +399,27 @@ namespace dnSpy.Extension.MCP {
 				LoadFieldsFromSnapshot();
 				return;
 			}
+			Debugger.SettingsRootLease? candidateLease = null;
+			bool needsRuntimeLease = candidate.DebugToolsEnabled
+				|| (store.Current.DebugToolsEnabled && store.Current.DedicatedDebugInstanceAcknowledged);
+			if (needsRuntimeLease && !Debugger.SettingsRootLease.TryAcquire(candidate, out candidateLease, out var leaseError,
+				force: true)) {
+				Log($"Settings rejected: {leaseError}");
+				LoadFieldsFromSnapshot();
+				return;
+			}
 			var result = store.Apply(candidate,
 				s => mcpServer != null && mcpServer.ApplySnapshot(s),
-				() => mcpServer?.Stop());
+				() => mcpServer?.Stop(), activeSessionProbe);
 			if (result.RejectedByActiveSession || !result.Success) {
+				candidateLease?.Dispose();
 				Log(result.FixedMessage ?? McpSettingsPersistence.ApplyErrorBody);
 				LoadFieldsFromSnapshot();
 				return;
 			}
+			var oldLease = activeRootLease;
+			activeRootLease = candidateLease;
+			oldLease?.Dispose();
 			if (result.FixedMessage != null)
 				Log(result.FixedMessage);
 			oneTimeRemoteToken = generatedToken;

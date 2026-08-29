@@ -49,7 +49,8 @@ public sealed class McpSettingsStore {
 	/// <summary>Injectable read of the legacy per-property attributes, used only when both new keys are absent.</summary>
 	public delegate (bool? enableServer, string? host, int? port)? LegacyRead();
 
-	public McpSettingsStore(ISettingsSnapshotIO io, LegacyRead? legacyReader) {
+	public McpSettingsStore(ISettingsSnapshotIO io, LegacyRead? legacyReader,
+		Func<McpSettingsSnapshot, bool>? runtimeValidator = null) {
 		this.io = io;
 		string? committed, pending;
 		try { committed = io.Read(McpSettingsPersistence.CommittedKey); }
@@ -60,8 +61,15 @@ public sealed class McpSettingsStore {
 		if (string.IsNullOrEmpty(committed) && string.IsNullOrEmpty(pending) && legacyReader != null)
 			legacy = legacyReader();
 		var recovery = McpSettingsPersistence.Recover(committed, pending, legacy);
-		Current = recovery.Snapshot;
-		StartupWarning = recovery.Warning;
+		if (recovery.Snapshot.DebugToolsEnabled && runtimeValidator != null
+			&& !runtimeValidator(recovery.Snapshot)) {
+			Current = McpSettingsSnapshot.SafeDefaults();
+			StartupWarning = McpSettingsPersistence.InvalidStoredWarning;
+		}
+		else {
+			Current = recovery.Snapshot;
+			StartupWarning = recovery.Warning;
+		}
 		if (recovery.TryClearPending)
 			TryBestEffortClearPending();
 	}

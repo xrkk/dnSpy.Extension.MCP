@@ -221,6 +221,7 @@ public sealed class DebugSessionService : IDisposable {
 		this.languageService = languageService;
 		this.gateService = gateService;
 		this.settings = settings;
+		settings.SetActiveSessionProbe(() => coordinator.ActiveSessionId is not null);
 		this.staticWriteGate = staticWriteGate ?? new StaticWriteGate(() => false);
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
@@ -234,6 +235,14 @@ public sealed class DebugSessionService : IDisposable {
 			dbgManager.IsDebuggingChanged -= OnIsDebuggingChanged;
 		}
 		ReleaseLeases();
+		artifactFs?.Dispose();
+		foreach (var retired in retiredArtifactStores)
+			retired.Dispose();
+		retiredArtifactStores.Clear();
+		foreach (var chain in rootChainLeases.Values)
+			foreach (var lease in chain)
+				lease.Dispose();
+		rootChainLeases.Clear();
 		laneQueue.Dispose();
 		waitSlots.Dispose();
 	}
@@ -500,16 +509,24 @@ public sealed class DebugSessionService : IDisposable {
 	sealed class TestArtifactFs : IArtifactStoreFs {
 		public readonly Dictionary<string, Dictionary<string, (string Volume, string Id, long Length)>> Tree = new(StringComparer.Ordinal);
 		int nextId;
+		public ArtifactStoreLedger.AdmitResult? InterruptAfterCreate;
 		public IReadOnlyList<string> EnumerateRootChildren() => Tree.Keys.ToList();
 		public IReadOnlyList<string> EnumerateSessionChildren(string sessionId) => Tree.TryGetValue(sessionId, out var c) ? c.Keys.ToList() : new List<string>();
 		public bool SessionDirectoryExists(string sessionId) => Tree.ContainsKey(sessionId);
 		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) =>
 			Tree.TryGetValue(sessionId, out var c) && c.TryGetValue(relativeName, out var v) ? (v.Volume, v.Id, v.Length) : null;
 		public void CreateSessionDirectory(string sessionId) => Tree.Add(sessionId, new Dictionary<string, (string, string, long)>(StringComparer.Ordinal));
-		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName, long length, byte[]? payload) {
+		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName,
+			long length, byte[]? payload, ArtifactOperationRecord? operation) {
 			var value = (Volume: "vol", Id: "id-" + ++nextId, Length: length);
 			Tree[sessionId].Add(relativeName, value);
-			return new ArtifactStoreLedger.ChildRecord(relativeName, value.Volume, value.Id, length, new string('0', 64));
+			var record = new ArtifactStoreLedger.ChildRecord(relativeName, value.Volume, value.Id,
+				length, new string('0', 64), InterruptAfterCreate is null ? "committed" : "aborted_owned");
+			if (InterruptAfterCreate is { } interrupted) {
+				InterruptAfterCreate = null;
+				throw new ArtifactStoreLedger.ArtifactWriteInterruptedException(record, interrupted);
+			}
+			return record;
 		}
 	}
 
@@ -538,6 +555,38 @@ public sealed class DebugSessionService : IDisposable {
 		var canceling = operation.TryMarkCanceling();
 		var settled = operation.TrySettle();
 		var settledTwice = operation.TrySettle();
+
+		var staleFs = new TestArtifactFs();
+		staleFs.Tree["preexisting"] = new Dictionary<string, (string, string, long)>();
+		var staleLedger = new ArtifactStoreLedger(staleFs);
+		staleLedger.Initialize();
+		var startupStale = staleLedger.AdmitNewSession("new");
+
+		var retainedFs = new TestArtifactFs();
+		var retainedLedger = new ArtifactStoreLedger(retainedFs, maxSessions: 2, maxFile: 10, maxSession: 10, maxStore: 10);
+		retainedLedger.Initialize();
+		retainedLedger.AdmitNewSession("r1");
+		retainedLedger.AdmitArtifactReservationForTest("r1", "child", 10);
+		var retained = retainedLedger.TerminalSession("r1");
+		var retainedBytes = retainedLedger.LedgerBytes;
+		var r2 = retainedLedger.AdmitNewSession("r2");
+		var retainedOver = retainedLedger.AdmitArtifactReservationForTest("r2", "over", 1);
+		retainedFs.Tree["r1"]["child"] = ("vol", "tampered", 10);
+		var retainedTamper = retainedLedger.AdmitArtifactReservationForTest("r2", "after-tamper", 0);
+
+		var interruptedFs = new TestArtifactFs();
+		var interruptedLedger = new ArtifactStoreLedger(interruptedFs, maxSessions: 2, maxFile: 10, maxSession: 10, maxStore: 10);
+		interruptedLedger.Initialize();
+		interruptedLedger.AdmitNewSession("i1");
+		interruptedFs.InterruptAfterCreate = ArtifactStoreLedger.AdmitResult.OperationCanceled;
+		var interruptedResult = interruptedLedger.AdmitArtifactWrite("i1", "partial", new byte[4],
+			new ArtifactOperationRecord("ir", "i1"));
+
+		var expiredFs = new TestArtifactFs();
+		var expiredLedger = new ArtifactStoreLedger(expiredFs);
+		expiredLedger.Initialize(); expiredLedger.AdmitNewSession("e1");
+		var expiredOp = new ArtifactOperationRecord("er", "e1", TimeSpan.Zero); expiredOp.TryMarkActive();
+		var expiredResult = expiredLedger.AdmitArtifactWrite("e1", "never-created", new byte[1], expiredOp);
 		return Ok(coordinator, new Dictionary<string, object?> {
 			["test_mode"] = true, ["session_admitted"] = s1 == ArtifactStoreLedger.AdmitResult.Ok,
 			["file_at_limit"] = atFile == ArtifactStoreLedger.AdmitResult.Ok,
@@ -548,6 +597,14 @@ public sealed class DebugSessionService : IDisposable {
 			["store_over_rejected"] = storeOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
 			["external_child_fail_closed_zero_delta"] = mismatch == ArtifactStoreLedger.AdmitResult.TargetMismatch && fs.Tree.Count == beforeMismatch,
 			["cancel_timeline_exactly_once"] = active && canceling && settled && !settledTwice && operation.CurrentPhase == ArtifactOperationRecord.Phase.Settled,
+			["startup_stale_blocks_new"] = startupStale == ArtifactStoreLedger.AdmitResult.TargetMismatch && !staleFs.Tree.ContainsKey("new"),
+			["retained_counts_toward_limits"] = retained == ArtifactStoreLedger.TerminalResult.Retained && retainedBytes == 10
+				&& r2 == ArtifactStoreLedger.AdmitResult.Ok && retainedOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
+			["retained_identity_reverified"] = retainedTamper == ArtifactStoreLedger.AdmitResult.TargetMismatch,
+			["post_create_cancel_aborted_owned"] = interruptedResult == ArtifactStoreLedger.AdmitResult.OperationCanceled
+				&& interruptedLedger.AbortedOwnedCount == 1 && interruptedFs.Tree["i1"].ContainsKey("partial"),
+			["pre_create_deadline_zero_delta"] = expiredResult == ArtifactStoreLedger.AdmitResult.OperationTimedOut
+				&& expiredFs.Tree["e1"].Count == 0,
 		});
 	}
 
@@ -631,20 +688,77 @@ public sealed class DebugSessionService : IDisposable {
 		"debug_set_breakpoint", "debug_set_breakpoint_enabled", "debug_remove_breakpoint",
 		"debug_set_exception_policy", "debug_step", "debug_dump_module",
 	};
+	static readonly System.Collections.Generic.HashSet<string> ControlLaneTools = new() {
+		"debug_pause", "debug_continue", "debug_restart", "debug_terminate", "debug_step",
+	};
+	readonly SideEffectRequestCache sideEffectCache = new();
+	static readonly string SideEffectEnvelopeTemplate =
+		new string('0', SideEffectRequestCache.MaxEnvelopeBytes);
+
+	static TimeSpan RemainingControlDeadline(DualLaneQueue.Ticket? ticket) {
+		if (ticket is null)
+			return ControlOperationRecord.DefaultDeadline;
+		var elapsedTicks = Stopwatch.GetTimestamp() - ticket.AdmissionTimestamp;
+		var remainingTicks = (long)(ControlOperationRecord.DefaultDeadline.TotalSeconds * Stopwatch.Frequency)
+			- elapsedTicks;
+		return remainingTicks <= 0 ? TimeSpan.Zero
+			: TimeSpan.FromSeconds((double)remainingTicks / Stopwatch.Frequency);
+	}
 
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? arguments) {
-		if (RequestIdRequired.Contains(toolName))
-			ArgString(arguments, "request_id", required: true);
 		ValidateInputUtf8Limits(toolName, arguments);
+		string? admittedRequestId = null;
+		DualLaneQueue.Ticket? laneTicket = null;
+		if (RequestIdRequired.Contains(toolName)) {
+			var requestId = ArgString(arguments, "request_id", required: true);
+			// Gate failure precedes cache/queue admission. Schema validation has already run in
+			// McpServer; the explicit request_id read above preserves -32602 for direct calls.
+			if (gateService.Current.EffectiveDebugLaunch) {
+				var canonicalArgs = SideEffectRequestCache.CanonicalizeArguments(arguments is null ? null
+					: new Dictionary<string, object?>(arguments.ToDictionary(kv => kv.Key,
+						kv => (object?)NormalizeJsonValue(kv.Value)), StringComparer.Ordinal));
+				var admit = sideEffectCache.TryAdmit(requestId, toolName, canonicalArgs, SideEffectEnvelopeTemplate, () =>
+					Fail(coordinator, DomainErrorCodes.LimitExceeded));
+				switch (admit.Status) {
+					case SideEffectRequestCache.AdmitStatus.HitSettled:
+						return ResultOf(admit.SettledEnvelope!);
+					case SideEffectRequestCache.AdmitStatus.RequestIdReuse:
+						return ResultOf(Fail(coordinator, DomainErrorCodes.RequestIdReuse));
+					case SideEffectRequestCache.AdmitStatus.LimitExceeded:
+						return ResultOf(Fail(coordinator, DomainErrorCodes.LimitExceeded));
+					case SideEffectRequestCache.AdmitStatus.JoinedInFlight:
+						for (var spin = 0; spin < 1500; spin++) {
+							Thread.Sleep(20);
+							var settled = sideEffectCache.LookupSettled(requestId, toolName, canonicalArgs);
+							if (settled is not null)
+								return ResultOf(settled);
+						}
+						return ResultOf(Fail(coordinator, DomainErrorCodes.Timeout));
+				}
+				admittedRequestId = requestId;
+				var entered = ControlLaneTools.Contains(toolName)
+					? laneQueue.TryEnterControl(out laneTicket)
+					: laneQueue.TryEnterGeneral(out laneTicket);
+				if (!entered) {
+					var limited = Fail(coordinator, DomainErrorCodes.LimitExceeded);
+					sideEffectCache.Settle(requestId, limited);
+					return ResultOf(limited);
+				}
+				// Capacity admission and execution scheduling are distinct. Only the granted
+				// ticket may cross a side-effect mutation boundary; release promotes the oldest
+				// control ticket first, otherwise the oldest general ticket.
+				laneTicket!.WaitForTurn();
+			}
+		}
 		string? envelope;
 		try {
 			envelope = toolName switch {
 				"debug_status" => Status(arguments),
 				"debug_launch" => Launch(arguments),
-				"debug_pause" => Control(arguments, ControlOperation.Pause).GetAwaiter().GetResult(),
-				"debug_continue" => Continue(arguments).GetAwaiter().GetResult(),
-				"debug_terminate" => Control(arguments, ControlOperation.Terminate).GetAwaiter().GetResult(),
-				"debug_restart" => Restart(arguments).GetAwaiter().GetResult(),
+				"debug_pause" => Control(arguments, ControlOperation.Pause, laneTicket).GetAwaiter().GetResult(),
+				"debug_continue" => Continue(arguments, laneTicket).GetAwaiter().GetResult(),
+				"debug_terminate" => Control(arguments, ControlOperation.Terminate, laneTicket).GetAwaiter().GetResult(),
+				"debug_restart" => Restart(arguments, laneTicket).GetAwaiter().GetResult(),
 				"debug_read_events" => ReadEvents(arguments, wait: false).GetAwaiter().GetResult(),
 				"debug_wait_event" => ReadEvents(arguments, wait: true).GetAwaiter().GetResult(),
 				"debug_set_breakpoint" => SetBreakpoint(arguments),
@@ -654,12 +768,12 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_set_exception_policy" => SetExceptionPolicy(arguments),
 				"debug_list_threads" => ListThreads(arguments),
 				"debug_get_stack" => GetStack(arguments),
-				"debug_step" => Step(arguments),
+				"debug_step" => Step(arguments, laneTicket),
 				"debug_get_locals" => GetLocals(arguments),
 				"debug_expand_value" => ExpandValue(arguments),
 				"debug_list_modules" => ListModules(arguments),
 				"debug_read_memory" => ReadMemory(arguments),
-				"debug_dump_module" => DumpModule(arguments),
+				"debug_dump_module" => DumpModule(arguments, laneTicket),
 				"debug_test_spy" => TestSpy(arguments),
 				"debug_test_clock" => TestClock(arguments),
 				"debug_test_adapter" => TestAdapter(arguments),
@@ -680,21 +794,33 @@ public sealed class DebugSessionService : IDisposable {
 		catch (ArgumentException) {
 			// Semantic parameter/metadata rejections (token table, identity-shape, boundary)
 			// surface as JSON-RPC -32602 via the server's ArgumentException mapping.
+			if (admittedRequestId is not null)
+				sideEffectCache.RemoveInFlight(admittedRequestId);
+			laneTicket?.TryRelease();
 			throw;
 		}
 		catch (Exception ex) {
 			envelope = Fail(coordinator, DomainErrorCodes.InternalError, message: ex.GetType().Name + ": " + ex.Message);
 		}
-		if (envelope is null)
+		if (envelope is null) {
+			if (admittedRequestId is not null)
+				sideEffectCache.RemoveInFlight(admittedRequestId);
+			laneTicket?.TryRelease();
 			return new CallToolResult {
 				Content = new List<ToolContent> { new() { Text = $"Unknown tool: {toolName}" } },
 				IsError = true,
 			};
-		return new CallToolResult {
-			Content = new List<ToolContent> { new() { Text = envelope } },
-			IsError = envelope.Contains("\"ok\":false"),
-		};
+		}
+		if (admittedRequestId is not null)
+			sideEffectCache.Settle(admittedRequestId, envelope);
+		laneTicket?.TryRelease();
+		return ResultOf(envelope);
 	}
+
+	static CallToolResult ResultOf(string envelope) => new() {
+		Content = new List<ToolContent> { new() { Text = envelope } },
+		IsError = envelope.Contains("\"ok\":false"),
+	};
 
 	static string Ok(DebugSessionCoordinator c, object result, List<string>? warnings = null, bool untrustedSampleData = false) {
 		var envelope = new DebugSuccessEnvelope {
@@ -713,8 +839,8 @@ public sealed class DebugSessionService : IDisposable {
 	static string Fail(DebugSessionCoordinator c, string code, List<string>? requiredStates, string? message,
 		UnsupportedTargetDetailsDto? details, bool untrustedSampleData) {
 		var error = DomainErrorDto.Create(code, c.State, requiredStates);
-		if (message is not null)
-			error.Message = message;
+		// Domain messages/recovery are frozen by DomainErrorDto.Create. Runtime exception,
+		// path and debugger text never replace them or enter the cacheable wire envelope.
 		error.Details = details;
 		return JsonSerializer.Serialize(new DebugFailureEnvelope {
 			DebugContext = c.ContextSnapshot(),
@@ -762,8 +888,6 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
-	readonly SideEffectRequestCache launchCache = new();
-
 	/// <summary>JsonElement → primitive tree for the cache's JCS canonicalizer.</summary>
 	static object? NormalizeJsonValue(object? v) {
 		if (v is not System.Text.Json.JsonElement je)
@@ -789,36 +913,7 @@ public sealed class DebugSessionService : IDisposable {
 		}
 	}
 
-	string Launch(Dictionary<string, object>? args) {
-		if (!gateService.Current.EffectiveDebugLaunch)
-			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
-		// CON-DYN-013 side-effect cache: identical (request_id, canonical args) replays the
-		// settled envelope across transports/protocol versions; a mismatched id is reuse.
-		var requestId = ArgString(args, "request_id", required: true);
-		var canonicalArgs = SideEffectRequestCache.CanonicalizeArguments(
-			args is null ? null : new Dictionary<string, object?>(args.ToDictionary(kv => kv.Key, kv => (object?)NormalizeJsonValue(kv.Value)), StringComparer.Ordinal));
-		var admit = launchCache.TryAdmit(requestId, "debug_launch", canonicalArgs, "{}", () => "{}");
-		switch (admit.Status) {
-			case SideEffectRequestCache.AdmitStatus.HitSettled:
-				return admit.SettledEnvelope!;
-			case SideEffectRequestCache.AdmitStatus.RequestIdReuse:
-				return Fail(coordinator, DomainErrorCodes.RequestIdReuse);
-			case SideEffectRequestCache.AdmitStatus.LimitExceeded:
-				return Fail(coordinator, DomainErrorCodes.LimitExceeded);
-			case SideEffectRequestCache.AdmitStatus.JoinedInFlight:
-				// Single-process in-flight join: poll until the original caller settles.
-				for (var spin = 0; spin < 1500; spin++) {
-					System.Threading.Thread.Sleep(20);
-					var reAdmit = launchCache.TryAdmit(requestId, "debug_launch", canonicalArgs, "{}", () => "{}");
-					if (reAdmit.Status == SideEffectRequestCache.AdmitStatus.HitSettled)
-						return reAdmit.SettledEnvelope!;
-				}
-				return Fail(coordinator, DomainErrorCodes.Timeout);
-		}
-		var envelope = LaunchCore(args);
-		launchCache.Settle(requestId, envelope);
-		return envelope;
-	}
+	string Launch(Dictionary<string, object>? args) => LaunchCore(args);
 
 	string LaunchCore(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
@@ -1123,7 +1218,8 @@ public sealed class DebugSessionService : IDisposable {
 		return done.Task;
 	}
 
-	async Task<string> Control(Dictionary<string, object>? args, ControlOperation operation) {
+	async Task<string> Control(Dictionary<string, object>? args, ControlOperation operation,
+		DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		var identityErr = SessionIdentityError(args);
@@ -1132,13 +1228,10 @@ public sealed class DebugSessionService : IDisposable {
 		if (!SessionAndGenerationMatch(args))
 			return Fail(coordinator, DomainErrorCodes.InvalidState, RequiredFor(operation));
 		var requestId = ArgString(args, "request_id", required: true);
+		CancelArtifactForControl();
 
-		if (!laneQueue.TryEnterControl(out var ticket))
-			return Fail(coordinator, DomainErrorCodes.LimitExceeded);
-
-		var admission = coordinator.TryBeginControl(operation, requestId);
+		var admission = coordinator.TryBeginControl(operation, requestId, laneTicket?.AdmissionTimestamp);
 		if (!admission.Admitted || admission.Record is null) {
-			ticket?.TryRelease();
 			// ACC-025-B: while faulted(ownership_lost) every enabled control answers
 			// OWNERSHIP_LOST (manual resolve then wait idle), never a bare INVALID_STATE.
 			if (coordinator.OwnershipLostFaulted)
@@ -1167,9 +1260,9 @@ public sealed class DebugSessionService : IDisposable {
 			}
 		}));
 
-		var deadlineTask = TestModeEnabled ? VirtualDeadline(ControlOperationRecord.DefaultDeadline) : Task.Delay(ControlOperationRecord.DefaultDeadline);
+		var remaining = RemainingControlDeadline(laneTicket);
+		var deadlineTask = TestModeEnabled ? VirtualDeadline(remaining) : Task.Delay(remaining);
 		var done = await Task.WhenAny(tcs.Task, deadlineTask).ConfigureAwait(false);
-		ticket?.TryRelease();
 		if (done != tcs.Task) {
 			coordinator.SettleControlFailure(record, DomainErrorCodes.Timeout);
 			lock (sessionLock) controlOutcomeTcs = null;
@@ -1199,7 +1292,7 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
-	async Task<string> Continue(Dictionary<string, object>? args) {
+	async Task<string> Continue(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		var identityErr = SessionIdentityError(args);
@@ -1212,11 +1305,9 @@ public sealed class DebugSessionService : IDisposable {
 		var pauseEpoch = ArgInt(args, "pause_epoch", required: true);
 		if (coordinator.State != DebugStates.Paused || coordinator.PauseEpoch != pauseEpoch)
 			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		CancelArtifactForControl();
 
-		if (!laneQueue.TryEnterGeneral(out var ticket))
-			return Fail(coordinator, DomainErrorCodes.LimitExceeded);
-		try {
-			var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 			lock (sessionLock) continueInFlight = true;
 			dbgManager?.Dispatcher.BeginInvoke(new Action(() => {
 				try {
@@ -1227,24 +1318,20 @@ public sealed class DebugSessionService : IDisposable {
 					completed.TrySetResult(false);
 				}
 			}));
-			var done = await Task.WhenAny(completed.Task, Task.Delay(ControlOperationRecord.DefaultDeadline)).ConfigureAwait(false);
+			var done = await Task.WhenAny(completed.Task, Task.Delay(RemainingControlDeadline(laneTicket))).ConfigureAwait(false);
 			if (done != completed.Task || !completed.Task.Result) {
 				lock (sessionLock) continueInFlight = false;
 				return Fail(coordinator, DomainErrorCodes.InternalError, message: "continue could not be delivered");
 			}
 			coordinator.MarkResumed("continue");
 			lock (sessionLock) continueInFlight = false;
-			return Ok(coordinator, new ContinueResultDto {
-				State = coordinator.State,
-				PauseEpoch = coordinator.PauseEpoch,
-			});
-		}
-		finally {
-			ticket?.TryRelease();
-		}
+		return Ok(coordinator, new ContinueResultDto {
+			State = coordinator.State,
+			PauseEpoch = coordinator.PauseEpoch,
+		});
 	}
 
-	async Task<string> Restart(Dictionary<string, object>? args) {
+	async Task<string> Restart(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		var identityErr = SessionIdentityError(args);
@@ -1255,7 +1342,7 @@ public sealed class DebugSessionService : IDisposable {
 		var requestId = ArgString(args, "request_id", required: true);
 
 		// Phase 1: terminate the owned process under a restart reservation.
-		var terminateEnvelope = await Control(args, ControlOperation.Restart).ConfigureAwait(false);
+		var terminateEnvelope = await Control(args, ControlOperation.Restart, laneTicket).ConfigureAwait(false);
 		if (terminateEnvelope.Contains("\"ok\":false"))
 			return terminateEnvelope;
 
@@ -1935,7 +2022,7 @@ public sealed class DebugSessionService : IDisposable {
 		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
-	string Step(Dictionary<string, object>? args) {
+	string Step(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		if (!SessionAndGenerationMatch(args))
@@ -1961,18 +2048,23 @@ public sealed class DebugSessionService : IDisposable {
 		var stepThreadError = ClassifyThreadHandle(threadHandle, out var stepTid);
 		if (stepThreadError is not null)
 			return Fail(coordinator, stepThreadError, message: stepThreadError == DomainErrorCodes.StaleHandle ? "thread_handle belongs to an earlier pause" : "unknown thread_handle");
+		CancelArtifactForControl();
 		string stepId = $"step-{Interlocked.Increment(ref stepSeq)}";
 		lock (sessionLock)
 			currentStep = new StepRegistration { Id = stepId, Kind = kind, ThreadHandle = threadHandle };
 		bool stepped = false;
-		PostVoidToDispatcherSync(() => {
+		var delivered = PostVoidToDispatcherSync(() => {
 			var thread = FindThreadByTid(stepTid);
 			if (thread is null)
 				return;
 			var stepper = thread.CreateStepper();
 			stepper.Step(upstreamKind.Value, autoClose: true);
 			stepped = true;
-		});
+		}, RemainingControlDeadline(laneTicket));
+		if (!delivered) {
+			lock (sessionLock) currentStep = null;
+			return Fail(coordinator, DomainErrorCodes.Timeout);
+		}
 		if (!stepped) {
 			lock (sessionLock) currentStep = null;
 			return Fail(coordinator, DomainErrorCodes.NotFound, message: "thread vanished from the owned process");
@@ -1984,16 +2076,16 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
-	void PostVoidToDispatcherSync(Action action) {
+	bool PostVoidToDispatcherSync(Action action, TimeSpan? timeout = null) {
 		if (dbgManager is null)
-			return;
+			return false;
 		SpyInc("dispatcher_sync_posts");
 		var done = new ManualResetEventSlim();
 		dbgManager.Dispatcher.BeginInvoke(new Action(() => {
 			try { action(); }
 			finally { done.Set(); }
 		}));
-		done.Wait(ControlOperationRecord.DefaultDeadline);
+		return done.Wait(timeout ?? ControlOperationRecord.DefaultDeadline);
 	}
 
 	// ---- IMP-008: locals and value expansion ----
@@ -2231,21 +2323,109 @@ public sealed class DebugSessionService : IDisposable {
 
 	ArtifactStoreLedger? artifactLedger;
 	ProductionArtifactFs? artifactFs;
+	readonly List<ProductionArtifactFs> retiredArtifactStores = new();
+	string? artifactLedgerRoot;
+	sealed class ActiveArtifactOperation {
+		public ArtifactOperationRecord Record { get; }
+		public TaskCompletionSource<bool> Finished { get; } =
+			new(TaskCreationOptions.RunContinuationsAsynchronously);
+		public TaskCompletionSource<bool> VisibleCancellation { get; } =
+			new(TaskCreationOptions.RunContinuationsAsynchronously);
+		public bool HandedToFinalizer;
+		public ActiveArtifactOperation(ArtifactOperationRecord record) => Record = record;
+	}
+	readonly object artifactOperationLock = new();
+	ActiveArtifactOperation? activeArtifactOperation;
+	string? terminalPendingArtifactSession;
 	string? ArtifactRootPath => settings.CurrentSnapshot?.ArtifactRoot is { Length: > 0 } root ? root : null;
 
-	sealed class ProductionArtifactFs : IArtifactStoreFs {
+	bool TryBeginArtifactOperation(string requestId, string sessionId, long? admissionTimestamp,
+		out ActiveArtifactOperation? active) {
+		lock (artifactOperationLock) {
+			active = null;
+			if (activeArtifactOperation is not null)
+				return false;
+			var record = new ArtifactOperationRecord(requestId, sessionId,
+				admissionTimestamp: admissionTimestamp);
+			if (!record.TryMarkActive())
+				return false;
+			activeArtifactOperation = active = new ActiveArtifactOperation(record);
+			return true;
+		}
+	}
+
+	void CompleteArtifactOperation(ActiveArtifactOperation active) {
+		string? pending = null;
+		active.Record.TrySettle();
+		lock (artifactOperationLock) {
+			if (ReferenceEquals(activeArtifactOperation, active)) {
+				activeArtifactOperation = null;
+				pending = terminalPendingArtifactSession;
+				terminalPendingArtifactSession = null;
+			}
+			active.Finished.TrySetResult(true);
+		}
+		if (pending is not null)
+			TerminalArtifactSession(pending);
+	}
+
+	void CancelArtifactForControl() {
+		ActiveArtifactOperation? active;
+		lock (artifactOperationLock) active = activeArtifactOperation;
+		if (active is null)
+			return;
+		active.Record.RequestCancellation();
+		if (!active.Finished.Task.Wait(TimeSpan.FromSeconds(2))) {
+			active.Record.TryMarkCanceling();
+			active.VisibleCancellation.TrySetResult(true);
+			SpyInc("artifact_canceling_after_grace");
+		}
+	}
+
+	sealed class ProductionArtifactFs : IArtifactStoreFs, IDisposable {
 		readonly string root;
 		readonly Microsoft.Win32.SafeHandles.SafeFileHandle rootLease;
+		readonly List<Microsoft.Win32.SafeHandles.SafeFileHandle> rootChainLeases = new();
 		readonly Dictionary<string, Microsoft.Win32.SafeHandles.SafeFileHandle> sessionLeases = new(StringComparer.Ordinal);
 		readonly Dictionary<string, FileStream> childLeases = new(StringComparer.Ordinal);
 		public ProductionArtifactFs(string root) {
-			this.root = Path.GetFullPath(root);
-			Directory.CreateDirectory(this.root);
-			var handle = CreateFileW(this.root, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-				IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
-			if (handle == IntPtr.Zero || handle == new IntPtr(-1))
-				throw new IOException("ArtifactRoot lease failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
-			rootLease = new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true);
+			this.root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+			var unsupported = FindUnsupportedVolume(this.root);
+			if (unsupported is not null)
+				throw new IOException($"ArtifactRoot must be on NTFS (found {unsupported})");
+			var components = new Stack<string>();
+			for (var current = this.root; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current)) {
+				components.Push(current);
+				var parent = Path.GetDirectoryName(current);
+				if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
+					break;
+			}
+			while (components.Count != 0) {
+				var component = components.Pop();
+				if (!Directory.Exists(component)) {
+					if (!string.Equals(component, this.root, StringComparison.OrdinalIgnoreCase)
+						|| !CreateDirectoryW(component, IntPtr.Zero))
+						throw new IOException($"ArtifactRoot parent is absent or root creation failed: {component}",
+							new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				}
+				var attrs = File.GetAttributes(component);
+				if ((attrs & FileAttributes.ReparsePoint) != 0)
+					throw new IOException($"ArtifactRoot component is a reparse point: {component}");
+				var raw = CreateFileW(component, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+					IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
+				if (raw == IntPtr.Zero || raw == new IntPtr(-1))
+					throw new IOException($"ArtifactRoot component lease failed: {component}",
+						new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				var lease = new Microsoft.Win32.SafeHandles.SafeFileHandle(raw, ownsHandle: true);
+				var finalPath = FinalPathOf(raw).TrimEnd(Path.DirectorySeparatorChar);
+				if (!string.Equals(finalPath, Path.GetFullPath(component).TrimEnd(Path.DirectorySeparatorChar),
+					StringComparison.OrdinalIgnoreCase)) {
+					lease.Dispose();
+					throw new IOException($"ArtifactRoot final path mismatch: {component} -> {finalPath}");
+				}
+				rootChainLeases.Add(lease);
+			}
+			rootLease = rootChainLeases[rootChainLeases.Count - 1];
 		}
 		public (string VolumeSerial, string FileId) RootIdentity {
 			get {
@@ -2254,6 +2434,7 @@ public sealed class DebugSessionService : IDisposable {
 				return ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'));
 			}
 		}
+		public string RootFinalPath => FinalPathOf(rootLease.DangerousGetHandle());
 		string SessionDir(string sessionId) => Path.Combine(root, sessionId);
 		public IReadOnlyList<string> EnumerateRootChildren() =>
 			Directory.Exists(root) ? Directory.GetFileSystemEntries(root).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
@@ -2267,7 +2448,7 @@ public sealed class DebugSessionService : IDisposable {
 				var path = Path.Combine(SessionDir(sessionId), relativeName);
 				using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 				var info = GetFileIdentity(lease);
-				return ($"0x{info.VolumeSerial:x8}", $"{info.FileIndexHigh:x16}{info.FileIndexLow:x16}".Substring(0, 32), lease.Length);
+				return ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'), lease.Length);
 			}
 			catch { return null; }
 		}
@@ -2276,25 +2457,31 @@ public sealed class DebugSessionService : IDisposable {
 			if (!CreateDirectoryW(path, IntPtr.Zero))
 				throw new IOException("artifact session CreateDirectory failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
 			var handle = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
-				IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+				IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
 			if (handle == IntPtr.Zero || handle == new IntPtr(-1))
 				throw new IOException("artifact session lease failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
 			sessionLeases.Add(sessionId, new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true));
 		}
-		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName, long length, byte[]? payload) {
+		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName,
+			long length, byte[]? payload, ArtifactOperationRecord? operation) {
 			if (payload is null || payload.LongLength != length)
 				throw new InvalidOperationException("production artifact writes require the exact payload");
 			var path = Path.Combine(SessionDir(sessionId), relativeName);
 			var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read,
-				1024 * 1024, FileOptions.SequentialScan | FileOptions.WriteThrough);
+				1024 * 1024, FileOptions.SequentialScan | FileOptions.WriteThrough | FileOptions.Asynchronous);
 			try {
 				using var sha = SHA256.Create();
 				const int chunkSize = 1024 * 1024;
 				for (var offset = 0; offset < payload.Length; offset += chunkSize) {
+					if (operation?.IsExpiredNow == true || operation?.CancellationRequested == true)
+						Interrupt(stream, sessionId, relativeName, operation);
 					var count = Math.Min(chunkSize, payload.Length - offset);
-					stream.Write(payload, offset, count);
+					stream.WriteAsync(payload, offset, count, operation?.CancellationToken
+						?? CancellationToken.None).GetAwaiter().GetResult();
 					sha.TransformBlock(payload, offset, count, null, 0);
 				}
+				if (operation?.IsExpiredNow == true || operation?.CancellationRequested == true)
+					Interrupt(stream, sessionId, relativeName, operation);
 				sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
 				stream.Flush(true);
 				var info = GetFileIdentity(stream);
@@ -2304,19 +2491,74 @@ public sealed class DebugSessionService : IDisposable {
 				childLeases.Add(sessionId + "\0" + relativeName, stream);
 				return record;
 			}
+			catch (OperationCanceledException) when (operation?.CancellationRequested == true) {
+				Interrupt(stream, sessionId, relativeName, operation);
+				throw;
+			}
+			catch (ArtifactStoreLedger.ArtifactWriteInterruptedException) {
+				throw;
+			}
 			catch {
 				stream.Dispose();
 				throw;
 			}
 		}
+		void Interrupt(FileStream stream, string sessionId, string relativeName,
+			ArtifactOperationRecord? operation) {
+			stream.Flush(true);
+			// CancelIoEx/async cancellation may report after a prefix of the current chunk was
+			// written. Re-hash the final bytes through the same still-leased handle so the
+			// aborted_owned record reflects the actual final length/content, not an assumed
+			// chunk boundary.
+			stream.Position = 0;
+			byte[] finalHash;
+			using (var finalSha = SHA256.Create())
+				finalHash = finalSha.ComputeHash(stream);
+			var info = GetFileIdentity(stream);
+			var record = new ArtifactStoreLedger.ChildRecord(relativeName,
+				$"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'),
+				stream.Length, ConvertHexShim.ToHexString(finalHash).ToLowerInvariant(), "aborted_owned");
+			childLeases.Add(sessionId + "\0" + relativeName, stream);
+			throw new ArtifactStoreLedger.ArtifactWriteInterruptedException(record,
+				operation?.IsExpiredNow == true ? ArtifactStoreLedger.AdmitResult.OperationTimedOut
+					: ArtifactStoreLedger.AdmitResult.OperationCanceled);
+		}
+		public void Dispose() {
+			foreach (var stream in childLeases.Values)
+				stream.Dispose();
+			childLeases.Clear();
+			foreach (var lease in sessionLeases.Values)
+				lease.Dispose();
+			sessionLeases.Clear();
+			foreach (var lease in rootChainLeases)
+				lease.Dispose();
+			rootChainLeases.Clear();
+		}
 	}
 
 	ArtifactStoreLedger ArtifactLedger() {
+		var configuredRoot = ArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
+		var normalizedRoot = Path.GetFullPath(configuredRoot);
+		if (artifactLedger is not null && !WindowsPathRelation.EqualPath(artifactLedgerRoot!, normalizedRoot)) {
+			// Lease-relevant settings can change only while idle. Old retention handles remain
+			// alive for the process lifetime, while the new root starts with an empty ledger.
+			if (artifactFs is not null) retiredArtifactStores.Add(artifactFs);
+			artifactFs = null; artifactLedger = null; artifactLedgerRoot = null;
+		}
 		if (artifactLedger is null) {
-			var root = ArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
-			artifactFs = new ProductionArtifactFs(root);
+			artifactFs = new ProductionArtifactFs(normalizedRoot);
+			var roots = new List<string> { artifactFs.RootFinalPath };
+			var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
+			if (!string.IsNullOrEmpty(sampleRoot)) roots.Add(Path.GetFullPath(sampleRoot));
+			var extensionDirectory = Path.GetDirectoryName(typeof(DebugSessionService).Assembly.Location);
+			if (!string.IsNullOrEmpty(extensionDirectory)) roots.Add(extensionDirectory);
+			if (!WindowsPathRelation.RootsAreDisjoint(roots)) {
+				artifactFs.Dispose(); artifactFs = null;
+				throw new InvalidOperationException("ArtifactRoot, AllowedSampleRoot and extension directory must be disjoint");
+			}
 			artifactLedger = new ArtifactStoreLedger(artifactFs);
 			artifactLedger.Initialize();
+			artifactLedgerRoot = normalizedRoot;
 		}
 		return artifactLedger;
 	}
@@ -2324,6 +2566,14 @@ public sealed class DebugSessionService : IDisposable {
 	void TerminalArtifactSession(string? sessionId) {
 		if (sessionId is null || artifactLedger is null)
 			return;
+		lock (artifactOperationLock) {
+			if (activeArtifactOperation is { } active && active.Record.SessionId == sessionId
+				&& active.Record.CurrentPhase != ArtifactOperationRecord.Phase.Settled) {
+				terminalPendingArtifactSession = sessionId;
+				SpyInc("artifact_terminal_pending");
+				return;
+			}
+		}
 		var result = artifactLedger.TerminalSession(sessionId);
 		SpyInc(result == ArtifactStoreLedger.TerminalResult.Retained
 			? "artifact_terminal_retained" : "artifact_terminal_stale");
@@ -2448,7 +2698,7 @@ public sealed class DebugSessionService : IDisposable {
 		return Convert.ToUInt64(t);
 	}
 
-	string DumpModule(Dictionary<string, object>? args) {
+	string DumpModule(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		if (!SessionAndGenerationMatch(args))
@@ -2459,9 +2709,26 @@ public sealed class DebugSessionService : IDisposable {
 		var requestId = ArgString(args, "request_id", required: true);
 		var moduleHandle = ArgString(args, "module_handle", required: true);
 		var relativeName = ArgString(args, "relative_name");
+		if (!string.IsNullOrEmpty(relativeName) && !IsValidArtifactStem(relativeName))
+			throw new ArgumentException("relative_name is not a safe Windows child-name stem");
 		var root = ArtifactRootPath;
 		if (string.IsNullOrEmpty(root))
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "ArtifactRoot is not configured");
+		var sessionId = coordinator.ActiveSessionId!;
+		if (!TryBeginArtifactOperation(requestId, sessionId, laneTicket?.AdmissionTimestamp, out var active) || active is null)
+			return Fail(coordinator, DomainErrorCodes.InvalidState, message: "an artifact operation is already active or canceling");
+		try {
+			return DumpModuleOperation(args, requestId, moduleHandle, relativeName, root!, sessionId, active, laneTicket);
+		}
+		finally {
+			if (!active.HandedToFinalizer)
+				CompleteArtifactOperation(active);
+		}
+	}
+
+	string DumpModuleOperation(Dictionary<string, object>? args, string requestId,
+		string moduleHandle, string relativeName, string root, string sessionId,
+		ActiveArtifactOperation active, DualLaneQueue.Ticket? laneTicket) {
 
 		RegisteredModuleRecord module;
 		lock (sessionLock) {
@@ -2503,7 +2770,6 @@ public sealed class DebugSessionService : IDisposable {
 		if (artifactBytes.Length > ArtifactStoreLedger.MaxFileBytes)
 			return Fail(coordinator, DomainErrorCodes.LimitExceeded, message: "module exceeds the 512 MiB artifact file cap");
 
-		var sessionId = coordinator.ActiveSessionId!;
 		if (string.IsNullOrEmpty(relativeName)) {
 			if (kind == "raw")
 				relativeName = Path.GetFileName(module.Filename);
@@ -2512,9 +2778,22 @@ public sealed class DebugSessionService : IDisposable {
 					relativeName = $"{module.Mvid}-{ConvertHexShim.ToHexString(sha12.ComputeHash(System.Text.Encoding.UTF8.GetBytes(moduleHandle))).ToLowerInvariant().Substring(0, 12)}";
 			}
 		}
-		relativeName = relativeName.Replace("..", "_").Replace('/', '_').Replace('\\', '_');
+		// User input was rejected above rather than rewritten. The generated default is not
+		// request input, so normalize it deterministically and fall back to the module handle
+		// digest when the source filename cannot be represented as a safe child-name stem.
+		if (!IsValidArtifactStem(relativeName)) {
+			using var fallbackSha = SHA256.Create();
+			relativeName = ConvertHexShim.ToHexString(fallbackSha.ComputeHash(
+				System.Text.Encoding.UTF8.GetBytes(moduleHandle))).ToLowerInvariant().Substring(0, 24);
+		}
 		var childName = relativeName + ".bin";
 
+		// All dnSpy-owned state and module bytes are immutable from this point. Yield only
+		// the coordinator mutation turn; the request keeps its general-lane capacity slot
+		// until its response/cache settlement, including while artifact I/O is in flight.
+		laneTicket?.TryCompleteMutation();
+
+		Func<string> writeAndCommit = () => {
 		ArtifactStoreLedger ledger;
 		try {
 			ledger = ArtifactLedger();
@@ -2526,7 +2805,6 @@ public sealed class DebugSessionService : IDisposable {
 		if (admitSession != ArtifactStoreLedger.AdmitResult.Ok && admitSession != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 			return Fail(coordinator, MapAdmit(admitSession));
 
-			var fs = new ProductionArtifactFs(root!);
 		try {
 			// Every file in a ledgered session directory must be an admitted child — the marker
 			// included — or the next admission's fail-closed verification rejects the store.
@@ -2539,7 +2817,7 @@ public sealed class DebugSessionService : IDisposable {
 				artifact_root_volume_serial = rootIdentity.VolumeSerial,
 				artifact_root_file_id = rootIdentity.FileId,
 			}, CanonicalOptions));
-			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, markerName, markerBytes);
+			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, markerName, markerBytes, active.Record);
 			// The marker is constant per session: a second dump in the same session re-admits
 			// it and the ledger answers AlreadyExists — that is the idempotent success.
 			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok && markerAdmit != ArtifactStoreLedger.AdmitResult.AlreadyExists)
@@ -2549,7 +2827,7 @@ public sealed class DebugSessionService : IDisposable {
 				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(artifactBytes)).ToLowerInvariant();
 			// The admission reserves the quota and creates the empty child; this call is its
 			// active writer, so the bytes go straight into the ledgered file.
-			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes);
+			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes, active.Record);
 			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(admit));
 			var finalPath = Path.Combine(root, sessionId, childName);
@@ -2574,7 +2852,7 @@ public sealed class DebugSessionService : IDisposable {
 				untrusted_sample_data = true,
 			}, CanonicalOptions);
 			var manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest);
-			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes);
+			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes, active.Record);
 			if (manifestAdmit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(manifestAdmit));
 
@@ -2594,14 +2872,50 @@ public sealed class DebugSessionService : IDisposable {
 		catch (Exception ex) {
 			return Fail(coordinator, DomainErrorCodes.InternalError, message: ex.GetType().Name + ": " + ex.Message);
 		}
+		};
+
+		active.HandedToFinalizer = true;
+		Task<string> worker;
+		try {
+			worker = Task.Factory.StartNew(() => {
+				try { return writeAndCommit(); }
+				finally { CompleteArtifactOperation(active); }
+			}, CancellationToken.None, TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+				TaskScheduler.Default);
+		}
+		catch {
+			active.HandedToFinalizer = false;
+			throw;
+		}
+		var visible = Task.WhenAny(worker, active.VisibleCancellation.Task).GetAwaiter().GetResult();
+		if (visible == active.VisibleCancellation.Task)
+			return Fail(coordinator, DomainErrorCodes.InvalidState,
+				message: "artifact cancellation is pending final I/O completion");
+		return worker.GetAwaiter().GetResult();
 	}
 
 	static string MapAdmit(ArtifactStoreLedger.AdmitResult result) => result switch {
 		ArtifactStoreLedger.AdmitResult.AlreadyExists => DomainErrorCodes.AlreadyExists,
 		ArtifactStoreLedger.AdmitResult.LimitExceeded => DomainErrorCodes.LimitExceeded,
 		ArtifactStoreLedger.AdmitResult.TargetMismatch => DomainErrorCodes.TargetMismatch,
+		ArtifactStoreLedger.AdmitResult.OperationTimedOut => DomainErrorCodes.Timeout,
+		ArtifactStoreLedger.AdmitResult.OperationCanceled => DomainErrorCodes.InvalidState,
 		_ => DomainErrorCodes.InternalError,
 	};
+
+	static bool IsValidArtifactStem(string? value) {
+		if (value is null || value.Length == 0 || value == "." || value == ".." || value.Length > 128)
+			return false;
+		if (value.Any(char.IsWhiteSpace) || value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+			|| value.EndsWith(".", StringComparison.Ordinal) || value.EndsWith(" ", StringComparison.Ordinal))
+			return false;
+		var deviceStem = value.Split('.')[0].ToUpperInvariant();
+		if (deviceStem is "CON" or "PRN" or "AUX" or "NUL")
+			return false;
+		return !(deviceStem.Length == 4
+			&& (deviceStem.StartsWith("COM", StringComparison.Ordinal) || deviceStem.StartsWith("LPT", StringComparison.Ordinal))
+			&& deviceStem[3] >= '1' && deviceStem[3] <= '9');
+	}
 
 	// DNMCP_TEST-only: fixed by debug_test_dump — null/"raw" is the production behavior.
 	volatile string? testDumpMode;
@@ -2752,6 +3066,7 @@ public sealed class DebugSessionService : IDisposable {
 					controlTcs?.TrySetResult("removed-pending-restart");
 			else {
 				TerminalArtifactSession(terminalSessionId);
+				sideEffectCache.MarkSessionTerminal(DateTime.UtcNow);
 				controlTcs?.TrySetResult("removed");
 				ReleaseLeases();
 				// Session teardown must remove the OWNED dnSpy breakpoints too — clearing only
@@ -2885,6 +3200,7 @@ public sealed class DebugSessionService : IDisposable {
 				controlTcs?.TrySetResult("removed-pending-restart");
 			else {
 				TerminalArtifactSession(terminalSessionId);
+				sideEffectCache.MarkSessionTerminal(DateTime.UtcNow);
 				controlTcs?.TrySetResult("removed");
 			}
 		}

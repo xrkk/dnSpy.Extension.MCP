@@ -244,7 +244,8 @@ public sealed class DebugSessionCoordinator {
 	/// pause@running; terminate@running,paused,faulted(ControlFault only); restart@running,paused.
 	/// The deadline starts here (control-lane admission).
 	/// </summary>
-	public ControlAdmission TryBeginControl(ControlOperation operation, string requestId) {
+	public ControlAdmission TryBeginControl(ControlOperation operation, string requestId,
+		long? admissionTimestamp = null) {
 		lock (gate) {
 			var required = operation switch {
 				ControlOperation.Pause => new[] { DebugStates.Running },
@@ -257,7 +258,8 @@ public sealed class DebugSessionCoordinator {
 				stateOk = false;
 			if (!stateOk || activeSessionId is null || HasUnsettledControlLocked)
 				return new ControlAdmission { Admitted = false, RequiredStates = required };
-			var record = ControlOperationRecord.Begin(activeSessionId, generation, ++controlEpoch, requestId, operation, state);
+			var record = ControlOperationRecord.Begin(activeSessionId, generation, ++controlEpoch, requestId,
+				operation, state, admissionTimestamp: admissionTimestamp);
 			unsettledControl = record;
 			if (operation == ControlOperation.Restart) {
 				restartReservation = true;
