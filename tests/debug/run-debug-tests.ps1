@@ -2374,20 +2374,17 @@ function Run-ACC030 {
         Assert-Cond "a30-$Label-launch" 'harness launch ok (module loaded, running)' "ok=$($L.domain.ok) rpc=$rpcE30 state=$($li.state)" $okLaunch @($L.rpc.resp)
         if (-not $L.domain.ok) { return }
         $sid = $li.session_id; $gen = [int]$li.generation
-        # Target module is loaded INSIDE the harness process.
-        $deadline = (Get-Date).AddSeconds(6); $found = $false
-        while ((Get-Date) -lt $deadline -and -not $found) {
-            $wp = Wait-HeldPause $sid $gen
-            if (-not $wp.ok) { break }
+        # Target module is loaded INSIDE the harness process: fixed settle window, one probe.
+        Start-Sleep -Seconds 3
+        $wp = Wait-HeldPause $sid $gen
+        $found = $false
+        if ($wp.ok) {
             $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-            $found = [bool](@($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'SatelliteLib*' })
-            if (-not $found) {
-                $epx = $wp.epoch
-                $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $epx; request_id = "a30-$Label-c" }
-                Start-Sleep -Milliseconds 500
+            if ($MODS.domain -and $MODS.domain.ok) {
+                $found = [bool](@($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'SatelliteLib*' })
             }
         }
-        Assert-Cond "a30-$Label-module-loaded" 'target module loaded in the harness process' "found=$found" $found
+        Assert-Cond "a30-$Label-module-loaded" 'target module loaded in the harness process' "found=$found paused=$($wp.ok)" $found
         # Transcript: harness received target_path as first arg, remaining argv verbatim.
         $tr = Join-Path $m.env.sample_root 'harness-transcript.txt'
         $lines = @(); if (Test-Path $tr) { $lines = @(Get-Content $tr) }
