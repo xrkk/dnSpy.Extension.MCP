@@ -82,14 +82,25 @@ $script:PreconditionFailed = $false
 $script:WireSeq = 0
 
 function Assert-Cond {
-    param([string]$Id, [string]$Expected, [string]$Actual, [bool]$Pass, [string[]]$Ev = @('result.json'))
+    param([string]$Id, [string]$Expected, [string]$Actual, [bool]$Pass, [string[]]$Ev = @())
+    # No assertion may cite the result object that is not written yet. When the caller has no
+    # richer wire/log artifact, emit a small immutable assertion trace under this result tree.
+    $paths = @($Ev | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") -and "$_" -ne 'result.json' })
+    if ($paths.Count -eq 0 -or (@($Ev | Where-Object { "$_" -eq 'result.json' }).Count -gt 0)) {
+        $safeId = $Id -replace '[^A-Za-z0-9_.-]', '_'
+        $dir = Join-Path $script:OutDir 'assertions'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $auto = "assertions/$safeId.txt"
+        [IO.File]::WriteAllText((Join-Path $script:OutDir $auto), "status=$(if ($Pass) {'pass'} else {'fail'})`r`nexpected=$Expected`r`nactual=$Actual`r`n", (New-Object Text.UTF8Encoding($false)))
+        $paths += $auto
+    }
     $a = [pscustomobject]@{
         assertion_id = $Id; status = $(if ($Pass) { 'pass' } else { 'fail' })
         expected = $Expected; actual = $Actual; evidence_paths = $null
     }
     # Hashtable-literal array properties collapse single-element arrays to scalars (the real
     # schema gate caught exactly this); the PSObject property setter preserves Object[].
-    $a.PSObject.Properties['evidence_paths'].Value = [object[]]@($Ev)
+    $a.PSObject.Properties['evidence_paths'].Value = [object[]]@($paths)
     $script:Assertions.Add($a) | Out-Null
     if (-not $Pass) { [Console]::Error.WriteLine("ASSERT FAIL ${Id}: expected [$Expected] actual [$Actual]") }
 }
@@ -268,9 +279,14 @@ function Start-DnSpyAndWait {
     # and with DOTNET_ROOT pointing at the isolated .NET 10 install so CoreCLR apphosts the
     # debugger launches can resolve their runtime.
     $env:DNMCP_TEST = '1'
-    if ($script:Manifest.env.dotnet10_root) {
-        $env:DOTNET_ROOT = $script:Manifest.env.dotnet10_root
-        Set-Item -Path 'Env:DOTNET_ROOT(x64)' -Value $script:Manifest.env.dotnet10_root
+    $runtimeRoot = $script:Manifest.env.dotnet10_root
+    if ($script:Manifest.env.dnspy_exe -like '*x86*' -and $script:Manifest.env.dotnet10_x86) {
+        $runtimeRoot = Split-Path $script:Manifest.env.dotnet10_x86
+    }
+    if ($runtimeRoot) {
+        $env:DOTNET_ROOT = $runtimeRoot
+        if ($script:Manifest.env.dnspy_exe -like '*x86*') { Set-Item -Path 'Env:DOTNET_ROOT(x86)' -Value $runtimeRoot }
+        else { Set-Item -Path 'Env:DOTNET_ROOT(x64)' -Value $runtimeRoot }
     }
     Start-Process -FilePath $script:Manifest.env.dnspy_exe -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -1060,6 +1076,38 @@ function Run-ACC011 {
     Try-Bp 'stale-module-handle' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badmod'; module_handle = 'mod-99999'; mvid = $goodMvid; method_token = $token; il_offset = 0; module_sha256 = $sha } 'domain' 'TARGET_MISMATCH'
     Try-Bp 'non-methoddef-token' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badtoken'; module_handle = $mod; mvid = $goodMvid; method_token = '0x2B000001'; il_offset = 0 } 'rpc' '-32602'
     Try-Bp 'offset-out-of-method' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-badoff'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 1048576 } 'rpc' '-32602'
+    # Derive a byte inside the first operand-bearing IL instruction. This is inside the body
+    # but not an instruction start, so accepting it would expose the old boundary gap.
+    $midOffset = $null
+    try {
+        $asm11 = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($m.env.fixture_exe))
+        $tok11 = [Convert]::ToInt32(($token -replace '^0x',''), 16)
+        $bytes11 = $asm11.ManifestModule.ResolveMethod($tok11).GetMethodBody().GetILAsByteArray()
+        $one = @{}; $two = @{}
+        foreach ($f in [Reflection.Emit.OpCodes].GetFields([Reflection.BindingFlags]'Public,Static')) {
+            $op = [Reflection.Emit.OpCode]$f.GetValue($null); $u = ([int]$op.Value) -band 0xffff
+            if ($u -le 0xff) { $one[$u] = $op } else { $two[$u] = $op }
+        }
+        for ($p11 = 0; $p11 -lt $bytes11.Length -and $null -eq $midOffset;) {
+            $start11 = $p11; $b11 = [int]$bytes11[$p11]; $p11++
+            if ($b11 -eq 0xfe) { $key11 = 0xfe00 -bor [int]$bytes11[$p11]; $p11++; $op11 = $two[$key11] } else { $op11 = $one[$b11] }
+            $size11 = switch ("$($op11.OperandType)") {
+                'InlineNone' { 0 }
+                { $_ -in @('ShortInlineBrTarget','ShortInlineI','ShortInlineVar') } { 1 }
+                'InlineVar' { 2 }
+                { $_ -in @('InlineBrTarget','InlineField','InlineI','InlineMethod','InlineSig','InlineString','InlineTok','InlineType','ShortInlineR') } { 4 }
+                { $_ -in @('InlineI8','InlineR') } { 8 }
+                'InlineSwitch' { 4 + 4 * [BitConverter]::ToInt32($bytes11, $p11) }
+                default { 0 }
+            }
+            if ($size11 -gt 0) { $midOffset = $p11 } else { $p11 += $size11 }
+        }
+    } catch { }
+    if ($null -ne $midOffset) {
+        Try-Bp 'mid-instruction-offset' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-mid'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = [int]$midOffset; module_sha256 = $sha } 'rpc' '-32602'
+    } else {
+        Assert-Cond 'bp-mid-instruction-offset' 'derived operand byte for non-boundary rejection' 'derivation failed' $false @()
+    }
     Try-Bp 'diskstrong-missing-sha' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; request_id = 'acc11-nosha'; module_handle = $mod; mvid = $goodMvid; method_token = $token; il_offset = 0; identity_strength = 'disk_strong' } 'rpc' '-32602'
 
     $after = Invoke-ToolNoInit 'debug_list_breakpoints' @{ session_id = $sid; generation = $gen }
@@ -1483,13 +1531,17 @@ function Run-ACC017 {
     $items = @($mods.domain.result.items)
     $sat = $items | Where-Object { "$($_.name)" -like 'Satellite*' } | Select-Object -First 1
     $disk = $items | Where-Object { "$($_.name)" -like 'DynLoadFixture*' } | Select-Object -First 1
-    Assert-Cond 'dynamic-module-listed' 'SatelliteLib present with runtime identity (no disk-strong sha)' "found=$($sat.name) sha=$($sat.sha256)" ([bool]$sat) @($mods.rpc.resp)
-    Assert-Cond 'disk-module-listed' 'DynLoadFixture present with path+sha' "path=$($disk.path) sha=$([bool]$disk.sha256)" ([bool]$disk -and $disk.path -and $disk.sha256) @($mods.rpc.resp)
+    $zeroMvid = '00000000-0000-0000-0000-000000000000'
+    $satSha = Get-Sha256File (Join-Path $m.env.sample_root 'SatelliteLib.dll')
+    $satOk = $sat -and $sat.path -and ("$($sat.sha256)" -eq $satSha) -and ("$($sat.mvid)" -ne $zeroMvid) -and ("$($sat.mvid)" -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    Assert-Cond 'dynamic-module-listed' 'later-loaded SatelliteLib has path, authoritative MVID and disk SHA' "path=$($sat.path) mvid=$($sat.mvid) sha=$($sat.sha256)" $satOk @($mods.rpc.resp)
+    $diskOk = $disk -and $disk.path -and ("$($disk.sha256)" -eq $sha) -and ("$($disk.mvid)" -ne $zeroMvid)
+    Assert-Cond 'disk-module-listed' 'DynLoadFixture has path+authoritative MVID+matching sha' "path=$($disk.path) mvid=$($disk.mvid) sha=$($disk.sha256)" $diskOk @($mods.rpc.resp)
 
     $ev = Invoke-ToolNoInit 'debug_read_events' @{ session_id = $sid; generation = $gen; after_cursor = 0; limit = 100 }
-    $evJson = ConvertTo-Json $ev.domain.result.events -Depth 12 -Compress
-    $nameMatch = $sat -and ($evJson -match ($sat.name -replace '\\','\\'))
-    Assert-Cond 'module-loaded-event' 'module_loaded event carries the same identity name' "match=$nameMatch" ($nameMatch) @($ev.rpc.resp)
+    $loadEvent = @($ev.domain.result.events | Where-Object { $_.kind -eq 'module_loaded' -and "$($_.payload.module.name)" -eq "$($sat.name)" }) | Select-Object -First 1
+    $eventMatch = $loadEvent -and ("$($loadEvent.payload.module.module_handle)" -eq "$($sat.module_handle)") -and ("$($loadEvent.payload.module.mvid)" -eq "$($sat.mvid)") -and ("$($loadEvent.payload.module.sha256)" -eq "$($sat.sha256)")
+    Assert-Cond 'module-loaded-event' 'module_loaded event carries the same complete module identity' "match=$eventMatch" ([bool]$eventMatch) @($ev.rpc.resp, (Save-Json 'acc17-module-event.json' $loadEvent))
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = 'acc17-term' } | Out-Null
 }
 
@@ -2482,6 +2534,25 @@ function Run-ACC027 {
     $null = Invoke-ToolNoInit 'debug_test_clock' @{ reset = $true }
     $stP = Invoke-ToolNoInit 'debug_status' @{ session_id = 'x' }
     Assert-Cond 'a27-preclaim-idle' 'pre-claim exit: coordinator idle, no active session' "state=$($stP.domain.result.state) active=$($stP.domain.result.active_session_id)" ("$($stP.domain.result.state)" -eq 'idle') @($stP.rpc.resp)
+
+    # [7] UI-originated/unregistered process observation variant: the same production
+    # ownership classifier must fault, reject control, and recover only on manager-idle.
+    $own = Launch-AndPause $exe 'none'
+    if ($own.ok) {
+        $inj = Invoke-ToolNoInit 'debug_test_start' @{ mode = 'foreign_process' }
+        Start-Sleep -Milliseconds 250
+        $ost = Invoke-ToolNoInit 'debug_status' @{ session_id = $own.sid }
+        $oc = Invoke-ToolNoInit 'debug_continue' @{ session_id = $own.sid; generation = $own.gen; pause_epoch = $own.epoch; request_id = 'a27-own-c' }
+        $oe = Read-EventKinds $own.sid $own.gen 0
+        $oev = Save-Json 'a27-ownership-lost-ui-variant.json' @{ status = $ost.domain; control = $oc.domain; events = $oe.events }
+        $ownOk = $inj.domain.ok -and ("$($ost.domain.result.state)" -eq 'faulted') -and ("$(Get-DomainError $oc)" -eq 'OWNERSHIP_LOST') -and ($oe.kinds -contains 'ownership_lost')
+        Assert-Cond 'a27-ownership-lost-ui-variant' 'unregistered/UI process observation -> faulted(ownership_lost), control rejected, event emitted' "ok=$ownOk" $ownOk @($inj.rpc.resp, $ost.rpc.resp, $oc.rpc.resp, $oev)
+        Invoke-ToolNoInit 'debug_test_start' @{ mode = 'manager_idle' } | Out-Null
+        Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Milliseconds 800
+    } else {
+        Assert-Cond 'a27-ownership-lost-ui-variant' 'session available for ownership classifier variant' 'launch failed' $false @()
+    }
 }
 
 
@@ -2807,6 +2878,12 @@ function Run-ACC033 {
     $wp = Wait-HeldPause $sid $gen
     Assert-Cond 'a33-pause' 'held pause acquired' "ok=$($wp.ok)" $wp.ok
 
+    $modNow = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
+    $targetNow = @($modNow.domain.result.items | Where-Object { "$($_.path)" -eq "$exe" }) | Select-Object -First 1
+    $moduleIdentityOk = $targetNow -and ("$($targetNow.mvid)" -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') `
+        -and ("$($targetNow.mvid)" -ne '00000000-0000-0000-0000-000000000000') -and ("$($targetNow.sha256)" -eq $sha) -and $fidOk
+    Assert-Cond 'a33-module-identity-recheck' 'loaded target rechecks to authoritative nonzero MVID + same SHA while launch FileId lease remains held' "mvid=$($targetNow.mvid) sha=$($targetNow.sha256) fileId=$($fid.file_id)" $moduleIdentityOk @($modNow.rpc.resp, $fidEv)
+
     # [2] Four replacement attempts inside the lease window (session active): every one must
     # fail on a share conflict, leaving the target byte-identical and the session untouched.
     $attempts = [ordered]@{ }
@@ -2866,10 +2943,6 @@ function Run-ACC033 {
     } else {
         Fail-Precondition 'a33-unsupported-fs' 'a non-NTFS volume (optical/removable) is not present on this VM'
     }
-
-    # [7] MVID/FileId recheck after module-loaded lives with the DmdModule MVID wiring (IMP-009
-    # ledger); the structural guarantee (target cannot change under the session) is [2]+[3].
-    Assert-Cond 'a33-module-recheck-note' 'module-loaded MVID/SHA/FileId recheck: file-level closed by lease; DmdModule MVID pending' 'see ledger' $true @('result.json')
 
     # Hygiene: [4] corrupted the fixture on purpose — restore a clean build for later cases.
     Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe' | Out-Null
@@ -3363,6 +3436,10 @@ function Run-ACC029 {
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'Argv86.exe' -X86)) { Assert-Cond 'fixture-build-86' 'Argv86.exe compiled (x86)' 'failed' $false @('build-Argv86.exe.log'); return }
+    if (-not (Compile-Fixture 'AccHarness.cs' 'AccHarness86.exe' -X86)) { Assert-Cond 'fixture-harness-86' 'AccHarness86.exe compiled (x86)' 'failed' $false @('build-AccHarness86.exe.log'); return }
+    if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-target-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
+    $fx = Build-AccCore
+    if (-not $fx.ok) { Assert-Cond 'fixture-core' 'AccCore DLL built' 'failed' $false @('acccore-build.log'); return }
     $exe = Join-Path $m.env.sample_root 'ArgvFixture.exe'
     $exe86 = Join-Path $m.env.sample_root 'Argv86.exe'
     $v = $m.protocol_versions[2]
@@ -3425,13 +3502,30 @@ function Run-ACC029 {
             $bad2Code = Get-DomainError $bad2
             Assert-Cond 'a29-x64-on-x86' 'x64 binary on x86 host = CAPABILITY_UNAVAILABLE' "code=$bad2Code" ("$bad2Code" -eq 'CAPABILITY_UNAVAILABLE') @($bad2.rpc.resp)
 
-            # [6] coreclr-x86: no x86 host installed -> fail closed before Start.
-            $coreDll = Join-Path $m.env.sample_root 'AccCore.dll'
-            if (Test-Path $coreDll) {
-                $bad3 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-corex86'; target_path = $coreDll; expected_sha256 = (Get-Sha256File $coreDll); launch_mode = 'coreclr-dotnet'; architecture = 'x86'; break_kind = 'none'; host_path = (Join-Path $m.env.dotnet10_root 'dotnet.exe') }
-                $bad3Code = Get-DomainError $bad3
-                Assert-Cond 'a29-coreclr-x86-no-host' 'coreclr-x86 without an x86 host fails closed (no x86 runtime installed)' "code=$bad3Code" (("$bad3Code" -eq 'CAPABILITY_UNAVAILABLE') -or ("$bad3Code" -eq 'TARGET_MISMATCH')) @($bad3.rpc.resp)
+            # [6] coreclr-dotnet x86 positive lifecycle on an actual isolated x86 .NET host.
+            $host86 = $m.env.dotnet10_x86
+            $core86 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-corex86'; target_path = $fx.dll; expected_sha256 = (Get-Sha256File $fx.dll); launch_mode = 'coreclr-dotnet'; architecture = 'x86'; break_kind = 'process'; host_path = $host86; host_sha256 = (Get-Sha256File $host86) }
+            $core86Ok = $core86.domain.ok
+            if ($core86Ok) {
+                $ci = $core86.domain.result
+                $cp = Wait-StablePaused $ci.session_id
+                $core86Ok = $cp.ok
+                Invoke-ToolNoInit 'debug_terminate' @{ session_id = $ci.session_id; generation = [int]$ci.generation; request_id = 'a29-core86-term' } | Out-Null
+                Start-Sleep -Milliseconds 900
             }
+            Assert-Cond 'a29-coreclr-x86-positive' 'coreclr-dotnet x86 launch/pause/terminate succeeds on x86 dnSpy + x86 dotnet host' "ok=$core86Ok code=$(Get-DomainError $core86)" $core86Ok @($core86.rpc.resp)
+
+            # [7] x86 harness positive: entry-less library runs through an x86 harness.
+            $h86 = Join-Path $m.env.sample_root 'AccHarness86.exe'
+            $lib = Join-Path $m.env.sample_root 'SatelliteLib.dll'
+            $har = Invoke-ToolNoInit 'debug_launch' @{ request_id = 'a29-harness86'; target_path = $lib; expected_sha256 = (Get-Sha256File $lib); launch_mode = 'harness'; architecture = 'x86'; break_kind = 'process'; harness_path = $h86; harness_sha256 = (Get-Sha256File $h86); harness_argv = @('x86-positive') }
+            $harOk = $har.domain.ok
+            if ($harOk) {
+                $hi = $har.domain.result; $hp = Wait-StablePaused $hi.session_id; $harOk = $hp.ok
+                Invoke-ToolNoInit 'debug_terminate' @{ session_id = $hi.session_id; generation = [int]$hi.generation; request_id = 'a29-har86-term' } | Out-Null
+                Start-Sleep -Milliseconds 900
+            }
+            Assert-Cond 'a29-harness-x86-positive' 'x86 harness launch/pause/terminate succeeds on x86 dnSpy' "ok=$harOk code=$(Get-DomainError $har)" $harOk @($har.rpc.resp)
         }
     }
     finally {
@@ -3440,8 +3534,12 @@ function Run-ACC029 {
         Ensure-CanonicalDnSpy | Out-Null
     }
 
-    # [7] The coreclr-x64 leg is live-verified by ACC-008 (apphost/dotnet-host double mode).
-    Assert-Cond 'a29-coreclr-x64-covered' 'coreclr-x64 double-mode leg covered by ACC-008 (matrix reference)' 'ACC-008 exit 0' $true @('result.json')
+    # [8] Current x64 CoreCLR leg is also exercised directly here (ACC-008 supplies the
+    # deeper two-mode control matrix).
+    $c64 = Invoke-Tool $v 'debug_launch' @{ request_id = 'a29-corex64'; target_path = $fx.dll; expected_sha256 = (Get-Sha256File $fx.dll); launch_mode = 'coreclr-dotnet'; architecture = 'x64'; break_kind = 'process'; host_path = $m.env.dotnet10_x64; host_sha256 = (Get-Sha256File $m.env.dotnet10_x64) }
+    $c64Ok = $c64.domain.ok
+    if ($c64Ok) { $x = $c64.domain.result; $xp = Wait-StablePaused $x.session_id; $c64Ok = $xp.ok; Invoke-ToolNoInit 'debug_terminate' @{ session_id=$x.session_id; generation=[int]$x.generation; request_id='a29-core64-term' } | Out-Null }
+    Assert-Cond 'a29-coreclr-x64-positive' 'coreclr-dotnet x64 positive lifecycle' "ok=$c64Ok" $c64Ok @($c64.rpc.resp)
 }
 # ---------------------------------------------------------------- case: ACC-023 ----
 function Read-SettingsSnapshot {
@@ -3532,10 +3630,42 @@ function Run-ACC036 {
     $up = Start-DnSpyAndWait
     Assert-Cond 'a36-valid-restored' 'valid committed restores the server' "health=$(Get-HealthCode $script:BaseUrl)" $up @()
 
-    # [4] Gate/capabilities freeze matrix (A-D) is live-verified by ACC-002; the dedicated
-    # two-instance isolation leg needs per-instance settings stores (shared dnSpy.xml).
-    Assert-Cond 'a36-gate-matrix-reference' 'gate freeze matrix (A/B/C/D) covered by ACC-002 74/74' 'reference' $true @('result.json')
-    Assert-Cond 'a36-isolation-note' 'two-instance isolation: deferred (shared dnSpy.xml settings store)' 'ledger' $true @('result.json')
+    # [4] Execute the real settings transaction over its injectable raw-IO seam. Every field
+    # below is produced inside the extension process by McpSettingsStore/McpSettingsPersistence.
+    $tx = Invoke-ToolNoInit 'debug_test_settings' @{}
+    $txr = $tx.domain.result
+    $txEv = Save-Json 'a36-settings-transaction-matrix.json' $txr
+    $txOk = $tx.domain.ok -and $txr.unknown_field_rejected -and $txr.invalid_committed_pending_not_activated `
+        -and (-not $txr.pending_write_failure.success) -and ($txr.pending_write_failure.failed_step -eq 'PendingWrite') -and (-not $txr.pending_write_failure.current_is_candidate) -and ($txr.pending_write_failure.transitions -eq 0) `
+        -and (-not $txr.server_transition_failure.success) -and ($txr.server_transition_failure.failed_step -eq 'ServerTransition') -and (-not $txr.server_transition_failure.current_is_candidate) `
+        -and (-not $txr.committed_write_failure.success) -and ($txr.committed_write_failure.failed_step -eq 'CommittedWrite') -and (-not $txr.committed_write_failure.current_is_candidate) `
+        -and $txr.pending_clear_failure.success -and $txr.pending_clear_failure.current_is_candidate -and ($txr.pending_clear_failure.events -eq 1) -and [bool]$txr.pending_clear_failure.warning
+    Assert-Cond 'a36-transaction-fault-matrix' 'unknown fields rejected; pending/transition/commit failures retain old snapshot; pending-clear failure commits once with warning' "ok=$txOk" $txOk @($tx.rpc.resp, $txEv)
+
+    # [5] Two actual dnSpy OS processes use distinct --settings-file stores and listeners.
+    # Killing B must leave A and its snapshot/listener untouched.
+    $settingsA = [Environment]::ExpandEnvironmentVariables($m.env.settings_xml)
+    $settingsB = 'C:\Tools\dnspy-acc36-instance-b.xml'
+    Copy-Item $settingsA $settingsB -Force
+    [xml]$bx = Get-Content $settingsB
+    $bn = $bx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
+    $bRoot = 'C:\dnspy-mcp-artifacts-b'
+    New-Item -ItemType Directory -Force $bRoot | Out-Null
+    $bJson = New-SnapshotJson $true $true 'localhost' 3001 $m.env.sample_root $bRoot
+    $bn.SetAttribute('SettingsSnapshotJson', $bJson)
+    $bn.RemoveAttribute('SettingsPendingJson')
+    $bx.Save($settingsB)
+    $bp = Start-Process -FilePath $m.env.dnspy_exe -WorkingDirectory (Split-Path $m.env.dnspy_exe) -ArgumentList @('--multiple','--settings-file',$settingsB) -PassThru
+    $bUrl = 'http://localhost:3001/'
+    $deadlineB = (Get-Date).AddSeconds(45); $bUp = $false
+    while ((Get-Date) -lt $deadlineB -and -not $bUp) { Start-Sleep -Milliseconds 700; $bUp = (Get-HealthCode $bUrl) -eq 200 }
+    $aBefore = Get-HealthCode $script:BaseUrl
+    if (-not $bp.HasExited) { Stop-Process -Id $bp.Id -Force }
+    Start-Sleep -Milliseconds 1200
+    $aAfter = Get-HealthCode $script:BaseUrl
+    $bAfter = Get-HealthCode $bUrl
+    $isoEv = Save-Json 'a36-two-instance.json' @{ pid_b = $bp.Id; a_before = $aBefore; a_after = $aAfter; b_up = $bUp; b_after = $bAfter; settings_a = $settingsA; settings_b = $settingsB }
+    Assert-Cond 'a36-two-instance-isolation' 'two dnSpy OS processes with distinct settings stores/listeners; stopping B leaves A healthy' "bUp=$bUp a=$aBefore/$aAfter bAfter=$bAfter" ($bUp -and ($aBefore -eq 200) -and ($aAfter -eq 200) -and ($bAfter -ne 200)) @($isoEv)
 }
 
 # ---------------------------------------------------------------- case: ACC-019 ----
@@ -3604,9 +3734,14 @@ function Run-ACC019 {
     $s1post = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
     Assert-Cond 'a19-restart-ledger' 'restart: new session gets a fresh directory; stale S1 untouched' "s3=$([bool]$s3dir) distinct=$(("$s3dir") -ne ("$s1dir")) s1files=$s1post" ($up -and $s3.ok -and ("$s3dir" -ne "$s1dir") -and ($s1post -ge 3)) @()
 
-    # [5] Quota/I/O-seam barriers (128 sessions/4096 children/8GiB, CreateNew/cancel
-    # timelines) need the IArtifactIo fault seam — contract fixtures + seam deferred.
-    Assert-Cond 'a19-quota-seam-note' 'quota at-limit/over + cancel timelines: IArtifactIo seam deferred (ledger)' 'ledger' $true @('result.json')
+    # [5] Execute quota at/over and cancellation settlement through the product's
+    # IArtifactStoreFs/ArtifactOperationRecord seams inside the extension process.
+    $probe = Invoke-ToolNoInit 'debug_test_artifact' @{}
+    $pr = $probe.domain.result
+    $probeEv = Save-Json 'a19-artifact-seam-matrix.json' $pr
+    $bools = @('session_admitted','file_at_limit','file_over_rejected_zero_delta','session_over_rejected_zero_delta','second_session_admitted','store_at_limit','store_over_rejected','external_child_fail_closed_zero_delta','cancel_timeline_exactly_once')
+    $badProbe = @($bools | Where-Object { -not [bool]$pr.PSObject.Properties[$_].Value })
+    Assert-Cond 'a19-quota-cancel-seam' 'file/session/store at-limit succeeds; over-limit and external child reject with zero delta; cancel settles exactly once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
 }
 
 # ---------------------------------------------------------------- case: ACC-022 ----
@@ -3719,9 +3854,43 @@ function Run-ACC003 {
     Assert-Cond 'a3-401-shape' '401: fixed WWW-Authenticate Bearer realm, empty body' "www=$www bodyLen=$($body401.Length)" ($www -and ($body401.Length -eq 0)) @($ev2)
 
     # Health endpoint honors the same wall; a valid token passes it.
-    $hNo = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $remoteUrl 2>$null
-    $hOk = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $remoteUrl -H "Authorization: Bearer $goodTok" 2>$null
+    $healthUrl = $remoteUrl.TrimEnd('/') + '/health'
+    $hNo = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl 2>$null
+    $hOk = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl -H "Authorization: Bearer $goodTok" 2>$null
     Assert-Cond 'a3-health-endpoint' 'health: 401 unauthenticated, 200 authenticated' "no=$hNo ok=$hOk" (($hNo -eq '401') -and ("$hOk" -eq '200')) @()
+
+    # Every routed endpoint crosses the same pre-parse auth wall. Authenticated status may
+    # differ by endpoint semantics (eg unknown session=404), but unauthenticated is always 401.
+    $endpointRows = @(
+        @{ n='root-post'; method='POST'; path='/'; accept='application/json'; data=$rpc },
+        @{ n='mcp-post'; method='POST'; path='/mcp'; accept='application/json'; data=$rpc },
+        @{ n='message-post'; method='POST'; path='/message?sessionId=missing'; accept='application/json'; data=$rpc },
+        @{ n='options'; method='OPTIONS'; path='/mcp'; accept='application/json'; data='' },
+        @{ n='delete'; method='DELETE'; path='/mcp'; accept='application/json'; data='' },
+        @{ n='stream-get'; method='GET'; path='/mcp'; accept='text/event-stream'; data='' },
+        @{ n='unknown'; method='GET'; path='/unknown'; accept='application/json'; data='' }
+    )
+    $endpointEvidence = @(); $endpointOk = $true
+    foreach ($row in $endpointRows) {
+        $url = $remoteUrl.TrimEnd('/') + $row.path
+        $baseArgs = @('-s','-o','NUL','-w','%{http_code}','--max-time','2','-X',$row.method,$url,'-H',("Accept: " + $row.accept))
+        if ($row.data) { $baseArgs += @('-H','Content-Type: application/json','--data',$row.data) }
+        $unauth = & curl.exe @baseArgs 2>$null
+        $authArgs = @($baseArgs + @('-H',"Authorization: Bearer $goodTok"))
+        $auth = & curl.exe @authArgs 2>$null
+        $endpointEvidence += [pscustomobject]@{ endpoint=$row.n; unauth="$unauth"; auth="$auth" }
+        if ("$unauth" -ne '401' -or "$auth" -eq '401') { $endpointOk = $false }
+    }
+    $epEv = Save-Json 'a3-all-endpoint-walls.json' $endpointEvidence
+    Assert-Cond 'a3-all-endpoint-walls' 'all routed HTTP/SSE/Streamable endpoints reject unauthenticated before endpoint semantics' "ok=$endpointOk" $endpointOk @($epEv)
+
+    # A valid token from a peer outside RemoteAllowedCidrs is the fixed empty-body 403.
+    $cidrDeny = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $cidrDeny
+    $denyUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
+    $denyCode = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl -H "Authorization: Bearer $goodTok" 2>$null
+    Assert-Cond 'a3-cidr-deny' 'valid token but direct peer outside allowlist = 403' "up=$denyUp code=$denyCode" ($denyUp -and ("$denyCode" -eq '403')) @(Save-Text 'a3-cidr-deny.txt' "code=$denyCode")
 
     # Restore loopback defaults + drop the provisioning (reversible).
     & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
@@ -3732,9 +3901,9 @@ function Run-ACC003 {
     $upL = Start-DnSpyAndWait
     Assert-Cond 'a3-restored' 'loopback restored after the auth matrix' "health=$(Get-HealthCode $script:BaseUrl)" $upL @()
 
-    # SSE/Streamable/message/root endpoint walls share the transport admission layer
-    # (verified for the transports in service); full seven-endpoint matrix recorded.
-    Assert-Cond 'a3-endpoint-coverage-note' 'SSE/Streamable endpoint walls: transport-layer (in-service transports verified)' 'ledger' $true @('result.json')
+    # Null direct-peer is fail-closed in the same product predicate (executed in-process).
+    $peer = Invoke-ToolNoInit 'debug_test_settings' @{}
+    Assert-Cond 'a3-null-peer' 'null RemoteEndPoint is rejected by CIDR admission' "rejected=$($peer.domain.result.null_peer_rejected)" ([bool]$peer.domain.result.null_peer_rejected) @($peer.rpc.resp)
 }
 # ---------------------------------------------------------------- case: ACC-004 ----
 function Run-ACC004 {
@@ -3765,24 +3934,55 @@ function Run-ACC004 {
     for ($i = 0; $i -lt 17; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
         [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o',("C:\\Tools\\a4-w$i.out"),'--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\\Tools\\a4-w$i.json") -PassThru -WindowStyle Hidden
+        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','Content-Type: application/json','--data',("@C:\\Tools\\a4-w$i.json") -RedirectStandardOutput ("C:\\Tools\\a4-w$i.out") -PassThru -WindowStyle Hidden
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
-    $limitHits = 0; $oks = 0
+    $limitHits = 0; $oks = 0; $http429 = 0
     for ($i = 0; $i -lt 17; $i++) {
         $o = Get-Content "C:\Tools\a4-w$i.out" -Raw -ErrorAction SilentlyContinue
-        if ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ } elseif ("$o" -match '"ok":true') { $oks++ }
+        if ("$o" -match '429$') { $http429++ }
+        elseif ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ }
+        elseif ("$o" -match '"ok":true') { $oks++ }
     }
     Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sess.sid; generation = $sess.gen; request_id = 'a4-t1' } | Out-Null
     Start-Sleep -Milliseconds 900
-    $ev2 = Save-Text 'a4-concurrent-admission.txt' "limit=$limitHits ok=$oks"
-    Assert-Cond 'a4-concurrent-admission' 'EXACTLY the 8 global wait slots admitted; the other 9 = LIMIT_EXCEEDED' "limit=$limitHits ok=$oks" (($limitHits -eq 9) -and ($oks -eq 8)) @($ev2)
+    $ev2 = Save-Text 'a4-concurrent-admission.txt' "domainLimit=$limitHits ok=$oks http429=$http429"
+    Assert-Cond 'a4-concurrent-admission' '16 short workers: 8 waits succeed + 8 domain LIMIT_EXCEEDED; 17th short request = HTTP 429' "limit=$limitHits ok=$oks http429=$http429" (($limitHits -eq 8) -and ($oks -eq 8) -and ($http429 -eq 1)) @($ev2)
 
-    # [3] Transport-level and payload pieces live-verified elsewhere in the suite:
-    # malformed JSON -32700 + UTF-8 byte ceilings + the 9th-wait cap (ACC-028), event
-    # buffer capacity eviction + >8MiB payload_omitted (ACC-005), cache admission limits
-    # and the 17th transport session (transport session matrix: recorded ledger item).
-    Assert-Cond 'a4-coverage-references' 'adjacent limits verified by ACC-028/005; transport-session 17th = ledger' 'references' $true @('result.json')
+    # [3] Nine real long-lived legacy SSE connections: the ninth is rejected before a worker.
+    $longs = @()
+    for ($i = 0; $i -lt 8; $i++) {
+        $longs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o','NUL','--max-time','10',($script:BaseUrl.TrimEnd('/') + '/sse') -PassThru -WindowStyle Hidden
+    }
+    Start-Sleep -Milliseconds 900
+    $ninthLong = & curl.exe -s -o NUL -w '%{http_code}' --max-time 3 ($script:BaseUrl.TrimEnd('/') + '/sse') 2>$null
+    foreach ($p in $longs) { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }
+    Assert-Cond 'a4-long-9th' 'ninth concurrent long connection = HTTP 429' "code=$ninthLong" ("$ninthLong" -eq '429') @(Save-Text 'a4-long-9th.txt' "code=$ninthLong")
+
+    # [4] Streamable HTTP sessions persist independently of connections: first 16 initialize,
+    # 17th initialize is the fixed 429 and allocates no session.
+    $initBody = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"a4","version":"1"}}}'
+    $sessionCodes = @()
+    for ($i = 0; $i -lt 17; $i++) {
+        $code = & curl.exe -s -o NUL -w '%{http_code}' --max-time 5 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' --data $initBody 2>$null
+        $sessionCodes += "$code"
+    }
+    $sessionEv = Save-Json 'a4-streamable-17th.json' $sessionCodes
+    $sessionOk = (@($sessionCodes | Where-Object { $_ -eq '200' }).Count -eq 16) -and ($sessionCodes[16] -eq '429')
+    Assert-Cond 'a4-streamable-17th' 'first 16 Streamable initialize sessions succeed; 17th = HTTP 429' "codes=$($sessionCodes -join ',')" $sessionOk @($sessionEv)
+
+    # [5] Framing and raw admission gates execute through the exact production classes. This
+    # covers a lying small Content-Length and unknown/chunked stream at byte 1,048,577.
+    $tp = Invoke-ToolNoInit 'debug_test_transport' @{}
+    $tr = $tp.domain.result
+    $transportFields = @('fake_small_content_length_rejected_at_1048577','chunked_unknown_length_rejected_at_1048577','short_17th_rejected','long_9th_rejected')
+    $transportBad = @($transportFields | Where-Object { -not [bool]$tr.PSObject.Properties[$_].Value })
+    Assert-Cond 'a4-transport-seam' 'bounded reader rejects lying/chunked oversized streams at +1; gates reject 17th short/9th long' "bad=$($transportBad -join ',')" ($tp.domain.ok -and $transportBad.Count -eq 0) @($tp.rpc.resp, (Save-Json 'a4-transport-seam.json' $tr))
+
+    # Clear the persistent transport sessions for the next case.
+    Stop-DnSpyAndTargets
+    $restored = Ensure-CanonicalDnSpy
+    Assert-Cond 'a4-restored' 'canonical instance restarted after transport saturation' "up=$restored" $restored @()
 }
 # ---------------------------------------------------------------- dispatch + finalize ----
 $handlers = @{
@@ -3824,13 +4024,26 @@ $finishedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
 
 # Exit-0 gates beyond assertion status (third-party audit finding): every referenced
 # evidence file must exist on disk, and the emitted result must satisfy the committed
-# dnspy.debug.test.v1 shape. 'result.json' is self-referential and always satisfied.
+# dnspy.debug.test.v1 shape. Self-references to result.json are forbidden.
 $missingEvidence = @()
 foreach ($a in $script:Assertions) {
     foreach ($ep in @($a.evidence_paths)) {
-        # CHK-014: null/empty evidence entries are MISSING, not skipped — the old
-        # truthiness guard let a null slip through with missing=0.
-        if (("$ep" -ne 'result.json') -and ("" -eq "$ep".Trim() -or -not (Test-Path (Join-Path $script:OutDir "$ep")))) { $missingEvidence += "$($a.assertion_id):[$ep]" }
+        # Evidence references are result-directory-relative paths.  Reject null/empty,
+        # rooted paths and traversal before checking existence; Join-Path by itself would
+        # otherwise allow a syntactically valid result to point at an unrelated host file.
+        $epText = "$ep"
+        $invalidPath = [string]::IsNullOrWhiteSpace($epText) -or [IO.Path]::IsPathRooted($epText)
+        $candidate = $null
+        if (-not $invalidPath) {
+            try {
+                $candidate = [IO.Path]::GetFullPath((Join-Path $script:OutDir $epText))
+                $rootPrefix = [IO.Path]::GetFullPath($script:OutDir).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+                if (-not $candidate.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) { $invalidPath = $true }
+            } catch { $invalidPath = $true }
+        }
+        if ($invalidPath -or -not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            $missingEvidence += "$($a.assertion_id):[$epText]"
+        }
     }
 }
 $missingEvidence | Set-Content (Join-Path $script:OutDir 'evidence-gate.log')
@@ -3851,13 +4064,29 @@ function Get-ValueProps {
     param($Obj)
     if ($Obj -is [System.Collections.IDictionary]) { return @($Obj.Keys) } else { return @($Obj.PSObject.Properties.Name) }
 }
+function Test-JsonScalarEqual {
+    param($Left, $Right)
+    if ($null -eq $Left -or $null -eq $Right) { return $null -eq $Left -and $null -eq $Right }
+    if ($Left -is [string] -or $Right -is [string]) {
+        return ($Left -is [string]) -and ($Right -is [string]) -and [string]::Equals($Left, $Right, [StringComparison]::Ordinal)
+    }
+    if ($Left -is [bool] -or $Right -is [bool]) { return ($Left -is [bool]) -and ($Right -is [bool]) -and ($Left -eq $Right) }
+    $numberTypes = @([byte],[sbyte],[int16],[uint16],[int32],[uint32],[int64],[uint64],[single],[double],[decimal])
+    $leftNumber = $numberTypes | Where-Object { $_.IsInstanceOfType($Left) } | Select-Object -First 1
+    $rightNumber = $numberTypes | Where-Object { $_.IsInstanceOfType($Right) } | Select-Object -First 1
+    if ($leftNumber -or $rightNumber) {
+        if (-not $leftNumber -or -not $rightNumber) { return $false }
+        return [decimal]$Left -eq [decimal]$Right
+    }
+    return $Left.GetType() -eq $Right.GetType() -and $Left.Equals($Right)
+}
 function Test-SchemaNode {
     param($Value, $Schema, [string]$Path, [System.Collections.ArrayList]$Errors)
     if ($null -eq $Schema) { return }
-    if ($Schema.PSObject.Properties['const'] -and ("$Value" -ne "$($Schema.const)")) { [void]$Errors.Add("$Path const mismatch") }
+    if ($Schema.PSObject.Properties['const'] -and -not (Test-JsonScalarEqual $Value $Schema.const)) { [void]$Errors.Add("$Path const mismatch") }
     if ($Schema.PSObject.Properties['enum']) {
         $inEnum = $false
-        foreach ($e in $Schema.enum) { if ("$Value" -eq "$e") { $inEnum = $true; break } }
+        foreach ($e in $Schema.enum) { if (Test-JsonScalarEqual $Value $e) { $inEnum = $true; break } }
         if (-not $inEnum) { [void]$Errors.Add("$Path not in enum") }
     }
     if ($Schema.PSObject.Properties['type']) {
@@ -3867,15 +4096,15 @@ function Test-SchemaNode {
                 if ($Value -isnot [System.Collections.IDictionary] -and $Value -isnot [System.Management.Automation.PSCustomObject]) { [void]$Errors.Add("$Path is not an object"); return }
                 $props = Get-ValueProps $Value
                 if ($Schema.PSObject.Properties['required']) {
-                    foreach ($r in @($Schema.required)) { if ($props -notcontains $r) { [void]$Errors.Add("$Path missing required '$r'") } }
+                    foreach ($r in @($Schema.required)) { if ($props -cnotcontains $r) { [void]$Errors.Add("$Path missing required '$r'") } }
                 }
                 if ("$($Schema.additionalProperties)" -eq 'False' -and $Schema.PSObject.Properties['properties']) {
                     $allowed = @($Schema.properties.PSObject.Properties.Name)
-                    foreach ($pr in $props) { if ($allowed -notcontains $pr) { [void]$Errors.Add("$Path unexpected property '$pr'") } }
+                    foreach ($pr in $props) { if ($allowed -cnotcontains $pr) { [void]$Errors.Add("$Path unexpected property '$pr'") } }
                 }
                 if ($Schema.PSObject.Properties['properties']) {
                     foreach ($pr in $props) {
-                        $sub = $Schema.properties.PSObject.Properties[$pr]
+                        $sub = @($Schema.properties.PSObject.Properties | Where-Object { $_.Name -ceq $pr }) | Select-Object -First 1
                         if ($sub) { Test-SchemaNode -Value (Get-ValueProp $Value $pr) -Schema $sub.Value -Path "$Path.$pr" -Errors $Errors }
                     }
                 }
@@ -3894,7 +4123,7 @@ function Test-SchemaNode {
             'boolean' { if ($Value -isnot [bool]) { [void]$Errors.Add("$Path is not a boolean") } }
         }
     }
-    if ($Schema.PSObject.Properties['pattern'] -and "$Value" -notmatch $Schema.pattern) { [void]$Errors.Add("$Path pattern mismatch") }
+    if ($Schema.PSObject.Properties['pattern'] -and -not [regex]::IsMatch("$Value", "$($Schema.pattern)", [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { [void]$Errors.Add("$Path pattern mismatch") }
     if ($Schema.PSObject.Properties['minLength'] -and "$Value".Length -lt [int]$Schema.minLength) { [void]$Errors.Add("$Path below minLength") }
 }
 $shapeErrors = New-Object System.Collections.ArrayList
@@ -3905,6 +4134,7 @@ try { $resultSchema = Get-Content $resultSchemaPath -Raw | ConvertFrom-Json } ca
 # Provisional gate assertion (shape-identical to every assertion); flipped to fail if the
 # schema validation below reports errors, then status/exit are recomputed — the structure
 # is value-independent, so the recorded object still conforms.
+[IO.File]::WriteAllText((Join-Path $script:OutDir 'shape-gate.log'), '', (New-Object Text.UTF8Encoding($false)))
 Assert-Cond 'result-schema-shape' 'result object validated against committed dnspy.debug.test.v1.schema.json' 'pending' $true @('shape-gate.log')
 $gateAssertion = $script:Assertions[$script:Assertions.Count - 1]
 

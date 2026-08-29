@@ -208,7 +208,7 @@ public sealed class DebugSessionCoordinator {
 	public bool OwnershipLostFaulted => state == DebugStates.Faulted && fault == FaultKind.OwnershipLost;
 
 	/// <summary>Detectable ownership ambiguity: EVT-DYN-017 and faulted(ownership_lost). No force reset.</summary>
-	public bool MarkOwnershipLost(string claimRequestId, IReadOnlyList<(int pid, string runtimeIdentity, string family, string arch)> observed) {
+	public bool MarkOwnershipLost(string? claimRequestId, IReadOnlyList<(int pid, string runtimeIdentity, string family, string arch)> observed) {
 		lock (gate) {
 			if (state == DebugStates.Idle)
 				return false;

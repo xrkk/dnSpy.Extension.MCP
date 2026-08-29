@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
+using System.Collections.Generic;
+using System.Linq;
 using dnSpy.Contracts.MVVM;
 using dnSpy.Contracts.Settings;
 
@@ -112,6 +114,42 @@ namespace dnSpy.Extension.MCP {
 		}
 		string allowedSampleRoot = string.Empty;
 
+		/// <summary>Canonical CIDRs, one per line, used when Host is non-loopback.</summary>
+		public string RemoteAllowedCidrsText {
+			get => remoteAllowedCidrsText;
+			set {
+				if (remoteAllowedCidrsText != value) {
+					remoteAllowedCidrsText = value ?? string.Empty;
+					OnPropertyChanged(nameof(RemoteAllowedCidrsText));
+				}
+			}
+		}
+		string remoteAllowedCidrsText = string.Empty;
+
+		/// <summary>The persisted SHA-256 verifier. The raw bearer token is never stored here.</summary>
+		public string? RemoteTokenVerifier {
+			get => remoteTokenVerifier;
+			set {
+				if (remoteTokenVerifier != value) {
+					remoteTokenVerifier = value;
+					OnPropertyChanged(nameof(RemoteTokenVerifier));
+				}
+			}
+		}
+		string? remoteTokenVerifier;
+
+		/// <summary>Operator acknowledgment that a non-loopback listener is host-only isolated.</summary>
+		public bool RemoteHostOnlyAcknowledged {
+			get => remoteHostOnlyAcknowledged;
+			set {
+				if (remoteHostOnlyAcknowledged != value) {
+					remoteHostOnlyAcknowledged = value;
+					OnPropertyChanged(nameof(RemoteHostOnlyAcknowledged));
+				}
+			}
+		}
+		bool remoteHostOnlyAcknowledged;
+
 		/// <summary>
 		/// Gets the collection of log messages (limited to last 100 messages).
 		/// </summary>
@@ -204,6 +242,9 @@ namespace dnSpy.Extension.MCP {
 			other.DedicatedDebugInstanceAcknowledged = DedicatedDebugInstanceAcknowledged;
 			other.ArtifactRoot = ArtifactRoot;
 			other.AllowedSampleRoot = AllowedSampleRoot;
+			other.RemoteAllowedCidrsText = RemoteAllowedCidrsText;
+			other.RemoteTokenVerifier = RemoteTokenVerifier;
+			other.RemoteHostOnlyAcknowledged = RemoteHostOnlyAcknowledged;
 			return other;
 		}
 
@@ -226,7 +267,16 @@ namespace dnSpy.Extension.MCP {
 			DedicatedDebugInstanceAcknowledged = edited.DedicatedDebugInstanceAcknowledged;
 			ArtifactRoot = edited.ArtifactRoot;
 			AllowedSampleRoot = edited.AllowedSampleRoot;
+			RemoteAllowedCidrsText = edited.RemoteAllowedCidrsText;
+			RemoteTokenVerifier = edited.RemoteTokenVerifier;
+			RemoteHostOnlyAcknowledged = edited.RemoteHostOnlyAcknowledged;
 		}
+
+		/// <summary>Clears the verifier so the next successful remote Apply rotates the token.</summary>
+		public virtual void RequestRemoteTokenRotation() => RemoteTokenVerifier = null;
+
+		/// <summary>Returns a newly generated raw token once, then irreversibly clears it.</summary>
+		public virtual string? ConsumeOneTimeRemoteToken() => null;
 	}
 
 	/// <summary>
@@ -238,6 +288,7 @@ namespace dnSpy.Extension.MCP {
 
 		readonly McpSettingsStore store;
 		McpServer? mcpServer;
+		string? oneTimeRemoteToken;
 
 		[ImportingConstructor]
 		McpSettingsImpl(dnSpy.Contracts.Settings.ISettingsService settingsService) {
@@ -269,6 +320,9 @@ namespace dnSpy.Extension.MCP {
 			DedicatedDebugInstanceAcknowledged = s.DedicatedDebugInstanceAcknowledged;
 			ArtifactRoot = s.ArtifactRoot;
 			AllowedSampleRoot = s.AllowedSampleRoot;
+			RemoteAllowedCidrsText = string.Join(Environment.NewLine, s.RemoteAllowedCidrs);
+			RemoteTokenVerifier = s.RemoteTokenVerifier;
+			RemoteHostOnlyAcknowledged = s.RemoteHostOnlyAcknowledged;
 			OnPropertyChanged(nameof(EnableServer));
 			OnPropertyChanged(nameof(Host));
 			OnPropertyChanged(nameof(Port));
@@ -276,7 +330,20 @@ namespace dnSpy.Extension.MCP {
 			OnPropertyChanged(nameof(DedicatedDebugInstanceAcknowledged));
 			OnPropertyChanged(nameof(ArtifactRoot));
 			OnPropertyChanged(nameof(AllowedSampleRoot));
+			OnPropertyChanged(nameof(RemoteAllowedCidrsText));
+			OnPropertyChanged(nameof(RemoteTokenVerifier));
+			OnPropertyChanged(nameof(RemoteHostOnlyAcknowledged));
 		}
+
+		public override string? ConsumeOneTimeRemoteToken() {
+			var token = oneTimeRemoteToken;
+			oneTimeRemoteToken = null;
+			return token;
+		}
+
+		static List<string> ParseCidrs(string text) => (text ?? string.Empty)
+			.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+			.Select(s => s.Trim()).Where(s => s.Length != 0).ToList();
 
 		/// <summary>
 		/// Sets the server instance for dynamic control.
@@ -291,13 +358,32 @@ namespace dnSpy.Extension.MCP {
 		/// Failure and gate rejection keep the authoritative snapshot and re-sync the UI fields.
 		/// </summary>
 		public override void ApplyEdited(McpSettings edited) {
-			var current = store.Current;
+			oneTimeRemoteToken = null;
+			var loopback = string.Equals(edited.Host, "localhost", StringComparison.Ordinal);
+			var cidrs = loopback ? new List<string>() : ParseCidrs(edited.RemoteAllowedCidrsText);
+			var verifier = loopback ? null : edited.RemoteTokenVerifier;
+			var remoteAck = loopback ? false : edited.RemoteHostOnlyAcknowledged;
+			string? generatedToken = null;
+			if (!loopback && verifier == null) {
+				// Validate all non-secret fields before minting a credential. A failed Apply never
+				// displays or persists a token that cannot subsequently authenticate.
+				var probe = McpSettingsSnapshot.TryCreate(
+					edited.EnableServer, edited.Host, edited.Port,
+					edited.DebugToolsEnabled, edited.DedicatedDebugInstanceAcknowledged,
+					edited.AllowedSampleRoot, edited.ArtifactRoot, cidrs, new string('0', 64),
+					remoteAck, out var probeError);
+				if (probe == null) {
+					Log($"Settings rejected: {probeError}");
+					LoadFieldsFromSnapshot();
+					return;
+				}
+				(generatedToken, verifier) = McpSettingsSnapshot.GenerateRemoteToken();
+			}
 			var candidate = McpSettingsSnapshot.TryCreate(
 				edited.EnableServer, edited.Host, edited.Port,
 				edited.DebugToolsEnabled, edited.DedicatedDebugInstanceAcknowledged,
 				edited.AllowedSampleRoot, edited.ArtifactRoot,
-				current.RemoteAllowedCidrs, current.RemoteTokenVerifier,
-				current.RemoteHostOnlyAcknowledged, out var error);
+				cidrs, verifier, remoteAck, out var error);
 			if (candidate == null) {
 				Log($"Settings rejected: {error}");
 				LoadFieldsFromSnapshot();
@@ -313,6 +399,7 @@ namespace dnSpy.Extension.MCP {
 			}
 			if (result.FixedMessage != null)
 				Log(result.FixedMessage);
+			oneTimeRemoteToken = generatedToken;
 			LoadFieldsFromSnapshot();
 		}
 	}

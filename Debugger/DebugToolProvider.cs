@@ -42,6 +42,9 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 	public IReadOnlyCollection<string> UnadvertisedTools {
 		get {
 			var names = new List<string>(DisabledApiNames);
+			// Deterministic product-seam probes are callable only by the VM acceptance driver;
+			// they never change the advertised tool snapshot (including under DNMCP_TEST).
+			names.AddRange(new[] { "debug_test_settings", "debug_test_artifact", "debug_test_transport" });
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
@@ -176,7 +179,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump")
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump" || toolName == "debug_test_settings" || toolName == "debug_test_artifact" || toolName == "debug_test_transport")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);

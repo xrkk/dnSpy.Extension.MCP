@@ -5,8 +5,9 @@ name: Verify
 #   contracts  - frozen dnspy.debug.v1 schema + byte limits + 189 canonical fixtures
 #                (deterministic regeneration + full invariant validation)
 #   build      - net48 dependency guard + dual-TFM Release build on Windows
-#   e2e        - STATIC harness gate only (-VerifyHarness): driver completeness (manifests/handlers/syntax/result schema presence). Dynamic ACC execution is NOT run in CI — disclosed gap (IMP-011/ACC-022 tail): dynamic E2E requires a provisioned Windows VM per the third-party guide §C
-#                the driver exists (hashFiles guard keeps the gate honest while it is staged).
+#   harness    - static driver/manifests/schema integrity check
+#   e2e        - mandatory dynamic execution of all 36 ACC cases on the provisioned dedicated
+#                Windows/dnSpy runner (both x86/x64 dnSpy and .NET hosts are required)
 on:
   workflow_call:
 
@@ -85,12 +86,17 @@ jobs:
         working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
         run: dotnet build -c Release -f net10.0-windows
 
-  e2e:
-    name: E2E harness gate (static) (six fixtures)
+      - name: Publish accepted net48 extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: accepted-extension-net48
+          path: dnSpy/Extensions/dnSpy.Extension.MCP/bin/Release/net48/dnSpy.Extension.MCP.x.dll
+          if-no-files-found: error
+
+  harness:
+    name: E2E harness integrity
     runs-on: windows-latest
     needs: [contracts, build]
-    # The E2E driver lands with the Windows-side wiring; until the file exists this leg is
-    # skipped rather than silently passing — packaging still gates on contracts+build.
     steps:
       - name: Checkout MCP Extension
         uses: actions/checkout@v4
@@ -130,9 +136,68 @@ jobs:
         working-directory: dnSpy\Extensions\dnSpy.Extension.MCP
         run: .\tests\debug\run-debug-tests.ps1 -VerifyHarness
 
+  e2e:
+    name: Dynamic E2E (36 ACC / six runtime legs)
+    runs-on: [self-hosted, Windows, X64, dnspy-e2e]
+    needs: [contracts, build, harness]
+    timeout-minutes: 180
+    steps:
+      - name: Checkout MCP Extension
+        uses: actions/checkout@v4
+
+      - name: Verify dedicated runner prerequisites
+        shell: pwsh
+        run: |
+          $required = @(
+            'C:\Tools\dnSpy\dnSpy.exe',
+            'C:\Tools\dnSpy\dnSpy-x86.exe',
+            'C:\Tools\MefCheck\dotnet10-x64\dotnet.exe',
+            'C:\Tools\dotnet10-x86\dotnet.exe'
+          )
+          $missing = @($required | Where-Object { -not (Test-Path $_) })
+          if ($missing.Count) { throw "dedicated dnSpy E2E runner is missing: $($missing -join ', ')" }
+
+      - name: Download accepted extension build
+        uses: actions/download-artifact@v4
+        with:
+          name: accepted-extension-net48
+          path: _accepted
+
+      - name: Deploy accepted extension build
+        shell: pwsh
+        run: |
+          Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force
+          $deadline = (Get-Date).AddSeconds(15)
+          while ((Get-Process dnSpy -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+          if (Get-Process dnSpy -ErrorAction SilentlyContinue) { throw 'dnSpy did not stop before extension deployment' }
+          $target = 'C:\Tools\dnSpy\bin\Extensions\dnSpy.Extension.MCP'
+          New-Item -ItemType Directory -Force $target | Out-Null
+          $dll = Get-ChildItem _accepted -Recurse -Filter dnSpy.Extension.MCP.x.dll | Select-Object -First 1
+          if (-not $dll) { throw 'net48 extension artifact not present on the dedicated runner' }
+          Copy-Item $dll.FullName $target -Force
+
+      - name: Execute all dynamic acceptance cases
+        shell: pwsh
+        run: |
+          $failed = @()
+          1..36 | ForEach-Object {
+            $case = 'ACC-{0:d3}' -f $_
+            & .\tests\debug\run-debug-tests.ps1 -Case $case
+            if ($LASTEXITCODE -ne 0) { $failed += "$case(exit=$LASTEXITCODE)" }
+          }
+          if ($failed.Count) { throw "dynamic acceptance failures: $($failed -join ', ')" }
+
+      - name: Upload dynamic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dnspy-debug-acceptance-${{ github.sha }}
+          path: tests/debug/results/${{ github.sha }}
+          if-no-files-found: error
+
   verify-status:
     name: Verify Status
-    needs: [contracts, build, e2e]
+    needs: [contracts, build, harness, e2e]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -142,8 +207,9 @@ jobs:
           # (Static references: GitHub Actions has no dynamic needs.jobs[job] indexing.)
           if [ "${{ needs.contracts.result }}" != "success" ] \
              || [ "${{ needs.build.result }}" != "success" ] \
+             || [ "${{ needs.harness.result }}" != "success" ] \
              || [ "${{ needs.e2e.result }}" != "success" ]; then
-            echo "verify did not succeed: contracts=${{ needs.contracts.result }} build=${{ needs.build.result }} e2e=${{ needs.e2e.result }}"
+            echo "verify did not succeed: contracts=${{ needs.contracts.result }} build=${{ needs.build.result }} harness=${{ needs.harness.result }} e2e=${{ needs.e2e.result }}"
             exit 1
           fi
           echo "Verify completed successfully!"

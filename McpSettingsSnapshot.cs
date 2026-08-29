@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -28,6 +29,23 @@ public sealed class McpSettingsSnapshot {
 	/// <summary>64 lowercase hex chars (SHA-256 of the 32-byte token) or null. The raw token is never stored.</summary>
 	public string? RemoteTokenVerifier { get; }
 	public bool RemoteHostOnlyAcknowledged { get; }
+
+	/// <summary>
+	/// Generates the non-loopback bearer credential.  The returned token is base64url without
+	/// padding and is intentionally never part of a snapshot; only its lowercase SHA-256 verifier
+	/// is persisted.
+	/// </summary>
+	public static (string Token, string Verifier) GenerateRemoteToken() {
+		var bytes = new byte[32];
+		using (var rng = RandomNumberGenerator.Create())
+			rng.GetBytes(bytes);
+		var token = Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+		byte[] digest;
+		using (var sha = SHA256.Create())
+			digest = sha.ComputeHash(bytes);
+		var verifier = BitConverter.ToString(digest).Replace("-", string.Empty).ToLowerInvariant();
+		return (token, verifier);
+	}
 
 	McpSettingsSnapshot(string schemaVersion, bool enableServer, string host, int port,
 		bool debugToolsEnabled, bool dedicatedDebugInstanceAcknowledged, string allowedSampleRoot,
@@ -274,7 +292,7 @@ public static class McpSettingsPersistence {
 			return null;
 		JsonDocument doc;
 		try {
-			doc = JsonDocument.Parse(storedJson, new JsonDocumentOptions {
+			doc = JsonDocument.Parse(storedJson!, new JsonDocumentOptions {
 				AllowTrailingCommas = false, CommentHandling = JsonCommentHandling.Disallow,
 			});
 		}

@@ -19,8 +19,14 @@ public interface IArtifactStoreFs {
 	(string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName);
 	/// <summary>CreateDirectory of a direct child; must throw when the name exists.</summary>
 	void CreateSessionDirectory(string sessionId);
-	/// <summary>CreateNew of a child file (no overwrite); must throw when the path exists.</summary>
-	void CreateChildFile(string sessionId, string relativeName, long length);
+	/// <summary>
+	/// CreateNew and commit a child through one held handle (no overwrite).  The returned
+	/// record must be derived from that handle after the final write/flush; production keeps
+	/// the handle leased for the process lifetime.  A null payload is a quota-test-only length
+	/// seam and must never be used by the production implementation.
+	/// </summary>
+	ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName,
+		long length, byte[]? payload);
 }
 
 /// <summary>
@@ -120,7 +126,14 @@ public sealed class ArtifactStoreLedger {
 	/// re-verification, then the checked-add quotas (per file / per session / whole store), then
 	/// the creation. Existing names are ALREADY_EXISTS; quota failures have zero side effects.
 	/// </summary>
-	public AdmitResult AdmitArtifactWrite(string sessionId, string relativeName, long length, ChildRecord committed) {
+	public AdmitResult AdmitArtifactWrite(string sessionId, string relativeName, byte[] payload) =>
+		AdmitArtifactWriteCore(sessionId, relativeName, payload.LongLength, payload);
+
+	/// <summary>Deterministic quota seam; production callers must use the byte[] overload.</summary>
+	public AdmitResult AdmitArtifactReservationForTest(string sessionId, string relativeName, long length) =>
+		AdmitArtifactWriteCore(sessionId, relativeName, length, null);
+
+	AdmitResult AdmitArtifactWriteCore(string sessionId, string relativeName, long length, byte[]? payload) {
 		lock (gate) {
 			if (!initialized)
 				return AdmitResult.NotInitialized;
@@ -143,7 +156,9 @@ public sealed class ArtifactStoreLedger {
 				return AdmitResult.LimitExceeded;
 			if (ledgerSessions.Values.Sum(v => v.Count) + 1 > MaxStoreChildren)
 				return AdmitResult.LimitExceeded;
-			fs.CreateChildFile(sessionId, relativeName, length);
+			var committed = fs.CreateChildFile(sessionId, relativeName, length, payload);
+			if (committed.RelativeName != relativeName || committed.Length != length)
+				throw new InvalidOperationException("artifact filesystem returned a mismatched committed record");
 			children.Add(committed);
 			return AdmitResult.Ok;
 		}
@@ -246,7 +261,6 @@ public sealed class ArtifactOperationRecord {
 		SessionId = sessionId;
 		var duration = deadlineOverride ?? TimeSpan.FromSeconds(30);
 		deadline = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(duration.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
-		this.deadline = deadline;
 		DeadlineTimestamp = deadline;
 		phase = (int)Phase.Scheduled;
 	}

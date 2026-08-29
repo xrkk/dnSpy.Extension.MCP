@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using dnSpy.Contracts.Images;
 using dnSpy.Contracts.Settings.Dialog;
+using System.Windows;
 
 namespace dnSpy.Extension.MCP {
 	/// <summary>
@@ -86,8 +87,16 @@ namespace dnSpy.Extension.MCP {
 		/// <summary>
 		/// Applies the settings when user clicks OK: one snapshot transaction, never per-setter writes.
 		/// </summary>
-		public override void OnApply() =>
+		public override void OnApply() {
 			globalSettings.ApplyEdited(newSettings);
+			var token = globalSettings.ConsumeOneTimeRemoteToken();
+			if (token != null) {
+				MessageBox.Show(
+					"Copy this bearer token now. It will not be stored or shown again:\n\n" + token,
+					"MCP Remote Token — One-time Display",
+					MessageBoxButton.OK, MessageBoxImage.Warning);
+			}
+		}
 
 		/// <summary>
 		/// Called when the settings dialog is closed.
@@ -168,6 +177,23 @@ namespace dnSpy.Extension.MCP {
 		public string AllowedSampleRoot {
 			get => editableSettings.AllowedSampleRoot;
 			set => editableSettings.AllowedSampleRoot = value;
+		}
+
+		public string RemoteAllowedCidrsText {
+			get => editableSettings.RemoteAllowedCidrsText;
+			set => editableSettings.RemoteAllowedCidrsText = value;
+		}
+
+		public string RemoteTokenVerifier => editableSettings.RemoteTokenVerifier ?? "(not configured — generated on Apply)";
+
+		public bool RemoteHostOnlyAcknowledged {
+			get => editableSettings.RemoteHostOnlyAcknowledged;
+			set => editableSettings.RemoteHostOnlyAcknowledged = value;
+		}
+
+		public void RequestRemoteTokenRotation() {
+			editableSettings.RequestRemoteTokenRotation();
+			OnPropertyChanged(nameof(RemoteTokenVerifier));
 		}
 
 		/// <summary>

@@ -63,6 +63,7 @@ public sealed class DebugSessionService : IDisposable {
 	LaunchPlan? activePlan;
 	List<FileIdentityDto> launchIdentities = new();
 	readonly List<FileStream> identityLeases = new();
+	readonly List<Microsoft.Win32.SafeHandles.SafeFileHandle> identityDirectoryLeases = new();
 	string launchArchitecture = Architectures.X64;
 	bool pendingClaimStartsPaused;
 	string? pendingClaimReason;
@@ -111,6 +112,62 @@ public sealed class DebugSessionService : IDisposable {
 	/// modules keep the filename identity.</summary>
 	static bool HasDiskPath(DbgModule module) =>
 		!string.IsNullOrEmpty(module.Filename) && Path.IsPathRooted(module.Filename);
+
+	/// <summary>Reads the runtime's authoritative module identity.  The reflection model is
+	/// preferred because it is the identity used by the active debug engine; ForceMemory is
+	/// the fallback for engines which have not published a reflection module yet.</summary>
+	string AuthoritativeMvidOf(DbgModule module) {
+		try {
+			var runtimeMvid = module.GetReflectionModule()?.ModuleVersionId ?? Guid.Empty;
+			if (runtimeMvid != Guid.Empty)
+				return runtimeMvid.ToString("D").ToLowerInvariant();
+		}
+		catch {
+			// Some engines create the reflection facade lazily.  Metadata below is authoritative
+			// as well and also supports dynamic/in-memory modules.
+		}
+		try {
+			var definition = metadataService?.TryGetMetadata(module,
+				DbgLoadModuleOptions.ForceMemory | DbgLoadModuleOptions.AutoLoaded);
+			var metadataMvid = definition?.Mvid ?? Guid.Empty;
+			return metadataMvid.ToString("D").ToLowerInvariant();
+		}
+		catch {
+			return Guid.Empty.ToString("D");
+		}
+	}
+
+	static string? TryHashDiskModule(DbgModule module) {
+		if (!HasDiskPath(module))
+			return null;
+		try {
+			using var stream = new FileStream(module.Filename, FileMode.Open, FileAccess.Read,
+				FileShare.ReadWrite | FileShare.Delete, 1024 * 64, FileOptions.SequentialScan);
+			using var sha = SHA256.Create();
+			return ConvertHexShim.ToHexString(sha.ComputeHash(stream)).ToLowerInvariant();
+		}
+		catch {
+			return null;
+		}
+	}
+
+	/// <summary>Accept only an exact IL instruction start in a concrete MethodDef body.
+	/// Token-table shape alone is insufficient: body-out and mid-instruction offsets are
+	/// protocol parameter errors (ACC-011).</summary>
+	bool IsInstructionBoundary(RegisteredModuleRecord module, uint token, int ilOffset) {
+		if (module.LiveModule is null || ilOffset < 0 || metadataService is null)
+			return false;
+		try {
+			var definition = metadataService.TryGetMetadata(module.LiveModule,
+				DbgLoadModuleOptions.ForceMemory | DbgLoadModuleOptions.AutoLoaded);
+			var method = definition?.ResolveToken(token) as dnlib.DotNet.MethodDef;
+			return method?.Body is not null
+				&& method.Body.Instructions.Any(instruction => instruction.Offset == (uint)ilOffset);
+		}
+		catch {
+			return false;
+		}
+	}
 
 	ModuleId UpstreamIdOf(DbgModule module) {
 		if (HasDiskPath(module))
@@ -381,6 +438,145 @@ public sealed class DebugSessionService : IDisposable {
 		return Ok(coordinator, new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = mode ?? "raw" });
 	}
 
+	sealed class TestSettingsIo : ISettingsSnapshotIO {
+		public readonly Dictionary<string, string?> Values = new(StringComparer.Ordinal);
+		public string? FailKey;
+		public int FailOnWriteNumber;
+		int writes;
+		public string? Read(string key) => Values.TryGetValue(key, out var value) ? value : null;
+		public void Write(string key, string? value) {
+			writes++;
+			if (key == FailKey && (FailOnWriteNumber == 0 || writes == FailOnWriteNumber))
+				throw new IOException("injected settings write failure");
+			if (value is null) Values.Remove(key); else Values[key] = value;
+		}
+	}
+
+	/// <summary>ACC-036 deterministic execution of the real two-key transaction/recovery
+	/// implementation. It is deliberately unadvertised and available only in DNMCP_TEST.</summary>
+	string TestSettings(Dictionary<string, object>? args) {
+		_ = args;
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var old = McpSettingsSnapshot.SafeDefaults();
+		var candidate = McpSettingsSnapshot.TryCreate(true, "localhost", 3000, true, true,
+			@"C:\Tools\samples", @"C:\Tools\artifacts", Array.Empty<string>(), null, false, out _)!;
+		Dictionary<string, object?> Run(string? failKey, bool failTransition, bool failClear) {
+			var io = new TestSettingsIo();
+			io.Values[McpSettingsPersistence.CommittedKey] = old.ToCanonicalJson();
+			var store = new McpSettingsStore(io, null);
+			var events = 0; var transitions = 0;
+			store.SnapshotChanged += _ => events++;
+			if (failKey != null) {
+				io.FailKey = failKey;
+				// Pending clear is the third write: pending, committed, clear.
+				io.FailOnWriteNumber = failClear ? 3 : 0;
+			}
+			var result = store.Apply(candidate, snap => { transitions++; return !failTransition || ReferenceEquals(snap, old); }, () => { });
+			return new Dictionary<string, object?> {
+				["success"] = result.Success, ["failed_step"] = result.FailedStep.ToString(),
+				["current_is_candidate"] = ReferenceEquals(store.Current, candidate),
+				["events"] = events, ["transitions"] = transitions,
+				["pending_present"] = io.Values.ContainsKey(McpSettingsPersistence.PendingKey),
+				["warning"] = result.FixedMessage,
+			};
+		}
+		var badUnknown = old.ToCanonicalJson().TrimEnd('}') + ",\"Unknown\":1}";
+		var strictRejected = McpSettingsPersistence.TryParseEffective(badUnknown, out _) is null;
+		var recovered = McpSettingsPersistence.Recover(badUnknown, candidate.ToCanonicalJson(), null);
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true,
+			["pending_write_failure"] = Run(McpSettingsPersistence.PendingKey, false, false),
+			["server_transition_failure"] = Run(null, true, false),
+			["committed_write_failure"] = Run(McpSettingsPersistence.CommittedKey, false, false),
+			["pending_clear_failure"] = Run(McpSettingsPersistence.PendingKey, false, true),
+			["unknown_field_rejected"] = strictRejected,
+			["invalid_committed_pending_not_activated"] = ReferenceEquals(recovered.Snapshot, McpSettingsSnapshot.SafeDefaults())
+				|| !recovered.Snapshot.EnableServer,
+			["null_peer_rejected"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(null, new[] { "127.0.0.1/32" }),
+		});
+	}
+
+	sealed class TestArtifactFs : IArtifactStoreFs {
+		public readonly Dictionary<string, Dictionary<string, (string Volume, string Id, long Length)>> Tree = new(StringComparer.Ordinal);
+		int nextId;
+		public IReadOnlyList<string> EnumerateRootChildren() => Tree.Keys.ToList();
+		public IReadOnlyList<string> EnumerateSessionChildren(string sessionId) => Tree.TryGetValue(sessionId, out var c) ? c.Keys.ToList() : new List<string>();
+		public bool SessionDirectoryExists(string sessionId) => Tree.ContainsKey(sessionId);
+		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) =>
+			Tree.TryGetValue(sessionId, out var c) && c.TryGetValue(relativeName, out var v) ? (v.Volume, v.Id, v.Length) : null;
+		public void CreateSessionDirectory(string sessionId) => Tree.Add(sessionId, new Dictionary<string, (string, string, long)>(StringComparer.Ordinal));
+		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName, long length, byte[]? payload) {
+			var value = (Volume: "vol", Id: "id-" + ++nextId, Length: length);
+			Tree[sessionId].Add(relativeName, value);
+			return new ArtifactStoreLedger.ChildRecord(relativeName, value.Volume, value.Id, length, new string('0', 64));
+		}
+	}
+
+	/// <summary>ACC-019 deterministic execution of the production artifact ledger limits and
+	/// cancellation phase machine through IArtifactStoreFs.</summary>
+	string TestArtifact(Dictionary<string, object>? args) {
+		_ = args;
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var fs = new TestArtifactFs();
+		var ledger = new ArtifactStoreLedger(fs, maxSessions: 2, maxFile: 10, maxSession: 12, maxStore: 15);
+		ledger.Initialize();
+		var s1 = ledger.AdmitNewSession("s1");
+		var atFile = ledger.AdmitArtifactReservationForTest("s1", "at-limit", 10);
+		var beforeOver = fs.Tree["s1"].Count;
+		var overFile = ledger.AdmitArtifactReservationForTest("s1", "over-file", 11);
+		var overSession = ledger.AdmitArtifactReservationForTest("s1", "over-session", 3);
+		var s2 = ledger.AdmitNewSession("s2");
+		var storeAt = ledger.AdmitArtifactReservationForTest("s2", "store-at", 5);
+		var storeOver = ledger.AdmitArtifactReservationForTest("s2", "store-over", 1);
+		fs.Tree["external"] = new Dictionary<string, (string, string, long)>();
+		var beforeMismatch = fs.Tree.Count;
+		var mismatch = ledger.AdmitNewSession("s3");
+		var operation = new ArtifactOperationRecord("r", "s");
+		var active = operation.TryMarkActive();
+		var canceling = operation.TryMarkCanceling();
+		var settled = operation.TrySettle();
+		var settledTwice = operation.TrySettle();
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true, ["session_admitted"] = s1 == ArtifactStoreLedger.AdmitResult.Ok,
+			["file_at_limit"] = atFile == ArtifactStoreLedger.AdmitResult.Ok,
+			["file_over_rejected_zero_delta"] = overFile == ArtifactStoreLedger.AdmitResult.LimitExceeded && fs.Tree["s1"].Count == beforeOver,
+			["session_over_rejected_zero_delta"] = overSession == ArtifactStoreLedger.AdmitResult.LimitExceeded && fs.Tree["s1"].Count == beforeOver,
+			["second_session_admitted"] = s2 == ArtifactStoreLedger.AdmitResult.Ok,
+			["store_at_limit"] = storeAt == ArtifactStoreLedger.AdmitResult.Ok,
+			["store_over_rejected"] = storeOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
+			["external_child_fail_closed_zero_delta"] = mismatch == ArtifactStoreLedger.AdmitResult.TargetMismatch && fs.Tree.Count == beforeMismatch,
+			["cancel_timeline_exactly_once"] = active && canceling && settled && !settledTwice && operation.CurrentPhase == ArtifactOperationRecord.Phase.Settled,
+		});
+	}
+
+	/// <summary>ACC-004 deterministic execution of transport limits which cannot be forged
+	/// through HttpListener after HTTP.sys has normalized framing.</summary>
+	string TestTransport(Dictionary<string, object>? args) {
+		_ = args;
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		var oversized = new byte[dnSpy.Extension.MCP.Transport.BoundedBodyReader.MaxBodyBytes + 1];
+		var fakeSmall = dnSpy.Extension.MCP.Transport.BoundedBodyReader.Read(new MemoryStream(oversized), 1);
+		var chunked = dnSpy.Extension.MCP.Transport.BoundedBodyReader.Read(new MemoryStream(oversized), null);
+		using var shortGate = new dnSpy.Extension.MCP.Transport.AdmissionGate(16);
+		var first16 = true;
+		for (var i = 0; i < 16; i++) first16 &= shortGate.TryEnter();
+		var seventeenth = shortGate.TryEnter();
+		using var longGate = new dnSpy.Extension.MCP.Transport.AdmissionGate(8);
+		var first8 = true;
+		for (var i = 0; i < 8; i++) first8 &= longGate.TryEnter();
+		var ninth = longGate.TryEnter();
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true,
+			["fake_small_content_length_rejected_at_1048577"] = fakeSmall.Decision == dnSpy.Extension.MCP.Transport.BoundedBodyReader.BodyDecision.StreamTooLarge && fakeSmall.Data.Length == oversized.Length,
+			["chunked_unknown_length_rejected_at_1048577"] = chunked.Decision == dnSpy.Extension.MCP.Transport.BoundedBodyReader.BodyDecision.StreamTooLarge && chunked.Data.Length == oversized.Length,
+			["short_17th_rejected"] = first16 && !seventeenth,
+			["long_9th_rejected"] = first8 && !ninth,
+		});
+	}
+
 
 	/// <summary>
 	/// ACC-016: value-tool arguments are closed (additionalProperties=false) with a depth
@@ -470,6 +666,9 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_test_flood" => TestFlood(arguments),
 				"debug_test_start" => TestStart(arguments),
 				"debug_test_dump" => TestDump(arguments),
+				"debug_test_settings" => TestSettings(arguments),
+				"debug_test_artifact" => TestArtifact(arguments),
+				"debug_test_transport" => TestTransport(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -478,7 +677,7 @@ public sealed class DebugSessionService : IDisposable {
 				_ => null,
 			};
 		}
-		catch (ArgumentException ex) {
+		catch (ArgumentException) {
 			// Semantic parameter/metadata rejections (token table, identity-shape, boundary)
 			// surface as JSON-RPC -32602 via the server's ArgumentException mapping.
 			throw;
@@ -642,11 +841,46 @@ public sealed class DebugSessionService : IDisposable {
 		{
 			var hostPathEarly = ArgString(args, "host_path");
 			var harnessPathEarly = ArgString(args, "harness_path");
+			var workingDirectoryEarly = ArgString(args, "working_directory");
 			var unsupportedFs = FindUnsupportedVolume(targetPath)
-				?? FindUnsupportedVolume(harnessPathEarly) ?? FindUnsupportedVolume(hostPathEarly);
+				?? FindUnsupportedVolume(harnessPathEarly) ?? FindUnsupportedVolume(hostPathEarly)
+				?? FindUnsupportedVolume(workingDirectoryEarly);
 			if (unsupportedFs is not null)
 				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
 					message: $"launch inputs must live on an NTFS volume (found {unsupportedFs})");
+		}
+
+		// Validate the entire namespace before opening any target lease.  Missing tail
+		// components continue walking their existing parents; inspection errors fail closed.
+		var workingDirectory = ArgString(args, "working_directory");
+		foreach (var rpPath in new[] { targetPath, ArgString(args, "host_path"),
+			ArgString(args, "harness_path"), workingDirectory }) {
+			if (string.IsNullOrEmpty(rpPath))
+				continue;
+			string? reparseComponent = FindReparseComponent(rpPath);
+			if (reparseComponent is not null)
+				return Fail(coordinator, DomainErrorCodes.TargetMismatch,
+					message: $"path is not a verifiable reparse-free path: {reparseComponent}");
+		}
+		var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
+		if (!string.IsNullOrEmpty(sampleRoot)) {
+			var rootFull = System.IO.Path.GetFullPath(sampleRoot);
+			if (!TryAcquireRootLease(rootFull, out var rootLeaseError))
+				return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: rootLeaseError);
+			var rootPrefix = rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+				? rootFull : rootFull + System.IO.Path.DirectorySeparatorChar;
+			foreach (var candidate in new[] { targetPath, ArgString(args, "host_path"),
+				ArgString(args, "harness_path"), workingDirectory }) {
+				if (string.IsNullOrEmpty(candidate))
+					continue;
+				string candidateFull;
+				try { candidateFull = System.IO.Path.GetFullPath(candidate); }
+				catch (Exception ex) { return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: ex.Message); }
+				if (!candidateFull.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+					&& !string.Equals(candidateFull.TrimEnd(System.IO.Path.DirectorySeparatorChar),
+						rootFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+					return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path is outside AllowedSampleRoot: {candidate}");
+			}
 		}
 
 		// Target identity + lease (the Start call must not race a file replacement).
@@ -663,6 +897,11 @@ public sealed class DebugSessionService : IDisposable {
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
 		if (!string.IsNullOrEmpty(harnessPath) && !TryLeaseIdentity(harnessPath, "harness", "file", harnessSha, out harnessIdentity, out identityError))
 			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
+		FileIdentityDto? workingDirectoryIdentity = null;
+		if (!string.IsNullOrEmpty(workingDirectory)
+			&& !TryLeaseIdentity(workingDirectory, "working_directory", "directory", null,
+				out workingDirectoryIdentity, out identityError))
+			return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: identityError);
 
 		var breakKind = ArgString(args, "break_kind");
 		if (string.IsNullOrEmpty(breakKind))
@@ -671,37 +910,6 @@ public sealed class DebugSessionService : IDisposable {
 		// values are -32602 (ArgumentException) before any lease or Start.
 		if (launchMode == LaunchModes.Harness && breakKind != BreakKinds.None)
 			throw new ArgumentException("harness launch_mode allows only break_kind=none", "break_kind");
-		// CON-DYN-011 / ACC-026: reparse points (junctions/symlinks) in any component of the
-		// target/host/harness/working-directory paths are rejected before the identity lease —
-		// identity must resolve on a reparse-free path, never through substitution.
-		foreach (var rpPath in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
-			if (string.IsNullOrEmpty(rpPath))
-				continue;
-			string? reparseComponent = FindReparseComponent(rpPath);
-			if (reparseComponent is not null)
-				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path traverses a reparse point: {reparseComponent}");
-		}
-		// CON-DYN-011 / ACC-026: every filesystem input must live under the configured
-		// AllowedSampleRoot (when set); anything outside is TARGET_MISMATCH before Start.
-		var sampleRoot = settings.CurrentSnapshot?.AllowedSampleRoot;
-		if (!string.IsNullOrEmpty(sampleRoot)) {
-			var rootFull = System.IO.Path.GetFullPath(sampleRoot);
-			// ACC-033: the root itself is leased from first use (handle held for the process
-			// lifetime, shared read+write but NOT delete) — overwrite/delete/rename/reparse
-			// replacement of the root fails with a share conflict for the whole lease window.
-			AcquireRootLease(rootFull);
-			if (!rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
-				rootFull += System.IO.Path.DirectorySeparatorChar;
-			foreach (var candidate in new[] { targetPath, hostPath, harnessPath, ArgString(args, "working_directory") }) {
-				if (string.IsNullOrEmpty(candidate))
-					continue;
-				string candidateFull;
-				try { candidateFull = System.IO.Path.GetFullPath(candidate); }
-				catch (Exception) { candidateFull = candidate; }
-				if (!candidateFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase) && !string.Equals(candidateFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), rootFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-					return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: $"path is outside AllowedSampleRoot: {candidate}");
-			}
-		}
 		// FB-002 / ACC-024: deterministic unsupported-target detection over the target's own
 		// bytes — CAPABILITY_UNAVAILABLE with the TYPE-DYN-019 evidence chain, zero session.
 		// An over-limit evidence value answers a small INTERNAL_ERROR instead of shipping an
@@ -767,6 +975,7 @@ public sealed class DebugSessionService : IDisposable {
 			if (targetIdentity is not null) launchIdentities.Add(targetIdentity);
 			if (hostIdentity is not null) launchIdentities.Add(hostIdentity);
 			if (harnessIdentity is not null) launchIdentities.Add(harnessIdentity);
+			if (workingDirectoryIdentity is not null) launchIdentities.Add(workingDirectoryIdentity);
 			launchArchitecture = architecture;
 			pendingClaimStartsPaused = breakKind != BreakKinds.None;
 			pendingClaimReason = breakKind switch {
@@ -1141,10 +1350,8 @@ public sealed class DebugSessionService : IDisposable {
 
 	// ---- IMP-006: breakpoints and exception policy ----
 
-	/// <summary>Assigns module handles for the owned process's loaded modules. Increment 2 note:
-	/// MVID is taken from the first set_breakpoint request for the handle (per-handle identity
-	/// registration); wiring the module-load events for authoritative MVIDs lands with the
-	/// IMP-009 module tools.</summary>
+	/// <summary>Assigns module handles for the owned process's loaded modules.  MVID is read
+	/// from the live engine metadata and disk modules carry their actual SHA-256.</summary>
 	void RegisterModules(DbgProcess process) {
 		lock (sessionLock) {
 			modulesByHandle.Clear();
@@ -1161,7 +1368,8 @@ public sealed class DebugSessionService : IDisposable {
 						Address = module.Address,
 						Size = module.Size,
 						Layout = module.IsDynamic || !HasDiskPath(module) ? "memory" : "file",
-						Mvid = "00000000-0000-0000-0000-000000000000", // real MVID lands with DmdModule wiring (IMP-009 note)
+						Mvid = AuthoritativeMvidOf(module),
+						Sha256 = TryHashDiskModule(module),
 						UpstreamId = UpstreamIdOf(module),
 						LiveModule = module,
 					};
@@ -1184,8 +1392,8 @@ public sealed class DebugSessionService : IDisposable {
 
 	/// <summary>
 	/// Enumerates the owned process's live module table on the DbgManager dispatcher and
-	/// refreshes <see cref="modulesByHandle"/> with minted mod-N handles (preserving identity
-	/// data earlier set_breakpoint calls recorded, seeding the launch-verified target sha).
+	/// refreshes <see cref="modulesByHandle"/> with minted mod-N handles and identities read
+	/// from the current live modules (seeding the launch-verified target sha where available).
 	/// Both list_modules and get_stack call this so frame→module mapping works regardless of
 	/// which tool the client happens to call first.
 	/// </summary>
@@ -1215,15 +1423,11 @@ public sealed class DebugSessionService : IDisposable {
 							Address = module.Address,
 							Size = module.Size,
 							Layout = module.IsDynamic || !HasDiskPath(module) ? "memory" : "file",
-							Mvid = "00000000-0000-0000-0000-000000000000",
+							Mvid = AuthoritativeMvidOf(module),
+							Sha256 = TryHashDiskModule(module),
 							UpstreamId = UpstreamIdOf(module),
 							LiveModule = module,
 						};
-						// Preserve identity data registered by earlier set_breakpoint calls on the same handle.
-						if (modulesByHandle.TryGetValue(handle, out var existing) && existing.Filename == record.Filename) {
-							record.Mvid = existing.Mvid;
-							record.Sha256 = existing.Sha256;
-						}
 						// The launch-verified target carries its disk-strong sha from the start.
 						if (string.IsNullOrEmpty(record.Sha256) && !string.IsNullOrEmpty(record.Filename)) {
 							var targetIdentity = launchIdentities.FirstOrDefault(i =>
@@ -1280,6 +1484,8 @@ public sealed class DebugSessionService : IDisposable {
 		}
 		if ((tokenValue >> 24) != 0x06 || (tokenValue & 0x00FFFFFF) == 0)
 			throw new ArgumentException("method_token must reference a MethodDef row (0x06xxxxxx)", nameof(methodToken));
+		if (ilOffset < 0)
+			throw new ArgumentException("il_offset must be a non-negative IL instruction boundary", nameof(ilOffset));
 		if (identityStrength == "disk_strong" && string.IsNullOrEmpty(moduleSha))
 			throw new ArgumentException("disk_strong breakpoints require module_sha256", nameof(moduleSha));
 		if (identityStrength == "runtime_weak" && !string.IsNullOrEmpty(moduleSha))
@@ -1292,6 +1498,10 @@ public sealed class DebugSessionService : IDisposable {
 			if (!modulesByHandle.TryGetValue(moduleHandle, out module))
 				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "module_handle is not a registered module of this pause");
 		}
+		var instructionBoundary = false;
+		PostVoidToDispatcherSync(() => instructionBoundary = IsInstructionBoundary(module, tokenValue, ilOffset));
+		if (!instructionBoundary)
+			throw new ArgumentException("il_offset is not an instruction boundary in the MethodDef body", nameof(ilOffset));
 		bpStore.RegisterModule(new RegisteredModule {
 			ModuleHandle = module.ModuleHandle,
 			RuntimeHandle = module.RuntimeHandle,
@@ -2020,18 +2230,36 @@ public sealed class DebugSessionService : IDisposable {
 	// ---- IMP-009: modules, memory, artifacts ----
 
 	ArtifactStoreLedger? artifactLedger;
-	readonly Dictionary<string, FileStream> artifactSessionHandles = new();
+	ProductionArtifactFs? artifactFs;
 	string? ArtifactRootPath => settings.CurrentSnapshot?.ArtifactRoot is { Length: > 0 } root ? root : null;
 
 	sealed class ProductionArtifactFs : IArtifactStoreFs {
 		readonly string root;
-		public ProductionArtifactFs(string root) => this.root = root;
+		readonly Microsoft.Win32.SafeHandles.SafeFileHandle rootLease;
+		readonly Dictionary<string, Microsoft.Win32.SafeHandles.SafeFileHandle> sessionLeases = new(StringComparer.Ordinal);
+		readonly Dictionary<string, FileStream> childLeases = new(StringComparer.Ordinal);
+		public ProductionArtifactFs(string root) {
+			this.root = Path.GetFullPath(root);
+			Directory.CreateDirectory(this.root);
+			var handle = CreateFileW(this.root, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+				IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+			if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+				throw new IOException("ArtifactRoot lease failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+			rootLease = new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true);
+		}
+		public (string VolumeSerial, string FileId) RootIdentity {
+			get {
+				if (!GetFileInformationByHandle(rootLease.DangerousGetHandle(), out var info))
+					throw new IOException("ArtifactRoot identity query failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				return ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'));
+			}
+		}
 		string SessionDir(string sessionId) => Path.Combine(root, sessionId);
 		public IReadOnlyList<string> EnumerateRootChildren() =>
-			Directory.Exists(root) ? Directory.GetDirectories(root).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
+			Directory.Exists(root) ? Directory.GetFileSystemEntries(root).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
 		public IReadOnlyList<string> EnumerateSessionChildren(string sessionId) {
 			var dir = SessionDir(sessionId);
-			return Directory.Exists(dir) ? Directory.GetFiles(dir).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
+			return Directory.Exists(dir) ? Directory.GetFileSystemEntries(dir).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
 		}
 		public bool SessionDirectoryExists(string sessionId) => Directory.Exists(SessionDir(sessionId));
 		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) {
@@ -2043,22 +2271,62 @@ public sealed class DebugSessionService : IDisposable {
 			}
 			catch { return null; }
 		}
-		public void CreateSessionDirectory(string sessionId) => Directory.CreateDirectory(SessionDir(sessionId));
-		public void CreateChildFile(string sessionId, string relativeName, long length) {
+		public void CreateSessionDirectory(string sessionId) {
+			var path = SessionDir(sessionId);
+			if (!CreateDirectoryW(path, IntPtr.Zero))
+				throw new IOException("artifact session CreateDirectory failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+			var handle = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+				IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+			if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+				throw new IOException("artifact session lease failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+			sessionLeases.Add(sessionId, new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true));
+		}
+		public ArtifactStoreLedger.ChildRecord CreateChildFile(string sessionId, string relativeName, long length, byte[]? payload) {
+			if (payload is null || payload.LongLength != length)
+				throw new InvalidOperationException("production artifact writes require the exact payload");
 			var path = Path.Combine(SessionDir(sessionId), relativeName);
-			using var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-			if (length > 0)
-				fs.SetLength(length);
+			var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read,
+				1024 * 1024, FileOptions.SequentialScan | FileOptions.WriteThrough);
+			try {
+				using var sha = SHA256.Create();
+				const int chunkSize = 1024 * 1024;
+				for (var offset = 0; offset < payload.Length; offset += chunkSize) {
+					var count = Math.Min(chunkSize, payload.Length - offset);
+					stream.Write(payload, offset, count);
+					sha.TransformBlock(payload, offset, count, null, 0);
+				}
+				sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+				stream.Flush(true);
+				var info = GetFileIdentity(stream);
+				var record = new ArtifactStoreLedger.ChildRecord(relativeName,
+					$"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'),
+					stream.Length, ConvertHexShim.ToHexString(sha.Hash!).ToLowerInvariant());
+				childLeases.Add(sessionId + "\0" + relativeName, stream);
+				return record;
+			}
+			catch {
+				stream.Dispose();
+				throw;
+			}
 		}
 	}
 
 	ArtifactStoreLedger ArtifactLedger() {
 		if (artifactLedger is null) {
 			var root = ArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
-			artifactLedger = new ArtifactStoreLedger(new ProductionArtifactFs(root));
+			artifactFs = new ProductionArtifactFs(root);
+			artifactLedger = new ArtifactStoreLedger(artifactFs);
 			artifactLedger.Initialize();
 		}
 		return artifactLedger;
+	}
+
+	void TerminalArtifactSession(string? sessionId) {
+		if (sessionId is null || artifactLedger is null)
+			return;
+		var result = artifactLedger.TerminalSession(sessionId);
+		SpyInc(result == ArtifactStoreLedger.TerminalResult.Retained
+			? "artifact_terminal_retained" : "artifact_terminal_stale");
 	}
 
 	string ListModules(Dictionary<string, object>? args) {
@@ -2153,20 +2421,22 @@ public sealed class DebugSessionService : IDisposable {
 			var full = System.IO.Path.GetFullPath(path);
 			var current = full;
 			while (!string.IsNullOrEmpty(current)) {
-				System.IO.FileAttributes attrs;
-				try { attrs = System.IO.File.GetAttributes(current); }
-				catch (System.IO.FileNotFoundException) { return null; }   // not-yet-created tail is fine
-				catch (System.IO.DirectoryNotFoundException) { return null; }
-				if ((attrs & System.IO.FileAttributes.ReparsePoint) != 0)
-					return current;
+				try {
+					var attrs = System.IO.File.GetAttributes(current);
+					if ((attrs & System.IO.FileAttributes.ReparsePoint) != 0)
+						return current;
+				}
+				catch (System.IO.FileNotFoundException) { }
+				catch (System.IO.DirectoryNotFoundException) { }
+				catch (Exception ex) { return current + " (inspection failed: " + ex.GetType().Name + ")"; }
 				var parent = System.IO.Path.GetDirectoryName(current);
-				if (string.IsNullOrEmpty(parent))
+				if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
 					return null;
 				current = parent;
 			}
 		}
-		catch {
-			return null;
+		catch (Exception ex) {
+			return path + " (inspection failed: " + ex.GetType().Name + ")";
 		}
 		return null;
 	}
@@ -2256,64 +2526,61 @@ public sealed class DebugSessionService : IDisposable {
 		if (admitSession != ArtifactStoreLedger.AdmitResult.Ok && admitSession != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 			return Fail(coordinator, MapAdmit(admitSession));
 
-		var fs = new ProductionArtifactFs(root);
+			var fs = new ProductionArtifactFs(root!);
 		try {
 			// Every file in a ledgered session directory must be an admitted child — the marker
 			// included — or the next admission's fail-closed verification rejects the store.
-			string markerSha;
-			using (var sha = SHA256.Create())
-				markerSha = ConvertHexShim.ToHexString(sha.ComputeHash(Array.Empty<byte>())).ToLowerInvariant();
-			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, ".session-marker", 0,
-				new ArtifactStoreLedger.ChildRecord(".session-marker", "0x0", new string('0', 32), 0, markerSha));
+			var rootIdentity = artifactFs!.RootIdentity;
+			var markerName = ".dnspy-mcp-session.json";
+			var markerBytes = System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new {
+				schema_version = "dnspy.debug.artifact.v1",
+				session_id = sessionId,
+				created_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+				artifact_root_volume_serial = rootIdentity.VolumeSerial,
+				artifact_root_file_id = rootIdentity.FileId,
+			}, CanonicalOptions));
+			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, markerName, markerBytes);
 			// The marker is constant per session: a second dump in the same session re-admits
 			// it and the ledger answers AlreadyExists — that is the idempotent success.
 			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok && markerAdmit != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 				return Fail(coordinator, MapAdmit(markerAdmit));
-			var markerPath = Path.Combine(root, sessionId, ".session-marker");
-			lock (artifactSessionHandles) {
-				if (!artifactSessionHandles.ContainsKey(sessionId))
-					artifactSessionHandles[sessionId] = new FileStream(markerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-			}
-
 			string sha256;
 			using (var sha = SHA256.Create())
 				sha256 = ConvertHexShim.ToHexString(sha.ComputeHash(artifactBytes)).ToLowerInvariant();
 			// The admission reserves the quota and creates the empty child; this call is its
 			// active writer, so the bytes go straight into the ledgered file.
-			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes.Length,
-				new ArtifactStoreLedger.ChildRecord(childName, "0x0", new string('0', 32), artifactBytes.Length, sha256));
+			var admit = ledger.AdmitArtifactWrite(sessionId, childName, artifactBytes);
 			if (admit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(admit));
 			var finalPath = Path.Combine(root, sessionId, childName);
-			File.WriteAllBytes(finalPath, artifactBytes);
 
 			var manifestName = childName + ".manifest.json";
 			// FB-001: the manifest declares the exact byte-equivalence class and, for the
 			// reconstructed branch, the producing API — a reconstruction is never presented as
 			// a source-equivalent image.
+			var artifactId = sessionId + "/" + childName;
 			var manifest = System.Text.Json.JsonSerializer.Serialize(new {
-				schema_version = "dnspy.mcp.artifact.v1",
+				schema_version = "dnspy.debug.artifact.v1",
+				artifact_id = artifactId,
 				session_id = sessionId,
-				module = module.Name,
-				module_path = module.Filename,
 				kind,
 				layout = artifactLayout,
 				size = artifactBytes.Length,
 				sha256,
+				source_module = ModuleDtoOf(module),
 				byte_equivalence = equivalence,
 				reconstruction_method = reconstructionMethod,
 				created_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-			});
+				untrusted_sample_data = true,
+			}, CanonicalOptions);
 			var manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest);
-			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes.Length,
-				new ArtifactStoreLedger.ChildRecord(manifestName, "0x0", new string('0', 32), manifestBytes.Length, sha256));
+			var manifestAdmit = ledger.AdmitArtifactWrite(sessionId, manifestName, manifestBytes);
 			if (manifestAdmit != ArtifactStoreLedger.AdmitResult.Ok)
 				return Fail(coordinator, MapAdmit(manifestAdmit));
-			File.WriteAllBytes(Path.Combine(root, sessionId, manifestName), manifestBytes);
 
 			return Ok(coordinator, untrustedSampleData: true, result: new DumpModuleResultDto {
 				Artifact = new ArtifactDto {
-					ArtifactId = sessionId + "/" + childName,
+					ArtifactId = artifactId,
 					Path = finalPath,
 					Kind = kind,
 					Layout = artifactLayout,
@@ -2469,7 +2736,8 @@ public sealed class DebugSessionService : IDisposable {
 				if (process != owned)
 					continue;
 				process.IsRunningChanged -= OnOwnedIsRunningChanged;
-				var result = coordinator.ObserveProcessRemoved(coordinator.ActiveSessionId, coordinator.Generation, ownedIdentityMatch: true, exitCode: null);
+				var terminalSessionId = coordinator.ActiveSessionId;
+				var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation, ownedIdentityMatch: true, exitCode: null);
 				lock (sessionLock) {
 					adapter?.Dispose();
 					adapter = null;
@@ -2483,6 +2751,7 @@ public sealed class DebugSessionService : IDisposable {
 				if (result.Outcome == "pending-restart")
 					controlTcs?.TrySetResult("removed-pending-restart");
 			else {
+				TerminalArtifactSession(terminalSessionId);
 				controlTcs?.TrySetResult("removed");
 				ReleaseLeases();
 				// Session teardown must remove the OWNED dnSpy breakpoints too — clearing only
@@ -2523,26 +2792,26 @@ public sealed class DebugSessionService : IDisposable {
 	// re-registers first so the event can carry the same module_handle list_modules mints.
 	void OnOwnedModulesChanged(object? sender, DbgCollectionChangedEventArgs<DbgModule> e) {
 		try {
+			List<RegisteredModuleRecord> previous;
+			lock (sessionLock) previous = modulesByHandle.Values.ToList();
 			// We are already on the DbgManager dispatcher: enumerate inline (a sync post from
 			// this thread would self-wait on the dispatcher and stall the debug pump).
 			var table = new List<RegisteredModuleRecord>();
 			RegisterLiveModulesInto(table);
 			foreach (var module in e.Objects) {
 				var added = e.Added;
-				var record = table.FirstOrDefault(m => string.Equals(m.Filename, module.Filename ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-					|| string.Equals(m.Name, module.Name, StringComparison.OrdinalIgnoreCase));
+				var candidates = added ? table : previous;
+				var record = candidates.FirstOrDefault(m => ReferenceEquals(m.LiveModule, module))
+					?? candidates.FirstOrDefault(m => string.Equals(m.Filename, module.Filename ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(m.Name, module.Name, StringComparison.OrdinalIgnoreCase));
 				if (added) {
-					coordinator.WriteModuleLoaded(new {
-						module_handle = record?.ModuleHandle ?? "",
-						name = module.Name,
-						path = module.Filename,
-						layout = module.IsDynamic || string.IsNullOrEmpty(module.Filename) ? "memory" : "file",
-					});
+					if (record is not null)
+						coordinator.WriteModuleLoaded(new { module = ModuleDtoOf(record) });
 				}
 				else {
 					coordinator.WriteModuleUnloaded(new {
 						module_handle = record?.ModuleHandle ?? "",
-						name = module.Name,
+						mvid = record?.Mvid ?? Guid.Empty.ToString("D"),
 					});
 				}
 			}
@@ -2607,14 +2876,17 @@ public sealed class DebugSessionService : IDisposable {
 			}
 		}
 		else if (observation.Kind == ProcessObservation.ObservationKind.Removed) {
-			var result = coordinator.ObserveProcessRemoved(coordinator.ActiveSessionId, coordinator.Generation,
+			var terminalSessionId = coordinator.ActiveSessionId;
+			var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation,
 				ownedIdentityMatch: true, observation.ExitCode);
 			TaskCompletionSource<string>? controlTcs;
 			lock (sessionLock) controlTcs = controlOutcomeTcs;
 			if (result.Outcome == "pending-restart")
 				controlTcs?.TrySetResult("removed-pending-restart");
-			else
+			else {
+				TerminalArtifactSession(terminalSessionId);
 				controlTcs?.TrySetResult("removed");
+			}
 		}
 	}
 
@@ -2726,31 +2998,50 @@ public sealed class DebugSessionService : IDisposable {
 		identity = null;
 		error = null;
 		FileStream? stream = null;
+		Microsoft.Win32.SafeHandles.SafeFileHandle? directoryLease = null;
 		try {
-			stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-			identityLeases.Add(stream);
-			var info = GetFileIdentity(stream);
-			string sha256;
-			using (var sha = SHA256.Create()) {
+			BY_HANDLE_FILE_INFORMATION info;
+			string? sha256 = null;
+			IntPtr rawHandle;
+			if (objectKind == "directory") {
+				var raw = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+					IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
+				if (raw == IntPtr.Zero || raw == new IntPtr(-1))
+					throw new IOException("directory identity lease failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				directoryLease = new Microsoft.Win32.SafeHandles.SafeFileHandle(raw, ownsHandle: true);
+				rawHandle = raw;
+			}
+			else {
+				stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+				identityLeases.Add(stream);
+				rawHandle = stream.SafeFileHandle.DangerousGetHandle();
+				using var sha = SHA256.Create();
 				stream.Position = 0;
 				var hash = sha.ComputeHash(stream);
 				stream.Position = 0;
 				sha256 = ConvertHexShim.ToHexString(hash).ToLowerInvariant();
 			}
+			if (!GetFileInformationByHandle(rawHandle, out info))
+				throw new IOException("GetFileInformationByHandle failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+			var finalPath = FinalPathOf(rawHandle);
 			if (expectedSha256 is not null && !string.Equals(expectedSha256, sha256, StringComparison.OrdinalIgnoreCase)) {
 				error = $"{role} sha256 mismatch: expected {expectedSha256.ToLowerInvariant()}, file is {sha256}";
 				// A rejected target keeps no lease: the handle must not outlive the rejection
 				// (ACC-033 — a leaked read handle would block the file's legitimate rewrite).
-				stream.Dispose();
-				identityLeases.Remove(stream);
+				if (stream is not null) {
+					stream.Dispose();
+					identityLeases.Remove(stream);
+				}
 				return false;
 			}
+			if (directoryLease is not null)
+				identityDirectoryLeases.Add(directoryLease);
 			identity = new FileIdentityDto {
 				Role = role,
 				ObjectKind = objectKind,
-				FinalPath = Path.GetFullPath(path),
-				VolumeSerial = $"0x{info.VolumeSerial:x8}",
-				FileId = $"{info.FileIndexHigh:x16}{info.FileIndexLow:x16}".Substring(0, 32),
+				FinalPath = finalPath,
+				VolumeSerial = $"0x{info.VolumeSerial:x16}",
+				FileId = $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'),
 				Sha256 = sha256,
 			};
 			return true;
@@ -2761,6 +3052,10 @@ public sealed class DebugSessionService : IDisposable {
 				try { stream.Dispose(); } catch { }
 				identityLeases.Remove(stream);
 			}
+			if (directoryLease is not null) {
+				try { directoryLease.Dispose(); } catch { }
+				identityDirectoryLeases.Remove(directoryLease);
+			}
 			error = $"{role} identity lease failed: {ex.Message}";
 			return false;
 		}
@@ -2770,30 +3065,69 @@ public sealed class DebugSessionService : IDisposable {
 		foreach (var lease in identityLeases)
 			try { lease.Dispose(); } catch { }
 		identityLeases.Clear();
+		foreach (var lease in identityDirectoryLeases)
+			try { lease.Dispose(); } catch { }
+		identityDirectoryLeases.Clear();
 		// The root lease intentionally outlives per-launch identity leases: it is held from
 		// first gate use to process exit (ACC-033 root-stability contract).
 	}
 
-	// ACC-033: AllowedSampleRoot directory lease — open without FILE_SHARE_DELETE so the root
-	// cannot be overwritten/deleted/renamed/reparse-replaced while the extension runs. Write is
-	// shared so fixture/tooling writes INSIDE the root keep working. First acquisition wins.
-	Microsoft.Win32.SafeHandles.SafeFileHandle? rootLease;
+	// CON-DYN-011: every AllowedSampleRoot component is opened with OPEN_REPARSE_POINT,
+	// without delete sharing, and retained.  Multiple committed roots can occur over a process
+	// lifetime; retaining old leases is conservative and avoids ever silently dropping the
+	// protection while an old debug object is winding down.
+	readonly Dictionary<string, List<Microsoft.Win32.SafeHandles.SafeFileHandle>> rootChainLeases =
+		new(StringComparer.OrdinalIgnoreCase);
 
-	void AcquireRootLease(string rootFull) {
-		if (rootLease is not null)
-			return;
-		try {
-			if (!System.IO.Directory.Exists(rootFull))
-				return;
-			var handle = CreateFileW(rootFull, GENERIC_READ,
-				FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
-			if (handle != IntPtr.Zero && handle != new IntPtr(-1))
-				rootLease = new Microsoft.Win32.SafeHandles.SafeFileHandle(handle, ownsHandle: true);
+	bool TryAcquireRootLease(string rootFull, out string? error) {
+		error = null;
+		rootFull = Path.GetFullPath(rootFull).TrimEnd(Path.DirectorySeparatorChar);
+		if (rootChainLeases.ContainsKey(rootFull))
+			return true;
+		if (!Directory.Exists(rootFull)) {
+			error = "AllowedSampleRoot does not exist";
+			return false;
 		}
-		catch {
-			// A root that cannot be leased keeps the per-path validation as the only guard;
-			// launches are not blocked by lease unavailability (fail-open here matches the
-			// existing per-file lease behavior).
+		var unsupported = FindUnsupportedVolume(rootFull);
+		if (unsupported is not null) {
+			error = $"AllowedSampleRoot must be on NTFS (found {unsupported})";
+			return false;
+		}
+		var components = new Stack<string>();
+		for (var current = rootFull; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current)) {
+			components.Push(current);
+			var parent = Path.GetDirectoryName(current);
+			if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
+				break;
+		}
+		var acquired = new List<Microsoft.Win32.SafeHandles.SafeFileHandle>();
+		try {
+			while (components.Count != 0) {
+				var component = components.Pop();
+				var attrs = File.GetAttributes(component);
+				if ((attrs & FileAttributes.ReparsePoint) != 0)
+					throw new IOException($"AllowedSampleRoot component is a reparse point: {component}");
+				var raw = CreateFileW(component, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+					IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
+				if (raw == IntPtr.Zero || raw == new IntPtr(-1))
+					throw new IOException($"AllowedSampleRoot component lease failed: {component}",
+						new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				var lease = new Microsoft.Win32.SafeHandles.SafeFileHandle(raw, ownsHandle: true);
+				if (!GetFileInformationByHandle(lease.DangerousGetHandle(), out _)) {
+					lease.Dispose();
+					throw new IOException($"AllowedSampleRoot identity query failed: {component}",
+						new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+				}
+				acquired.Add(lease);
+			}
+			rootChainLeases.Add(rootFull, acquired);
+			return true;
+		}
+		catch (Exception ex) {
+			foreach (var lease in acquired)
+				lease.Dispose();
+			error = ex.Message;
+			return false;
 		}
 	}
 
@@ -2806,7 +3140,10 @@ public sealed class DebugSessionService : IDisposable {
 			return null;
 		try {
 			var full = System.IO.Path.GetFullPath(path);
-			var drive = new System.IO.DriveInfo(System.IO.Path.GetPathRoot(full));
+			var root = System.IO.Path.GetPathRoot(full);
+			if (string.IsNullOrEmpty(root))
+				return "PathRootUnavailable";
+			var drive = new System.IO.DriveInfo(root);
 			var format = drive.DriveFormat;
 			return string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase) ? null : format;
 		}
@@ -2820,13 +3157,22 @@ public sealed class DebugSessionService : IDisposable {
 	const uint FILE_SHARE_WRITE = 0x00000002;
 	const uint OPEN_EXISTING = 3;
 	const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+	const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
 
 	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 	static extern IntPtr CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
 		IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
 
+	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	static extern bool CreateDirectoryW(string lpPathName, IntPtr lpSecurityAttributes);
+
 	[DllImport("kernel32.dll", SetLastError = true)]
 	static extern bool GetFileInformationByHandle(IntPtr hFile, out BY_HANDLE_FILE_INFORMATION lpFileInformation);
+
+	[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+	static extern uint GetFinalPathNameByHandleW(IntPtr hFile,
+		System.Text.StringBuilder lpszFilePath, uint cchFilePath, uint dwFlags);
 
 	[StructLayout(LayoutKind.Sequential)]
 	struct BY_HANDLE_FILE_INFORMATION {
@@ -2846,6 +3192,15 @@ public sealed class DebugSessionService : IDisposable {
 		if (!GetFileInformationByHandle(stream.SafeFileHandle.DangerousGetHandle(), out var info))
 			throw new IOException("GetFileInformationByHandle failed");
 		return (info.VolumeSerial, info.FileIndexHigh, info.FileIndexLow);
+	}
+
+	static string FinalPathOf(IntPtr handle) {
+		var buffer = new System.Text.StringBuilder(32768);
+		var count = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+		if (count == 0 || count >= buffer.Capacity)
+			throw new IOException("GetFinalPathNameByHandleW failed", new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+		var path = buffer.ToString();
+		return path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path.Substring(4) : path;
 	}
 
 	/// <summary>Minimal PE/CLR runtime-family detection for auto/harness modes: a sibling
@@ -2945,7 +3300,7 @@ public sealed class DebugSessionService : IDisposable {
 		return (int)v;
 	}
 
-	static List<string>? ArgStrings(Dictionary<string, object>? args, string key) {
+	static List<string> ArgStrings(Dictionary<string, object>? args, string key) {
 		if (args is not null && args.TryGetValue(key, out var raw) && raw is JsonElement { ValueKind: JsonValueKind.Array } je) {
 			var list = new List<string>();
 			foreach (var item in je.EnumerateArray())

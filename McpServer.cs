@@ -30,6 +30,9 @@ namespace dnSpy.Extension.MCP {
 		int actualPort;
 		readonly ConcurrentDictionary<string, SseSession> sseSessions = new ConcurrentDictionary<string, SseSession>();
 		readonly ConcurrentDictionary<string, StreamableHttpSession> streamableSessions = new ConcurrentDictionary<string, StreamableHttpSession>();
+		// Plain JSON POST is a compatibility transport without a session identifier. Real MCP
+		// SSE/Streamable transports keep their negotiated revision on their session objects.
+		string legacyPlainProtocolVersion = supportedProtocolVersions[0];
 		// Snapshot the current listener runs on (null while stopped). CON-DYN-006/009 security
 		// and limit decisions are made against this snapshot, never against live UI properties.
 		McpSettingsSnapshot? activeSnapshot;
@@ -614,7 +617,7 @@ namespace dnSpy.Extension.MCP {
 
 			try {
 				bool isNotification = request.Method?.StartsWith("notifications/", StringComparison.Ordinal) ?? false;
-				var response = HandleRequest(request);
+				var response = HandleRequest(request, session.ProtocolVersion, v => session.ProtocolVersion = v);
 				if (!isNotification) {
 					session.WriteEvent("message", RenderBoundedResponse(response));
 				}
@@ -641,7 +644,11 @@ namespace dnSpy.Extension.MCP {
 				return;
 			}
 
-			var response = HandleRequest(request);
+			var headerVersion = context.Request.Headers["MCP-Protocol-Version"];
+			var plainVersion = !string.IsNullOrEmpty(headerVersion) && Array.IndexOf(supportedProtocolVersions, headerVersion) >= 0
+				? headerVersion!
+				: legacyPlainProtocolVersion;
+			var response = HandleRequest(request, plainVersion, v => legacyPlainProtocolVersion = v);
 			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 
@@ -678,6 +685,7 @@ namespace dnSpy.Extension.MCP {
 
 			var headerSessionId = context.Request.Headers["Mcp-Session-Id"];
 			bool isInitialize = string.Equals(request.Method, "initialize", StringComparison.Ordinal);
+			StreamableHttpSession? requestSession = null;
 
 			if (isInitialize) {
 				// CON-DYN-009: the 17th session is rejected after parse, before allocation.
@@ -687,12 +695,13 @@ namespace dnSpy.Extension.MCP {
 						return;
 					}
 					var newId = Guid.NewGuid().ToString("N");
-					streamableSessions[newId] = new StreamableHttpSession(newId);
+					requestSession = new StreamableHttpSession(newId);
+					streamableSessions[newId] = requestSession;
 					context.Response.Headers["Mcp-Session-Id"] = newId;
 				}
 				settings.Log($"Streamable HTTP session opened");
 			}
-			else if (!string.IsNullOrEmpty(headerSessionId) && !streamableSessions.ContainsKey(headerSessionId!)) {
+			else if (!string.IsNullOrEmpty(headerSessionId) && !streamableSessions.TryGetValue(headerSessionId!, out requestSession)) {
 				// If the client presents a session ID we don't recognise, reject — the client
 				// should then re-initialize. Missing header is tolerated for leniency.
 				context.Response.StatusCode = 404;
@@ -705,14 +714,16 @@ namespace dnSpy.Extension.MCP {
 			bool isNotification = request.Method.StartsWith("notifications/", StringComparison.Ordinal) || request.Id == null;
 
 			if (isNotification) {
-				HandleRequest(request);
+				HandleRequest(request, requestSession?.ProtocolVersion ?? supportedProtocolVersions[0],
+					requestSession is null ? null : v => requestSession.ProtocolVersion = v);
 				context.Response.StatusCode = 202;
 				context.Response.ContentLength64 = 0;
 				context.Response.Close();
 				return;
 			}
 
-			var response = HandleRequest(request);
+			var response = HandleRequest(request, requestSession?.ProtocolVersion ?? supportedProtocolVersions[0],
+				requestSession is null ? null : v => requestSession.ProtocolVersion = v);
 			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 			context.Response.StatusCode = 200;
@@ -835,7 +846,7 @@ namespace dnSpy.Extension.MCP {
 			}
 		}
 
-		McpResponse HandleRequest(McpRequest request) {
+		McpResponse HandleRequest(McpRequest request, string protocolVersion, Action<string>? rememberProtocolVersion = null) {
 			try {
 				// Handle notifications (no response needed)
 				if (request.Method.StartsWith("notifications/")) {
@@ -851,10 +862,10 @@ namespace dnSpy.Extension.MCP {
 				settings.Log($"MCP request: {request.Method}");
 
 				var result = request.Method switch {
-					"initialize" => HandleInitialize(request.Params),
+					"initialize" => HandleInitialize(request.Params, rememberProtocolVersion),
 					"ping" => HandlePing(),
-					"tools/list" => HandleListTools(),
-					"tools/call" => HandleCallTool(request.Params),
+					"tools/list" => HandleListTools(protocolVersion),
+					"tools/call" => HandleCallTool(request.Params, protocolVersion),
 					"resources/list" => HandleListResources(),
 					"resources/read" => HandleReadResource(request.Params),
 					_ => throw new Exception($"Unknown method: {request.Method}")
@@ -892,17 +903,15 @@ namespace dnSpy.Extension.MCP {
 			}
 		}
 
-		// Last negotiated protocol revision (per-process approximation of the per-transport
-		// value; the dedicated-instance runbook guarantees a single driver at a time).
-		string negotiatedProtocolVersion = supportedProtocolVersions[0];
 		static string LatestProtocolVersion => "2025-06-18";
 
-		object HandleInitialize(Dictionary<string, object>? parameters) {
+		object HandleInitialize(Dictionary<string, object>? parameters, Action<string>? rememberProtocolVersion) {
 			// Per the MCP lifecycle spec the server MUST reply with the client's requested
 			// protocol version if it supports it, otherwise with its own newest supported
 			// version. Hardcoding 2024-11-05 (the pre-Streamable-HTTP revision) ignored the
 			// client's request; we negotiate instead.
-			negotiatedProtocolVersion = NegotiateProtocolVersion(parameters);
+			var negotiatedProtocolVersion = NegotiateProtocolVersion(parameters);
+			rememberProtocolVersion?.Invoke(negotiatedProtocolVersion);
 			return new InitializeResult {
 				ProtocolVersion = negotiatedProtocolVersion,
 				Capabilities = new ServerCapabilities {
@@ -942,13 +951,17 @@ namespace dnSpy.Extension.MCP {
 			return new { };
 		}
 
-		object HandleListTools() {
+		object HandleListTools(string protocolVersion) {
 			var tools = toolRegistry.GetAvailableTools();
 			// outputSchema is a 2025-06-18 advertisement field; older revisions must not see it.
-			if (negotiatedProtocolVersion != LatestProtocolVersion) {
-				tools = tools.Select(t => {
-					t.OutputSchema = null;
-					return t;
+			// Clone rather than mutating provider-owned ToolInfo instances: an older session must
+			// not erase schemas later observed by a concurrent 2025-06-18 session.
+			if (protocolVersion != LatestProtocolVersion) {
+				tools = tools.Select(t => new ToolInfo {
+					Name = t.Name,
+					Description = t.Description,
+					InputSchema = t.InputSchema,
+					OutputSchema = null,
 				}).ToList();
 			}
 			return new ListToolsResult {
@@ -956,7 +969,7 @@ namespace dnSpy.Extension.MCP {
 			};
 		}
 
-		object HandleCallTool(Dictionary<string, object>? parameters) {
+		object HandleCallTool(Dictionary<string, object>? parameters, string protocolVersion) {
 			if (parameters == null)
 				throw new ArgumentException("Parameters required");
 
@@ -968,11 +981,11 @@ namespace dnSpy.Extension.MCP {
 
 			var callResult = toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments);
 			// 2025-06-18 wire shape: structuredContent deep-equals the canonical text payload.
-			if (negotiatedProtocolVersion == LatestProtocolVersion && callResult != null) {
+			if (protocolVersion == LatestProtocolVersion && callResult != null) {
 				var text = callResult.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
 				if (!string.IsNullOrEmpty(text)) {
 					try {
-						using var doc = JsonDocument.Parse(text);
+						using var doc = JsonDocument.Parse(text!);
 						callResult.StructuredContent = JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText());
 					}
 					catch (JsonException) {
@@ -980,7 +993,9 @@ namespace dnSpy.Extension.MCP {
 					}
 				}
 			}
-			return callResult;
+			else if (callResult != null)
+				callResult.StructuredContent = null;
+			return callResult!;
 		}
 
 		object HandleListResources() {
@@ -1034,6 +1049,7 @@ namespace dnSpy.Extension.MCP {
 		readonly object writeLock = new object();
 
 		public string Id { get; }
+		public string ProtocolVersion { get; set; } = "2025-06-18";
 
 		public SseSession(string id, Stream stream) {
 			Id = id;
@@ -1075,6 +1091,7 @@ namespace dnSpy.Extension.MCP {
 	sealed class StreamableHttpSession {
 		public string Id { get; }
 		public DateTime CreatedAtUtc { get; } = DateTime.UtcNow;
+		public string ProtocolVersion { get; set; } = "2025-06-18";
 
 		public StreamableHttpSession(string id) {
 			Id = id;

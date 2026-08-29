@@ -14,6 +14,14 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		public McpSettingsControl() => InitializeComponent();
 
+		void RotateRemoteTokenButton_Click(object sender, RoutedEventArgs e) {
+			if (DataContext is not SettingsViewModel viewModel)
+				return;
+			viewModel.RequestRemoteTokenRotation();
+			MessageBox.Show("A new token will be generated and shown once when these settings are successfully applied.",
+				"MCP Remote Token", MessageBoxButton.OK, MessageBoxImage.Information);
+		}
+
 		/// <summary>
 		/// Handles the copy logs button click, copying all logs to clipboard with retry logic.
 		/// </summary>
