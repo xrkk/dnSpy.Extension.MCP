@@ -3357,8 +3357,8 @@ function Run-ACC023 {
     $m = $script:Manifest
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     $remoteUrl = "http://$($m.env.vm_ip):15100/"
-    $token = 'acc23-secret-token'
-    $tokenBytes = [Text.Encoding]::UTF8.GetBytes($token)
+    $tokenBytes = New-Object byte[] 32
+    ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
     $b64 = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
