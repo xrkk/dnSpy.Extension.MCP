@@ -2065,7 +2065,9 @@ public sealed class DebugSessionService : IDisposable {
 				markerSha = ConvertHexShim.ToHexString(sha.ComputeHash(Array.Empty<byte>())).ToLowerInvariant();
 			var markerAdmit = ledger.AdmitArtifactWrite(sessionId, ".session-marker", 0,
 				new ArtifactStoreLedger.ChildRecord(".session-marker", "0x0", new string('0', 32), 0, markerSha));
-			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok)
+			// The marker is constant per session: a second dump in the same session re-admits
+			// it and the ledger answers AlreadyExists — that is the idempotent success.
+			if (markerAdmit != ArtifactStoreLedger.AdmitResult.Ok && markerAdmit != ArtifactStoreLedger.AdmitResult.AlreadyExists)
 				return Fail(coordinator, MapAdmit(markerAdmit));
 			var markerPath = Path.Combine(root, sessionId, ".session-marker");
 			lock (artifactSessionHandles) {
