@@ -45,9 +45,13 @@ public sealed class DebugGateService {
 			samplePosted = true;
 			var captured = startupSnapshot;
 			postToDispatcher(() => {
-				bool idle = !isDebugging();
+				// DNMCP_TEST seam: simulate a debug session being active at extension startup
+				// (combo-D) — the sampled gate freezes closed, exactly like a real one.
+				bool busyAtStartup = (DebugSessionService.TestModeEnabled
+						&& Environment.GetEnvironmentVariable("DNMCP_TEST_STARTUP_DEBUGGING") == "1")
+					|| (isDebugging?.Invoke() ?? true);
 				lock (gateLock)
-					frozen ??= DebugFeatureGate.Freeze(captured, idle);
+					frozen ??= DebugFeatureGate.Freeze(captured, !busyAtStartup);
 			});
 		}
 	}
