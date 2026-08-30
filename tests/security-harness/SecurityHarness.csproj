@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../McpSettingsSnapshot.cs" Link="McpSettingsSnapshot.cs" />
+    <Compile Include="../../Debugger/ArtifactStoreLedger.cs" Link="ArtifactStoreLedger.cs" />
     <Compile Include="../../Transport/TransportSecurity.cs" Link="TransportSecurity.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>

@@ -61,17 +61,21 @@ Token 模式，则所有端点在 CIDR 通过后还必须认证(401 含
 不要把原始 token 写入仓库、测试证据或普通日志。回环 `localhost` 和默认 Host-Only
 单主机模式都不生成也不需要远程 token。
 
-## 4. ArtifactRoot 的人工退出步骤(无自动清理)
+## 4. ArtifactRoot 保留策略(无自动清理)
 
 扩展对 ArtifactRoot(默认桌面 `dnspy-mcp-artifacts`)**永不自动删除、移动、覆盖或截断**。
 静态保存产物位于该目录根层；动态调试产物及其安全账本隔离在
 `ArtifactRoot\.dnspy-mcp-debug` 下，避免合法的静态产物阻断模块 dump。
-跨重启的既有内容一律 `stale_untrusted` 只读报告,且使新增 session/artifact fail-closed
-(`TARGET_MISMATCH`);配额超限同样禁止新增。唯一退出方式:
+跨重启的既有 session 一律作为 `stale_untrusted`：扩展不会因其中的 marker 信任它们，
+只会以只读、禁止删除的句柄固定目录和文件身份/长度，并把会话数、文件数和字节数计入
+全局配额。身份变化、非法对象、reparse point 或配额超限仍会在新增写入前 fail-closed；
+正常保留的旧 session 不会阻断一个全新随机 session 的 dump。
+
+需要回收配额或移走旧产物时:
 
 1. 停止 dnSpy(先退出扩展进程);
 2. 人工将需要的动态产物移出 `ArtifactRoot\.dnspy-mcp-debug`，或清空该子目录；
-3. 确认该动态子目录恢复为空后，重启 dnSpy。ArtifactRoot 根层的静态产物无需移走。
+3. 重启 dnSpy。ArtifactRoot 根层的静态产物无需移走，也无需为了正常 dump 清空动态目录。
 
 ## 5. AllowedSampleRoot 与三根互斥
 

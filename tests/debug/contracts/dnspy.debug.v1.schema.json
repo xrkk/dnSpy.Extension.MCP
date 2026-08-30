@@ -482,7 +482,7 @@
             "retained_integrity": { "const": "process_lifetime_no_write_delete_share_handles" },
             "external_child_race": { "const": "current_admission_may_complete_next_admission_fail_closed" },
             "cancel_pending": { "const": "control_proceeds_store_fail_closed_until_final_completion" },
-            "restart_existing": { "const": "stale_untrusted_fail_closed" },
+            "restart_existing": { "const": "stale_untrusted_read_only_quota_counted" },
             "automatic_cleanup": { "const": false }
           },
           "required": [ "retention_scope", "retained_integrity", "external_child_race", "cancel_pending", "restart_existing", "automatic_cleanup" ]

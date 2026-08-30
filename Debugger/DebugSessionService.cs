@@ -529,6 +529,7 @@ public sealed class DebugSessionService : IDisposable {
 		public IReadOnlyList<string> EnumerateRootChildren() => Tree.Keys.ToList();
 		public IReadOnlyList<string> EnumerateSessionChildren(string sessionId) => Tree.TryGetValue(sessionId, out var c) ? c.Keys.ToList() : new List<string>();
 		public bool SessionDirectoryExists(string sessionId) => Tree.ContainsKey(sessionId);
+		public bool TryLeaseExistingSessionDirectory(string sessionId) => Tree.ContainsKey(sessionId);
 		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) =>
 			Tree.TryGetValue(sessionId, out var c) && c.TryGetValue(relativeName, out var v) ? (v.Volume, v.Id, v.Length) : null;
 		public void CreateSessionDirectory(string sessionId) => Tree.Add(sessionId, new Dictionary<string, (string, string, long)>(StringComparer.Ordinal));
@@ -573,10 +574,17 @@ public sealed class DebugSessionService : IDisposable {
 		var settledTwice = operation.TrySettle();
 
 		var staleFs = new TestArtifactFs();
-		staleFs.Tree["preexisting"] = new Dictionary<string, (string, string, long)>();
-		var staleLedger = new ArtifactStoreLedger(staleFs);
+		staleFs.Tree["preexisting"] = new Dictionary<string, (string, string, long)> {
+			["old"] = ("vol", "old-id", 4),
+		};
+		var staleLedger = new ArtifactStoreLedger(staleFs, maxSessions: 2,
+			maxFile: 10, maxSession: 10, maxStore: 10);
 		staleLedger.Initialize();
 		var startupStale = staleLedger.AdmitNewSession("new");
+		var staleAtLimit = staleLedger.AdmitArtifactReservationForTest("new", "at-limit", 6);
+		var staleOver = staleLedger.AdmitArtifactReservationForTest("new", "over", 1);
+		staleFs.Tree["preexisting"]["old"] = ("vol", "replaced-id", 4);
+		var staleTamper = staleLedger.AdmitArtifactReservationForTest("new", "after-tamper", 0);
 
 		var retainedFs = new TestArtifactFs();
 		var retainedLedger = new ArtifactStoreLedger(retainedFs, maxSessions: 2, maxFile: 10, maxSession: 10, maxStore: 10);
@@ -613,7 +621,11 @@ public sealed class DebugSessionService : IDisposable {
 			["store_over_rejected"] = storeOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
 			["external_child_fail_closed_zero_delta"] = mismatch == ArtifactStoreLedger.AdmitResult.TargetMismatch && fs.Tree.Count == beforeMismatch,
 			["cancel_timeline_exactly_once"] = active && canceling && settled && !settledTwice && operation.CurrentPhase == ArtifactOperationRecord.Phase.Settled,
-			["startup_stale_blocks_new"] = startupStale == ArtifactStoreLedger.AdmitResult.TargetMismatch && !staleFs.Tree.ContainsKey("new"),
+			["startup_stale_read_only_allows_new"] = startupStale == ArtifactStoreLedger.AdmitResult.Ok
+				&& staleFs.Tree.ContainsKey("preexisting") && staleFs.Tree.ContainsKey("new"),
+			["startup_stale_counts_toward_limits"] = staleAtLimit == ArtifactStoreLedger.AdmitResult.Ok
+				&& staleOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
+			["startup_stale_identity_reverified"] = staleTamper == ArtifactStoreLedger.AdmitResult.TargetMismatch,
 			["retained_counts_toward_limits"] = retained == ArtifactStoreLedger.TerminalResult.Retained && retainedBytes == 10
 				&& r2 == ArtifactStoreLedger.AdmitResult.Ok && retainedOver == ArtifactStoreLedger.AdmitResult.LimitExceeded,
 			["retained_identity_reverified"] = retainedTamper == ArtifactStoreLedger.AdmitResult.TargetMismatch,
@@ -1909,16 +1921,18 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	/// <summary>Mints (or reuses) the handle for one live thread in the current pause.</summary>
-	string MintThreadHandle(DbgThread thread) {
+	string MintThreadHandle(DbgThread thread) => MintThreadHandle(thread, coordinator.PauseEpoch);
+
+	string MintThreadHandle(DbgThread thread, int pauseEpoch) {
 		lock (sessionLock) {
 			foreach (var kv in threadsByHandleMint) {
-				if (kv.Value.Generation == coordinator.Generation && kv.Value.PauseEpoch == coordinator.PauseEpoch && kv.Value.Tid == thread.Id)
+				if (kv.Value.Generation == coordinator.Generation && kv.Value.PauseEpoch == pauseEpoch && kv.Value.Tid == thread.Id)
 					return kv.Key;
 			}
 			if (threadsByHandleMint.Count > 4096)
 				threadsByHandleMint.Clear();
 			var handle = $"th-{Interlocked.Increment(ref threadHandleSeq)}";
-			threadsByHandleMint[handle] = new ThreadHandleMint { Generation = coordinator.Generation, PauseEpoch = coordinator.PauseEpoch, Tid = thread.Id };
+			threadsByHandleMint[handle] = new ThreadHandleMint { Generation = coordinator.Generation, PauseEpoch = pauseEpoch, Tid = thread.Id };
 			return handle;
 		}
 	}
@@ -2527,18 +2541,51 @@ public sealed class DebugSessionService : IDisposable {
 			return Directory.Exists(dir) ? Directory.GetFileSystemEntries(dir).Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList() : new List<string>();
 		}
 		public bool SessionDirectoryExists(string sessionId) => Directory.Exists(SessionDir(sessionId));
-		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) {
+		public bool TryLeaseExistingSessionDirectory(string sessionId) {
+			if (sessionLeases.ContainsKey(sessionId))
+				return true;
+			Microsoft.Win32.SafeHandles.SafeFileHandle? lease = null;
 			try {
-				var path = Path.Combine(SessionDir(sessionId), relativeName);
-				// Share compatibility is bidirectional on Windows. The committed child handle has
-				// ReadWrite access while sharing Read only; this read-only observer must therefore
-				// share the existing writer, even though that writer still denies every external
-				// write/delete request.
-				using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-				var info = GetFileIdentity(lease);
-				return ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'), lease.Length);
+				var path = SessionDir(sessionId);
+				if (!Directory.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+					return false;
+				var raw = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, IntPtr.Zero, OPEN_EXISTING,
+					FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
+				if (raw == IntPtr.Zero || raw == new IntPtr(-1))
+					return false;
+				lease = new Microsoft.Win32.SafeHandles.SafeFileHandle(raw, ownsHandle: true);
+				var expected = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+				var actual = FinalPathOf(raw).TrimEnd(Path.DirectorySeparatorChar);
+				if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) {
+					lease.Dispose();
+					lease = null;
+					return false;
+				}
+				sessionLeases.Add(sessionId, lease);
+				lease = null;
+				return true;
 			}
-			catch { return null; }
+			catch { lease?.Dispose(); return false; }
+		}
+		public (string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName) {
+			FileStream? lease = null;
+			try {
+				var leaseKey = sessionId + "\0" + relativeName;
+				if (childLeases.TryGetValue(leaseKey, out var held)) {
+					var heldInfo = GetFileIdentity(held);
+					return ($"0x{heldInfo.VolumeSerial:x16}", $"{heldInfo.FileIndexHigh:x8}{heldInfo.FileIndexLow:x8}".PadLeft(32, '0'), held.Length);
+				}
+				var path = Path.Combine(SessionDir(sessionId), relativeName);
+				// Startup-stale children are opened read-only and retained with read-only sharing,
+				// preventing later write/delete substitution without ever trusting their contents.
+				lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+				var info = GetFileIdentity(lease);
+				var result = ($"0x{info.VolumeSerial:x16}", $"{info.FileIndexHigh:x8}{info.FileIndexLow:x8}".PadLeft(32, '0'), lease.Length);
+				childLeases.Add(leaseKey, lease);
+				lease = null;
+				return result;
+			}
+			catch { lease?.Dispose(); return null; }
 		}
 		public void CreateSessionDirectory(string sessionId) {
 			var path = SessionDir(sessionId);
@@ -3311,6 +3358,8 @@ public sealed class DebugSessionService : IDisposable {
 		var list = new List<BreakInfoObservation>();
 		string policy;
 		lock (sessionLock) policy = exceptionPolicy;
+		var eventPauseEpoch = coordinator.State == DebugStates.Running
+			? coordinator.PauseEpoch + 1 : coordinator.PauseEpoch;
 		int ordinal = 0;
 		foreach (var runtime in process.Runtimes) {
 			foreach (var info in runtime.BreakInfos) {
@@ -3318,12 +3367,15 @@ public sealed class DebugSessionService : IDisposable {
 				string? ownedId = null;
 				string? stepId = null;
 				string? stepKind = null;
+				DbgThread? eventThread = null;
+				DbgModule? eventModule = null;
 				bool policyPause = false;
 				if (info.Kind == DbgBreakInfoKind.Message && info.Data is DbgMessageEventArgs msg) {
 					switch (msg.Kind) {
 						case DbgMessageKind.BoundBreakpoint:
 							if (msg is DbgMessageBoundBreakpointEventArgs boundArgs) {
 								kind = "breakpoint";
+								eventThread = boundArgs.Thread;
 								lock (sessionLock) {
 									mcpIdByDnSpyBreakpoint.TryGetValue(boundArgs.BoundBreakpoint.Breakpoint.Id, out ownedId);
 									// ACC-035 module_handle scoping: the engine binds this
@@ -3333,8 +3385,9 @@ public sealed class DebugSessionService : IDisposable {
 									// Module unset on some bind paths (disk modules) — then the
 									// location's engine-unique id already scopes the hit.
 									var hitModule = boundArgs.BoundBreakpoint.Module;
+									moduleByOwnedBp.TryGetValue(ownedId ?? string.Empty, out var ownerModule);
+									eventModule = hitModule ?? ownerModule;
 									if (ownedId is not null
-										&& moduleByOwnedBp.TryGetValue(ownedId, out var ownerModule)
 										&& ownerModule is not null
 										&& hitModule is not null
 										&& !ReferenceEquals(ownerModule, hitModule))
@@ -3346,6 +3399,8 @@ public sealed class DebugSessionService : IDisposable {
 							break;
 						case DbgMessageKind.StepComplete:
 							kind = "step";
+							if (msg is DbgMessageStepCompleteEventArgs stepArgs)
+								eventThread = stepArgs.Thread;
 							lock (sessionLock) {
 								if (currentStep is { } pending) {
 									stepId = pending.Id;
@@ -3372,10 +3427,37 @@ public sealed class DebugSessionService : IDisposable {
 							break;
 					}
 				}
-				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause, stepKind));
+				if (eventThread is not null && eventModule is null)
+					eventModule = TopFrameModule(eventThread);
+				var threadHandle = eventThread is null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
+				var moduleHandle = ModuleHandleOf(eventModule);
+				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause,
+					stepKind, threadHandle, moduleHandle));
 			}
 		}
 		return list;
+	}
+
+	static DbgModule? TopFrameModule(DbgThread thread) {
+		try {
+			var walker = thread.CreateStackWalker();
+			try { return walker.GetNextStackFrames(1).FirstOrDefault()?.Module; }
+			finally { try { walker.Close(); } catch { } }
+		}
+		catch { return null; }
+	}
+
+	string? ModuleHandleOf(DbgModule? module) {
+		if (module is null)
+			return null;
+		lock (sessionLock) {
+			var record = modulesByHandle.Values.FirstOrDefault(m => ReferenceEquals(m.LiveModule, module))
+				?? modulesByHandle.Values.FirstOrDefault(m =>
+					(!string.IsNullOrEmpty(module.Filename)
+						&& string.Equals(m.Filename, module.Filename, StringComparison.OrdinalIgnoreCase))
+					|| string.Equals(m.Name, module.Name, StringComparison.OrdinalIgnoreCase));
+			return record?.ModuleHandle;
+		}
 	}
 
 	void OnIsDebuggingChanged(object? sender, EventArgs e) =>

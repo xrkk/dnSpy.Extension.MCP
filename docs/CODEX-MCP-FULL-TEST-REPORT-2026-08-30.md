@@ -20,7 +20,7 @@
 3. `list_assemblies` 的 `structuredContent` 从数组改为对象 `{ "assemblies": [...] }`，outputSchema 同步改为对象。
 4. 实现 `resources/templates/list`，当前按标准返回空的 `resourceTemplates` 页面。
 5. `list_assemblies.Culture` 规范化为普通字符串，避免序列化 dnlib `UTF8String` 对象。
-6. 动态 dump 安全账本改放在 `ArtifactRoot\.dnspy-mcp-debug`。静态 `save_assembly` 产物可以留在 ArtifactRoot 根层，不再触发误报 `TARGET_MISMATCH`；动态账本内部的跨重启残留、防篡改、限额和不覆盖策略保持不变。
+6. 动态 dump 安全账本改放在 `ArtifactRoot\.dnspy-mcp-debug`。静态 `save_assembly` 产物可以留在 ArtifactRoot 根层，不再触发误报 `TARGET_MISMATCH`。后续真实重启复测又修正了旧策略：跨重启 session 现在以不可信只读句柄固定、按身份/长度复核并计入配额，不再仅因存在而阻断新 session；非法对象、身份变化和配额超限仍 fail-closed。
 
 ## 协议与资源
 

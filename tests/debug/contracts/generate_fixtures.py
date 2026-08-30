@@ -373,7 +373,7 @@ def gen_capabilities_fixtures():
                                     "retained_integrity": "process_lifetime_no_write_delete_share_handles",
                                     "external_child_race": "current_admission_may_complete_next_admission_fail_closed",
                                     "cancel_pending": "control_proceeds_store_fail_closed_until_final_completion",
-                                    "restart_existing": "stale_untrusted_fail_closed",
+                                    "restart_existing": "stale_untrusted_read_only_quota_counted",
                                     "automatic_cleanup": False},
                 "limits": limits,
                 "unsupported": ["debug_list_attachable_processes", "debug_attach", "debug_detach"]}

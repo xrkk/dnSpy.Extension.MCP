@@ -876,7 +876,7 @@ function Run-ACC002 {
             @{ k = 'artifact_policy.retained_integrity'; e = 'process_lifetime_no_write_delete_share_handles'; a = "$($c.artifact_policy.retained_integrity)" },
             @{ k = 'artifact_policy.external_child_race'; e = 'current_admission_may_complete_next_admission_fail_closed'; a = "$($c.artifact_policy.external_child_race)" },
             @{ k = 'artifact_policy.cancel_pending'; e = 'control_proceeds_store_fail_closed_until_final_completion'; a = "$($c.artifact_policy.cancel_pending)" },
-            @{ k = 'artifact_policy.restart_existing'; e = 'stale_untrusted_fail_closed'; a = "$($c.artifact_policy.restart_existing)" },
+            @{ k = 'artifact_policy.restart_existing'; e = 'stale_untrusted_read_only_quota_counted'; a = "$($c.artifact_policy.restart_existing)" },
             @{ k = 'artifact_policy.automatic_cleanup'; e = 'False'; a = "$($c.artifact_policy.automatic_cleanup)" },
             @{ k = 'limits.memory_read_bytes'; e = '65536'; a = "$($c.limits.memory_read_bytes)" },
             @{ k = 'limits.control_queue_entries'; e = '8'; a = "$($c.limits.control_queue_entries)" },
@@ -3330,7 +3330,7 @@ function Run-ACC028 {
     $cap = Invoke-ToolNoInit 'debug_capabilities' @{ }
     $c = $cap.domain.result
     $evC = Save-Json 'a28-capabilities.json' $c
-    $apOk = ($c.artifact_policy.retention_scope -eq 'current_extension_process') -and (-not $c.artifact_policy.automatic_cleanup) -and ("$($c.artifact_policy.restart_existing)" -eq 'stale_untrusted_fail_closed')
+    $apOk = ($c.artifact_policy.retention_scope -eq 'current_extension_process') -and (-not $c.artifact_policy.automatic_cleanup) -and ("$($c.artifact_policy.restart_existing)" -eq 'stale_untrusted_read_only_quota_counted')
     $limOk = ($c.limits.request_body_bytes -eq 1048576) -and ($c.limits.tool_result_bytes -eq 8388608) -and ($c.limits.command_queue_entries -eq 64) -and ($c.limits.control_queue_entries -eq 8) -and ($c.limits.general_queue_entries -eq 56) -and ($c.limits.waits -eq 8) -and ($c.limits.value_snapshots_per_pause -eq 2) -and ($c.limits.value_handles_per_pause -eq 4096) -and ($c.limits.artifact_cancel_grace_ms -eq 2000)
     $unsup = @($c.unsupported) -join ','
     Assert-Cond 'a28-capabilities-policy-limits' 'artifact_policy + limits + unsupported fixed objects equal the contract' "policy=$apOk limits=$limOk unsup=$unsup" ($apOk -and $limOk -and ($unsup -eq 'debug_list_attachable_processes,debug_attach,debug_detach')) @($evC)
@@ -3847,14 +3847,14 @@ function Run-ACC036 {
 function Run-ACC019 {
     $m = $script:Manifest
     # This case owns the dedicated test ArtifactRoot and specifies an initially empty store.
-    # Perform the documented operator cleanup only while dnSpy is stopped, so leftovers from
-    # an earlier acceptance process cannot turn the first S1 positive control into the very
-    # cross-restart TARGET_MISMATCH that this case tests later.
+    # Perform cleanup only while dnSpy is stopped so this case begins from a deterministic
+    # empty quota baseline; the case later proves retained cross-restart sessions stay read-only
+    # and quota-counted without blocking a fresh session.
     Stop-DnSpyAndTargets
     Reset-TestArtifactRoot
     # Static save_assembly products legitimately live directly under ArtifactRoot.  The
-    # debugger's fail-closed ledger must be isolated from those files while retaining its
-    # own cross-restart stale-session protection beneath .dnspy-mcp-debug.
+    # debugger's ledger must be isolated from those files while retaining its own read-only,
+    # quota-counted cross-restart stale-session protection beneath .dnspy-mcp-debug.
     $staticSibling = Join-Path $m.env.artifact_root 'static-save-sibling.exe'
     [IO.File]::WriteAllBytes($staticSibling, [byte[]](0x4d, 0x5a, 0x00, 0x00))
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
@@ -3912,14 +3912,14 @@ function Run-ACC019 {
         Start-Sleep -Milliseconds 1000
     }
 
-    # [4] Restart empties the in-memory ledger. Existing directories have no current-process
-    # provenance, remain untouched, and block new store mutation until stopped-process
-    # operator cleanup.
+    # [4] Restart empties the writer ledger. Existing directories have no current-process
+    # provenance, remain untouched/read-only, count toward quotas, and do not block a fresh
+    # uniquely named session directory.
     Stop-DnSpyAndTargets
     $up = Ensure-CanonicalDnSpy
     $stale = Invoke-DumpCycle 'stale'
     $s1post = if ($s1dir -and (Test-Path $s1dir)) { (Get-ChildItem $s1dir -File | Measure-Object).Count } else { 0 }
-    Assert-Cond 'a19-restart-stale-blocks' 'restart: pre-existing session remains untouched and next dump is TARGET_MISMATCH' "up=$up code=$($stale.code) s1files=$s1post" ($up -and (-not $stale.ok) -and ("$($stale.code)" -eq 'TARGET_MISMATCH') -and ($s1post -ge 3)) @()
+    Assert-Cond 'a19-restart-stale-read-only' 'restart: pre-existing session remains untouched and a fresh dump succeeds' "up=$up ok=$($stale.ok) s1files=$s1post" ($up -and $stale.ok -and ($s1post -ge 3)) @()
 
     Stop-DnSpyAndTargets
     Reset-TestArtifactRoot
@@ -3934,9 +3934,9 @@ function Run-ACC019 {
     $pr = $probe.domain.result
     $probeEv = Save-Json 'a19-artifact-seam-matrix.json' $pr
     $bools = @('session_admitted','file_at_limit','file_over_rejected_zero_delta','session_over_rejected_zero_delta','second_session_admitted','store_at_limit','store_over_rejected','external_child_fail_closed_zero_delta','cancel_timeline_exactly_once',
-        'startup_stale_blocks_new','retained_counts_toward_limits','retained_identity_reverified','post_create_cancel_aborted_owned','pre_create_deadline_zero_delta')
+        'startup_stale_read_only_allows_new','startup_stale_counts_toward_limits','startup_stale_identity_reverified','retained_counts_toward_limits','retained_identity_reverified','post_create_cancel_aborted_owned','pre_create_deadline_zero_delta')
     $badProbe = @($bools | Where-Object { -not [bool]$pr.PSObject.Properties[$_].Value })
-    Assert-Cond 'a19-quota-cancel-seam' 'limits, startup stale, retained identity/accounting, pre-create deadline and post-create aborted_owned all fail closed; cancellation settles once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
+    Assert-Cond 'a19-quota-cancel-seam' 'limits, startup-stale read-only admission/accounting, identity checks, pre-create deadline and post-create aborted_owned all hold; cancellation settles once' "bad=$($badProbe -join ',')" ($probe.domain.ok -and $badProbe.Count -eq 0) @($probe.rpc.resp, $probeEv)
 
     # Retention is the behavior under test, but this case must not leave retained identities
     # in the shared acceptance root for ACC-032 or a later independent run.

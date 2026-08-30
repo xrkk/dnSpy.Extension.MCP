@@ -15,6 +15,11 @@ public interface IArtifactStoreFs {
 	/// <summary>Direct child names of a session directory (at most 4097 are read).</summary>
 	IReadOnlyList<string> EnumerateSessionChildren(string sessionId);
 	bool SessionDirectoryExists(string sessionId);
+	/// <summary>
+	/// Validate and retain a read-only, no-delete lease for an existing direct-child directory.
+	/// Returns false for files, reparse points, path substitutions or inaccessible directories.
+	/// </summary>
+	bool TryLeaseExistingSessionDirectory(string sessionId);
 	/// <summary>Handle-derived identity + length of a child file, or null when absent.</summary>
 	(string VolumeSerial, string FileId, long Length)? ObserveChild(string sessionId, string relativeName);
 	/// <summary>CreateDirectory of a direct child; must throw when the name exists.</summary>
@@ -75,10 +80,12 @@ public sealed class ArtifactStoreLedger {
 	// Session state: active writers, process-lifetime known-retained ledgers, and stale names.
 	readonly Dictionary<string, List<ChildRecord>> ledgerSessions = new(StringComparer.Ordinal);
 	readonly Dictionary<string, List<ChildRecord>> retainedSessions = new(StringComparer.Ordinal);
-	readonly HashSet<string> staleNames = new(StringComparer.Ordinal);
+	readonly Dictionary<string, List<ChildRecord>> staleSessions = new(StringComparer.Ordinal);
+	readonly HashSet<string> invalidStaleNames = new(StringComparer.Ordinal);
 	readonly long maxFile, maxSession, maxStore;
 	readonly int maxSessions;
 	bool initialized;
+	bool startupLimitExceeded;
 
 	public ArtifactStoreLedger(IArtifactStoreFs fs,
 		int maxSessions = MaxRetainedSessions, long maxFile = MaxFileBytes,
@@ -91,21 +98,36 @@ public sealed class ArtifactStoreLedger {
 	}
 
 	public int LedgerSessionCount { get { lock (gate) return ledgerSessions.Count + retainedSessions.Count; } }
-	public int StaleCount { get { lock (gate) return staleNames.Count; } }
+	public int StaleCount { get { lock (gate) return staleSessions.Count + invalidStaleNames.Count; } }
 	public long LedgerBytes { get { lock (gate) return AllLedgerChildren().Sum(c => c.Length); } }
 	public int AbortedOwnedCount { get { lock (gate) return AllLedgerChildren().Count(c => c.Status == "aborted_owned"); } }
 	/// <summary>Retained bytes never re-read or re-hashed after commit (retained_bytes_hashed=0).</summary>
 	public long RetainedBytesHashed => 0;
 
 	/// <summary>
-	/// Startup scan: the in-process ledger starts empty; every existing direct child of the root
-	/// is stale_untrusted — a structure-legal or copied marker creates no ledger entry.
+	/// Startup scan: the in-process writer ledger starts empty. Existing session directories are
+	/// leased and snapshotted as stale_untrusted: their marker is never trusted, their identity /
+	/// length is re-verified before every admission, and their capacity counts against all store
+	/// quotas. Invalid objects remain fail-closed without being modified.
 	/// </summary>
 	public void Initialize() {
 		lock (gate) {
 			initialized = true;
-			foreach (var name in fs.EnumerateRootChildren())
-				staleNames.Add(name);
+			var roots = fs.EnumerateRootChildren();
+			if (roots.Count > MaxRootChildren)
+				startupLimitExceeded = true;
+			foreach (var name in roots) {
+				if (TrySnapshotStaleSession(name, out var children, out var limitExceeded))
+					staleSessions[name] = children;
+				else
+					invalidStaleNames.Add(name);
+				startupLimitExceeded |= limitExceeded;
+			}
+			if (staleSessions.Count + invalidStaleNames.Count > maxSessions)
+				startupLimitExceeded = true;
+			if (StaleChildren().Count() > MaxStoreChildren
+				|| SumWouldExceed(StaleChildren(), maxStore))
+				startupLimitExceeded = true;
 		}
 	}
 
@@ -126,7 +148,8 @@ public sealed class ArtifactStoreLedger {
 				return verify;
 			if (fs.SessionDirectoryExists(sessionId) || ledgerSessions.ContainsKey(sessionId))
 				return AdmitResult.AlreadyExists;
-			if (ledgerSessions.Count + retainedSessions.Count + 1 > maxSessions)
+			if (ledgerSessions.Count + retainedSessions.Count + staleSessions.Count
+				+ invalidStaleNames.Count + 1 > maxSessions)
 				return AdmitResult.LimitExceeded;
 			fs.CreateSessionDirectory(sessionId);
 			ledgerSessions[sessionId] = new List<ChildRecord>();
@@ -165,11 +188,11 @@ public sealed class ArtifactStoreLedger {
 				return AdmitResult.LimitExceeded;
 			if (WouldExceed(children.Sum(c => c.Length), length, maxSession))
 				return AdmitResult.LimitExceeded;
-			if (WouldExceed(AllLedgerChildren().Sum(c => c.Length), length, maxStore))
+			if (WouldExceed(AllTrackedChildren().Sum(c => c.Length), length, maxStore))
 				return AdmitResult.LimitExceeded;
 			if (children.Count + 1 > MaxSessionChildren)
 				return AdmitResult.LimitExceeded;
-			if (AllLedgerChildren().Count() + 1 > MaxStoreChildren)
+			if (AllTrackedChildren().Count() + 1 > MaxStoreChildren)
 				return AdmitResult.LimitExceeded;
 			if (operation?.IsExpiredNow == true)
 				return AdmitResult.OperationTimedOut;
@@ -235,7 +258,11 @@ public sealed class ArtifactStoreLedger {
 				retainedSessions.Add(sessionId, children);
 				return TerminalResult.Retained;
 			}
-			staleNames.Add(sessionId);
+			if (TrySnapshotStaleSession(sessionId, out var staleChildren, out var limitExceeded))
+				staleSessions[sessionId] = staleChildren;
+			else
+				invalidStaleNames.Add(sessionId);
+			startupLimitExceeded |= limitExceeded;
 			return TerminalResult.StaleUntrusted;
 		}
 	}
@@ -249,17 +276,19 @@ public sealed class ArtifactStoreLedger {
 		var rootChildren = fs.EnumerateRootChildren();
 		if (rootChildren.Count > MaxRootChildren)
 			return AdmitResult.LimitExceeded;
-		// Startup/pre-existing and any subsequently classified stale object is never a
-		// provenance root.  It counts toward the read-only root limit but blocks every new
-		// extension delta until the operator stops the extension and empties the root.
-		if (staleNames.Count != 0)
+		if (startupLimitExceeded)
+			return AdmitResult.LimitExceeded;
+		// Files, reparse points and objects that could not be leased/snapshotted never become
+		// writable provenance roots and keep the store fail-closed.
+		if (invalidStaleNames.Count != 0)
 			return AdmitResult.TargetMismatch;
-		// known_retained sessions stay in the re-verification set for the whole process
-		// lifetime (retention lease) — leaving them out would flag them as unknown siblings.
-		var known = new HashSet<string>(ledgerSessions.Keys.Concat(retainedSessions.Keys), StringComparer.Ordinal);
-		if (!rootChildren.All(known.Contains))
+		// active, retained, and startup-stale sessions all stay in the exact re-verification
+		// set for this process. Stale marker contents confer no ownership or write authority.
+		var known = new HashSet<string>(ledgerSessions.Keys.Concat(retainedSessions.Keys)
+			.Concat(staleSessions.Keys), StringComparer.Ordinal);
+		if (rootChildren.Count != known.Count || !known.SetEquals(rootChildren))
 			return AdmitResult.TargetMismatch;
-		foreach (var pair in ledgerSessions.Concat(retainedSessions)) {
+		foreach (var pair in ledgerSessions.Concat(retainedSessions).Concat(staleSessions)) {
 			var sessionId = pair.Key;
 			var children = pair.Value;
 			var observed = fs.EnumerateSessionChildren(sessionId);
@@ -274,11 +303,52 @@ public sealed class ArtifactStoreLedger {
 					return AdmitResult.TargetMismatch;
 			}
 		}
+		if (AllTrackedChildren().Count() > MaxStoreChildren
+			|| SumWouldExceed(AllTrackedChildren(), maxStore))
+			return AdmitResult.LimitExceeded;
 		return AdmitResult.Ok;
+	}
+
+	bool TrySnapshotStaleSession(string sessionId, out List<ChildRecord> children,
+		out bool limitExceeded) {
+		children = new List<ChildRecord>();
+		limitExceeded = false;
+		if (!fs.SessionDirectoryExists(sessionId) || !fs.TryLeaseExistingSessionDirectory(sessionId))
+			return false;
+		var names = fs.EnumerateSessionChildren(sessionId);
+		if (names.Count > MaxSessionChildren)
+			limitExceeded = true;
+		long sessionBytes = 0;
+		foreach (var name in names) {
+			var identity = fs.ObserveChild(sessionId, name);
+			if (identity is null || identity.Value.Length < 0)
+				return false;
+			if (identity.Value.Length > maxFile
+				|| WouldExceed(sessionBytes, identity.Value.Length, maxSession))
+				limitExceeded = true;
+			if (sessionBytes <= maxSession && identity.Value.Length <= maxSession - sessionBytes)
+				sessionBytes += identity.Value.Length;
+			else
+				sessionBytes = maxSession;
+			children.Add(new ChildRecord(name, identity.Value.VolumeSerial,
+				identity.Value.FileId, identity.Value.Length, string.Empty, "stale_untrusted"));
+		}
+		return true;
 	}
 
 	IEnumerable<ChildRecord> AllLedgerChildren() =>
 		ledgerSessions.Values.Concat(retainedSessions.Values).SelectMany(v => v);
+	IEnumerable<ChildRecord> StaleChildren() => staleSessions.Values.SelectMany(v => v);
+	IEnumerable<ChildRecord> AllTrackedChildren() => AllLedgerChildren().Concat(StaleChildren());
+	static bool SumWouldExceed(IEnumerable<ChildRecord> children, long limit) {
+		long total = 0;
+		foreach (var child in children) {
+			if (WouldExceed(total, child.Length, limit))
+				return true;
+			total += child.Length;
+		}
+		return false;
+	}
 
 	static bool WouldExceed(long current, long add, long limit) =>
 		current < 0 || add < 0 || current > limit || add > limit - current;

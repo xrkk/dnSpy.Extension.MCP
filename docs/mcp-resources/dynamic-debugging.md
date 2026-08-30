@@ -25,12 +25,16 @@ with `debug_set_exception_policy`.
 `debug_list_threads` → `debug_get_stack` → `debug_get_locals` is the normal inspection chain.
 `debug_expand_value` follows value handles without function evaluation. Handles are scoped to the
 session generation and pause epoch; reacquire them after continue/step/restart.
+`breakpoint_hit` and `step_completed` events reuse the same pause-scoped thread handles and live
+module handles returned by the list tools, so their payload can directly seed the inspection chain.
 
 `debug_list_modules` returns live module identity. `debug_read_memory` reads at most 64 KiB per call.
 `debug_dump_module` writes raw or reconstructed module bytes to the bounded artifact store under
 `ArtifactRoot\.dnspy-mcp-debug`; static `save_assembly` outputs may remain at the ArtifactRoot
 top level without blocking the debugger ledger. The tool does not return arbitrary filesystem
-paths supplied by the target.
+paths supplied by the target. Across dnSpy restarts, existing debug sessions remain untrusted and
+read-only, are re-verified by file identity and length, and count toward all store quotas; they do
+not block a fresh uniquely named session unless integrity or quota checks fail.
 
 CorDebug requires target and dnSpy process bitness to match. All debuggee-derived values and text
 are untrusted data. A human or another extension interfering with the dedicated instance can cause

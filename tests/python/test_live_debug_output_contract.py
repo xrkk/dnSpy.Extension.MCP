@@ -370,6 +370,11 @@ class LiveDebugOutputContractTests(unittest.TestCase):
             },
         )
         self.assertFalse(waited["result"]["timed_out"])
+        breakpoint_event = next(
+            event
+            for event in waited["result"]["events"]
+            if event["kind"] == "breakpoint_hit"
+        )
 
         self.pause()
         threads = self.call(
@@ -379,6 +384,14 @@ class LiveDebugOutputContractTests(unittest.TestCase):
                 "generation": self.generation,
                 "pause_epoch": self.pause_epoch,
             },
+        )
+        self.assertIn(
+            breakpoint_event["payload"]["thread_handle"],
+            {item["thread_handle"] for item in threads["result"]["items"]},
+        )
+        self.assertEqual(
+            module["module_handle"],
+            breakpoint_event["payload"]["location"]["module_handle"],
         )
         thread = next(
             (item for item in threads["result"]["items"] if item["is_current"]),
@@ -494,6 +507,27 @@ class LiveDebugOutputContractTests(unittest.TestCase):
         )
         self.assertFalse(step_event["result"]["timed_out"])
         self.pause()
+        post_step_threads = self.call(
+            "debug_list_threads",
+            {
+                "session_id": self.session_id,
+                "generation": self.generation,
+                "pause_epoch": self.pause_epoch,
+            },
+        )
+        completed = next(
+            event
+            for event in step_event["result"]["events"]
+            if event["kind"] == "step_completed"
+        )
+        self.assertIn(
+            completed["payload"]["thread_handle"],
+            {item["thread_handle"] for item in post_step_threads["result"]["items"]},
+        )
+        self.assertEqual(
+            module["module_handle"],
+            completed["payload"]["location"]["module_handle"],
+        )
         self.call(
             "debug_remove_breakpoint",
             {

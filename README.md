@@ -84,7 +84,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 - **Modules and memory**: `debug_list_modules`, `debug_read_memory`, `debug_dump_module`
 - **Exception policy**: `debug_set_exception_policy`
 
-Dynamic debugging is limited to processes launched and owned by the MCP; attach/detach is not supported. CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
+Dynamic debugging is limited to processes launched and owned by the MCP; attach/detach is not supported. CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. Dynamic dumps remain under `ArtifactRoot\.dnspy-mcp-debug`; after a dnSpy restart, old sessions remain untrusted/read-only and quota-counted but do not block a fresh session unless identity or quota verification fails. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
 
 ### MCP Resources (14 total)
 

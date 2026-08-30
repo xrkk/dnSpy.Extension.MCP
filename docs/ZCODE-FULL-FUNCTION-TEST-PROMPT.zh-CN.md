@@ -86,9 +86,9 @@
 3. 立刻以同一 request_id、相同参数重试，验证返回同一成功结果；再以同一 request_id 改一个参数，必须返回 `REQUEST_ID_REUSE`。
 4. 使用每次响应最新的 session_id、generation、pause_epoch，覆盖：status、read/wait events、exception policy、modules、threads、stack、locals、memory。
 5. 从静态工具取得 `Compute(Int32)` token，从 `debug_list_modules` 取得真实 module_handle/MVID/SHA，在合法 IL offset 0 建断点。
-6. 覆盖 breakpoint create/list/disable/验证/enable/验证；continue 后必须真实命中 Compute，重新获取线程、stack、locals，并执行 `debug_step`。
+6. 覆盖 breakpoint create/list/disable/验证/enable/验证；continue 后必须真实命中 Compute，重新获取线程、stack、locals，并执行 `debug_step`。`breakpoint_hit` 与 `step_completed` 事件中的 `thread_handle` 必须能在该暂停态的 `debug_list_threads` 中找到，`location.module_handle` 必须与实际模块句柄一致，空字符串或占位句柄均不得判 PASS。
 7. 移除断点并验证列表为空；覆盖 continue、手动 pause、再次 continue、restart，确认 generation 增加。
-8. 在暂停态调用 `debug_dump_module`，必须成功。artifact 与 manifest 路径必须位于 `ArtifactRoot\.dnspy-mcp-debug\<session>`，artifact SHA 必须与源样本 SHA 完全一致。
+8. 在暂停态调用 `debug_dump_module`，必须成功。artifact 与 manifest 路径必须位于 `ArtifactRoot\.dnspy-mcp-debug\<session>`，artifact SHA 必须与源样本 SHA 完全一致。测试前不得为了规避失败而清空已有动态产物；正常的跨 dnSpy 重启旧 session 不得导致新 dump 返回 `TARGET_MISMATCH`。
 9. 最后 `debug_terminate`，再次 `debug_status` 必须为 idle。
 
 如果 pause epoch 改变，旧 thread/frame/value handle 必须得到 `STALE_HANDLE` 或被主动丢弃；随后重新获取，不能把旧句柄错误当服务端缺陷。

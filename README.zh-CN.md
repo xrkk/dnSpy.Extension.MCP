@@ -84,7 +84,7 @@ English: see [README.md](README.md).
 - **模块与内存**：`debug_list_modules`、`debug_read_memory`、`debug_dump_module`
 - **异常策略**：`debug_set_exception_policy`
 
-动态调试仅支持由 MCP 启动并拥有的进程，不支持 attach/detach。CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
+动态调试仅支持由 MCP 启动并拥有的进程，不支持 attach/detach。CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。动态 dump 保留在 `ArtifactRoot\.dnspy-mcp-debug`；dnSpy 重启后旧 session 仍是不可信只读内容并计入配额，但不会阻断新 session，除非身份复核或配额检查失败。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
 
 ### MCP 资源（共 14 个）
 

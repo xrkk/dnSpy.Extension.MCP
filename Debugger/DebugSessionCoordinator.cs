@@ -383,11 +383,20 @@ public sealed class DebugSessionCoordinator {
 					break;
 				case PauseCauseArbiter.Breakpoint:
 					if (info.OwnedBreakpointId != null)
-						WriteEvent(EventKinds.BreakpointHit, new { breakpoint_id = info.OwnedBreakpointId, thread_handle = (string?)"", location = new { module_handle = (string?)"" } }, untrusted: false);
+						WriteEvent(EventKinds.BreakpointHit, new {
+							breakpoint_id = info.OwnedBreakpointId,
+							thread_handle = info.ThreadHandle ?? "unknown-thread",
+							location = new { module_handle = info.ModuleHandle ?? "unknown-module" },
+						}, untrusted: false);
 					break;
 				case PauseCauseArbiter.Step:
 					if (info.StepId != null)
-						WriteEvent(EventKinds.StepCompleted, new { step_id = info.StepId, kind = info.StepKind ?? "into", thread_handle = (string?)"", location = new { module_handle = (string?)"" } }, untrusted: false);
+						WriteEvent(EventKinds.StepCompleted, new {
+							step_id = info.StepId,
+							kind = info.StepKind ?? "into",
+							thread_handle = info.ThreadHandle ?? "unknown-thread",
+							location = new { module_handle = info.ModuleHandle ?? "unknown-module" },
+						}, untrusted: false);
 					break;
 			}
 		}

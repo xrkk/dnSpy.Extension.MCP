@@ -236,7 +236,7 @@ public sealed class DebugCapabilitiesResultDto
         [JsonPropertyName("retained_integrity")] public string RetainedIntegrity { get; } = "process_lifetime_no_write_delete_share_handles";
         [JsonPropertyName("external_child_race")] public string ExternalChildRace { get; } = "current_admission_may_complete_next_admission_fail_closed";
         [JsonPropertyName("cancel_pending")] public string CancelPending { get; } = "control_proceeds_store_fail_closed_until_final_completion";
-        [JsonPropertyName("restart_existing")] public string RestartExisting { get; } = "stale_untrusted_fail_closed";
+        [JsonPropertyName("restart_existing")] public string RestartExisting { get; } = "stale_untrusted_read_only_quota_counted";
         [JsonPropertyName("automatic_cleanup")] public bool AutomaticCleanup { get; } = false;
     }
 
