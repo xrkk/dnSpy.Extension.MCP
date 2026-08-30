@@ -1620,9 +1620,10 @@ public sealed class DebugSessionService : IDisposable {
 		if (ilOffset < 0)
 			throw new ArgumentException("il_offset must be a non-negative IL instruction boundary", nameof(ilOffset));
 		if (identityStrength == "disk_strong" && string.IsNullOrEmpty(moduleSha))
-			throw new ArgumentException("disk_strong breakpoints require module_sha256", nameof(moduleSha));
+			throw new ArgumentException("disk_strong breakpoints require module_sha256", "module_sha256");
 		if (identityStrength == "runtime_weak" && !string.IsNullOrEmpty(moduleSha))
-			throw new ArgumentException("runtime_weak breakpoints reject module_sha256", nameof(moduleSha));
+			throw new ArgumentException("runtime_weak breakpoints reject module_sha256", "module_sha256");
+		var canonicalMethodToken = $"0x{tokenValue:x8}";
 
 		// Only handles minted by debug_list_modules are addressable; unknown or stale handles
 		// are TARGET_MISMATCH, never an implicit re-registration of the launch target.
@@ -1648,12 +1649,12 @@ public sealed class DebugSessionService : IDisposable {
 		foreach (var existingBp in bpStore.List()) {
 			if (existingBp.Module.ModuleHandle != moduleHandle
 				&& string.Equals(existingBp.Module.Mvid, mvid, StringComparison.OrdinalIgnoreCase)
-				&& string.Equals(existingBp.MethodToken, methodToken, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(existingBp.MethodToken, canonicalMethodToken, StringComparison.Ordinal)
 				&& existingBp.IlOffset == ilOffset)
 				return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: "identity already owned by another module_handle of this session");
 		}
 		var shaForCreate = string.IsNullOrEmpty(moduleSha) ? module.Sha256 : moduleSha;
-		var (entry, error) = bpStore.TryCreate(moduleHandle, shaForCreate, mvid, methodToken, ilOffset, enabled);
+		var (entry, error) = bpStore.TryCreate(moduleHandle, shaForCreate, mvid, canonicalMethodToken, ilOffset, enabled);
 		if (entry is null || error != DebugBreakpointStore.CreateError.None)
 			return Fail(coordinator, MapCreateError(error), message: $"breakpoint rejected: {error}");
 
@@ -1840,9 +1841,9 @@ public sealed class DebugSessionService : IDisposable {
 				Path = module?.Filename,
 				Mvid = entry.Module.Mvid,
 				Sha256 = entry.Module.Sha256,
-				BaseAddress = 0,
-				Size = 0,
-				Layout = "file",
+				BaseAddress = module is null ? "0x0" : $"0x{module.Address:x}",
+				Size = module?.Size ?? 0,
+				Layout = module?.Layout ?? "file",
 				IdentityStrength = entry.Module.IdentityStrength,
 			},
 			MethodToken = entry.MethodToken,
@@ -1984,8 +1985,8 @@ public sealed class DebugSessionService : IDisposable {
 		var dto = new PagedItemsDto {
 			Items = page.Select((t, i) => (object)new ThreadInfoDto {
 				ThreadHandle = t.handle,
-				ManagedId = t.thread.ManagedId?.ToString(),
-				OsId = t.thread.Id.ToString(),
+				ManagedId = t.thread.ManagedId is null ? null : Convert.ToInt64(t.thread.ManagedId.Value),
+				OsId = checked((long)t.thread.Id),
 				Name = t.thread.HasName() ? t.thread.Name : null,
 				State = "paused",
 				IsCurrent = start + i == 0,
@@ -2143,6 +2144,7 @@ public sealed class DebugSessionService : IDisposable {
 		public int Depth;
 		public string Name = string.Empty;
 		public string Kind = "local";
+		public string Type = "unknown";
 		public string? Display;
 		public int FrameIndex;
 		public List<ValueHandleEntry> SnapshotChildren = new();
@@ -2201,7 +2203,8 @@ public sealed class DebugSessionService : IDisposable {
 					dnSpy.Contracts.Debugger.Evaluation.DbgLocalsValueNodeEvaluationOptions.ShowRawLocals);
 				var queue = new Queue<(ValueHandleEntry entry, dnSpy.Contracts.Debugger.Evaluation.DbgValueNode node)>();
 				foreach (var local in locals) {
-					var entry = NewSnapshotEntry(local.ValueNode.Expression, local.Kind.ToString().ToLowerInvariant(), null, 0);
+					var entry = NewSnapshotEntry(local.ValueNode.Expression, ValueKindOf(local.ValueNode, local.Kind), null, 0);
+					entry.Type = FormatNodeType(evalInfo, local.ValueNode);
 					entry.Display = FormatNode(evalInfo, local.ValueNode);
 					roots.Add(entry);
 					if (entry.Depth < 4)
@@ -2218,7 +2221,8 @@ public sealed class DebugSessionService : IDisposable {
 					var children = node.GetChildren(evalInfo, 0, (int)Math.Min(100, (long)childCount), FixedNodeOptions);
 					foreach (var child in children) {
 						if (nodeCount >= nodeCap) { truncated = true; break; }
-						var childEntry = NewSnapshotEntry(child.Expression, "child", parent, parent.Depth + 1);
+						var childEntry = NewSnapshotEntry(child.Expression, ValueKindOf(child), parent, parent.Depth + 1);
+						childEntry.Type = FormatNodeType(evalInfo, child);
 						childEntry.Display = FormatNode(evalInfo, child);
 						nodeCount++;
 						if (childEntry.Depth < 4)
@@ -2243,11 +2247,11 @@ public sealed class DebugSessionService : IDisposable {
 		var dto = new LocalsResultDto { Items = items, Truncated = truncated, TotalKnown = roots.Count };
 		if (pageSize < roots.Count)
 			dto.NextPageCursor = pageSize.ToString();
-		dto.Budgets = BudgetsUsed();
+		dto.Budgets = BudgetsUsed(truncated);
 		return Ok(coordinator, dto, untrustedSampleData: true);
 	}
 
-	object BudgetsUsed() {
+	object BudgetsUsed(bool truncated = false) {
 		int handles, nodes;
 		int maxDepth = 0;
 		lock (sessionLock) {
@@ -2262,8 +2266,20 @@ public sealed class DebugSessionService : IDisposable {
 		return new {
 			depth_limit = 4, node_limit = 1024, value_handle_limit = 4096,
 			string_utf8_limit = 65536, response_utf8_limit = 8388608,
-			depth_used = maxDepth, nodes_used = nodes, value_handles_used = handles,
+			depth_used = maxDepth, nodes_used = nodes, value_handles_used = handles, truncated,
 		};
+	}
+
+	static string ValueKindOf(dnSpy.Contracts.Debugger.Evaluation.DbgValueNode node,
+		dnSpy.Contracts.Debugger.Evaluation.DbgLocalsValueNodeKind? localKind = null) {
+		if (node.ImageName == dnSpy.Contracts.Debugger.Evaluation.PredefinedDbgValueNodeImageNames.This)
+			return "this";
+		if (localKind == dnSpy.Contracts.Debugger.Evaluation.DbgLocalsValueNodeKind.Parameter)
+			return "parameter";
+		if (localKind is not null)
+			return "local";
+		return node.ImageName == dnSpy.Contracts.Debugger.Evaluation.PredefinedDbgValueNodeImageNames.ArrayElement
+			? "array_element" : "field";
 	}
 
 	ValueHandleEntry NewSnapshotEntry(string name, string kind, ValueHandleEntry? parent, int depth) {
@@ -2323,6 +2339,22 @@ public sealed class DebugSessionService : IDisposable {
 		return writer.ToString();
 	}
 
+	static string FormatNodeType(dnSpy.Contracts.Debugger.Evaluation.DbgEvaluationInfo evalInfo,
+		dnSpy.Contracts.Debugger.Evaluation.DbgValueNode node) {
+		try {
+			var writer = new StringBufferWriter();
+			node.FormatExpectedType(evalInfo, writer,
+				dnSpy.Contracts.Debugger.Evaluation.DbgValueFormatterTypeOptions.IntrinsicTypeKeywords,
+				dnSpy.Contracts.Debugger.Evaluation.DbgValueFormatterOptions.NoDebuggerDisplay,
+				System.Globalization.CultureInfo.InvariantCulture);
+			var type = writer.ToString();
+			return string.IsNullOrEmpty(type) ? "unknown" : type;
+		}
+		catch {
+			return "unknown";
+		}
+	}
+
 	DbgStackFrame? GetFrameByIndex(int index) {
 		DbgProcess? process;
 		lock (sessionLock) process = ownedProcess;
@@ -2351,14 +2383,16 @@ public sealed class DebugSessionService : IDisposable {
 		string? unavailable = entry.Display is not null && entry.Display.Contains("内部调试器错误")
 			? "requires_function_evaluation"
 			: null;
+		var hasChildren = entry.SnapshotChildren.Count > 0;
 		return new ValueNodeDto {
-			ValueHandle = entry.Handle,
+			ValueHandle = hasChildren && unavailable is null ? entry.Handle : null,
 			ParentValueHandle = entry.ParentHandle.Length == 0 ? null : entry.ParentHandle,
 			Depth = entry.Depth,
 			Name = entry.Name,
 			Kind = entry.Kind,
-			Display = entry.Display,
-			HasChildren = entry.SnapshotChildren.Count > 0,
+			Type = entry.Type,
+			Display = entry.Display ?? string.Empty,
+			HasChildren = hasChildren,
 			IsNull = entry.Display == "null",
 			Truncated = false,
 			UnavailableReason = unavailable,
@@ -2663,7 +2697,7 @@ public sealed class DebugSessionService : IDisposable {
 		Path = string.IsNullOrEmpty(m.Filename) ? null : m.Filename,
 		Mvid = m.Mvid,
 		Sha256 = m.Sha256,
-		BaseAddress = (long)m.Address,
+		BaseAddress = $"0x{m.Address:x}",
 		Size = m.Size,
 		Layout = m.Layout,
 		IdentityStrength = string.IsNullOrEmpty(m.Filename) ? "runtime_weak" : "disk_strong",
@@ -3809,8 +3843,8 @@ public sealed class DebugSessionService : IDisposable {
 
 	public sealed class ThreadInfoDto {
 		[System.Text.Json.Serialization.JsonPropertyName("thread_handle")] public string ThreadHandle { get; set; } = string.Empty;
-		[System.Text.Json.Serialization.JsonPropertyName("managed_id")] public string? ManagedId { get; set; }
-		[System.Text.Json.Serialization.JsonPropertyName("os_id")] public string? OsId { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("managed_id")] public long? ManagedId { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("os_id")] public long? OsId { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("name")] public string? Name { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("state")] public string State { get; set; } = "paused";
 		[System.Text.Json.Serialization.JsonPropertyName("is_current")] public bool IsCurrent { get; set; }
@@ -3853,7 +3887,8 @@ public sealed class DebugSessionService : IDisposable {
 		[System.Text.Json.Serialization.JsonPropertyName("depth")] public int Depth { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
 		[System.Text.Json.Serialization.JsonPropertyName("kind")] public string Kind { get; set; } = "local";
-		[System.Text.Json.Serialization.JsonPropertyName("display")] public string? Display { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("type")] public string Type { get; set; } = "unknown";
+		[System.Text.Json.Serialization.JsonPropertyName("display")] public string Display { get; set; } = string.Empty;
 		[System.Text.Json.Serialization.JsonPropertyName("has_children")] public bool HasChildren { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("is_null")] public bool IsNull { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("truncated")] public bool Truncated { get; set; }
@@ -3891,7 +3926,7 @@ public sealed class DebugSessionService : IDisposable {
 		[System.Text.Json.Serialization.JsonPropertyName("path")] public string? Path { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("mvid")] public string Mvid { get; set; } = string.Empty;
 		[System.Text.Json.Serialization.JsonPropertyName("sha256")] public string? Sha256 { get; set; }
-		[System.Text.Json.Serialization.JsonPropertyName("base_address")] public long BaseAddress { get; set; }
+		[System.Text.Json.Serialization.JsonPropertyName("base_address")] public string BaseAddress { get; set; } = "0x0";
 		[System.Text.Json.Serialization.JsonPropertyName("size")] public long Size { get; set; }
 		[System.Text.Json.Serialization.JsonPropertyName("layout")] public string Layout { get; set; } = "file";
 		[System.Text.Json.Serialization.JsonPropertyName("identity_strength")] public string IdentityStrength { get; set; } = "strong";

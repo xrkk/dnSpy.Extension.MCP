@@ -425,7 +425,7 @@
     },
     "debug_dump_module_args": {
       "type": "object", "additionalProperties": false,
-      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "module_handle": { "$ref": "#/$defs/opaque_handle" }, "relative_name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!\\.{1,2}$)(?!.*[. ]$)[^/\\\\:\\\\s]+$" } },
+      "properties": { "session_id": { "$ref": "#/$defs/session_id" }, "generation": { "$ref": "#/$defs/non_negative_int" }, "pause_epoch": { "$ref": "#/$defs/non_negative_int" }, "request_id": { "$ref": "#/$defs/uuid" }, "module_handle": { "$ref": "#/$defs/opaque_handle" }, "relative_name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!\\.{1,2}$)(?!.*[. ]$)[^/\\\\:\\s]+$" } },
       "required": [ "session_id", "generation", "pause_epoch", "request_id", "module_handle" ]
     },
     "debug_set_exception_policy_args": {

@@ -93,6 +93,23 @@ class LiveMcpContractTests(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertEqual([], result.get("resourceTemplates"))
 
+    def test_all_documentation_resources_are_readable(self) -> None:
+        listed = self.client.list_resources()
+        resources = listed.get("resources")
+        self.assertIsInstance(resources, list)
+        self.assertEqual(14, len(resources))
+        for resource in resources:
+            self.assertIsInstance(resource, dict)
+            uri = resource.get("uri")
+            self.assertIsInstance(uri, str)
+            read = self.client.read_resource(uri)
+            contents = read.get("contents")
+            self.assertIsInstance(contents, list, uri)
+            self.assertGreater(len(contents), 0, uri)
+            for item in contents:
+                self.assertIsInstance(item, dict, uri)
+                self.assertTrue(item.get("text"), uri)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -144,12 +144,15 @@ public sealed class DebugEventBuffer {
 	/// <summary>
 	/// Reads at most <paramref name="limit"/> events with cursor greater than
 	/// <paramref name="afterCursor"/>, optionally filtered by kind. earliest_cursor is the
-	/// oldest retained cursor (0 when empty); next_cursor is the newest returned cursor position
-	/// (0 when nothing was read).
+	/// oldest retained cursor (0 when empty); next_cursor is the newest returned cursor position,
+	/// or the caller's still-valid position when no event matched.
 	/// </summary>
 	public ReadResult Read(long afterCursor, int limit, IReadOnlyCollection<string>? kinds) {
 		lock (gate) {
 			var result = new ReadResult {
+				// Never make an empty page send a caller backwards to zero.  Clamp a cursor
+				// beyond the current tail so an untrusted future value cannot skip later events.
+				NextCursor = Math.Min(Math.Max(0, afterCursor), nextCursor),
 				EarliestCursor = entries.Count == 0 ? 0 : entries.Peek().Cursor,
 				EventsLost = eventsLost,
 			};

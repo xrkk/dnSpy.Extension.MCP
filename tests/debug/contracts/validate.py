@@ -55,6 +55,22 @@ def main():
             pass
     defs = schema["$defs"]
 
+    # The JSON-encoded regex must mean whitespace (\s), not a literal backslash plus
+    # the letter "s".  A strict MCP host validates this published input schema before
+    # debug_dump_module reaches the server.
+    dump_validator = jsonschema.Draft202012Validator({"$defs": defs, "$ref": "#/$defs/debug_dump_module_args"})
+    dump_args = {
+        "session_id": "session-1", "generation": 1, "pause_epoch": 1,
+        "request_id": "00000000-0000-0000-0000-000000000001",
+        "module_handle": "module-1", "relative_name": "schema-safe",
+    }
+    dump_validator.validate(dump_args)
+    try:
+        dump_validator.validate({**dump_args, "relative_name": "has whitespace"})
+        fail("debug_dump_module relative_name schema accepts whitespace")
+    except jsonschema.ValidationError:
+        pass
+
     def resolve(pointer):
         cur = schema
         for part in pointer.lstrip("/").split("/"):
