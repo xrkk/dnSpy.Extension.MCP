@@ -66,3 +66,10 @@ dist/
 
 # ACC evidence trees (plan 6: CI artifact, not committed)
 tests/debug/results/
+
+# Python client build/test artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/

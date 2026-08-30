@@ -85,7 +85,7 @@ There is no test suite. CI (`.github/workflows/build.yml`) just builds both TFMs
 
 - `TestIL.cs` + `TestIL.csproj` — a tiny netstandard2.0 assembly covering overloads, constant/string/branch/field/type operands. Checked in; the built `TestIL.dll` is **not** (see `.gitignore`).
 - `build-fixture.ps1` — `dotnet build` wrapper that emits `bin/TestIL.dll` and prints its SHA256.
-- `run-tests.ps1` — end-to-end driver. Builds the fixture and the extension, deploys the `.x.dll` into dnSpy's Extensions folder, sets `Port=3100` in `%APPDATA%\dnSpy\dnSpy.xml` (because WSL's `wslrelay.exe` commonly holds 3000 even though our `TcpListener` probe reports it free), launches dnSpy with the fixture as CLI arg, polls `list_assemblies` until `TestIL` appears, then walks through list_methods / decompile_method / get_method_il / patch_method_il / revert_method_il / save_assembly with SHA256 and behavioural asserts (a spawned PowerShell loads the saved DLL and invokes `AddOne(10)` to confirm the +1 → +41 patch took effect on disk).
+- `run-tests.ps1` — end-to-end driver. Builds the fixture and the extension, deploys the `.x.dll` into dnSpy's Extensions folder, uses the product default `Port=15378`, launches dnSpy with the fixture as CLI arg, polls `list_assemblies` until `TestIL` appears, then walks through list_methods / decompile_method / get_method_il / patch_method_il / revert_method_il / save_assembly with SHA256 and behavioural asserts (a spawned PowerShell loads the saved DLL and invokes `AddOne(10)` to confirm the +1 → +41 patch took effect on disk).
 - The extension csproj sets `<DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>` so the fixture's generated `AssemblyInfo.cs` doesn't get pulled into the extension build.
 
 ## Git

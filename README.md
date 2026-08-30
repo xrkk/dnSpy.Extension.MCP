@@ -1,6 +1,6 @@
 # dnSpy MCP Extension
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) extension for [dnSpyEx](https://github.com/dnSpyEx/dnSpy) that exposes .NET assembly **analysis** and **IL-editing** tools to AI assistants like Claude.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) extension for [dnSpyEx](https://github.com/dnSpyEx/dnSpy) that exposes .NET assembly **static analysis, IL editing, and launch-only dynamic debugging** to AI assistants. The repository also includes a Python client and transparent stdio MCP bridge, so callers never need to hand-craft JSON-RPC packets or invoke curl.
 
 Chinese / 中文说明: see [README.zh-CN.md](README.zh-CN.md).
 
@@ -8,7 +8,7 @@ Chinese / 中文说明: see [README.zh-CN.md](README.zh-CN.md).
 
 From zero to "ask Claude about your assembly" in a few minutes:
 
-1. **Get it running.** Download the all-in-one zip for your system from [Releases](https://github.com/KernelErr/dnSpy.Extension.MCP/releases) (the MCP extension is already bundled inside), unzip anywhere, and run `dnSpy.exe`. *Already have dnSpy installed? Use the [plugin-only](#plugin-only-for-users-who-already-have-dnspy-installed) DLL instead.*
+1. **Get it running.** Download the all-in-one zip for your system from [Releases](https://github.com/xrkk/dnSpy.Extension.MCP/releases) (the MCP extension is already bundled inside), unzip anywhere, and run `dnSpy.exe`. *Already have dnSpy installed? Use the [plugin-only](#plugin-only-for-users-who-already-have-dnspy-installed) DLL instead.*
 2. **Enable the server.** In dnSpy: **View → Options → MCP Server** → tick **Enable Server** → **OK**. Note the **Port** shown on that page — and check the **Server Log** pane for the port it actually bound to (it falls back to the next free port if yours is taken). Call that `<port>` below. Sanity check: open `http://localhost:<port>/` in a browser (you'll see a status page) or run `curl http://localhost:<port>/health`.
 3. **Load your target.** Open the assembly you want to analyze (**File → Open**, or drag a DLL onto dnSpy) — e.g. a Unity game's `Assembly-CSharp.dll`. The tools operate on whatever is loaded in the tree. *(Or skip this and let the AI load it for you once connected — see `open_files`.)*
 4. **Connect your AI client.** For Claude Code (replace `<port>` with the one from step 2):
@@ -23,7 +23,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 
 ## Features
 
-### MCP Tools (32 total)
+### MCP Tools (54 total: 32 static + 22 dynamic)
 
 #### Loading
 
@@ -75,7 +75,18 @@ From zero to "ask Claude about your assembly" in a few minutes:
 1. **generate_bepinex_plugin** — a full BepInEx plugin: the `BaseUnityPlugin` shell (Awake wiring `Harmony.PatchAll`, OnDestroy unpatch) plus a `[HarmonyPatch]` class per hook. Each hook is resolved against the target assembly so its patch is **signature-aware** (real `__instance` / `ref __result` / named params), not an empty stub; unresolved hooks degrade to a comment. Per-hook `patch_type` (postfix/prefix/transpiler)
 2. **generate_harmony_patch** — a compile-ready HarmonyX patch class for a *real* method, with the right injected params read from its actual signature: `ref <ReturnType> __result` for a postfix, `__instance` for instance methods, the original parameters by name, and a `new Type[]{...}` disambiguator when the name is overloaded. `patch_type` = postfix / prefix (returns bool to skip the original) / transpiler
 
-### MCP Resources (6 total)
+#### Launch-only dynamic debugging (22 tools)
+
+- **Capabilities and lifecycle**: `debug_capabilities`, `debug_launch`, `debug_status`, `debug_pause`, `debug_continue`, `debug_restart`, `debug_terminate`
+- **Events**: `debug_read_events`, `debug_wait_event`
+- **Breakpoints**: `debug_set_breakpoint`, `debug_list_breakpoints`, `debug_set_breakpoint_enabled`, `debug_remove_breakpoint`
+- **Threads and evaluation**: `debug_list_threads`, `debug_get_stack`, `debug_step`, `debug_get_locals`, `debug_expand_value`
+- **Modules and memory**: `debug_list_modules`, `debug_read_memory`, `debug_dump_module`
+- **Exception policy**: `debug_set_exception_policy`
+
+Dynamic debugging is limited to processes launched and owned by the MCP; attach/detach is not supported. CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
+
+### MCP Resources (14 total)
 
 Embedded BepInEx documentation served over `resources/list` / `resources/read`:
 
@@ -85,6 +96,11 @@ Embedded BepInEx documentation served over `resources/list` / `resources/read`:
 4. **common-scenarios**
 5. **il2cpp-guide**
 6. **mono-vs-il2cpp**
+
+Eight `dnspy://docs/*` resources give an AI the server's own operating manual: an index,
+overview, static analysis, IL editing, dynamic debugging, security, Python client integration,
+and task-oriented tool workflows. The `initialize` response tells MCP hosts to read the index
+and carries the critical safety rules even before a resource is opened.
 
 All docs ship inside the DLL — no network required.
 
@@ -119,27 +135,27 @@ Assume `TestIL.dll` contains `public static int AddOne(int x) => x + 1;`.
 
 ```bash
 # 1. Find the method (parameter_types disambiguates overloads).
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"list_methods",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple"}}}'
 
 # 2. Read the IL.
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"get_method_il",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne"}}}'
 # Instructions include: {"index":1,"opcode":"ldc.i4.1","operand":""}
 
 # 3. Replace the +1 with +41.
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"patch_method_il",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne",
       "edits":[{"op":"replace","index":1,"opcode":"ldc.i4","operand":"int:41"}]}}}'
 
 # 4. Save. Original file is backed up to <path>.<yyyyMMdd-HHmmss>.bak first.
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"save_assembly",
     "arguments":{"assembly_name":"TestIL"}}}'
@@ -158,7 +174,7 @@ Reload the saved DLL in a fresh process and `AddOne(10)` returns **`51`** instea
 
 ### Recommended: all-in-one zip
 
-Head to [Releases](https://github.com/KernelErr/dnSpy.Extension.MCP/releases) and download the bundle that matches your system — **the extension is already placed inside, no paths to figure out**:
+Head to [Releases](https://github.com/xrkk/dnSpy.Extension.MCP/releases) and download the bundle that matches your system — **the extension is already placed inside, no paths to figure out**:
 
 | File | Contents | Runtime requirement |
 |------|----------|---------------------|
@@ -207,7 +223,7 @@ git clone --recursive https://github.com/dnSpyEx/dnSpy.git
 cd dnSpy
 
 # Clone this extension into the Extensions directory
-git clone https://github.com/KernelErr/dnSpy.Extension.MCP.git Extensions/dnSpy.Extension.MCP
+git clone https://github.com/xrkk/dnSpy.Extension.MCP.git Extensions/dnSpy.Extension.MCP
 
 # Build (both TFMs)
 cd Extensions/dnSpy.Extension.MCP
@@ -222,9 +238,84 @@ cp bin/Release/net10.0-windows/dnSpy.Extension.MCP.x.dll \
 
 Settings live under **View → Options → MCP Server**:
 
-- **Enable Server** — starts/stops the HTTP server immediately when toggled and applied.
-- **Port** — preferred TCP port (default `3000`). If the port is already in use, the server automatically tries `port + 1`, up to 20 attempts, and logs which port it actually bound to. Check the Server Log pane for the resolved port.
-- **Host** — bind address (default `localhost`).
+- **Enable Server** — controls the persisted startup state. The adjacent **Start/Stop** button
+  applies the visible fields and changes the live listener immediately; the same command is also
+  available under dnSpy's **Edit** menu.
+- **Port** — preferred TCP port (default `15378`). If the port is already in use, the server automatically tries `port + 1`, up to 20 attempts, and logs which port it actually bound to. Check the Server Log pane for the resolved port.
+- **Host** — bind address (default `192.168.204.149`; the listener itself is disabled by default).
+- **Allowed CIDRs** — tokenless mode is fixed to the VMware Host-Only host peer
+  `192.168.204.1/32`; every other direct peer is rejected with 403 before request parsing. Wider
+  CIDRs or `*` require token mode.
+- **Require Bearer Token** — off by default. When enabled, **Rotate on Apply** generates a token,
+  displays it once and copies it to the clipboard for `DNSPY_MCP_TOKEN`.
+- **Artifact root** — defaults to `Desktop\dnspy-mcp-artifacts`, is created automatically, and has
+  a folder-browser button. Static saves live at the root; dynamic module dumps are isolated under
+  `.dnspy-mcp-debug`.
+- **Allowed sample root** — may be empty, which means no sample-path restriction (dedicated VM only).
+
+## Python client and stdio bridge
+
+The repository includes a dependency-free Python 3.10+ client. It owns JSON-RPC
+serialization, MCP initialization, `Mcp-Session-Id` propagation, notifications, errors and
+session teardown, so callers do not need to construct packets or invoke `curl`.
+
+```bash
+python -m pip install -e .
+export DNSPY_MCP_URL=http://192.168.204.149:15378/
+# DNSPY_MCP_TOKEN is not needed for the default 192.168.204.1/32 tokenless mode
+```
+
+`pip install -e` is editable: normal `.py` changes in this checkout are used by each newly
+started client/stdio process without reinstalling. Restart an already-running bridge after a
+code change. Reinstall after changing packaging metadata, console scripts, or package layout.
+
+```python
+from dnspy_mcp import DnSpyClient
+
+with DnSpyClient.connect() as dnspy:
+    tools = list(dnspy.iter_tools())
+    assemblies = dnspy.call_tool_json("list_assemblies")["assemblies"]
+```
+
+Useful command-line checks:
+
+```bash
+dnspy-mcp-client health
+dnspy-mcp-client tools
+dnspy-mcp-client call list_assemblies --arguments '{"page_size":20}'
+```
+
+For a host AI that only supports local stdio MCP servers, `dnspy-mcp-stdio` is a transparent
+bridge: it exposes the exact tools/resources advertised by dnSpy and forwards calls through
+the Python client. Example `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "dnspy": {
+      "command": "dnspy-mcp-stdio",
+      "args": ["--url", "http://192.168.204.149:15378/"]
+    }
+  }
+}
+```
+
+Codex uses the standard stdio `command`/`args` fields documented in the
+[official OpenAI MCP guide](https://developers.openai.com/codex/mcp/):
+
+```toml
+[mcp_servers.dnspy]
+command = "dnspy-mcp-stdio"
+args = ["--url", "http://192.168.204.149:15378/"]
+required = true
+tool_timeout_sec = 120
+```
+
+Binding dnSpy beyond loopback requires the CIDR and explicit acknowledgement described in
+[the dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md). The default
+tokenless posture accepts only the direct TCP peer `192.168.204.1/32`; it cannot be combined with
+`*` or a whole subnet. Enable Bearer-token mode before admitting any wider source set.
+Do not expose this debugger endpoint to an untrusted network.
 
 ## Transports
 
@@ -238,7 +329,7 @@ Both `/` and `/mcp` are accepted as the endpoint path.
 
 ```bash
 # 1. Initialize — server returns the session ID in the Mcp-Session-Id header.
-curl -i -X POST http://localhost:3000/ \
+curl -i -X POST http://localhost:15378/ \
   -H "Accept: application/json, text/event-stream" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
@@ -248,14 +339,14 @@ curl -i -X POST http://localhost:3000/ \
 # {"jsonrpc":"2.0","id":1,"result":{...}}
 
 # 2. Subsequent calls echo the session header.
-curl -X POST http://localhost:3000/ \
+curl -X POST http://localhost:15378/ \
   -H "Accept: application/json, text/event-stream" \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: <sid>" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 
 # 3. Tear down explicitly (optional — the server also drops the session on shutdown).
-curl -X DELETE http://localhost:3000/ -H "Mcp-Session-Id: <sid>"
+curl -X DELETE http://localhost:15378/ -H "Mcp-Session-Id: <sid>"
 ```
 
 Codex `~/.codex/config.toml`:
@@ -263,21 +354,21 @@ Codex `~/.codex/config.toml`:
 ```toml
 [mcp_servers.dnspy-mcp]
 type = "streamable-http"
-url = "http://localhost:3000"
+url = "http://localhost:15378"
 ```
 
 ### Plain HTTP JSON-RPC
 
-One-shot request/response — POST JSON-RPC to `/` without `text/event-stream` in `Accept` and read the response from the same HTTP response body. Useful for quick `curl` testing and for MCP clients that only speak plain HTTP.
+One-shot request/response — POST JSON-RPC to `/` without `text/event-stream` in `Accept` and read the response from the same HTTP response body. It remains useful for low-level protocol diagnostics; application and AI integrations should use the Python client or stdio bridge above.
 
 The server binds all loopback identities, so `localhost`, `127.0.0.1`, and `[::1]` all work. Opening `http://localhost:<port>/` in a **browser** shows a small status page (the root only speaks JSON-RPC/SSE, so a browser GET returns that page rather than a 404).
 
 ```bash
-curl -s http://localhost:3000/health
+curl -s http://localhost:15378/health
 # {"status":"ok","service":"dnSpy MCP Server"}
-curl -s http://127.0.0.1:3000/health   # also works (not just localhost)
+curl -s http://127.0.0.1:15378/health   # also works (not just localhost)
 
-curl -s -X POST http://localhost:3000/ \
+curl -s -X POST http://localhost:15378/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 ```
@@ -291,7 +382,7 @@ Legacy two-endpoint transport kept for backwards compatibility with MCP Inspecto
 
 ```bash
 # Terminal A: open the stream and keep it open
-curl -N http://localhost:3000/sse
+curl -N http://localhost:15378/sse
 # event: endpoint
 # data: /message?sessionId=<sessionId>
 # ... (later, once POST arrives) ...
@@ -299,7 +390,7 @@ curl -N http://localhost:3000/sse
 # data: {"jsonrpc":"2.0","id":1,"result":...}
 
 # Terminal B: send a request on that session
-curl -X POST "http://localhost:3000/message?sessionId=<sessionId>" \
+curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 # HTTP 202 Accepted — the response appears on Terminal A's SSE stream
@@ -307,12 +398,17 @@ curl -X POST "http://localhost:3000/message?sessionId=<sessionId>" \
 
 ### Client configuration
 
+For a ZCode, Codex, or other third-party AI full-function acceptance run through the Python stdio
+client, use the Chinese [third-party full-function test prompt](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md).
+It covers two x64/x86 passes, exact fixtures and hashes, all 54 tools, reversible writes, dump,
+request-id idempotency, and two-level value expansion.
+
 #### Claude Code
 
 Use the CLI to register the server once — it picks up the Streamable HTTP transport at `/`:
 
 ```bash
-claude mcp add --transport http dnspy http://localhost:3000
+claude mcp add --transport http dnspy http://localhost:15378
 # verify:
 claude mcp list
 ```
@@ -324,7 +420,7 @@ Or add it to a checked-in `.mcp.json` at your project root (scoped to the projec
   "mcpServers": {
     "dnspy": {
       "type": "http",
-      "url": "http://localhost:3000"
+      "url": "http://localhost:15378"
     }
   }
 }
@@ -339,7 +435,7 @@ Run `/mcp` inside Claude Code to confirm `dnspy` is connected and list its tools
   "mcpServers": {
     "dnspy": {
       "command": "http",
-      "args": ["http://localhost:3000"]
+      "args": ["http://localhost:15378"]
     }
   }
 }
@@ -348,6 +444,16 @@ Run `/mcp` inside Claude Code to confirm `dnspy` is connected and list its tools
 #### codex
 
 See the Streamable HTTP section above for the `~/.codex/config.toml` snippet.
+
+## Verified compatibility
+
+- MCP `2025-06-18`: 54 tools, 14 concrete resources, and an empty `resources/templates/list` page.
+- All 22 debug input schemas are self-contained flat objects; output schemas describe the complete success/failure envelope without unresolved `$defs`.
+- `list_assemblies` returns object-shaped structured content: `{ "assemblies": [...] }`.
+- Real Win10 VM runs completed 54/54 successful tool paths on both x64 and x86, including two-level `debug_expand_value`, breakpoint hits, step/restart, module dump, and request-id idempotency.
+- Automated regression: Python/client/live 17/17, debug contract 189/189, security harness 10/10; both net48 and net10.0-windows build with 0 warnings and 0 errors.
+
+See the [full acceptance report](docs/CODEX-MCP-FULL-TEST-REPORT-2026-08-30.md) for evidence.
 
 ## Development
 
@@ -362,6 +468,7 @@ dotnet build -c Debug -f net10.0-windows
 ```
 dnSpy.Extension.MCP/
 ├── .github/workflows/      GitHub Actions (build, release)
+├── dnspy_mcp/              Python client, CLI and transparent stdio MCP bridge
 ├── McpServer.cs            HttpListener HTTP + SSE + Streamable HTTP + port fallback
 ├── McpProtocol.cs          JSON-RPC 2.0 / MCP DTOs
 ├── McpTools.cs             Analysis tools + MEF export + dispatch (sealed partial)
@@ -386,9 +493,9 @@ dnSpy.Extension.MCP/
 
 ## Protocol
 
-Implements [MCP](https://modelcontextprotocol.io/) version `2024-11-05` over JSON-RPC 2.0.
+The primary protocol is [MCP](https://modelcontextprotocol.io/) `2025-06-18` over JSON-RPC 2.0, with compatibility paths for `2025-03-26` Streamable HTTP and `2024-11-05` SSE.
 
-Supported methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, and `notifications/*`.
+Supported methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, and `notifications/*`.
 
 ## CI / Release
 

@@ -1,6 +1,6 @@
 # dnSpy MCP 扩展
 
-一个用于 [dnSpyEx](https://github.com/dnSpyEx/dnSpy) 的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 扩展，向 Claude 等 AI 助手暴露 .NET 程序集的**分析能力**与 **IL 编辑能力**。
+一个用于 [dnSpyEx](https://github.com/dnSpyEx/dnSpy) 的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 扩展，向 AI 助手暴露 .NET 程序集的**静态分析、IL 编辑和启动式动态调试能力**。仓库同时提供 Python 客户端与透明 stdio MCP 桥接，调用方无需手拼 JSON-RPC 或用 curl 发送数据包。
 
 English: see [README.md](README.md).
 
@@ -8,8 +8,8 @@ English: see [README.md](README.md).
 
 几分钟内从零到"让 Claude 分析你的程序集"：
 
-1. **跑起来。** 从 [Releases](https://github.com/KernelErr/dnSpy.Extension.MCP/releases) 下载对应系统的一体化压缩包（MCP 扩展已经打包在里面），解压到任意位置，运行 `dnSpy.exe`。*已经装了 dnSpy？改用[仅插件](#安装) 的 DLL。*
-2. **启用服务器。** 在 dnSpy 里：**视图 → 选项 → MCP Server** → 勾选 **Enable Server** → **OK**。记下该页显示的 **Port**——并查看 **Server Log** 面板里实际绑定的端口（你设的端口被占用时会自动顺延到下一个空闲端口）。下文用 `<端口>` 指代它。验证一下：用浏览器打开 `http://localhost:<端口>/`（会看到状态页），或执行 `curl http://localhost:<端口>/health`。
+1. **跑起来。** 从 [Releases](https://github.com/xrkk/dnSpy.Extension.MCP/releases) 下载对应系统的一体化压缩包（MCP 扩展已经打包在里面），解压到任意位置，运行 `dnSpy.exe`。*已经装了 dnSpy？改用[仅插件](#安装) 的 DLL。*
+2. **启用服务器。** 在 dnSpy 里：**视图 → 选项 → MCP 服务器** → 勾选 **启用 MCP 服务器** → **确定**。记下该页显示的**端口**——并查看**服务器日志**面板里实际绑定的端口（你设的端口被占用时会自动顺延到下一个空闲端口）。下文用 `<端口>` 指代它。验证一下：用浏览器打开 `http://localhost:<端口>/`（会看到状态页），或执行 `curl http://localhost:<端口>/health`。
 3. **加载目标。** 打开你要分析的程序集（**File → Open**，或把 DLL 拖进 dnSpy）——例如 Unity 游戏的 `Assembly-CSharp.dll`。工具操作的是树里已加载的内容。*（也可以跳过这步，连上之后让 AI 帮你加载——见 `open_files`。）*
 4. **接入 AI 客户端。** 以 Claude Code 为例（把 `<端口>` 换成第 2 步里的端口）：
    ```bash
@@ -23,7 +23,7 @@ English: see [README.md](README.md).
 
 ## 功能
 
-### MCP 工具（共 32 个）
+### MCP 工具（共 54 个：静态 32 + 动态 22）
 
 #### 加载
 
@@ -75,7 +75,18 @@ English: see [README.md](README.md).
 1. **generate_bepinex_plugin** — 生成完整 BepInEx 插件：`BaseUnityPlugin` 外壳（Awake 里 `Harmony.PatchAll`、OnDestroy 取消补丁）+ 每个 hook 一个 `[HarmonyPatch]` 类。每个 hook 都按目标程序集里的真实方法解析，所以补丁是**签名感知**的（真实 `__instance` / `ref __result` / 具名参数），而非空桩；解析不到的 hook 降级为注释。支持每个 hook 的 `patch_type`（postfix/prefix/transpiler）
 2. **generate_harmony_patch** — 针对**真实方法**生成可直接编译的 HarmonyX 补丁类，按其实际签名注入正确参数：postfix 带 `ref <返回类型> __result`、实例方法带 `__instance`、原方法参数按名注入、方法名重载时补 `new Type[]{...}` 消歧。`patch_type` = postfix / prefix（返回 bool 可跳过原方法）/ transpiler
 
-### MCP 资源（共 6 个）
+#### 启动式动态调试（22 个）
+
+- **能力与生命周期**：`debug_capabilities`、`debug_launch`、`debug_status`、`debug_pause`、`debug_continue`、`debug_restart`、`debug_terminate`
+- **事件**：`debug_read_events`、`debug_wait_event`
+- **断点**：`debug_set_breakpoint`、`debug_list_breakpoints`、`debug_set_breakpoint_enabled`、`debug_remove_breakpoint`
+- **线程与求值**：`debug_list_threads`、`debug_get_stack`、`debug_step`、`debug_get_locals`、`debug_expand_value`
+- **模块与内存**：`debug_list_modules`、`debug_read_memory`、`debug_dump_module`
+- **异常策略**：`debug_set_exception_policy`
+
+动态调试仅支持由 MCP 启动并拥有的进程，不支持 attach/detach。CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
+
+### MCP 资源（共 14 个）
 
 内嵌的 BepInEx 开发文档，通过 `resources/list` / `resources/read` 提供：
 
@@ -85,6 +96,10 @@ English: see [README.md](README.md).
 4. **common-scenarios** — 常见开发场景
 5. **il2cpp-guide** — IL2CPP 开发指南
 6. **mono-vs-il2cpp** — Mono 与 IL2CPP 对比及迁移
+
+另外八个 `dnspy://docs/*` 资源向 AI 提供服务器自身的完整操作手册：文档索引、能力
+概览、静态分析、IL 编辑、动态调试、安全、Python 客户端集成以及任务导向工作流。
+`initialize` 响应会要求 MCP 宿主先读取索引，并在资源尚未打开时就提供关键安全规则。
 
 所有文档都内嵌在 DLL 中，**离线可用**。
 
@@ -119,27 +134,27 @@ AI 客户端可以像使用 dnSpy "编辑方法实体" 对话框一样读取、�
 
 ```bash
 # 1. 定位方法（parameter_types 可用于区分重载）
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"list_methods",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple"}}}'
 
 # 2. 读取 IL
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"get_method_il",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne"}}}'
 # 返回的 instructions 里会有：{"index":1,"opcode":"ldc.i4.1","operand":""}
 
 # 3. 把 +1 改成 +41
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"patch_method_il",
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne",
       "edits":[{"op":"replace","index":1,"opcode":"ldc.i4","operand":"int:41"}]}}}'
 
 # 4. 保存。覆盖原文件前会先生成 <path>.<yyyyMMdd-HHmmss>.bak 备份
-curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
+curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"save_assembly",
     "arguments":{"assembly_name":"TestIL"}}}'
@@ -158,7 +173,7 @@ curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
 
 ### 推荐方式：开箱即用的整合包
 
-打开 [Releases](https://github.com/KernelErr/dnSpy.Extension.MCP/releases) 页面，下载与你系统匹配的整合包 — **扩展已放在正确的位置，不需要操心路径**：
+打开 [Releases](https://github.com/xrkk/dnSpy.Extension.MCP/releases) 页面，下载与你系统匹配的整合包 — **扩展已放在正确的位置，不需要操心路径**：
 
 | 文件 | 内容 | 运行时要求 |
 |------|------|-------------|
@@ -168,7 +183,7 @@ curl -s -X POST http://localhost:3000/ -H "Content-Type: application/json" -d '{
 
 1. 下载并解压到任意目录。
 2. 双击 `dnSpy.exe`。
-3. 打开**视图 → 选项 → MCP Server**，勾选 **Enable Server**，点击确定。
+3. 打开**视图 → 选项 → MCP 服务器**，勾选**启用 MCP 服务器**，点击确定。
 
 搞定。如果你已经装好了 dnSpy、只想拿插件，参考下面的"仅插件"方式。
 
@@ -207,7 +222,7 @@ git clone --recursive https://github.com/dnSpyEx/dnSpy.git
 cd dnSpy
 
 # 将本扩展克隆到 Extensions 目录
-git clone https://github.com/KernelErr/dnSpy.Extension.MCP.git Extensions/dnSpy.Extension.MCP
+git clone https://github.com/xrkk/dnSpy.Extension.MCP.git Extensions/dnSpy.Extension.MCP
 
 # 构建（两个 TFM 都会编译）
 cd Extensions/dnSpy.Extension.MCP
@@ -222,9 +237,81 @@ cp bin/Release/net10.0-windows/dnSpy.Extension.MCP.x.dll \
 
 配置入口：**视图 → 选项 → MCP Server**
 
-- **Enable Server** — 勾选并应用即可即时启动/停止 HTTP 服务器。
-- **Port** — 首选 TCP 端口（默认 `3000`）。若端口已被占用，扩展会自动尝试 `port + 1`，最多 20 次，并在日志中记录最终绑定的端口。查看 Server Log 面板确认实际端口。
-- **Host** — 绑定地址（默认 `localhost`）。
+- **启用 MCP 服务器** — 控制持久化的启动状态。旁边的**启动/停止**按钮会应用当前页面
+  字段并立即切换监听器；dnSpy 的**编辑**菜单中也有同一个动态命令。
+- **端口** — 首选 TCP 端口（默认 `15378`）。若端口已被占用，扩展会自动尝试 `port + 1`，最多 20 次，并在日志中记录最终绑定的端口。查看**服务器日志**面板确认实际端口。
+- **主机** — 绑定地址（默认 `192.168.204.149`；服务器本身默认不启动）。
+- **允许的 CIDR** — 默认且免 Token 模式固定为 VMware Host-Only 宿主机
+  `192.168.204.1/32`；其他来源在解析请求前返回 403。只有勾选 Token 模式后才允许更宽的
+  CIDR 或 `*`。
+- **要求 Bearer Token** — 默认关闭。勾选后，**应用时轮换**会生成新 Token，dnSpy
+  只显示一次并自动复制；原始值可配置为 `DNSPY_MCP_TOKEN`。
+- **产物目录** — 默认是桌面的 `dnspy-mcp-artifacts`，会自动创建，并可用按钮浏览目录；
+  静态保存文件位于根层，动态模块 dump 隔离在 `.dnspy-mcp-debug` 子目录。
+- **允许的样本目录** — 可以留空，表示不限制样本路径（只应在隔离的专用 VM 使用）。
+
+## Python 客户端与 stdio 桥接
+
+仓库内置了一个零第三方依赖、支持 Python 3.10+ 的客户端。它统一负责 JSON-RPC
+序列化、MCP 初始化、`Mcp-Session-Id` 回传、通知、错误和会话清理；调用方不再需要手拼
+数据包或执行 `curl`。
+
+```bash
+python -m pip install -e .
+export DNSPY_MCP_URL=http://192.168.204.149:15378/
+# 默认的 192.168.204.1/32 免 Token 模式无需 DNSPY_MCP_TOKEN
+```
+
+`pip install -e` 是 editable 安装：此检出中的普通 `.py` 修改会被每个新启动的
+client/stdio 进程直接使用，无需重新安装；已经运行的桥接进程仍需重启。修改打包元数据、
+console scripts 或包目录结构后，应重新执行安装。
+
+```python
+from dnspy_mcp import DnSpyClient
+
+with DnSpyClient.connect() as dnspy:
+    tools = list(dnspy.iter_tools())
+    assemblies = dnspy.call_tool_json("list_assemblies")["assemblies"]
+```
+
+常用命令行检查：
+
+```bash
+dnspy-mcp-client health
+dnspy-mcp-client tools
+dnspy-mcp-client call list_assemblies --arguments '{"page_size":20}'
+```
+
+如果宿主机 AI 只支持本地 stdio MCP，使用 `dnspy-mcp-stdio`。它是透明桥接层，会把
+dnSpy 实际广告的工具与资源原样暴露出来，并通过 Python 客户端转发调用。`.mcp.json`
+示例：
+
+```json
+{
+  "mcpServers": {
+    "dnspy": {
+      "command": "dnspy-mcp-stdio",
+      "args": ["--url", "http://192.168.204.149:15378/"]
+    }
+  }
+}
+```
+
+Codex 使用[官方 OpenAI MCP 文档](https://developers.openai.com/codex/mcp/)中的标准
+stdio `command`/`args` 配置：
+
+```toml
+[mcp_servers.dnspy]
+command = "dnspy-mcp-stdio"
+args = ["--url", "http://192.168.204.149:15378/"]
+required = true
+tool_timeout_sec = 120
+```
+
+dnSpy 从回环地址改为宿主机可访问之前，必须按[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)
+配置远程 CIDR并显式确认。默认免 Token 模式只接受直接 TCP 来源
+`192.168.204.1/32`，不能与 `*` 或整个 `/24` 网段组合；需要其他来源时应勾选 Bearer
+Token 模式。不要把调试器端点暴露到普通局域网或不可信网络。
 
 ## 传输协议
 
@@ -238,7 +325,7 @@ cp bin/Release/net10.0-windows/dnSpy.Extension.MCP.x.dll \
 
 ```bash
 # 1. 初始化 —— 服务器在 Mcp-Session-Id 响应头中返回会话 ID
-curl -i -X POST http://localhost:3000/ \
+curl -i -X POST http://localhost:15378/ \
   -H "Accept: application/json, text/event-stream" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
@@ -248,14 +335,14 @@ curl -i -X POST http://localhost:3000/ \
 # {"jsonrpc":"2.0","id":1,"result":{...}}
 
 # 2. 后续请求需回传会话头
-curl -X POST http://localhost:3000/ \
+curl -X POST http://localhost:15378/ \
   -H "Accept: application/json, text/event-stream" \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: <sid>" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 
 # 3. 可选：显式结束会话（服务器关闭时也会清理）
-curl -X DELETE http://localhost:3000/ -H "Mcp-Session-Id: <sid>"
+curl -X DELETE http://localhost:15378/ -H "Mcp-Session-Id: <sid>"
 ```
 
 codex `~/.codex/config.toml`：
@@ -263,21 +350,21 @@ codex `~/.codex/config.toml`：
 ```toml
 [mcp_servers.dnspy-mcp]
 type = "streamable-http"
-url = "http://localhost:3000"
+url = "http://localhost:15378"
 ```
 
 ### 普通 HTTP JSON-RPC
 
-一次性请求/响应：向 `/` POST 一个 JSON-RPC 消息（`Accept` 头**不包含** `text/event-stream`），从同一 HTTP 响应体读取结果。适合 `curl` 调试或只会说纯 HTTP 的客户端。
+一次性请求/响应：向 `/` POST 一个 JSON-RPC 消息（`Accept` 头**不包含** `text/event-stream`），从同一 HTTP 响应体读取结果。该模式保留给底层协议诊断；应用与 AI 集成应优先使用上面的 Python 客户端或 stdio 桥接。
 
 服务器会绑定所有回环地址，因此 `localhost`、`127.0.0.1`、`[::1]` 都能访问。用**浏览器**打开 `http://localhost:<端口>/` 会看到一个简单的状态页（根路径只说 JSON-RPC/SSE，所以浏览器 GET 返回这个页面而不是 404）。
 
 ```bash
-curl -s http://localhost:3000/health
+curl -s http://localhost:15378/health
 # {"status":"ok","service":"dnSpy MCP Server"}
-curl -s http://127.0.0.1:3000/health   # 同样可用（不止 localhost）
+curl -s http://127.0.0.1:15378/health   # 同样可用（不止 localhost）
 
-curl -s -X POST http://localhost:3000/ \
+curl -s -X POST http://localhost:15378/ \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 ```
@@ -291,7 +378,7 @@ curl -s -X POST http://localhost:3000/ \
 
 ```bash
 # 终端 A：打开 SSE 流并保持
-curl -N http://localhost:3000/sse
+curl -N http://localhost:15378/sse
 # event: endpoint
 # data: /message?sessionId=<sessionId>
 # ...（POST 到达后）...
@@ -299,7 +386,7 @@ curl -N http://localhost:3000/sse
 # data: {"jsonrpc":"2.0","id":1,"result":...}
 
 # 终端 B：向对应会话发送请求
-curl -X POST "http://localhost:3000/message?sessionId=<sessionId>" \
+curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 # HTTP 202 Accepted — 实际响应出现在终端 A 的 SSE 流里
@@ -307,12 +394,15 @@ curl -X POST "http://localhost:3000/message?sessionId=<sessionId>" \
 
 ### 客户端配置
 
+需要让 ZCode、Codex 或其他第三方 AI 通过 Python stdio client 完成全功能验收时，可直接把
+[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、54 工具逐项清单、可恢复写入、模块 dump、幂等性和两层 value expansion 验证。
+
 #### Claude Code
 
 命令行一键注册（自动走根路径下的 Streamable HTTP 传输）：
 
 ```bash
-claude mcp add --transport http dnspy http://localhost:3000
+claude mcp add --transport http dnspy http://localhost:15378
 # 验证是否注册成功：
 claude mcp list
 ```
@@ -324,7 +414,7 @@ claude mcp list
   "mcpServers": {
     "dnspy": {
       "type": "http",
-      "url": "http://localhost:3000"
+      "url": "http://localhost:15378"
     }
   }
 }
@@ -339,7 +429,7 @@ claude mcp list
   "mcpServers": {
     "dnspy": {
       "command": "http",
-      "args": ["http://localhost:3000"]
+      "args": ["http://localhost:15378"]
     }
   }
 }
@@ -348,6 +438,16 @@ claude mcp list
 #### codex
 
 参见上文 "Streamable HTTP" 章节里的 `~/.codex/config.toml` 示例。
+
+## 已验证的兼容性
+
+- MCP `2025-06-18`：54 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
+- 22 个 debug inputSchema 均为自包含扁平对象；outputSchema 描述完整的成功/失败 envelope，不依赖客户端无法解析的缺失 `$defs`。
+- `list_assemblies` 使用对象型 `structuredContent`：`{ "assemblies": [...] }`。
+- Win10 VM 实机 x64 与 x86 均完成 54/54 工具成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。
+- 自动回归：Python/client/live 17/17、debug contract 189/189、security harness 10/10；net48 与 net10.0-windows 构建均为 0 warning / 0 error。
+
+完整证据见[全功能验收报告](docs/CODEX-MCP-FULL-TEST-REPORT-2026-08-30.md)。
 
 ## 开发
 
@@ -362,6 +462,7 @@ dotnet build -c Debug -f net10.0-windows
 ```
 dnSpy.Extension.MCP/
 ├── .github/workflows/      GitHub Actions（构建与发布）
+├── dnspy_mcp/              Python 客户端、CLI 与透明 stdio MCP 桥接
 ├── McpServer.cs            HttpListener：HTTP + SSE + Streamable HTTP + 端口自动回退
 ├── McpProtocol.cs          JSON-RPC 2.0 / MCP 数据模型
 ├── McpTools.cs             分析类工具 + MEF 导出 + 请求分派（sealed partial）
@@ -386,9 +487,9 @@ dnSpy.Extension.MCP/
 
 ## 协议
 
-基于 [MCP](https://modelcontextprotocol.io/) `2024-11-05`，走 JSON-RPC 2.0。
+主协议基于 [MCP](https://modelcontextprotocol.io/) `2025-06-18`，走 JSON-RPC 2.0；同时保留 `2025-03-26` Streamable HTTP 与 `2024-11-05` SSE 兼容路径。
 
-支持的方法：`initialize`、`ping`、`tools/list`、`tools/call`、`resources/list`、`resources/read`，以及 `notifications/*`。
+支持的方法：`initialize`、`ping`、`tools/list`、`tools/call`、`resources/list`、`resources/templates/list`、`resources/read`，以及 `notifications/*`。
 
 ## CI / 发布
 

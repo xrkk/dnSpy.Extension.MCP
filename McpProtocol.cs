@@ -208,6 +208,12 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		[JsonPropertyName("serverInfo")]
 		public ServerInfo ServerInfo { get; set; } = new ServerInfo();
+
+		/// <summary>
+		/// Server-wide workflow and safety guidance for MCP hosts.
+		/// </summary>
+		[JsonPropertyName("instructions")]
+		public string? Instructions { get; set; }
 	}
 
 	/// <summary>
@@ -282,6 +288,15 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		[JsonPropertyName("resources")]
 		public List<ResourceInfo> Resources { get; set; } = new List<ResourceInfo>();
+	}
+
+	/// <summary>
+	/// Result of resources/templates/list. The extension currently publishes only concrete
+	/// resources, but MCP clients still expect this standard method to return an empty page.
+	/// </summary>
+	public class ListResourceTemplatesResult {
+		[JsonPropertyName("resourceTemplates")]
+		public List<object> ResourceTemplates { get; set; } = new List<object>();
 	}
 
 	/// <summary>

@@ -1173,7 +1173,9 @@ If porting a Mono plugin to IL2CPP:
 - [ ] Reference unhollowed assemblies instead of Managed
 ";
 
-			settings.Log($"Initialized {resources.Count} BepInEx documentation resources");
+			McpDocumentationResources.AddTo(resources);
+
+			settings.Log($"Initialized {resources.Count} MCP documentation resources");
 		}
 
 		public List<ResourceInfo> GetResources() {
@@ -1186,7 +1188,8 @@ If porting a Mono plugin to IL2CPP:
 				resourceList.Add(new ResourceInfo {
 					Uri = kvp.Key,
 					Name = name,
-					Description = $"BepInEx v6 Documentation: {FormatName(name)}",
+					Description = McpDocumentationResources.DescriptionFor(kvp.Key)
+						?? $"BepInEx v6 Documentation: {FormatName(name)}",
 					MimeType = "text/markdown"
 				});
 			}

@@ -126,6 +126,8 @@ public static class CidrFilter {
 		var p = NormalizePeer(peer);
 		if (p is null)
 			return false;
+		if (canonicalCidrs.Count == 1 && canonicalCidrs[0] == "*")
+			return true;
 		var peerBytes = p.GetAddressBytes();
 		foreach (var cidr in canonicalCidrs) {
 			var slash = cidr.LastIndexOf('/');

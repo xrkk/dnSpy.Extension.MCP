@@ -131,23 +131,84 @@ function Save-Json {
 }
 function Get-WirePath([string]$Name) { return $Name -replace '^', 'wire/' }
 
-# Raw HTTP POST via curl.exe (curl is mandatory for wire work: Invoke-WebRequest returns
-# empty Content for some response shapes on this host).
+# All wire I/O goes through the repository's Python client. Besides exercising the same
+# implementation that the host-side AI uses, body files avoid PowerShell 5.1's native argv
+# quote removal (the historical ACC-004 false positive).
+$script:PythonExe = (Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+if (-not $script:PythonExe) {
+    [Console]::Error.WriteLine('python.exe 3.10+ is required for the dnspy_mcp acceptance client')
+    exit 2
+}
+$script:PyBodySeq = 0
+
+function Invoke-PyHttp {
+    param(
+        [string]$Url,
+        [string]$Method = 'GET',
+        [string]$BodyFile = $null,
+        [string]$BodyText = $null,
+        [string[]]$Headers = @(),
+        [string]$Format = 'body',
+        [int]$MaxSec = 40,
+        [string]$Token = $null
+    )
+    $tempBody = $null
+    # A typed [string] parameter omitted by the caller becomes '' on Windows PowerShell 5.1,
+    # so a null comparison cannot distinguish omission from an explicitly requested empty
+    # body. PSBoundParameters preserves that distinction and must guard BodyFile replacement.
+    if ($PSBoundParameters.ContainsKey('BodyText')) {
+        $script:PyBodySeq++
+        $tempBody = Join-Path $script:OutDir ("wire\py-body-{0:d4}.bin" -f $script:PyBodySeq)
+        [IO.File]::WriteAllText($tempBody, $BodyText, (New-Object Text.UTF8Encoding($false)))
+        $BodyFile = $tempBody
+    }
+    $args = @('-m','dnspy_mcp.http_cli','--url',$Url,'--method',$Method,'--timeout',"$MaxSec",'--format',$Format)
+    if ($BodyFile) { $args += @('--body-file', $BodyFile) }
+    foreach ($header in $Headers) { $args += @('--header', $header) }
+    if ($Token) { $args += @('--token', $Token) }
+    try {
+        $out = & $script:PythonExe @args 2>$null
+        return ($out -join "`n")
+    }
+    finally {
+        if ($tempBody) { Remove-Item $tempBody -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Start-PyHttp {
+    param(
+        [string]$Url,
+        [string]$Method = 'POST',
+        [string]$BodyFile = $null,
+        [string[]]$Headers = @(),
+        [string]$Format = 'body',
+        [int]$MaxSec = 40,
+        [string]$OutputFile = $null,
+        [int]$HoldSeconds = 0,
+        [string]$Token = $null
+    )
+    $args = @('-m','dnspy_mcp.http_cli','--url',$Url,'--method',$Method,'--timeout',"$MaxSec",'--format',$Format)
+    if ($BodyFile) { $args += @('--body-file', $BodyFile) }
+    foreach ($header in $Headers) { $args += @('--header', $header) }
+    if ($OutputFile) { $args += @('--output', $OutputFile) }
+    if ($HoldSeconds -gt 0) { $args += @('--hold-seconds', "$HoldSeconds") }
+    if ($Token) { $args += @('--token', $Token) }
+    return Start-Process -FilePath $script:PythonExe -ArgumentList $args -WorkingDirectory $script:Repo -PassThru -WindowStyle Hidden
+}
+
 function Invoke-HttpPostRaw {
     param([string]$Url, [string]$BodyFile, [string]$ExtraHeader = $null)
-    $h = @('-H','Accept: application/json','-H','Content-Type: application/json')
-    if ($ExtraHeader) { $h += @('-H', $ExtraHeader) }
-    $out = & curl.exe -s --max-time 40 -w "`n%{http_code}" -X POST $Url @h --data-binary "@$BodyFile" 2>$null
-    return ($out -join "`n")
+    $headers = @('Accept:application/json','Content-Type:application/json')
+    if ($ExtraHeader) { $headers += $ExtraHeader }
+    return Invoke-PyHttp -Url $Url -Method POST -BodyFile $BodyFile -Headers $headers -Format curl -MaxSec 40
 }
 function Get-HealthCode([string]$Url) {
     $u = $Url.TrimEnd('/') + '/health'
-    $code = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 $u 2>$null
-    return "$code".Trim()
+    return (Invoke-PyHttp -Url $u -Method GET -Format status -MaxSec 5).Trim()
 }
 
 $script:RpcId = 100
-$script:BaseUrl = 'http://localhost:3000/'
+$script:BaseUrl = 'http://localhost:15378/'
 function Send-Rpc {
     param([string]$Method, $Params, [string]$AuthHeader = $null, [string]$BaseUrlOverride = $null)
     $script:RpcId++
@@ -332,7 +393,7 @@ function Restart-WithSnapshot {
     return Start-DnSpyAndWait
 }
 function New-SnapshotJson {
-    param([bool]$DebugTools, [bool]$Dedicated, [string]$Host_ = 'localhost', [int]$Port_ = 3000,
+    param([bool]$DebugTools, [bool]$Dedicated, [string]$Host_ = 'localhost', [int]$Port_ = 15378,
            [string]$SampleRoot, [string]$ArtifactRoot, [string]$CidrsJson = '[]', [bool]$RemoteAck = $false, [string]$Verifier = 'null')
     $dt = if ($DebugTools) { 'true' } else { 'false' }
     $dd = if ($Dedicated) { 'true' } else { 'false' }
@@ -343,7 +404,7 @@ function Ensure-CanonicalDnSpy {
     # Leave/ensure the VM in the canonical gate-on loopback state, and sweep any session a
     # previously aborted case left behind so launch-facing cases always start from idle.
     if ((Get-HealthCode $script:BaseUrl) -ne '200') {
-        $json = New-SnapshotJson $true $true 'localhost' 3000 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+        $json = New-SnapshotJson $true $true 'localhost' 15378 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
         if (-not (Restart-WithSnapshot $json)) { return $false }
     }
     $st = Invoke-ToolNoInit 'debug_status' @{ session_id = 'driver-sweep' }
@@ -361,7 +422,7 @@ function Ensure-CanonicalDnSpy {
         $state2 = if ($st2.domain) { "$($st2.domain.result.state)" } else { '' }
         if ($state2 -and $state2 -ne 'idle' -and $state2 -ne 'terminal') {
             # hard reset only as last resort
-            $json = New-SnapshotJson $true $true 'localhost' 3000 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+            $json = New-SnapshotJson $true $true 'localhost' 15378 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
             return Restart-WithSnapshot $json
         }
     }
@@ -475,7 +536,7 @@ function Invoke-CoreClrMatrix {
 
 
 function Invoke-Detached {
-    # Fire a blocking tool call in a detached curl; returns resp file path. Req/resp live
+    # Fire a blocking tool call in a detached Python client; returns resp file path. Req/resp live
     # UNDER the result directory so the evidence gate can see them (CHK-004: C:\Tools\dt-*
     # volatile files were invisible to result-evidence-complete).
     param([string]$BodyJson, [string]$Tag, [int]$MaxSec = 25)
@@ -483,7 +544,7 @@ function Invoke-Detached {
     $reqF = Join-Path $script:OutDir $reqRel; $respF = Join-Path $script:OutDir $respRel
     Set-Content $reqF $BodyJson -Encoding ascii
     Remove-Item $respF -Force -ErrorAction SilentlyContinue
-    Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time',"$MaxSec",'-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$reqF",'-o',$respF -PassThru -WindowStyle Hidden | Out-Null
+    Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $reqF -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec $MaxSec -OutputFile $respF | Out-Null
     return $respRel
 }
 function Read-DetachedResp {
@@ -780,9 +841,9 @@ function Run-ACC002 {
         $orig = $d.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']").GetAttribute('SettingsSnapshotJson')
         Save-Text 'settings-backup.json' $orig | Out-Null
 
-        $snapA = New-SnapshotJson $false $false 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
-        $snapB = New-SnapshotJson $true $false 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
-        $snapC = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+        $snapA = New-SnapshotJson $false $false 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+        $snapB = New-SnapshotJson $true $false 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+        $snapC = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
 
         $up = Restart-WithSnapshot $snapA
         Assert-Cond 'combo-A-restart' 'health 200 after (false,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
@@ -894,7 +955,7 @@ function Run-ACC002 {
         if (-not ($urlaclPresent -or $elevated)) {
             Fail-Precondition 'remote-admin-provisioning' 'elevated one-time urlacl+firewall provisioning (deploy runbook / ACC-023 reversible script)'
         } elseif ($upR) {
-            $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+            $noAuth = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
             $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Authorization: Bearer $b64" -BaseUrlOverride $remoteUrl
             $rdom = $null
             try { $rdom = ($rCap.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
@@ -908,7 +969,7 @@ function Run-ACC002 {
         # (EffectiveDebugLaunch=false) - simulated through the DNMCP_TEST_STARTUP_DEBUGGING
         # seam inherited by the spawned dnSpy.
         $env:DNMCP_TEST_STARTUP_DEBUGGING = '1'
-        $comboDJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+        $comboDJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
         if (Restart-WithSnapshot $comboDJson) {
             $tlD = Get-ToolList $v
             $namesD = @($tlD.tools | ForEach-Object { $_.name })
@@ -1688,7 +1749,7 @@ function Run-ACC007 {
     $p1bReqF = Join-Path $script:OutDir 'p1b-req.json'; $p1bRespF = Join-Path $script:OutDir 'p1b-resp.txt'
     Set-Content $p1bReqF $p1bReq -Encoding ascii
     Remove-Item $p1bRespF -Force -ErrorAction SilentlyContinue
-    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','20','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$p1bReqF",'-o',$p1bRespF -PassThru -WindowStyle Hidden
+    $cp = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $p1bReqF -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 20 -OutputFile $p1bRespF
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
     $deadlineP1b = (Get-Date).AddSeconds(15)
@@ -2124,7 +2185,7 @@ function Run-ACC034 {
     Set-Content (Join-Path $script:OutDir 'a34-req.json') $rReq -Encoding ascii
     $a34ReqF1 = Join-Path $script:OutDir 'a34-req.json'; $a34RespF1 = Join-Path $script:OutDir 'a34-resp.txt'
     Remove-Item $a34RespF1 -Force -ErrorAction SilentlyContinue
-    $cp = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$a34ReqF1",'-o',$a34RespF1 -PassThru -WindowStyle Hidden
+    $cp = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $a34ReqF1 -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 25 -OutputFile $a34RespF1
     Start-Sleep -Milliseconds 900
     $null = Test-Clock 35000
     $dl = (Get-Date).AddSeconds(15)
@@ -2161,7 +2222,7 @@ function Run-ACC034 {
     $t2Req = '{"jsonrpc":"2.0","id":783,"method":"tools/call","params":{"name":"debug_terminate","arguments":{"session_id":"' + $sid2 + '","generation":' + $gen2b + ',"request_id":"a34-t2"}}}'
     Set-Content C:\Tools\a34-t2req.json $t2Req -Encoding ascii
     Remove-Item C:\Tools\a34-t2resp.txt -Force -ErrorAction SilentlyContinue
-    $cp2 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data','@C:\Tools\a34-t2req.json','-o','C:\Tools\a34-t2resp.txt' -PassThru -WindowStyle Hidden
+    $cp2 = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile 'C:\Tools\a34-t2req.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 25 -OutputFile 'C:\Tools\a34-t2resp.txt'
     Start-Sleep -Milliseconds 900
     $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
     $dl2 = (Get-Date).AddSeconds(15)
@@ -2207,7 +2268,7 @@ function Run-ACC034 {
     $a34Resp3 = Join-Path $script:OutDir 'a34-resp3.txt'
     Set-Content $a34Req3F $rReq3 -Encoding ascii
     Remove-Item $a34Resp3 -Force -ErrorAction SilentlyContinue
-    $cp3 = Start-Process -FilePath curl.exe -ArgumentList '-s','--max-time','25','-X','POST',$script:BaseUrl,'-H','Accept: application/json','-H','Content-Type: application/json','--data',"@$a34Req3F",'-o',$a34Resp3 -PassThru -WindowStyle Hidden
+    $cp3 = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $a34Req3F -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 25 -OutputFile $a34Resp3
     Start-Sleep -Milliseconds 900
     # The restart Terminate went to the FAKE adapter (swallowed). Kill the REAL target so the
     # manager observes a genuine removal: the pending restart relaunches through the Start
@@ -3307,7 +3368,7 @@ function Run-ACC028 {
         $body = '{"jsonrpc":"2.0","id":' + $ProbeId + ',"method":"tools/call","params":{"name":"debug_read_events","arguments":{"session_id":"' + $IdValue + '","generation":1,"after_cursor":0}}}'
         $f = Join-Path $script:OutDir ("wire\a28-byte-$ProbeId.req.json")
         [IO.File]::WriteAllText($f, $body, (New-Object System.Text.UTF8Encoding($false)))
-        $raw = & curl.exe -s --max-time 20 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary "@$f" 2>$null
+        $raw = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile $f -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 20
         Save-Text ("a28-byte-$ProbeId.resp.txt") "$raw" | Out-Null
         $o = $null; try { $o = $raw | ConvertFrom-Json } catch { }
         if ($o -and $o.error) { return "rpc:$($o.error.code)" }
@@ -3329,7 +3390,7 @@ function Run-ACC028 {
     for ($i = 0; $i -lt 9; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (700 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}' 
         [IO.File]::WriteAllText("C:\Tools\a28-w$i.json", $b)
-        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-X','POST','http://localhost:3000/','-H','Content-Type: application/json','--data',("@C:\Tools\a28-w$i.json"),'-o',("C:\Tools\a28-w$i.out") -PassThru -WindowStyle Hidden
+        $jobs += Start-PyHttp -Url 'http://localhost:15378/' -Method POST -BodyFile "C:\Tools\a28-w$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 40 -OutputFile "C:\Tools\a28-w$i.out"
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $limitHits = 0; $okCount = 0
@@ -3652,11 +3713,12 @@ function Run-ACC023 {
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
     $b64 = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
-    # [1] Defaults: loopback snapshot, no VM IP anywhere in the committed default posture.
-    $orig = Read-SettingsSnapshot
-    $defOk = $orig -and ("$($orig.Host)" -eq 'localhost') -and ([int]$orig.Port -eq 3000) -and (@($orig.RemoteAllowedCidrs).Count -eq 0) -and (-not $orig.RemoteTokenVerifier) -and (-not $orig.RemoteHostOnlyAcknowledged)
-    $ev1 = Save-Json 'a23-defaults.json' $orig
-    Assert-Cond 'a23-default-snapshot' 'defaults: localhost:3000, empty CIDR, no verifier, no ack (no VM IP in the default posture)' "ok=$defOk" $defOk @($ev1)
+    # [1] Inspect the production SafeDefaults in-process; the canonical acceptance instance is
+    # intentionally already configured as loopback and therefore is not a fresh-install default.
+    $defaultsProbe = Invoke-ToolNoInit 'debug_test_settings' @{}
+    $defOk = $defaultsProbe.domain.ok -and [bool]$defaultsProbe.domain.result.safe_defaults_match_deployment
+    $ev1 = Save-Json 'a23-defaults.json' $defaultsProbe.domain.result
+    Assert-Cond 'a23-default-snapshot' 'defaults: server off, 192.168.204.149:15378, host peer /32, no verifier, host-only ack' "ok=$defOk" $defOk @($ev1)
 
     # [2] Provision remote (urlacl + firewall + single ApplySnapshot) and prove authenticated
     # reachability with unauthenticated 401.
@@ -3671,7 +3733,7 @@ function Run-ACC023 {
     Set-SnapshotJson $snapR
     $up = Start-DnSpyAndWait -HealthUrl $remoteUrl
     if (-not $up) { Assert-Cond 'a23-remote-up' 'health reachable on the remote snapshot' 'failed' $false @('a23-urlacl-add.log'); return }
-    $noAuth = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+    $noAuth = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
     $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Authorization: Bearer $b64" -BaseUrlOverride $remoteUrl
     $rdom = $null
     try { $rdom = ($rCap.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
@@ -3679,17 +3741,36 @@ function Run-ACC023 {
     $ev2 = Save-Text 'a23-remote-capabilities.txt' ($rCap.body + "`nstatus=" + $rCap.status + "`nno_auth=" + $noAuth)
     Assert-Cond 'a23-authenticated-reach' 'remote: allowlisted source authenticated 200 tuple; unauthenticated 401' "tuple=$tupleOk no_auth=$noAuth" ($tupleOk -and ("$noAuth" -eq '401')) @($ev2)
 
-    # [3] Revoke: delete the urlacl/firewall rules, single ApplySnapshot back to every
+    # [3] Switch to the exact VMware host peer /32 with no verifier. The direct host reaches
+    # every endpoint without an Authorization header, while capabilities still report remote
+    # Host-Only mode with CIDR enforcement and auth_required=false.
+    $tokenlessCidrJson = '["' + $m.env.host_ip + '/32"]'
+    $snapTokenless = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $tokenlessCidrJson $true 'null'
+    Stop-DnSpyAndTargets
+    Set-SnapshotJson $snapTokenless
+    $tokenlessUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
+    $tokenlessHealth = Invoke-PyHttp -Url ($remoteUrl.TrimEnd('/') + '/health') -Method GET -Format status -MaxSec 6
+    $tokenlessCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -BaseUrlOverride $remoteUrl
+    $tokenlessDom = $null
+    try { $tokenlessDom = ($tokenlessCap.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
+    $tokenlessTuple = $tokenlessDom -and ($tokenlessDom.result.security.bind_mode -eq 'remote_host_only') `
+        -and (-not $tokenlessDom.result.security.auth_required) -and $tokenlessDom.result.security.cidr_required
+    $evTokenless = Save-Text 'a23-tokenless-host-peer.txt' ($tokenlessCap.body + "`nhealth=$tokenlessHealth status=$($tokenlessCap.status)")
+    Assert-Cond 'a23-tokenless-host-peer' '192.168.204.1/32 reaches remote MCP without Token; CIDR remains required' `
+        "up=$tokenlessUp health=$tokenlessHealth tuple=$tokenlessTuple" `
+        ($tokenlessUp -and ("$tokenlessHealth" -eq '200') -and ("$($tokenlessCap.status)" -eq '200') -and $tokenlessTuple) @($evTokenless)
+
+    # [4] Revoke: delete the urlacl/firewall rules, single ApplySnapshot back to every
     # default network field, restart — only loopback listens afterwards.
     & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-urlacl-del.log')
     & netsh advfirewall firewall delete rule name="dnspy-mcp-acc23" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-firewall-del.log')
-    $defaultJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    $defaultJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $defaultJson
     $upL = Start-DnSpyAndWait
-    $afterRemote = & curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "$($remoteUrl.TrimEnd('/'))/" -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+    $afterRemote = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
     $revokedSnap = Read-SettingsSnapshot
-    $revOk = $revokedSnap -and ("$($revokedSnap.Host)" -eq 'localhost') -and ([int]$revokedSnap.Port -eq 3000) -and (@($revokedSnap.RemoteAllowedCidrs).Count -eq 0) -and (-not $revokedSnap.RemoteTokenVerifier) -and (-not $revokedSnap.RemoteHostOnlyAcknowledged)
+    $revOk = $revokedSnap -and ("$($revokedSnap.Host)" -eq 'localhost') -and ([int]$revokedSnap.Port -eq 15378) -and (@($revokedSnap.RemoteAllowedCidrs).Count -eq 0) -and (-not $revokedSnap.RemoteTokenVerifier) -and (-not $revokedSnap.RemoteHostOnlyAcknowledged)
     $ev3 = Save-Json 'a23-revoked.json' @{ snapshot = $revokedSnap; remoteProbe = $afterRemote; loopbackHealth = (Get-HealthCode $script:BaseUrl) }
     Assert-Cond 'a23-revoked-loopback-only' 'revocation: default snapshot restored, loopback healthy, remote port closed' "snap=$revOk remote=$afterRemote health=$(Get-HealthCode $script:BaseUrl)" ($revOk -and $upL -and ("$afterRemote" -ne '200') -and ((Get-HealthCode $script:BaseUrl) -eq 200)) @($ev3, 'a23-urlacl-del.log')
 }
@@ -3717,7 +3798,7 @@ function Run-ACC036 {
 
     # [3] Canonical restore returns the server (fail-closed is reversible by committing
     # a valid snapshot — no legacy/migration shortcuts).
-    $good = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    $good = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $good
     $up = Start-DnSpyAndWait
@@ -3729,6 +3810,7 @@ function Run-ACC036 {
     $txr = $tx.domain.result
     $txEv = Save-Json 'a36-settings-transaction-matrix.json' $txr
     $txOk = $tx.domain.ok -and $txr.unknown_field_rejected -and $txr.invalid_committed_pending_not_activated `
+        -and $txr.wildcard_peer_allowed -and $txr.wildcard_null_peer_rejected -and $txr.enabled_trusted_peer_without_token_valid -and $txr.enabled_wildcard_without_token_rejected `
         -and (-not $txr.pending_write_failure.success) -and ($txr.pending_write_failure.failed_step -eq 'PendingWrite') -and (-not $txr.pending_write_failure.current_is_candidate) -and ($txr.pending_write_failure.transitions -eq 0) `
         -and (-not $txr.server_transition_failure.success) -and ($txr.server_transition_failure.failed_step -eq 'ServerTransition') -and (-not $txr.server_transition_failure.current_is_candidate) `
         -and (-not $txr.committed_write_failure.success) -and ($txr.committed_write_failure.failed_step -eq 'CommittedWrite') -and (-not $txr.committed_write_failure.current_is_candidate) `
@@ -3744,12 +3826,12 @@ function Run-ACC036 {
     $bn = $bx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
     $bRoot = 'C:\dnspy-mcp-artifacts-b'
     New-Item -ItemType Directory -Force $bRoot | Out-Null
-    $bJson = New-SnapshotJson $true $true 'localhost' 3001 $m.env.sample_root $bRoot
+    $bJson = New-SnapshotJson $true $true 'localhost' 15379 $m.env.sample_root $bRoot
     $bn.SetAttribute('SettingsSnapshotJson', $bJson)
     $bn.RemoveAttribute('SettingsPendingJson')
     $bx.Save($settingsB)
     $bp = Start-Process -FilePath $m.env.dnspy_exe -WorkingDirectory (Split-Path $m.env.dnspy_exe) -ArgumentList @('--multiple','--settings-file',$settingsB) -PassThru
-    $bUrl = 'http://localhost:3001/'
+    $bUrl = 'http://localhost:15379/'
     $deadlineB = (Get-Date).AddSeconds(45); $bUp = $false
     while ((Get-Date) -lt $deadlineB -and -not $bUp) { Start-Sleep -Milliseconds 700; $bUp = (Get-HealthCode $bUrl) -eq 200 }
     $aBefore = Get-HealthCode $script:BaseUrl
@@ -3770,6 +3852,11 @@ function Run-ACC019 {
     # cross-restart TARGET_MISMATCH that this case tests later.
     Stop-DnSpyAndTargets
     Reset-TestArtifactRoot
+    # Static save_assembly products legitimately live directly under ArtifactRoot.  The
+    # debugger's fail-closed ledger must be isolated from those files while retaining its
+    # own cross-restart stale-session protection beneath .dnspy-mcp-debug.
+    $staticSibling = Join-Path $m.env.artifact_root 'static-save-sibling.exe'
+    [IO.File]::WriteAllBytes($staticSibling, [byte[]](0x4d, 0x5a, 0x00, 0x00))
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'ArgvFixture.cs' 'ArgvFixture.exe')) { Assert-Cond 'fixture-build' 'ArgvFixture.exe compiled' 'failed' $false @('build-ArgvFixture.exe.log'); return }
     if (-not (Compile-Fixture 'SatelliteLib.cs' 'SatelliteLib.dll' -Library)) { Assert-Cond 'fixture-lib' 'SatelliteLib.dll compiled' 'failed' $false @('build-SatelliteLib.dll.log'); return }
@@ -3793,7 +3880,7 @@ function Run-ACC019 {
     # zero auto-delete) and are write/delete protected by the held marker handle.
     $s1 = Invoke-DumpCycle 's1'
     $s1SpyEv = Save-Json 'a19-s1-artifact-spy.json' (Get-SpyCounters)
-    Assert-Cond 'a19-s1-dump' 'S1 dump ok' "ok=$($s1.ok)" $s1.ok @($s1SpyEv)
+    Assert-Cond 'a19-s1-dump' 'S1 dump ok with a pre-existing static root artifact' "ok=$($s1.ok) static=$([IO.File]::Exists($staticSibling))" ($s1.ok -and [IO.File]::Exists($staticSibling)) @($s1SpyEv)
     $s1dir = if ($s1.art) { Split-Path "$($s1.art.path)" -Parent } else { $null }
     $s1files = if ($s1dir -and (Test-Path $s1dir)) { Get-ChildItem $s1dir -File | ForEach-Object { $_.Name } } else { @() }
     $tamper = 'blocked'
@@ -3939,11 +4026,8 @@ function Run-ACC003 {
     if (-not $up) { Assert-Cond 'a3-remote-up' 'remote posture up' 'failed' $false @(); return }
 
     function Probe([string]$Url, [string[]]$Headers, [string]$Body) {
-        $args = @('-s','-o','NUL','-w','%{http_code}','--max-time','6')
-        foreach ($h in $Headers) { $args += @('-H', $h) }
-        $args += @('-X', 'POST', $Url, '-H', 'Content-Type: application/json')
-        if ($Body) { $args += @('--data', $Body) }
-        return (& curl.exe @args 2>$null)
+        $allHeaders = @('Accept:application/json','Content-Type:application/json') + @($Headers)
+        return Invoke-PyHttp -Url $Url -Method POST -BodyText $Body -Headers $allHeaders -Format status -MaxSec 6
     }
     $rpc = '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}'
 
@@ -3961,16 +4045,16 @@ function Run-ACC003 {
     Assert-Cond 'a3-auth-matrix' '401 for no-auth/Basic/bad-base64url/wrong-token; 200 for valid token (XFF/Forwarded spoofing ignored — peer address decides)' "good=$good noAuth=$noAuth basic=$basic badB64=$badB64 wrong=$wrongTok xff=$goodSpoofCidr" ($rejectOk -and $acceptOk) @($ev1)
 
     # 401 carries the fixed WWW-Authenticate; 401/403 bodies are empty (CON-DYN-006 shape).
-    $h401 = & curl.exe -s -D - -o NUL --max-time 6 -X POST $remoteUrl -H 'Content-Type: application/json' --data $rpc 2>$null
+    $h401 = Invoke-PyHttp -Url $remoteUrl -Method POST -BodyText $rpc -Headers @('Accept:application/json','Content-Type:application/json') -Format headers -MaxSec 6
     $www = ($h401 -join ' ') -match 'WWW-Authenticate:\s*Bearer realm="dnspy-mcp"'
-    $body401 = & curl.exe -s --max-time 6 -X POST $remoteUrl -H 'Content-Type: application/json' --data $rpc 2>$null
+    $body401 = Invoke-PyHttp -Url $remoteUrl -Method POST -BodyText $rpc -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 6
     $ev2 = Save-Text 'a3-401-shape.txt' (($h401 -join "`n") + "`nbodyLen=" + $body401.Length)
     Assert-Cond 'a3-401-shape' '401: fixed WWW-Authenticate Bearer realm, empty body' "www=$www bodyLen=$($body401.Length)" ($www -and ($body401.Length -eq 0)) @($ev2)
 
     # Health endpoint honors the same wall; a valid token passes it.
     $healthUrl = $remoteUrl.TrimEnd('/') + '/health'
-    $hNo = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl 2>$null
-    $hOk = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl -H "Authorization: Bearer $goodTok" 2>$null
+    $hNo = Invoke-PyHttp -Url $healthUrl -Method GET -Format status -MaxSec 6
+    $hOk = Invoke-PyHttp -Url $healthUrl -Method GET -Format status -MaxSec 6 -Token $goodTok
     Assert-Cond 'a3-health-endpoint' 'health: 401 unauthenticated, 200 authenticated' "no=$hNo ok=$hOk" (($hNo -eq '401') -and ("$hOk" -eq '200')) @()
 
     # Every routed endpoint crosses the same pre-parse auth wall. Authenticated status may
@@ -3987,11 +4071,10 @@ function Run-ACC003 {
     $endpointEvidence = @(); $endpointOk = $true
     foreach ($row in $endpointRows) {
         $url = $remoteUrl.TrimEnd('/') + $row.path
-        $baseArgs = @('-s','-o','NUL','-w','%{http_code}','--max-time','2','-X',$row.method,$url,'-H',("Accept: " + $row.accept))
-        if ($row.data) { $baseArgs += @('-H','Content-Type: application/json','--data',$row.data) }
-        $unauth = & curl.exe @baseArgs 2>$null
-        $authArgs = @($baseArgs + @('-H',"Authorization: Bearer $goodTok"))
-        $auth = & curl.exe @authArgs 2>$null
+        $headers = @('Accept:' + $row.accept)
+        if ($row.data) { $headers += 'Content-Type:application/json' }
+        $unauth = Invoke-PyHttp -Url $url -Method $row.method -BodyText $row.data -Headers $headers -Format status -MaxSec 2
+        $auth = Invoke-PyHttp -Url $url -Method $row.method -BodyText $row.data -Headers $headers -Format status -MaxSec 2 -Token $goodTok
         $endpointEvidence += [pscustomobject]@{ endpoint=$row.n; unauth="$unauth"; auth="$auth" }
         if ("$unauth" -ne '401' -or "$auth" -eq '401') { $endpointOk = $false }
     }
@@ -4003,13 +4086,13 @@ function Run-ACC003 {
     Stop-DnSpyAndTargets
     Set-SnapshotJson $cidrDeny
     $denyUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
-    $denyCode = & curl.exe -s -o NUL -w '%{http_code}' --max-time 6 $healthUrl -H "Authorization: Bearer $goodTok" 2>$null
+    $denyCode = Invoke-PyHttp -Url $healthUrl -Method GET -Format status -MaxSec 6 -Token $goodTok
     Assert-Cond 'a3-cidr-deny' 'valid token but direct peer outside allowlist = 403' "up=$denyUp code=$denyCode" ($denyUp -and ("$denyCode" -eq '403')) @(Save-Text 'a3-cidr-deny.txt' "code=$denyCode")
 
     # Restore loopback defaults + drop the provisioning (reversible).
     & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
     & netsh advfirewall firewall delete rule name="dnspy-mcp-acc3" 2>&1 | Out-Null
-    $defaultJson = New-SnapshotJson $true $true 'localhost' 3000 $m.env.sample_root $m.env.artifact_root
+    $defaultJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $defaultJson
     $upL = Start-DnSpyAndWait
@@ -4029,10 +4112,10 @@ function Run-ACC004 {
     $pad1m = ('{"jsonrpc":"2.0","id":41,"method":"tools/list","params":{},' + ('"' + ('p' * 1048554) + '":1}'))
     $pad1m = $pad1m.Substring(0, 1048576)
     [IO.File]::WriteAllText('C:\Tools\a4-1m.json', $pad1m, (New-Object Text.ASCIIEncoding))
-    $r1m = & curl.exe -s -o NUL -w '%{http_code}' --max-time 10 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary '@C:\Tools\a4-1m.json' 2>$null
+    $r1m = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile 'C:\Tools\a4-1m.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
     $big = 'x' * 1048577
     [IO.File]::WriteAllText('C:\Tools\a4-big.json', $big, (New-Object Text.ASCIIEncoding))
-    $rBig = & curl.exe -s -o NUL -w '%{http_code}' --max-time 10 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Content-Type: application/json' --data-binary '@C:\Tools\a4-big.json' 2>$null
+    $rBig = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile 'C:\Tools\a4-big.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
     $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
     Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB is served (200-family, NOT 413); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and ("$r1m" -ne '413') -and ("$r1m" -ne '') -and ("$r1m" -ne '000')) @($ev1)
 
@@ -4050,7 +4133,7 @@ function Run-ACC004 {
     for ($i = 0; $i -lt 16; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
         [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $jobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','"Content-Type: application/json"','--data',("@C:\\Tools\\a4-w$i.json") -RedirectStandardOutput ("C:\\Tools\\a4-w$i.out") -PassThru -WindowStyle Hidden
+        $jobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile "C:\Tools\a4-w$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile "C:\Tools\a4-w$i.out"
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $limitHits = 0; $oks = 0
@@ -4063,7 +4146,7 @@ function Run-ACC004 {
     for ($i = 0; $i -lt 17; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (650 + $i) + ',"method":"tools/call","params":{"name":"debug_test_transport","arguments":{"hold_ms":4000}}}'
         [IO.File]::WriteAllText("C:\Tools\a4-s$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $shortJobs += Start-Process -FilePath curl.exe -ArgumentList '-s','-w','%{http_code}','--max-time','12','-X','POST',($script:BaseUrl.TrimEnd('/') + '/'),'-H','"Content-Type: application/json"','--data',("@C:\Tools\a4-s$i.json") -RedirectStandardOutput ("C:\Tools\a4-s$i.out") -PassThru -WindowStyle Hidden
+        $shortJobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile "C:\Tools\a4-s$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile "C:\Tools\a4-s$i.out"
     }
     $shortJobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $shortOk = 0; $http429 = 0
@@ -4082,21 +4165,23 @@ function Run-ACC004 {
     # [3] Nine real long-lived legacy SSE connections: the ninth is rejected before a worker.
     $longs = @()
     for ($i = 0; $i -lt 8; $i++) {
-        $longs += Start-Process -FilePath curl.exe -ArgumentList '-s','-o','NUL','--max-time','10',($script:BaseUrl.TrimEnd('/') + '/sse') -PassThru -WindowStyle Hidden
+        $longs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/sse') -Method GET -Headers @('Accept:text/event-stream') -Format status -MaxSec 12 -HoldSeconds 10
     }
     Start-Sleep -Milliseconds 900
-    $ninthLong = & curl.exe -s -o NUL -w '%{http_code}' --max-time 3 ($script:BaseUrl.TrimEnd('/') + '/sse') 2>$null
+    $ninthLong = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/sse') -Method GET -Headers @('Accept:text/event-stream') -Format status -MaxSec 3
     foreach ($p in $longs) { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }
     Assert-Cond 'a4-long-9th' 'ninth concurrent long connection = HTTP 429' "code=$ninthLong" ("$ninthLong" -eq '429') @(Save-Text 'a4-long-9th.txt' "code=$ninthLong")
 
     # [4] Streamable HTTP sessions persist independently of connections: first 16 initialize,
     # 17th initialize is the fixed 429 and allocates no session.
-    $initBody = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"a4","version":"1"}}}'
+    # The high-level Python API serializes initialize itself; no JSON ever crosses the
+    # PowerShell/native argv boundary. Keep all successful clients alive until attempt 17.
+    $codesJson = & $script:PythonExe -m dnspy_mcp.cli --url ($script:BaseUrl.TrimEnd('/') + '/') --timeout 5 session-limit --count 17
+    $parsedCodes = ($codesJson -join "`n") | ConvertFrom-Json
+    # Windows PowerShell 5.1 writes a top-level JSON array as one non-enumerated pipeline
+    # object. An explicit language foreach is required to obtain seventeen scalar codes.
     $sessionCodes = @()
-    for ($i = 0; $i -lt 17; $i++) {
-        $code = & curl.exe -s -o NUL -w '%{http_code}' --max-time 5 -X POST ($script:BaseUrl.TrimEnd('/') + '/') -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' --data $initBody 2>$null
-        $sessionCodes += "$code"
-    }
+    foreach ($parsedCode in $parsedCodes) { $sessionCodes += "$parsedCode" }
     $sessionEv = Save-Json 'a4-streamable-17th.json' $sessionCodes
     $sessionOk = (@($sessionCodes | Where-Object { $_ -eq '200' }).Count -eq 16) -and ($sessionCodes[16] -eq '429')
     Assert-Cond 'a4-streamable-17th' 'first 16 Streamable initialize sessions succeed; 17th = HTTP 429' "codes=$($sessionCodes -join ',')" $sessionOk @($sessionEv)

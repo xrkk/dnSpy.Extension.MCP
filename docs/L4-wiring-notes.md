@@ -48,7 +48,7 @@ Linux `build-check.sh`(net48)→ http.server → VM 拉 DLL 部署 `bin\Extensio
 
 ## VM 环境现状(2026-08-28)
 
-- dnSpy PID 见现场;设置 committed JSON:debug_enabled=true、ack=true、Port 3000、ArtifactRoot=C:\dnspy-mcp-artifacts(空目录);
+- dnSpy PID 见现场;设置 committed JSON:debug_enabled=true、ack=true、Port 15378、ArtifactRoot=C:\dnspy-mcp-artifacts(空目录);
 - 54 工具广告中,21 个 debug_* 会话工具 handler 未接(返回 Unknown tool);
 - MefCheck/CacheRead 法医工具在 C:\Tools\MefCheck(收尾阶段清理);诊断扩展 DiagExtension.x.dll 在 bin\(排障保留)。
 

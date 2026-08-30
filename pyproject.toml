@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dnspy-mcp-client"
+version = "0.1.0"
+description = "Python client and stdio bridge for dnSpy.Extension.MCP"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "dnSpy.Extension.MCP contributors" }]
+keywords = ["dnspy", "mcp", "reverse-engineering", "debugger"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = []
+
+[project.scripts]
+dnspy-mcp-client = "dnspy_mcp.cli:main"
+dnspy-mcp-stdio = "dnspy_mcp.stdio:main"
+dnspy-mcp-http = "dnspy_mcp.http_cli:main"
+
+[tool.setuptools]
+packages = ["dnspy_mcp"]

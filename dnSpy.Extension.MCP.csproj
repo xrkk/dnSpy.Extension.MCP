@@ -57,6 +57,14 @@
   -->
   <ItemGroup>
     <EmbeddedResource Include="tests/debug/contracts/dnspy.debug.v1.schema.json" />
+    <EmbeddedResource Include="docs/mcp-resources/index.md" LogicalName="dnspy.docs.index.md" />
+    <EmbeddedResource Include="docs/mcp-resources/overview.md" LogicalName="dnspy.docs.overview.md" />
+    <EmbeddedResource Include="docs/mcp-resources/static-analysis.md" LogicalName="dnspy.docs.static-analysis.md" />
+    <EmbeddedResource Include="docs/mcp-resources/il-editing.md" LogicalName="dnspy.docs.il-editing.md" />
+    <EmbeddedResource Include="docs/mcp-resources/dynamic-debugging.md" LogicalName="dnspy.docs.dynamic-debugging.md" />
+    <EmbeddedResource Include="docs/mcp-resources/security.md" LogicalName="dnspy.docs.security.md" />
+    <EmbeddedResource Include="docs/mcp-resources/python-client.md" LogicalName="dnspy.docs.python-client.md" />
+    <EmbeddedResource Include="docs/mcp-resources/tool-workflows.md" LogicalName="dnspy.docs.tool-workflows.md" />
   </ItemGroup>
 
 </Project>

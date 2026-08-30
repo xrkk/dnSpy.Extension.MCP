@@ -23,10 +23,6 @@ public sealed class SettingsRootLease : IDisposable {
 		error = null;
 		if (!snapshot.DebugToolsEnabled && !force)
 			return true;
-		if (string.IsNullOrWhiteSpace(snapshot.AllowedSampleRoot)) {
-			error = "AllowedSampleRoot must be non-empty when debug tools are enabled.";
-			return false;
-		}
 		if (string.IsNullOrWhiteSpace(snapshot.ArtifactRoot)) {
 			error = "ArtifactRoot must be non-empty when debug tools are enabled.";
 			return false;
@@ -35,13 +31,18 @@ public sealed class SettingsRootLease : IDisposable {
 		var keep = new List<SafeFileHandle>();
 		var probe = new List<SafeFileHandle>();
 		try {
-			var sampleFinal = AcquireChain(snapshot.AllowedSampleRoot, createFinal: false, keep);
+			string? sampleFinal = null;
+			if (!string.IsNullOrWhiteSpace(snapshot.AllowedSampleRoot))
+				sampleFinal = AcquireChain(snapshot.AllowedSampleRoot, createFinal: false, keep);
 			var artifactFinal = AcquireChain(snapshot.ArtifactRoot, createFinal: true, keep);
 			var extensionDirectory = Path.GetDirectoryName(typeof(SettingsRootLease).Assembly.Location);
 			if (string.IsNullOrEmpty(extensionDirectory))
 				throw new IOException("extension directory is unavailable");
 			var extensionFinal = AcquireChain(extensionDirectory, createFinal: false, probe);
-			if (!WindowsPathRelation.RootsAreDisjoint(new[] { sampleFinal, artifactFinal, extensionFinal }))
+			var roots = new List<string> { artifactFinal, extensionFinal };
+			if (sampleFinal != null)
+				roots.Add(sampleFinal);
+			if (!WindowsPathRelation.RootsAreDisjoint(roots))
 				throw new IOException("AllowedSampleRoot, ArtifactRoot and extension directory must be disjoint");
 			lease = new SettingsRootLease(keep);
 			keep = new List<SafeFileHandle>();

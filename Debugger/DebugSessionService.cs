@@ -468,7 +468,7 @@ public sealed class DebugSessionService : IDisposable {
 		if (!TestModeEnabled)
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
 		var old = McpSettingsSnapshot.SafeDefaults();
-		var candidate = McpSettingsSnapshot.TryCreate(true, "localhost", 3000, true, true,
+		var candidate = McpSettingsSnapshot.TryCreate(true, "localhost", 15378, true, true,
 			@"C:\Tools\samples", @"C:\Tools\artifacts", Array.Empty<string>(), null, false, out _)!;
 		Dictionary<string, object?> Run(string? failKey, bool failTransition, bool failClear) {
 			var io = new TestSettingsIo();
@@ -493,6 +493,12 @@ public sealed class DebugSessionService : IDisposable {
 		var badUnknown = old.ToCanonicalJson().TrimEnd('}') + ",\"Unknown\":1}";
 		var strictRejected = McpSettingsPersistence.TryParseEffective(badUnknown, out _) is null;
 		var recovered = McpSettingsPersistence.Recover(badUnknown, candidate.ToCanonicalJson(), null);
+		var enabledTrustedPeerWithoutToken = McpSettingsSnapshot.TryCreate(true, "192.168.204.149", 15378,
+			false, false, "", McpSettingsSnapshot.DefaultArtifactRoot(),
+			new[] { McpSettingsSnapshot.TrustedHostOnlyPeerCidr }, null, true, out _);
+		var enabledWildcardWithoutToken = McpSettingsSnapshot.TryCreate(true, "192.168.204.149", 15378,
+			false, false, "", McpSettingsSnapshot.DefaultArtifactRoot(), new[] { "*" }, null, true, out _);
+		var safeDefaults = McpSettingsSnapshot.SafeDefaults();
 		return Ok(coordinator, new Dictionary<string, object?> {
 			["test_mode"] = true,
 			["pending_write_failure"] = Run(McpSettingsPersistence.PendingKey, false, false),
@@ -503,6 +509,16 @@ public sealed class DebugSessionService : IDisposable {
 			["invalid_committed_pending_not_activated"] = ReferenceEquals(recovered.Snapshot, McpSettingsSnapshot.SafeDefaults())
 				|| !recovered.Snapshot.EnableServer,
 			["null_peer_rejected"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(null, new[] { "127.0.0.1/32" }),
+			["wildcard_peer_allowed"] = dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(System.Net.IPAddress.Parse("203.0.113.7"), new[] { "*" }),
+			["wildcard_null_peer_rejected"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(null, new[] { "*" }),
+			["enabled_trusted_peer_without_token_valid"] = enabledTrustedPeerWithoutToken != null,
+			["enabled_wildcard_without_token_rejected"] = enabledWildcardWithoutToken == null,
+			["safe_defaults_match_deployment"] = !safeDefaults.EnableServer
+				&& safeDefaults.Host == "192.168.204.149" && safeDefaults.Port == 15378
+				&& safeDefaults.RemoteAllowedCidrs.SequenceEqual(new[] { McpSettingsSnapshot.TrustedHostOnlyPeerCidr })
+				&& safeDefaults.RemoteTokenVerifier == null && safeDefaults.RemoteHostOnlyAcknowledged
+				&& safeDefaults.AllowedSampleRoot == ""
+				&& safeDefaults.ArtifactRoot.EndsWith("dnspy-mcp-artifacts", StringComparison.OrdinalIgnoreCase),
 		});
 	}
 
@@ -2368,6 +2384,10 @@ public sealed class DebugSessionService : IDisposable {
 	ActiveArtifactOperation? activeArtifactOperation;
 	string? terminalPendingArtifactSession;
 	string? ArtifactRootPath => settings.CurrentSnapshot?.ArtifactRoot is { Length: > 0 } root ? root : null;
+	const string DebugArtifactStoreDirectory = ".dnspy-mcp-debug";
+	string? DebugArtifactRootPath => ArtifactRootPath is { } root
+		? Path.Combine(root, DebugArtifactStoreDirectory)
+		: null;
 
 	bool TryBeginArtifactOperation(string requestId, string sessionId, long? admissionTimestamp,
 		out ActiveArtifactOperation? active) {
@@ -2571,7 +2591,10 @@ public sealed class DebugSessionService : IDisposable {
 	}
 
 	ArtifactStoreLedger ArtifactLedger() {
-		var configuredRoot = ArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
+		// Static save_assembly outputs and debugger dumps intentionally share the user-visible
+		// ArtifactRoot.  Keep the fail-closed debugger ledger in its own child so a legitimate
+		// static output at the root cannot be mistaken for an untrusted debugger-session sibling.
+		var configuredRoot = DebugArtifactRootPath ?? throw new InvalidOperationException("artifact root not configured");
 		var normalizedRoot = Path.GetFullPath(configuredRoot);
 		if (artifactLedger is not null && !WindowsPathRelation.EqualPath(artifactLedgerRoot!, normalizedRoot)) {
 			// Lease-relevant settings can change only while idle. Old retention handles remain
@@ -2747,7 +2770,7 @@ public sealed class DebugSessionService : IDisposable {
 		var relativeName = ArgString(args, "relative_name");
 		if (!string.IsNullOrEmpty(relativeName) && !IsValidArtifactStem(relativeName))
 			throw new ArgumentException("relative_name is not a safe Windows child-name stem");
-		var root = ArtifactRootPath;
+		var root = DebugArtifactRootPath;
 		if (string.IsNullOrEmpty(root))
 			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "ArtifactRoot is not configured");
 		var sessionId = coordinator.ActiveSessionId!;

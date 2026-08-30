@@ -18,8 +18,78 @@ namespace dnSpy.Extension.MCP {
 			if (DataContext is not SettingsViewModel viewModel)
 				return;
 			viewModel.RequestRemoteTokenRotation();
-			MessageBox.Show("A new token will be generated and shown once when these settings are successfully applied.",
-				"MCP Remote Token", MessageBoxButton.OK, MessageBoxImage.Information);
+			MessageBox.Show("成功应用这些设置时，将生成新的 Token，并且只显示一次。",
+				"MCP 远程 Token", MessageBoxButton.OK, MessageBoxImage.Information);
+		}
+
+		void ToggleServerButton_Click(object sender, RoutedEventArgs e) {
+			if (DataContext is not SettingsViewModel viewModel)
+				return;
+			var token = viewModel.ToggleServer();
+			if (token != null)
+				ShowOneTimeRemoteToken(Window.GetWindow(this), token);
+		}
+
+		void BrowseArtifactRootButton_Click(object sender, RoutedEventArgs e) {
+			if (DataContext is SettingsViewModel viewModel)
+				viewModel.BrowseArtifactRoot();
+		}
+
+		/// <summary>Shows and copies a raw remote token without ever logging or persisting it.</summary>
+		internal static void ShowOneTimeRemoteToken(Window? owner, string token) {
+			bool copied = TryCopyToClipboard(token);
+			var window = new Window {
+				Title = "MCP 远程 Token（仅显示一次）",
+				Width = 680,
+				Height = 245,
+				WindowStartupLocation = owner == null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner,
+				ResizeMode = ResizeMode.NoResize,
+			};
+			// AppSettingsPage.OnApply can run after dnSpy has already closed its settings window.
+			// Assigning that closed Window as Owner throws and would hide the one-time credential.
+			if (owner != null && owner.IsVisible) {
+				try { window.Owner = owner; }
+				catch (InvalidOperationException) { window.WindowStartupLocation = WindowStartupLocation.CenterScreen; }
+			}
+			else
+				window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+			var panel = new StackPanel { Margin = new Thickness(14) };
+			panel.Children.Add(new TextBlock {
+				Text = "这是提供给 MCP 客户端的 DNSPY_MCP_TOKEN。原始 Token 不会保存，并且关闭后无法再次查看。",
+				TextWrapping = TextWrapping.Wrap,
+				Margin = new Thickness(0, 0, 0, 10),
+			});
+			var tokenBox = new TextBox {
+				Text = token,
+				IsReadOnly = true,
+				FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+				Margin = new Thickness(0, 0, 0, 8),
+			};
+			panel.Children.Add(tokenBox);
+			var status = new TextBlock {
+				Text = copied ? "Token 已复制到剪贴板。请立即粘贴到 ZCode/Codex 的 DNSPY_MCP_TOKEN 环境变量。"
+					: "自动复制失败。请在上方文本框中按 Ctrl+C 复制。",
+				Foreground = copied ? System.Windows.Media.Brushes.DarkGreen : System.Windows.Media.Brushes.DarkOrange,
+				TextWrapping = TextWrapping.Wrap,
+				Margin = new Thickness(0, 0, 0, 10),
+			};
+			panel.Children.Add(status);
+			var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+			var copy = new Button { Content = "复制 Token", Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 8, 0) };
+			copy.Click += (s, e) => {
+				if (TryCopyToClipboard(token)) {
+					status.Text = "Token 已复制到剪贴板。";
+					status.Foreground = System.Windows.Media.Brushes.DarkGreen;
+				}
+			};
+			buttons.Children.Add(copy);
+			var close = new Button { Content = "关闭", Padding = new Thickness(18, 3, 18, 3), IsDefault = true };
+			close.Click += (s, e) => window.Close();
+			buttons.Children.Add(close);
+			panel.Children.Add(buttons);
+			window.Content = panel;
+			window.Loaded += (s, e) => { tokenBox.SelectAll(); tokenBox.Focus(); };
+			window.ShowDialog();
 		}
 
 		/// <summary>
@@ -30,8 +100,8 @@ namespace dnSpy.Extension.MCP {
 				if (DataContext is SettingsViewModel viewModel && viewModel.LogMessages != null) {
 					var allLogs = string.Join(Environment.NewLine, viewModel.LogMessages);
 					if (string.IsNullOrEmpty(allLogs)) {
-						MessageBox.Show("No logs to copy.",
-							"No Logs",
+						MessageBox.Show("没有可复制的日志。",
+							"无日志",
 							MessageBoxButton.OK,
 							MessageBoxImage.Information);
 						return;
@@ -41,8 +111,8 @@ namespace dnSpy.Extension.MCP {
 					bool copied = TryCopyToClipboard(allLogs);
 
 					if (copied) {
-						MessageBox.Show($"Copied {viewModel.LogMessages.Count} log messages to clipboard!",
-							"Logs Copied",
+						MessageBox.Show($"已将 {viewModel.LogMessages.Count} 条日志复制到剪贴板。",
+							"日志已复制",
 							MessageBoxButton.OK,
 							MessageBoxImage.Information);
 					} else {
@@ -50,21 +120,21 @@ namespace dnSpy.Extension.MCP {
 						ShowLogsWindow(allLogs, viewModel.LogMessages.Count);
 					}
 				} else {
-					MessageBox.Show("Unable to access log messages.",
-						"Error",
+					MessageBox.Show("无法访问日志消息。",
+						"错误",
 						MessageBoxButton.OK,
 						MessageBoxImage.Warning);
 				}
 			}
 			catch (Exception ex) {
-				MessageBox.Show($"Failed to access logs: {ex.Message}",
-					"Error",
+				MessageBox.Show($"访问日志失败：{ex.Message}",
+					"错误",
 					MessageBoxButton.OK,
 					MessageBoxImage.Error);
 			}
 		}
 
-		bool TryCopyToClipboard(string text) {
+		static bool TryCopyToClipboard(string text) {
 			// Try multiple times with delays
 			for (int i = 0; i < 5; i++) {
 				try {
@@ -85,7 +155,7 @@ namespace dnSpy.Extension.MCP {
 
 		void ShowLogsWindow(string logs, int count) {
 			var window = new Window {
-				Title = $"MCP Server Logs ({count} messages)",
+				Title = $"MCP 服务器日志（{count} 条）",
 				Width = 800,
 				Height = 600,
 				WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -117,20 +187,20 @@ namespace dnSpy.Extension.MCP {
 			Grid.SetRow(buttonPanel, 1);
 
 			var copyButton = new Button {
-				Content = "Try Copy Again",
+				Content = "再次尝试复制",
 				Padding = new Thickness(20, 5, 20, 5),
 				Margin = new Thickness(5)
 			};
 			copyButton.Click += (s, e) => {
 				if (TryCopyToClipboard(logs)) {
-					MessageBox.Show("Logs copied to clipboard successfully!",
-						"Success",
+					MessageBox.Show("日志已成功复制到剪贴板。",
+						"成功",
 						MessageBoxButton.OK,
 						MessageBoxImage.Information);
 					window.Close();
 				} else {
-					MessageBox.Show("Clipboard is still locked. Try closing other applications that might be using the clipboard.",
-						"Clipboard Locked",
+					MessageBox.Show("剪贴板仍被占用。请尝试关闭可能正在使用剪贴板的其他应用程序。",
+						"剪贴板被占用",
 						MessageBoxButton.OK,
 						MessageBoxImage.Warning);
 				}
@@ -138,7 +208,7 @@ namespace dnSpy.Extension.MCP {
 			buttonPanel.Children.Add(copyButton);
 
 			var selectAllButton = new Button {
-				Content = "Select All (Ctrl+C to copy)",
+				Content = "全选（按 Ctrl+C 复制）",
 				Padding = new Thickness(20, 5, 20, 5),
 				Margin = new Thickness(5)
 			};
@@ -149,7 +219,7 @@ namespace dnSpy.Extension.MCP {
 			buttonPanel.Children.Add(selectAllButton);
 
 			var closeButton = new Button {
-				Content = "Close",
+				Content = "关闭",
 				Padding = new Thickness(20, 5, 20, 5),
 				Margin = new Thickness(5)
 			};

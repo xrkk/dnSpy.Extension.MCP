@@ -119,6 +119,28 @@ namespace dnSpy.Extension.MCP
                             }
                         },
                         ["required"] = new List<string>()
+                    },
+                    OutputSchema = new Dictionary<string, object> {
+                        ["type"] = "object",
+                        ["properties"] = new Dictionary<string, object> {
+                            ["assemblies"] = new Dictionary<string, object> {
+                                ["type"] = "array",
+                                ["items"] = new Dictionary<string, object> {
+                                    ["type"] = "object",
+                                    ["properties"] = new Dictionary<string, object> {
+                                        ["Name"] = new Dictionary<string, object> { ["type"] = "string" },
+                                        ["Version"] = new Dictionary<string, object> { ["type"] = "string" },
+                                        ["FullName"] = new Dictionary<string, object> { ["type"] = "string" },
+                                        ["Culture"] = new Dictionary<string, object> { ["type"] = "string" },
+                                        ["PublicKeyToken"] = new Dictionary<string, object> { ["type"] = "string" },
+                                    },
+                                    ["required"] = new List<string> { "Name", "Version", "FullName", "Culture", "PublicKeyToken" },
+                                    ["additionalProperties"] = false,
+                                },
+                            },
+                        },
+                        ["required"] = new List<string> { "assemblies" },
+                        ["additionalProperties"] = false,
                     }
                 },
                 new ToolInfo {
@@ -1263,12 +1285,12 @@ namespace dnSpy.Extension.MCP
                     Name = a!.Name.String,
                     Version = a.Version?.ToString() ?? "N/A",
                     FullName = a.FullName,
-                    Culture = a.Culture ?? "neutral",
+                    Culture = string.IsNullOrEmpty(a.Culture?.String) ? "neutral" : a.Culture!.String,
                     PublicKeyToken = a.PublicKeyToken?.ToString() ?? "null"
                 })
                 .ToList();
 
-            var result = JsonSerializer.Serialize(assemblies, new JsonSerializerOptions { WriteIndented = true });
+            var result = JsonSerializer.Serialize(new { assemblies }, new JsonSerializerOptions { WriteIndented = true });
             return new CallToolResult
             {
                 Content = new List<ToolContent> {

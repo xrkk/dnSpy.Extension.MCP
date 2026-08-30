@@ -33,6 +33,9 @@ jobs:
       - name: Validate frozen contract artifacts
         run: python tests/debug/contracts/validate.py
 
+      - name: Test Python client and stdio bridge
+        run: python -m unittest discover -s tests/python -v
+
       - name: Regenerate and diff static tool schema snapshot
         run: |
           python - <<'EOF'
@@ -144,6 +147,11 @@ jobs:
     steps:
       - name: Checkout MCP Extension
         uses: actions/checkout@v4
+
+      - name: Setup Python client runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Verify dedicated runner prerequisites
         shell: pwsh

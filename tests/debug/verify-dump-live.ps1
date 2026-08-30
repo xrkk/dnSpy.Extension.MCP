@@ -12,12 +12,12 @@ $hash = (Get-FileHash $ext -Algorithm SHA256).Hash.Substring(0,8)
 "deployed sha8: $hash (expect E96793E3)"
 Start-Process -FilePath 'C:\Tools\dnSpy\dnSpy.exe' -WorkingDirectory 'C:\Tools\dnSpy'
 Start-Sleep 14
-"health: $((Invoke-WebRequest -Uri 'http://localhost:3000/health' -UseBasicParsing -TimeoutSec 5).StatusCode)"
+"health: $((Invoke-WebRequest -Uri 'http://localhost:15378/health' -UseBasicParsing -TimeoutSec 5).StatusCode)"
 
 function Call($id, $name, $argsJson) {
     $b = '{"jsonrpc":"2.0","id":' + $id + ',"method":"tools/call","params":{"name":"' + $name + '","arguments":' + $argsJson + '}}'
     Set-Content "$work\c.json" $b -Encoding ascii
-    (curl.exe -s --max-time 25 -X POST http://localhost:3000/ -H 'Accept: application/json' -H 'Content-Type: application/json' --data "@$work\c.json") | Out-String
+    (curl.exe -s --max-time 25 -X POST http://localhost:15378/ -H 'Accept: application/json' -H 'Content-Type: application/json' --data "@$work\c.json") | Out-String
 }
 
 '== [2/6] 启动调试会话并暂停 =='

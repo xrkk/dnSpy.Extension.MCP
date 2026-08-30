@@ -187,7 +187,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		}
 		var gate = Gate;
 		var snapshot = settings.CurrentSnapshot;
-		bool remote = snapshot is not null && snapshot.Host != "localhost";
+		bool remote = snapshot?.IsRemote == true;
 		var cap = new DebugCapabilitiesResultDto {
 			DebugEnabled = gate.EffectiveDebugLaunch,
 			ExtensionVersion = ExtensionVersion,
@@ -199,7 +199,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			// its token/CIDR requirements (the DTO defaults describe loopback only).
 			Security = new DebugCapabilitiesResultDto.SecurityDto {
 				BindMode = remote ? "remote_host_only" : "loopback",
-				AuthRequired = remote,
+				AuthRequired = snapshot?.RequiresRemoteToken == true,
 				CidrRequired = remote,
 			},
 		};
@@ -263,16 +263,15 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 
 	/// <summary>
 	/// Loads the frozen structural contract (the same dnspy.debug.v1.schema.json frozen by
-	/// IMP-002) as an assembly resource and returns the tool's args definition verbatim, so the
-	/// advertised inputSchema can never drift from the contract fixtures.
+	/// IMP-002) as an assembly resource and derives the advertised, self-contained tool schema
+	/// from that definition, so its fields cannot drift from the contract fixtures.
 	/// </summary>
 	Dictionary<string, object> ArgsSchema(string toolName) {
 		lock (schemaLock) {
 			schemaDoc ??= LoadEmbeddedSchema();
 			var defs = schemaDoc.RootElement.GetProperty("$defs");
-			if (defs.TryGetProperty(toolName + "_args", out var args)) {
-				return JsonSerializer.Deserialize<Dictionary<string, object>>(args.GetRawText()) ?? new Dictionary<string, object>();
-			}
+			if (defs.TryGetProperty(toolName + "_args", out var args))
+				return ExpandToolSchema(args, defs);
 		}
 		return new Dictionary<string, object> { ["type"] = "object" };
 	}
@@ -283,9 +282,117 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			schemaDoc ??= LoadEmbeddedSchema();
 			var defs = schemaDoc.RootElement.GetProperty("$defs");
 			if (defs.TryGetProperty(toolName + "_result", out var result))
-				return JsonSerializer.Deserialize<Dictionary<string, object>>(result.GetRawText());
+				return BuildEnvelopeOutputSchema(result, defs);
 		}
 		return null;
+	}
+
+	/// <summary>
+	/// Produces the compatibility schema advertised to MCP clients. The frozen aggregate schema
+	/// remains the validation source of truth, but many tool registries do not dereference local
+	/// <c>$defs</c> or conditional <c>allOf</c> nodes. Inline local references and omit conditional
+	/// validation-only branches so every top-level field has a directly consumable type. Runtime
+	/// argument validation continues to enforce the complete frozen contract.
+	/// </summary>
+	static Dictionary<string, object> ExpandToolSchema(JsonElement definition, JsonElement allDefinitions) {
+		return ExpandSchemaNode(definition, allDefinitions, new HashSet<string>(StringComparer.Ordinal))
+			as Dictionary<string, object> ?? new Dictionary<string, object> { ["type"] = "object" };
+	}
+
+	/// <summary>
+	/// tools/call returns the complete debug envelope, not the inner result DTO. Advertise that
+	/// actual wire object and specialize its optional result property for each tool. The common
+	/// required fields apply to both success and failure; the frozen runtime contract enforces
+	/// the exact success/result versus failure/error conditional.
+	/// </summary>
+	static Dictionary<string, object> BuildEnvelopeOutputSchema(JsonElement resultDefinition, JsonElement allDefinitions) {
+		object Expanded(string name) => allDefinitions.TryGetProperty(name, out var value)
+			? ExpandSchemaNode(value, allDefinitions, new HashSet<string>(StringComparer.Ordinal))
+			: new Dictionary<string, object> { ["type"] = "object" };
+
+		return new Dictionary<string, object> {
+			["type"] = "object",
+			["description"] = "dnspy.debug.v1 success/failure envelope; success carries result, failure carries error.",
+			["properties"] = new Dictionary<string, object> {
+				["schema_version"] = new Dictionary<string, object> { ["const"] = DebugWire.SchemaVersion },
+				["ok"] = new Dictionary<string, object> { ["type"] = "boolean" },
+				["debug_context"] = Expanded("debug_context"),
+				["result"] = ExpandToolSchema(resultDefinition, allDefinitions),
+				["error"] = Expanded("domain_error"),
+				["warnings"] = new Dictionary<string, object> {
+					["type"] = "array", ["maxItems"] = 32, ["items"] = Expanded("warning"),
+				},
+				["untrusted_sample_data"] = new Dictionary<string, object> { ["type"] = "boolean" },
+			},
+			["required"] = new List<string> { "schema_version", "ok", "debug_context", "warnings", "untrusted_sample_data" },
+			["additionalProperties"] = false,
+		};
+	}
+
+	static object ExpandSchemaNode(JsonElement element, JsonElement allDefinitions, HashSet<string> expansionStack) {
+		switch (element.ValueKind) {
+		case JsonValueKind.Object:
+			var expanded = new Dictionary<string, object>(StringComparer.Ordinal);
+			if (element.TryGetProperty("$ref", out var refElement)
+				&& refElement.ValueKind == JsonValueKind.String
+				&& TryGetLocalDefinitionName(refElement.GetString(), out var definitionName)
+				&& allDefinitions.TryGetProperty(definitionName, out var referenced)) {
+				if (!expansionStack.Add(definitionName)) {
+					return new Dictionary<string, object> {
+						["type"] = "object",
+						["description"] = "Recursive child object; bounded runtime representation.",
+						["additionalProperties"] = true,
+					};
+				}
+				if (ExpandSchemaNode(referenced, allDefinitions, expansionStack) is Dictionary<string, object> referencedObject)
+					foreach (var pair in referencedObject)
+						expanded[pair.Key] = pair.Value;
+				expansionStack.Remove(definitionName);
+			}
+
+			foreach (var property in element.EnumerateObject()) {
+				// Conditional branches constrain combinations but obscure the callable object shape
+				// in strict/LLM tool registries. The server still validates them at dispatch.
+				if (property.NameEquals("$ref") || property.NameEquals("$defs")
+					|| property.NameEquals("allOf") || property.NameEquals("if")
+					|| property.NameEquals("then") || property.NameEquals("else")
+					|| property.NameEquals("not"))
+					continue;
+				expanded[property.Name] = ExpandSchemaNode(property.Value, allDefinitions, expansionStack);
+			}
+			return expanded;
+
+		case JsonValueKind.Array:
+			var list = new List<object>();
+			foreach (var item in element.EnumerateArray())
+				list.Add(ExpandSchemaNode(item, allDefinitions, expansionStack));
+			return list;
+		case JsonValueKind.String:
+			return element.GetString() ?? string.Empty;
+		case JsonValueKind.Number:
+			if (element.TryGetInt32(out var intValue)) return intValue;
+			if (element.TryGetInt64(out var longValue)) return longValue;
+			return element.GetDouble();
+		case JsonValueKind.True:
+			return true;
+		case JsonValueKind.False:
+			return false;
+		case JsonValueKind.Null:
+		case JsonValueKind.Undefined:
+		default:
+			return null!;
+		}
+	}
+
+	static bool TryGetLocalDefinitionName(string? reference, out string name) {
+		name = string.Empty;
+		const string prefix = "#/$defs/";
+		if (reference == null || !reference.StartsWith(prefix, StringComparison.Ordinal))
+			return false;
+		var tail = reference.Substring(prefix.Length);
+		var slash = tail.IndexOf('/');
+		name = (slash < 0 ? tail : tail.Substring(0, slash)).Replace("~1", "/").Replace("~0", "~");
+		return name.Length != 0;
 	}
 
 	static JsonDocument LoadEmbeddedSchema() {

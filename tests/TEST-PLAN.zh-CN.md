@@ -12,8 +12,8 @@
 | L0 | 契约验证 | Linux/CI | ✅ 189 例全绿 | schema/字节清单/fixtures |
 | L1 | 组件 harness | Linux | ✅ 15 套全绿 | 纯逻辑组件 |
 | L2 | HTTP 传输冒烟 | Linux | ✅ 35/35 | 回环+远程模式 wire 行为 |
-| L3 | 进程内集成 | Windows(本机) | ⬜ 待执行 | 装载/设置事务/工具广告 |
-| L4 | 动态调试 E2E | Windows VM | ⬜ 阻碍(VM 未运行) | ACC-001..036 |
+| L3 | 进程内集成 | Windows VM | ✅ 实机 UI 查看/修改/持久化/恢复 | 装载/设置事务/工具广告 |
+| L4 | 动态调试 E2E | Windows VM | ✅ 36/36、500/500 全绿 | ACC-001..036，含 x86/x64 正反矩阵 |
 | L5 | 发布门禁 | CI | ✅ 已接线 | verify→build/release |
 
 ---
@@ -22,9 +22,10 @@
 
 ```bash
 python tests/debug/contracts/validate.py
+python -m unittest discover -s tests/python -v
 ```
 
-覆盖:Draft 2020-12 schema 合法性;10 项 UTF-8 字节指针可解析;25 API args/22 result/21 EVT def 计数;fixtures 确定性再生(两次生成字节一致);189 例不变量(invalid-fields 必须结构无效、-32602 仅限 invalid-fields/byte-input、2025-06-18 text 与 structuredContent 深等、无 session 计数为 0、required_states 固定顺序且不含 current_state、EVT schema)。
+覆盖:Draft 2020-12 schema 合法性;10 项 UTF-8 字节指针可解析;25 API args/22 result/21 EVT def 计数;fixtures 确定性再生(两次生成字节一致);189 例不变量(invalid-fields 必须结构无效、-32602 仅限 invalid-fields/byte-input、2025-06-18 text 与 structuredContent 深等、无 session 计数为 0、required_states 固定顺序且不含 current_state、EVT schema);Python 客户端 initialize/会话头/通知/工具/资源/错误/清理与 stdio 透明转发；只读 token verifier 的 WPF 绑定固定为 OneWay，防止打开设置页时因写回只读属性而异常。
 
 ## L1 组件 harness(已固化,Linux 可跑)
 
@@ -59,10 +60,11 @@ python tests/debug/contracts/validate.py
 3. **工具广告**:默认(未确认专用实例)tools/list 恰 33(32 静态+debug_capabilities),其余 debug_* 不广告;直接调用 debug_attach → 固定 CAPABILITY_UNAVAILABLE(无副作用)。
 4. **写工具门控**:dnSpy 内手动调试任意程序(F5)→ 六写工具全部 INVALID_STATE;停止调试→恢复。
 5. **静态回归**:32 个静态工具冒烟(对照 `tests/snapshots/static-tools.baseline.json`)。
+6. **实机 UI 配置回归**:通过“视图 → 选项 → MCP 服务器”确认中文页面无绑定异常且可回读全部字段；经 UI 修改端口，验证新端口 health=200、旧端口不监听，退出并重启确认快照已持久化；再经 UI 恢复目标配置，验证 health 与持久化快照一致。2026-08-30 首轮实测证据：`ui-config-real-machine.json`（与全量 ACC 结果同目录）；默认端口迁移后使用 15378/15379。
 
 ## L4 动态调试 E2E(Windows VM,ACC-001..036)
 
-**环境准备**(解除阻碍后):
+**环境准备/复跑**:
 ```powershell
 # VM(192.168.204.149)内,管理员 PowerShell——可逆防火墙
 New-NetFirewallRule -DisplayName "dnspy-mcp-hostonly" -Direction Inbound `
@@ -71,7 +73,7 @@ New-NetFirewallRule -DisplayName "dnspy-mcp-hostonly" -Direction Inbound `
 - 按部署文档第 1 节启动**专用非交互 dnSpy 实例**并确认 `DedicatedDebugInstanceAcknowledged`;
 - 准备 `AllowedSampleRoot`(如 `C:\samples`)与空 `ArtifactRoot`;
 - 构建六项 fixture:`tests\debug\fixtures\build-launch-fixtures.ps1`;
-- E2E driver(待建):`powershell -NoProfile -ExecutionPolicy Bypass -File tests\debug\run-debug-tests.ps1 -Case ACC-xxx`。
+- E2E driver:`powershell -NoProfile -ExecutionPolicy Bypass -File tests\debug\run-debug-tests.ps1 -Case ACC-xxx`。所有 HTTP/MCP wire 操作统一经 `dnspy_mcp` Python 客户端；PowerShell 只负责 Windows fixture、dnSpy 生命周期和证据编排。
 
 **ACC 分组与关键判据**(完整前置/命令/精确预期见方案 §6):
 
@@ -90,6 +92,8 @@ New-NetFirewallRule -DisplayName "dnspy-mcp-hostonly" -Direction Inbound `
 | 协议 | 027,028 | transport 重连;schema/状态矩阵/幂等 fixture 对账 |
 
 **退出判据**:36 项 ACC 全通过→方案完整落地;任一项失败→修复后回归该组与 L0-L3。
+
+2026-08-30 最新 Python 客户端驱动全量结果为 36/36 case、500/500 assertion 通过。ACC-029 在真实 x64 dnSpy 与真实 x86 dnSpy 上分别完成 net48 生命周期，并覆盖 x86/x64 CoreCLR、x86 harness 以及两种交叉架构拒绝路径；结果目录：`C:\Tools\mcp-pyclient-a4b6af0\tests\debug\results\a4b6af07b2d9e6728e72df91ff4a17fdf71481c4`。
 
 ## 无 CI 的单机等价入口(L0+L1+依赖守卫+双 TFM 构建,一键)
 
@@ -114,5 +118,5 @@ pwsh 版的 Python 等价)+ 双 TFM Release 构建,并把产物写入 `dist/`(�
 
 - 本机为 Linux:`dist/` 产物在每次部署前都经 VM 实跑验证(第 34-61 轮),部署链含 SHA-256 比对;
 - L4 已解除阻断(第 34 轮起):`tests/debug/run-debug-tests.ps1 -Case ACC-xxx` 36 案全部机械化实跑;
-- CI 层:`.github/workflows/verify.yml` 的 E2E job 以 `-VerifyHarness` 作为驱动完整性硬门禁,VM 全量复跑按《第三方核查指引》执行;
+- CI 层:`.github/workflows/verify.yml` 的 harness job 以 `-VerifyHarness` 做驱动完整性硬门禁，e2e job 在专用 Windows runner 上强制执行 ACC-001..036，任一跳过或失败都会使发布门禁失败;
 - 每轮测试捕获的产品缺陷均已当场修复并回归(见实施记录各轮);每案 result.json 证据与 dnspy.debug.test.v1 形状门禁自第 61 轮起实装。

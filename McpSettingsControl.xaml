@@ -9,8 +9,13 @@
 
         <!-- Settings Section -->
         <StackPanel Grid.Row="0">
-            <CheckBox Content="Enable MCP Server" IsChecked="{Binding EnableServer}" Margin="0,0,0,10"/>
-            <TextBlock Text="MCP Server Configuration" FontWeight="Bold" Margin="0,10,0,5"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <CheckBox Content="启用 MCP 服务器" IsChecked="{Binding EnableServer}" VerticalAlignment="Center"/>
+                <Button Content="{Binding ServerActionText}" Click="ToggleServerButton_Click"
+                        Padding="16,3" Margin="15,0,8,0" MinWidth="70"/>
+                <TextBlock Text="{Binding ServerStatusText}" VerticalAlignment="Center" Foreground="Gray"/>
+            </StackPanel>
+            <TextBlock Text="MCP 服务器配置" FontWeight="Bold" Margin="0,10,0,5"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -21,13 +26,13 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Host:" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <TextBlock Text="主机：" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
 
-                <TextBlock Text="Port:" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <TextBlock Text="端口：" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
             </Grid>
-            <TextBlock Text="Remote Access Security" FontWeight="Bold" Margin="0,10,0,5"/>
+            <TextBlock Text="远程访问安全" FontWeight="Bold" Margin="0,10,0,5"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -37,23 +42,35 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Allowed CIDRs:" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Top"/>
+                <TextBlock Text="允许的 CIDR：" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Top"/>
                 <TextBox Text="{Binding RemoteAllowedCidrsText, UpdateSourceTrigger=PropertyChanged}"
                          Grid.Row="0" Grid.Column="1" Margin="0,5,0,5" MinWidth="200" MinHeight="48"
                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto"/>
-                <TextBlock Text="Token verifier:" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
-                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
-                    <TextBox Text="{Binding RemoteTokenVerifier}" IsReadOnly="True" MinWidth="360" Margin="0,5,5,5"/>
-                    <Button Content="Rotate on Apply" Click="RotateRemoteTokenButton_Click" Padding="8,2" Margin="0,5,0,5"/>
-                </StackPanel>
-                <CheckBox Grid.Row="2" Grid.Column="1"
-                          Content="Remote host is isolated to the configured host-only network"
+                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,5" Foreground="Gray" TextWrapping="Wrap"
+                           Text="每行一个规范 CIDR。免 Token 时固定为 192.168.204.1/32；仅 Token 模式可使用 *。"/>
+                <CheckBox Grid.Row="2" Grid.Column="1" Content="要求 Bearer Token"
+                          IsChecked="{Binding RemoteTokenRequired}" Margin="0,5,0,5"/>
+                <TextBlock Text="Token 校验值：" Grid.Row="3" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <Grid Grid.Row="3" Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Text="{Binding RemoteTokenVerifier, Mode=OneWay}"
+                             IsReadOnly="True" MinWidth="200" Margin="0,5,5,5"/>
+                    <Button Grid.Column="1" Content="应用时轮换" Click="RotateRemoteTokenButton_Click"
+                            IsEnabled="{Binding RemoteTokenRequired}" Padding="8,2" Margin="0,5,0,5"/>
+                </Grid>
+                <CheckBox Grid.Row="4" Grid.Column="1"
+                          Content="远程主机仅限配置的 Host-Only 隔离网络"
                           IsChecked="{Binding RemoteHostOnlyAcknowledged}" Margin="0,5,0,5"/>
             </Grid>
-            <TextBlock Text="Dynamic Debugging" FontWeight="Bold" Margin="0,10,0,5"/>
-            <CheckBox Content="Enable debug tools (requires restart; freezes at startup)" IsChecked="{Binding DebugToolsEnabled}" Margin="0,0,0,5"/>
-            <CheckBox Content="This dnSpy instance is dedicated to MCP debugging (runbook acknowledged; requires restart)" IsChecked="{Binding DedicatedDebugInstanceAcknowledged}" Margin="0,0,0,5"/>
+            <TextBlock Text="动态调试" FontWeight="Bold" Margin="0,10,0,5"/>
+            <CheckBox Content="启用调试工具（重启后生效；启动时冻结）" IsChecked="{Binding DebugToolsEnabled}" Margin="0,0,0,5"/>
+            <CheckBox Content="此 dnSpy 实例专用于 MCP 调试（已确认运行规程；重启后生效）" IsChecked="{Binding DedicatedDebugInstanceAcknowledged}" Margin="0,0,0,5"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -63,24 +80,33 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Artifact root:" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
-                <TextBox Text="{Binding ArtifactRoot, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
-                <TextBlock Text="Allowed sample root:" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <TextBlock Text="产物目录：" Grid.Row="0" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
+                <Grid Grid.Row="0" Grid.Column="1" Margin="0,5,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding ArtifactRoot, UpdateSourceTrigger=PropertyChanged}" Grid.Column="0" MinWidth="200"/>
+                    <Button Content="浏览目录…" Click="BrowseArtifactRootButton_Click" Grid.Column="1" Margin="6,0,0,0" Padding="8,2"/>
+                </Grid>
+                <TextBlock Text="允许的样本目录：" Grid.Row="1" Grid.Column="0" Margin="0,5,10,5" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding AllowedSampleRoot, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" MinWidth="200"/>
             </Grid>
+            <TextBlock Text="允许的样本目录留空表示不限制可启动的样本路径；仅应在隔离的专用调试虚拟机中使用。"
+                       Foreground="DarkOrange" TextWrapping="Wrap" Margin="0,0,0,5"/>
             <TextBlock Margin="0,10,0,10"
                        FontStyle="Italic"
                        Foreground="Gray">
-                <Run Text="Note: Server starts/stops immediately when enabled/disabled."/>
+                <Run Text="说明：启用或停用后，服务器会立即启动或停止。"/>
                 <LineBreak/>
-                <Run Text="Host/Port changes require restarting dnSpy."/>
+                <Run Text="主机和端口更改会在应用设置后立即生效。"/>
                 <LineBreak/>
-                <Run Text="Debug enablement, acknowledgment and path roots apply after restart; they cannot change while a debug session is active."/>
+                <Run Text="调试开关、确认项和路径在重启后生效；MCP 调试会话活动期间无法更改。"/>
             </TextBlock>
         </StackPanel>
 
         <!-- Log Section -->
-        <GroupBox Grid.Row="1" Header="Server Log" Margin="0,10,0,0">
+        <GroupBox Grid.Row="1" Header="服务器日志" Margin="0,10,0,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
@@ -104,7 +130,7 @@
                 </ListBox>
 
                 <Button Grid.Row="1"
-                        Content="Copy All Logs to Clipboard"
+                        Content="复制所有日志到剪贴板"
                         Click="CopyLogsButton_Click"
                         Margin="0,5,0,0"
                         Padding="10,5"
@@ -114,7 +140,7 @@
                            Margin="0,5,0,0"
                            FontSize="10"
                            Foreground="Gray"
-                           Text="Server status and errors will appear here. Use the button above to copy all logs."/>
+                           Text="服务器状态和错误会显示在这里。可使用上方按钮复制全部日志。"/>
             </Grid>
         </GroupBox>
     </Grid>

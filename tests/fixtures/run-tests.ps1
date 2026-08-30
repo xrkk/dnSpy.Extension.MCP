@@ -7,7 +7,7 @@
   1. Builds TestIL.dll fixture (via build-fixture.ps1).
   2. Deploys the just-built MCP extension DLL into dnSpy's Extensions folder.
   3. Launches dnSpy (net10.0-windows release build) with TestIL.dll preloaded.
-  4. Waits for /health on the configured port (default 3000, with +N fallback).
+  4. Waits for /health on the configured port (default 15378, with +N fallback).
   5. Walks through a sequence of list_methods / decompile_method / get_method_il /
      patch_method_il / revert_method_il / save_assembly calls, asserting expected
      responses and on-disk state.
@@ -15,7 +15,7 @@
   Each step prints PASS/FAIL. Non-zero exit code on first FAIL.
 
 .PARAMETER Port
-  First port to probe (default 3000). Falls back to 3000..3019 if dnSpy landed
+  First port to probe (default 15378). Falls back to 15378..15397 if dnSpy landed
   on a later port due to the in-use fallback.
 
 .PARAMETER DnSpyExe
@@ -30,9 +30,7 @@
 
 [CmdletBinding()]
 param(
-    # Default 3100 because WSL's wslrelay.exe typically holds 3000 on dev boxes,
-    # which collides with HttpListener.Start even when TcpListener probes clean.
-    [int]$Port = 3100,
+    [int]$Port = 15378,
     [string]$DnSpyExe,
     # Which dnSpy distribution to drive. net48 is not just a second build of the same thing: it
     # resolves System.Text.Json from NuGet instead of the BCL and binds assemblies by exact
@@ -223,7 +221,7 @@ while ((Get-Date) -lt $deadline -and -not $loaded)
 {
     try
     {
-        $asmList = Rpc 'list_assemblies' @{}
+        $asmList = (Rpc 'list_assemblies' @{}).assemblies
         if ($asmList | Where-Object { $_.Name -eq 'TestIL' }) { $loaded = $true; break }
     }
     catch { }
@@ -441,7 +439,7 @@ try
     # ----- step 18: filtering / scoping / compact -----
     Write-Host ""
     Write-Host "[18] list_assemblies name_filter"
-    $asmFiltered = @(Rpc 'list_assemblies' @{ name_filter='TestIL' })
+    $asmFiltered = @((Rpc 'list_assemblies' @{ name_filter='TestIL' }).assemblies)
     Assert ((@($asmFiltered | Where-Object { $_.Name -eq 'TestIL' }).Count -eq 1)) "name_filter keeps TestIL"
     Assert ((@($asmFiltered | Where-Object { $_.Name -eq 'mscorlib' -or $_.Name -eq 'System' }).Count -eq 0)) "name_filter drops framework assemblies"
 
@@ -686,7 +684,7 @@ try
     $o1 = Rpc 'open_files' @{ paths=@($openA) }
     Assert ($o1.loaded_count -eq 1 -and $o1.failed_count -eq 0) "open_files loads OpenA.dll (1 new)" "loaded=$($o1.loaded_count) already=$($o1.already_loaded_count) failed=$($o1.failed_count)"
     Assert (@($o1.loaded | Where-Object { $_.name -eq 'TestIL' }).Count -ge 1) "loaded entry carries assembly name (TestIL)"
-    $afterOpen = @(Rpc 'list_assemblies' @{ name_filter='TestIL' })
+    $afterOpen = @((Rpc 'list_assemblies' @{ name_filter='TestIL' }).assemblies)
     Assert ((@($afterOpen | Where-Object { $_.Name -eq 'TestIL' }).Count) -ge 2) "newly opened assembly shows up in list_assemblies"
     # Idempotent: re-opening the same path is reported as already loaded, not reloaded.
     $o2 = Rpc 'open_files' @{ paths=@($openA) }

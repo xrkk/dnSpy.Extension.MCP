@@ -27,7 +27,7 @@ namespace dnSpy.Extension.MCP {
 		bool enableServer = false;
 
 		/// <summary>
-		/// Gets or sets the server host (default: localhost).
+		/// Gets or sets the server host (default: the configured Win10VM host-only address).
 		/// </summary>
 		public string Host {
 			get => host;
@@ -38,10 +38,10 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 		}
-		string host = "localhost";
+		string host = "192.168.204.149";
 
 		/// <summary>
-		/// Gets or sets the server port (default: 3000).
+		/// Gets or sets the server port (default: 15378).
 		/// </summary>
 		public int Port {
 			get => port;
@@ -52,7 +52,7 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 		}
-		int port = 3000;
+		int port = 15378;
 
 		/// <summary>
 		/// Gets or sets whether the dynamic-debugging tools are enabled. The per-process gate
@@ -98,7 +98,7 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 		}
-		string artifactRoot = string.Empty;
+		string artifactRoot = McpSettingsSnapshot.DefaultArtifactRoot();
 
 		/// <summary>
 		/// Gets or sets the allowed sample root for trusted sample data (may be empty).
@@ -124,7 +124,7 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 		}
-		string remoteAllowedCidrsText = string.Empty;
+		string remoteAllowedCidrsText = McpSettingsSnapshot.TrustedHostOnlyPeerCidr;
 
 		/// <summary>The persisted SHA-256 verifier. The raw bearer token is never stored here.</summary>
 		public string? RemoteTokenVerifier {
@@ -138,6 +138,19 @@ namespace dnSpy.Extension.MCP {
 		}
 		string? remoteTokenVerifier;
 
+		/// <summary>UI authentication mode. Persistence remains the fixed v1 snapshot shape:
+		/// a non-null verifier means token mode; null means the exact trusted-peer tokenless mode.</summary>
+		public bool RemoteTokenRequired {
+			get => remoteTokenRequired;
+			set {
+				if (remoteTokenRequired != value) {
+					remoteTokenRequired = value;
+					OnPropertyChanged(nameof(RemoteTokenRequired));
+				}
+			}
+		}
+		bool remoteTokenRequired;
+
 		/// <summary>Operator acknowledgment that a non-loopback listener is host-only isolated.</summary>
 		public bool RemoteHostOnlyAcknowledged {
 			get => remoteHostOnlyAcknowledged;
@@ -148,7 +161,18 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 		}
-		bool remoteHostOnlyAcknowledged;
+		bool remoteHostOnlyAcknowledged = true;
+
+		/// <summary>Gets whether the listener is currently active (independent of unsaved UI edits).</summary>
+		public bool IsServerRunning { get; private set; }
+
+		/// <summary>Updates the live-state indicator from <see cref="McpServer"/>.</summary>
+		internal void SetServerRunning(bool value) {
+			if (IsServerRunning == value)
+				return;
+			IsServerRunning = value;
+			OnPropertyChanged(nameof(IsServerRunning));
+		}
 
 		/// <summary>
 		/// Gets the collection of log messages (limited to last 100 messages).
@@ -244,6 +268,7 @@ namespace dnSpy.Extension.MCP {
 			other.AllowedSampleRoot = AllowedSampleRoot;
 			other.RemoteAllowedCidrsText = RemoteAllowedCidrsText;
 			other.RemoteTokenVerifier = RemoteTokenVerifier;
+			other.RemoteTokenRequired = RemoteTokenRequired;
 			other.RemoteHostOnlyAcknowledged = RemoteHostOnlyAcknowledged;
 			return other;
 		}
@@ -269,11 +294,22 @@ namespace dnSpy.Extension.MCP {
 			AllowedSampleRoot = edited.AllowedSampleRoot;
 			RemoteAllowedCidrsText = edited.RemoteAllowedCidrsText;
 			RemoteTokenVerifier = edited.RemoteTokenVerifier;
+			RemoteTokenRequired = edited.RemoteTokenRequired;
 			RemoteHostOnlyAcknowledged = edited.RemoteHostOnlyAcknowledged;
 		}
 
-		/// <summary>Clears the verifier so the next successful remote Apply rotates the token.</summary>
-		public virtual void RequestRemoteTokenRotation() => RemoteTokenVerifier = null;
+		/// <summary>Persists and immediately applies an explicit server start/stop request.</summary>
+		public virtual void SetServerEnabled(bool enabled) {
+			var edited = Clone();
+			edited.EnableServer = enabled;
+			ApplyEdited(edited);
+		}
+
+		/// <summary>Enables token mode and clears the verifier so the next successful remote Apply rotates it.</summary>
+		public virtual void RequestRemoteTokenRotation() {
+			RemoteTokenRequired = true;
+			RemoteTokenVerifier = null;
+		}
 
 		/// <summary>Returns a newly generated raw token once, then irreversibly clears it.</summary>
 		public virtual string? ConsumeOneTimeRemoteToken() => null;
@@ -329,6 +365,7 @@ namespace dnSpy.Extension.MCP {
 			AllowedSampleRoot = s.AllowedSampleRoot;
 			RemoteAllowedCidrsText = string.Join(Environment.NewLine, s.RemoteAllowedCidrs);
 			RemoteTokenVerifier = s.RemoteTokenVerifier;
+			RemoteTokenRequired = s.RequiresRemoteToken;
 			RemoteHostOnlyAcknowledged = s.RemoteHostOnlyAcknowledged;
 			OnPropertyChanged(nameof(EnableServer));
 			OnPropertyChanged(nameof(Host));
@@ -339,6 +376,7 @@ namespace dnSpy.Extension.MCP {
 			OnPropertyChanged(nameof(AllowedSampleRoot));
 			OnPropertyChanged(nameof(RemoteAllowedCidrsText));
 			OnPropertyChanged(nameof(RemoteTokenVerifier));
+			OnPropertyChanged(nameof(RemoteTokenRequired));
 			OnPropertyChanged(nameof(RemoteHostOnlyAcknowledged));
 		}
 
@@ -371,10 +409,10 @@ namespace dnSpy.Extension.MCP {
 			oneTimeRemoteToken = null;
 			var loopback = string.Equals(edited.Host, "localhost", StringComparison.Ordinal);
 			var cidrs = loopback ? new List<string>() : ParseCidrs(edited.RemoteAllowedCidrsText);
-			var verifier = loopback ? null : edited.RemoteTokenVerifier;
+			var verifier = loopback || !edited.RemoteTokenRequired ? null : edited.RemoteTokenVerifier;
 			var remoteAck = loopback ? false : edited.RemoteHostOnlyAcknowledged;
 			string? generatedToken = null;
-			if (!loopback && verifier == null) {
+			if (!loopback && edited.RemoteTokenRequired && verifier == null) {
 				// Validate all non-secret fields before minting a credential. A failed Apply never
 				// displays or persists a token that cannot subsequently authenticate.
 				var probe = McpSettingsSnapshot.TryCreate(

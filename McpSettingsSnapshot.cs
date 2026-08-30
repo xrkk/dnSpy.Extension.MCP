@@ -16,6 +16,8 @@ namespace dnSpy.Extension.MCP {
 public sealed class McpSettingsSnapshot {
 	public const string SchemaVersionValue = "dnspy.mcp.settings.v1";
 	public const int MaxCidrs = 16;
+	/// <summary>The only peer allowed to use the deployment's explicit tokenless Host-Only mode.</summary>
+	public const string TrustedHostOnlyPeerCidr = "192.168.204.1/32";
 
 	public string SchemaVersion { get; }
 	public bool EnableServer { get; }
@@ -29,6 +31,10 @@ public sealed class McpSettingsSnapshot {
 	/// <summary>64 lowercase hex chars (SHA-256 of the 32-byte token) or null. The raw token is never stored.</summary>
 	public string? RemoteTokenVerifier { get; }
 	public bool RemoteHostOnlyAcknowledged { get; }
+	/// <summary>True for the validated non-loopback, Host-Only listener configuration.</summary>
+	public bool IsRemote => !string.Equals(Host, "localhost", StringComparison.Ordinal);
+	/// <summary>True when remote requests must also present the configured bearer credential.</summary>
+	public bool RequiresRemoteToken => IsRemote && RemoteTokenVerifier != null;
 
 	/// <summary>
 	/// Generates the non-loopback bearer credential.  The returned token is base64url without
@@ -64,11 +70,29 @@ public sealed class McpSettingsSnapshot {
 		RemoteHostOnlyAcknowledged = remoteHostOnlyAcknowledged;
 	}
 
-	/// <summary>Safe defaults (CON-DYN-014): server off, loopback, no debug, empty sample root, no remote.</summary>
+	/// <summary>
+	/// Returns the default artifact directory on the current user's desktop and creates it when
+	/// possible. Directory creation is repeated by the runtime root lease before debug use, so a
+	/// transient desktop/filesystem failure here remains recoverable from the settings page.
+	/// </summary>
+	public static string DefaultArtifactRoot() {
+		var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+		if (string.IsNullOrWhiteSpace(desktop)) {
+			var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+			desktop = string.IsNullOrWhiteSpace(profile) ? System.IO.Path.GetTempPath()
+				: System.IO.Path.Combine(profile, "Desktop");
+		}
+		var root = System.IO.Path.Combine(desktop, "dnspy-mcp-artifacts");
+		try { System.IO.Directory.CreateDirectory(root); }
+		catch { /* The settings/runtime validation path reports a useful error when it is used. */ }
+		return root;
+	}
+
+	/// <summary>Defaults requested by the host/VM deployment; the remote listener remains off and
+	/// only the VMware Host-Only host peer is trusted when it is enabled without a token.</summary>
 	public static McpSettingsSnapshot SafeDefaults() => new(
-		SchemaVersionValue, false, "localhost", 3000, false, false, "",
-		System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dnspy-mcp"),
-		Array.Empty<string>(), null, false);
+		SchemaVersionValue, false, "192.168.204.149", 15378, false, false, "",
+		DefaultArtifactRoot(), new[] { TrustedHostOnlyPeerCidr }, null, true);
 
 	/// <summary>
 	/// Structural validation per CON-DYN-014: port range, canonical deduplicated ordinal-sorted
@@ -104,8 +128,10 @@ public sealed class McpSettingsSnapshot {
 		}
 		else {
 			if (canonicalCidrs.Count == 0) return "RemoteAllowedCidrs must not be empty for non-loopback Host.";
-			if (verifierHex == null) return "RemoteTokenVerifier must not be null for non-loopback Host.";
 			if (!remoteAck) return "RemoteHostOnlyAcknowledged must be true for non-loopback Host.";
+			if (verifierHex == null && (canonicalCidrs.Count != 1
+				|| canonicalCidrs[0] != TrustedHostOnlyPeerCidr))
+				return $"Tokenless remote mode requires exactly {TrustedHostOnlyPeerCidr}.";
 		}
 		return null;
 	}
@@ -142,6 +168,14 @@ public sealed class McpSettingsSnapshot {
 		canonical = new List<string>();
 		error = null;
 		if (input.Count > MaxCidrs) { error = $"At most {MaxCidrs} CIDRs are allowed."; return false; }
+		if (input.Any(s => string.Equals(s, "*", StringComparison.Ordinal))) {
+			if (input.Count != 1 || input[0] != "*") {
+				error = "Wildcard '*' must be the only RemoteAllowedCidrs entry.";
+				return false;
+			}
+			canonical.Add("*");
+			return true;
+		}
 		foreach (var raw in input) {
 			var slash = raw.LastIndexOf('/');
 			if (slash <= 0 || slash == raw.Length - 1) { error = $"Invalid CIDR: {raw}"; return false; }

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using dnSpy.Contracts.Images;
+using dnSpy.Contracts.MVVM;
 using dnSpy.Contracts.Settings.Dialog;
-using System.Windows;
 
 namespace dnSpy.Extension.MCP {
 	/// <summary>
@@ -12,18 +12,22 @@ namespace dnSpy.Extension.MCP {
 	[Export(typeof(IAppSettingsPageProvider))]
 	sealed class McpAppSettingsPageProvider : IAppSettingsPageProvider {
 		readonly McpSettings mcpSettings;
+		readonly IPickDirectory pickDirectory;
 
 		/// <summary>
 		/// Initializes the settings page provider.
 		/// </summary>
 		[ImportingConstructor]
-		McpAppSettingsPageProvider(McpSettings mcpSettings) => this.mcpSettings = mcpSettings;
+		McpAppSettingsPageProvider(McpSettings mcpSettings, IPickDirectory pickDirectory) {
+			this.mcpSettings = mcpSettings;
+			this.pickDirectory = pickDirectory;
+		}
 
 		/// <summary>
 		/// Creates the settings page.
 		/// </summary>
 		public IEnumerable<AppSettingsPage> Create() {
-			yield return new McpAppSettingsPage(mcpSettings);
+			yield return new McpAppSettingsPage(mcpSettings, pickDirectory);
 		}
 	}
 
@@ -51,7 +55,7 @@ namespace dnSpy.Extension.MCP {
 		/// <summary>
 		/// Gets the page title displayed in settings.
 		/// </summary>
-		public override string Title => "MCP Server";
+		public override string Title => "MCP 服务器";
 
 		/// <summary>
 		/// Gets the icon displayed next to the page title.
@@ -66,7 +70,7 @@ namespace dnSpy.Extension.MCP {
 				if (uiObject is null) {
 					uiObject = new McpSettingsControl();
 					// Use a wrapper that combines editable settings with live logs from global settings
-					uiObject.DataContext = new SettingsViewModel(newSettings, globalSettings);
+					uiObject.DataContext = new SettingsViewModel(newSettings, globalSettings, pickDirectory);
 				}
 				return uiObject;
 			}
@@ -75,12 +79,14 @@ namespace dnSpy.Extension.MCP {
 
 		readonly McpSettings globalSettings;
 		readonly McpSettings newSettings;
+		readonly IPickDirectory pickDirectory;
 
 		/// <summary>
 		/// Initializes the settings page with the given settings instance.
 		/// </summary>
-		public McpAppSettingsPage(McpSettings mcpSettings) {
+		public McpAppSettingsPage(McpSettings mcpSettings, IPickDirectory pickDirectory) {
 			globalSettings = mcpSettings;
+			this.pickDirectory = pickDirectory;
 			newSettings = mcpSettings.Clone();
 		}
 
@@ -90,12 +96,8 @@ namespace dnSpy.Extension.MCP {
 		public override void OnApply() {
 			globalSettings.ApplyEdited(newSettings);
 			var token = globalSettings.ConsumeOneTimeRemoteToken();
-			if (token != null) {
-				MessageBox.Show(
-					"Copy this bearer token now. It will not be stored or shown again:\n\n" + token,
-					"MCP Remote Token — One-time Display",
-					MessageBoxButton.OK, MessageBoxImage.Warning);
-			}
+			if (token != null)
+				McpSettingsControl.ShowOneTimeRemoteToken(uiObject == null ? null : System.Windows.Window.GetWindow(uiObject), token);
 		}
 
 		/// <summary>
@@ -112,13 +114,15 @@ namespace dnSpy.Extension.MCP {
 	public class SettingsViewModel : dnSpy.Contracts.MVVM.ViewModelBase {
 		readonly McpSettings editableSettings;
 		readonly McpSettings globalSettings;
+		readonly IPickDirectory pickDirectory;
 
 		/// <summary>
 		/// Initializes the view model with editable and global settings instances.
 		/// </summary>
-		public SettingsViewModel(McpSettings editable, McpSettings global) {
+		public SettingsViewModel(McpSettings editable, McpSettings global, IPickDirectory pickDirectory) {
 			editableSettings = editable;
 			globalSettings = global;
+			this.pickDirectory = pickDirectory;
 
 			// Forward property change notifications from editable settings
 			editableSettings.PropertyChanged += (s, e) => OnPropertyChanged(e.PropertyName ?? string.Empty);
@@ -127,6 +131,11 @@ namespace dnSpy.Extension.MCP {
 			globalSettings.PropertyChanged += (s, e) => {
 				if (e.PropertyName == nameof(LogText) || e.PropertyName == nameof(LogMessages)) {
 					OnPropertyChanged(e.PropertyName);
+				}
+				else if (e.PropertyName == nameof(McpSettings.IsServerRunning)) {
+					OnPropertyChanged(nameof(IsServerRunning));
+					OnPropertyChanged(nameof(ServerActionText));
+					OnPropertyChanged(nameof(ServerStatusText));
 				}
 			};
 		}
@@ -184,7 +193,22 @@ namespace dnSpy.Extension.MCP {
 			set => editableSettings.RemoteAllowedCidrsText = value;
 		}
 
-		public string RemoteTokenVerifier => editableSettings.RemoteTokenVerifier ?? "(not configured — generated on Apply)";
+		public bool RemoteTokenRequired {
+			get => editableSettings.RemoteTokenRequired;
+			set {
+				editableSettings.RemoteTokenRequired = value;
+				if (!value) {
+					editableSettings.RemoteTokenVerifier = null;
+					editableSettings.RemoteAllowedCidrsText = McpSettingsSnapshot.TrustedHostOnlyPeerCidr;
+					OnPropertyChanged(nameof(RemoteAllowedCidrsText));
+				}
+				OnPropertyChanged(nameof(RemoteTokenVerifier));
+			}
+		}
+
+		public string RemoteTokenVerifier => !editableSettings.RemoteTokenRequired
+			? $"（免 Token——仅允许 {McpSettingsSnapshot.TrustedHostOnlyPeerCidr}）"
+			: editableSettings.RemoteTokenVerifier ?? "（未配置——应用设置时生成）";
 
 		public bool RemoteHostOnlyAcknowledged {
 			get => editableSettings.RemoteHostOnlyAcknowledged;
@@ -193,7 +217,32 @@ namespace dnSpy.Extension.MCP {
 
 		public void RequestRemoteTokenRotation() {
 			editableSettings.RequestRemoteTokenRotation();
+			OnPropertyChanged(nameof(RemoteTokenRequired));
 			OnPropertyChanged(nameof(RemoteTokenVerifier));
+		}
+
+		/// <summary>Gets the actual listener state and its localized labels.</summary>
+		public bool IsServerRunning => globalSettings.IsServerRunning;
+		public string ServerActionText => IsServerRunning ? "停止" : "启动";
+		public string ServerStatusText => IsServerRunning ? "服务器正在运行" : "服务器已停止";
+
+		/// <summary>
+		/// Applies the fields currently visible in the page and immediately toggles the listener.
+		/// Returns a newly minted bearer token, if this transition configured remote auth.
+		/// </summary>
+		public string? ToggleServer() {
+			editableSettings.EnableServer = !globalSettings.IsServerRunning;
+			globalSettings.ApplyEdited(editableSettings);
+			globalSettings.CopyTo(editableSettings);
+			OnPropertyChanged(nameof(EnableServer));
+			return globalSettings.ConsumeOneTimeRemoteToken();
+		}
+
+		/// <summary>Opens dnSpy's folder picker for the artifact directory.</summary>
+		public void BrowseArtifactRoot() {
+			var selected = pickDirectory.GetDirectory(string.IsNullOrWhiteSpace(ArtifactRoot) ? null : ArtifactRoot);
+			if (selected != null)
+				ArtifactRoot = selected;
 		}
 
 		/// <summary>

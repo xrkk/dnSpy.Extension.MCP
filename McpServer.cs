@@ -50,6 +50,8 @@ namespace dnSpy.Extension.MCP {
 		/// if that port was taken and fallback to port+1 was used.
 		/// </summary>
 		public int ActualPort => actualPort;
+		/// <summary>True while the HTTP listener is actively accepting requests.</summary>
+		public bool IsRunning => httpListener?.IsListening == true;
 
 		// JSON serialization options to ignore null values (JSON-RPC 2.0 requirement)
 		static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions {
@@ -150,8 +152,9 @@ namespace dnSpy.Extension.MCP {
 		/// <summary>Binds synchronously so callers can observe success, then runs the accept loop.</summary>
 		bool StartListener(McpSettingsSnapshot snapshot) {
 			try {
-				// CON-DYN-006: remote mode rejects port drift; loopback keeps the legacy fallback.
-				bool remote = snapshot.RemoteTokenVerifier != null;
+				// CON-DYN-006: every non-loopback listener is remote, regardless of whether its
+				// exact trusted Host-Only peer uses the explicit tokenless mode.
+				bool remote = snapshot.IsRemote;
 				int port = snapshot.Port;
 				if (!remote) {
 					try {
@@ -175,6 +178,7 @@ namespace dnSpy.Extension.MCP {
 				httpListener = listener;
 				activeSnapshot = snapshot;
 				actualPort = port;
+				settings.SetServerRunning(true);
 				// Run the accept loop on a dedicated background thread, not a ThreadPool task:
 				// the loop blocks forever in GetContext(), so on the pool it would permanently
 				// consume a worker thread.
@@ -187,6 +191,7 @@ namespace dnSpy.Extension.MCP {
 			}
 			catch (Exception ex) {
 				settings.Log($"ERROR starting server: {ex.GetType().Name}: {ex.Message}");
+				settings.SetServerRunning(false);
 				return false;
 			}
 		}
@@ -209,14 +214,17 @@ namespace dnSpy.Extension.MCP {
 					}
 					// CON-DYN-006: authenticate and CIDR-check EVERY endpoint before anything else;
 					// 401/403 responses carry no CORS headers, no MCP content and an empty body.
-					var verifier = activeSnapshot?.RemoteTokenVerifier;
-					if (verifier != null) {
-						if (!RemoteTokenAuth.Verify(context.Request.Headers["Authorization"], verifier)) {
-							WritePreParseReject(context, HttpRejectShapes.StatusUnauthorized, addWwwAuthenticate: true);
+					var snapshot = activeSnapshot;
+					if (snapshot?.IsRemote == true) {
+						// The direct socket peer is always admitted first. Forwarding headers are never
+						// consulted, and tokenless mode is structurally restricted to the one /32 peer.
+						if (!CidrFilter.IsAllowed(context.Request.RemoteEndPoint?.Address, snapshot.RemoteAllowedCidrs)) {
+							WritePreParseReject(context, HttpRejectShapes.StatusForbidden, addWwwAuthenticate: false);
 							continue;
 						}
-						if (!CidrFilter.IsAllowed(context.Request.RemoteEndPoint?.Address, activeSnapshot!.RemoteAllowedCidrs)) {
-							WritePreParseReject(context, HttpRejectShapes.StatusForbidden, addWwwAuthenticate: false);
+						var verifier = snapshot.RemoteTokenVerifier;
+						if (verifier != null && !RemoteTokenAuth.Verify(context.Request.Headers["Authorization"], verifier)) {
+							WritePreParseReject(context, HttpRejectShapes.StatusUnauthorized, addWwwAuthenticate: true);
 							continue;
 						}
 					}
@@ -254,6 +262,7 @@ namespace dnSpy.Extension.MCP {
 			catch (Exception ex) {
 				settings.Log($"ERROR starting HttpListener: {ex.GetType().Name}: {ex.Message}");
 				httpListener = null;
+				settings.SetServerRunning(false);
 			}
 		}
 
@@ -359,7 +368,7 @@ namespace dnSpy.Extension.MCP {
 				// (CON-DYN-006). `Mcp-Session-Id` must be both accepted on requests and exposed on
 				// responses so Streamable HTTP clients (codex, MCP Inspector, ...) can read the
 				// session ID that the server allocates on `initialize`.
-				if (activeSnapshot?.RemoteTokenVerifier == null) {
+				if (activeSnapshot?.IsRemote != true) {
 					context.Response.AddHeader("Access-Control-Allow-Origin", "*");
 					context.Response.AddHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
 					context.Response.AddHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version");
@@ -844,6 +853,9 @@ namespace dnSpy.Extension.MCP {
 			catch (Exception ex) {
 				settings.Log($"ERROR stopping server: {ex.GetType().Name}: {ex.Message}");
 			}
+			finally {
+				settings.SetServerRunning(false);
+			}
 		}
 
 		McpResponse HandleRequest(McpRequest request, string protocolVersion, Action<string>? rememberProtocolVersion = null) {
@@ -867,6 +879,7 @@ namespace dnSpy.Extension.MCP {
 					"tools/list" => HandleListTools(protocolVersion),
 					"tools/call" => HandleCallTool(request.Params, protocolVersion),
 					"resources/list" => HandleListResources(),
+					"resources/templates/list" => HandleListResourceTemplates(),
 					"resources/read" => HandleReadResource(request.Params),
 					_ => throw new Exception($"Unknown method: {request.Method}")
 				};
@@ -921,7 +934,8 @@ namespace dnSpy.Extension.MCP {
 				ServerInfo = new ServerInfo {
 					Name = "dnSpy MCP Server",
 					Version = "1.0.0"
-				}
+				},
+				Instructions = McpDocumentationResources.Instructions
 			};
 		}
 
@@ -1002,6 +1016,13 @@ namespace dnSpy.Extension.MCP {
 			return new ListResourcesResult {
 				Resources = bepinexResources.GetResources()
 			};
+		}
+
+		object HandleListResourceTemplates() {
+			// All current dnSpy/BepInEx documents have concrete, stable URIs. Advertising an
+			// empty template page is preferable to an Unknown method error: MCP clients may
+			// probe this standard resources method whenever the resources capability exists.
+			return new ListResourceTemplatesResult();
 		}
 
 		object HandleReadResource(Dictionary<string, object>? parameters) {
