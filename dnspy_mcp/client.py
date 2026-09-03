@@ -104,6 +104,9 @@ class _OpenResponse:
     def read(self, amount: int = -1) -> bytes:
         return self._response.read(amount)
 
+    def readline(self) -> bytes:
+        return self._response.readline()
+
     def close(self) -> None:
         self._response.close()
 
@@ -448,3 +451,130 @@ class DnSpyClient:
         finally:
             self.session_id = None
         return response
+
+
+class LegacySseClient(DnSpyClient):
+    """dnSpy MCP client for the legacy HTTP+SSE transport.
+
+    The server advertises a per-connection POST endpoint over the SSE stream. Requests are
+    serialized by this client and their JSON-RPC replies are read from that same stream; callers
+    never have to construct packets or parse SSE frames themselves.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._sse: _OpenResponse | None = None
+        self._message_path: str | None = None
+
+    def _ensure_sse(self) -> None:
+        if self._sse is not None:
+            return
+        opened = self.open_request(
+            "GET",
+            path="/sse",
+            headers={"Accept": "text/event-stream"},
+            include_session=False,
+        )
+        if opened.status != 200:
+            response = HttpResponse(opened.status, opened.reason, opened.headers, opened.read())
+            opened.close()
+            raise DnSpyHttpError(response)
+        self._sse = opened
+        event, data = self._read_sse_event()
+        if event != "endpoint" or not data:
+            self.close()
+            raise DnSpyProtocolError("legacy SSE stream did not publish an endpoint event")
+        self._message_path = data
+        parsed = urlparse(data)
+        query = parsed.query.split("&") if parsed.query else []
+        for item in query:
+            if item.startswith("sessionId="):
+                self.session_id = item.split("=", 1)[1]
+                break
+
+    def _read_sse_event(self) -> tuple[str | None, str]:
+        if self._sse is None:
+            raise DnSpyProtocolError("legacy SSE stream is not open")
+        event: str | None = None
+        data_lines: list[str] = []
+        while True:
+            raw = self._sse.readline()
+            if raw == b"":
+                raise DnSpyConnectionError("legacy SSE stream closed before the response arrived")
+            line = raw.decode("utf-8", errors="strict").rstrip("\r\n")
+            if line == "":
+                if data_lines or event is not None:
+                    return event, "\n".join(data_lines)
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("event:"):
+                event = line[6:].lstrip()
+            elif line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())
+
+    def request(
+        self,
+        method: str,
+        params: Any = _MISSING,
+        *,
+        request_id: str | int | None | object = _MISSING,
+        include_session: bool = True,
+        timeout: float | None = None,
+    ) -> Any:
+        del include_session
+        self._ensure_sse()
+        actual_id = self._next_id() if request_id is _MISSING else request_id
+        message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if actual_id is not None:
+            message["id"] = actual_id
+        if params is not _MISSING:
+            message["params"] = params
+        response = self.request_object(
+            message,
+            include_session=False,
+            timeout=timeout,
+        ) if self._message_path is None else self.raw_request(
+            "POST",
+            path=self._message_path,
+            body=json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            include_session=False,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        if response.status != 202:
+            raise DnSpyProtocolError(f"legacy SSE POST returned HTTP {response.status}", response=response)
+        if actual_id is None:
+            return None
+        while True:
+            event, data = self._read_sse_event()
+            if event != "message":
+                continue
+            try:
+                payload = json.loads(data)
+            except json.JSONDecodeError as exc:
+                raise DnSpyProtocolError("legacy SSE returned invalid JSON") from exc
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("id") != actual_id:
+                raise DnSpyProtocolError(
+                    f"response id {payload.get('id')!r} does not match request id {actual_id!r}"
+                )
+            error = payload.get("error")
+            if isinstance(error, dict):
+                raise DnSpyProtocolError(
+                    str(error.get("message", "Unknown JSON-RPC error")),
+                    code=error.get("code") if isinstance(error.get("code"), int) else None,
+                    data=error.get("data"),
+                )
+            if "result" not in payload:
+                raise DnSpyProtocolError("legacy SSE response has neither result nor error")
+            return payload["result"]
+
+    def close(self) -> None:
+        if self._sse is not None:
+            self._sse.close()
+        self._sse = None
+        self._message_path = None
+        self.session_id = None

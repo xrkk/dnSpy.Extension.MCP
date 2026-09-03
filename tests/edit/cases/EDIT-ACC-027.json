@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit",
+  "case_id": "EDIT-ACC-027",
+  "acc_id": "ACC-027",
+  "target_architecture": "current-dnspy",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P01Fixture.cs",
+  "precondition": "DNMCP_TEST=1; VMware allowed; writable ArtifactRoot",
+  "actions": ["launch and pause", "dump target and mscorlib", "change pause epoch and repeat", "restart and reacquire modules", "repeat dumps and reject stale handle"],
+  "expected": "all dumps and manifests exist with matching SHA-256; no TARGET_MISMATCH for current handles"
+}

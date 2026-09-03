@@ -19,6 +19,7 @@ using dnSpy.Contracts.Debugger.DotNet.Code;
 using dnSpy.Contracts.Debugger.DotNet.CorDebug;
 using dnSpy.Contracts.Debugger.DotNet.Metadata;
 using dnSpy.Contracts.Metadata;
+using dnSpy.Extension.MCP.Execution;
 
 namespace dnSpy.Extension.MCP.Debugger;
 
@@ -30,9 +31,11 @@ namespace dnSpy.Extension.MCP.Debugger;
 /// process observations flow back on the dispatcher thread into the thread-safe coordinator.
 /// </summary>
 [Export(typeof(DebugSessionService))]
-public sealed class DebugSessionService : IDisposable {
+[Export(typeof(IEditDynamicValidationGate))]
+public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGate {
 	readonly DbgManager? dbgManager;
 	readonly DebugGateService gateService;
+	readonly IVirtualizationExecutionGate executionGate;
 
 	readonly DebugSessionCoordinator coordinator = new();
 	readonly DualLaneQueue laneQueue = new();
@@ -211,6 +214,7 @@ public sealed class DebugSessionService : IDisposable {
 		[Import(AllowDefault = true)] DbgDotNetCodeLocationFactory? locationFactory,
 		[Import(AllowDefault = true)] dnSpy.Contracts.Debugger.Evaluation.DbgLanguageService? languageService,
 		DebugGateService gateService,
+		IVirtualizationExecutionGate executionGate,
 		McpSettings settings,
 		[Import(AllowDefault = true)] StaticWriteGate? staticWriteGate,
 		[Import(AllowDefault = true)] DbgMetadataService? metadataService) {
@@ -220,6 +224,7 @@ public sealed class DebugSessionService : IDisposable {
 		this.locationFactory = locationFactory;
 		this.languageService = languageService;
 		this.gateService = gateService;
+		this.executionGate = executionGate;
 		this.settings = settings;
 		settings.SetActiveSessionProbe(() => coordinator.ActiveSessionId is not null);
 		this.staticWriteGate = staticWriteGate ?? new StaticWriteGate(() => false);
@@ -227,6 +232,20 @@ public sealed class DebugSessionService : IDisposable {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
 			dbgManager.IsDebuggingChanged += OnIsDebuggingChanged;
 		}
+	}
+
+	public EditDynamicValidationDecision EvaluateEditDynamicValidation() {
+		var environment = executionGate.Current;
+		if (coordinator.State != DebugStates.Idle)
+			return new EditDynamicValidationDecision(false, DomainErrorCodes.InvalidState,
+				coordinator.State, environment);
+		var decision = executionGate.Evaluate(VirtualizationExecutionEntryPoints.EditDynamicValidation);
+		if (!decision.Allowed) {
+			SpyInc("vm_gate_rejections:" + VirtualizationExecutionEntryPoints.EditDynamicValidation);
+			return new EditDynamicValidationDecision(false, DomainErrorCodes.CapabilityUnavailable,
+				coordinator.State, decision.Environment);
+		}
+		return new EditDynamicValidationDecision(true, null, coordinator.State, decision.Environment);
 	}
 
 	public void Dispose() {
@@ -511,6 +530,10 @@ public sealed class DebugSessionService : IDisposable {
 			["null_peer_rejected"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(null, new[] { "127.0.0.1/32" }),
 			["wildcard_peer_allowed"] = dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(System.Net.IPAddress.Parse("203.0.113.7"), new[] { "*" }),
 			["wildcard_null_peer_rejected"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(null, new[] { "*" }),
+			["trusted_host_peer_allowed"] = dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(
+				System.Net.IPAddress.Parse("192.168.204.1"), new[] { McpSettingsSnapshot.TrustedHostOnlyPeerCidr }),
+			["vm_peer_rejected_by_trusted_host_only"] = !dnSpy.Extension.MCP.Transport.CidrFilter.IsAllowed(
+				System.Net.IPAddress.Parse("192.168.204.149"), new[] { McpSettingsSnapshot.TrustedHostOnlyPeerCidr }),
 			["enabled_trusted_peer_without_token_valid"] = enabledTrustedPeerWithoutToken != null,
 			["enabled_wildcard_without_token_rejected"] = enabledWildcardWithoutToken == null,
 			["safe_defaults_match_deployment"] = !safeDefaults.EnableServer
@@ -670,6 +693,68 @@ public sealed class DebugSessionService : IDisposable {
 		});
 	}
 
+	string TestExecutionEnvironment(Dictionary<string, object>? args) {
+		if (!TestModeEnabled)
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable, message: "test diagnostics require DNMCP_TEST=1");
+		if (executionGate is not VirtualizationExecutionGate concrete)
+			return Fail(coordinator, DomainErrorCodes.InternalError, message: "virtualization gate does not expose the deterministic test seam");
+		var action = ArgString(args, "p01_action", required: true);
+		switch (action) {
+		case "inject_signals":
+			if (args is not null && args.TryGetValue("read_failure", out var readFailure)
+				&& readFailure is JsonElement { ValueKind: JsonValueKind.True })
+				concrete.SetTestReadFailure();
+			else
+				concrete.SetTestSignals(ArgString(args, "manufacturer"), ArgString(args, "product_name"), ArgString(args, "bios_vendor"));
+			break;
+		case "clear_signals":
+			concrete.ClearTestSignals();
+			break;
+		case "snapshot":
+			break;
+		case "evaluate":
+			var entryPoint = ArgString(args, "entry_point", required: true);
+			if (!VirtualizationExecutionEntryPoints.IsKnown(entryPoint))
+				throw new ArgumentException("unknown entry_point", "entry_point");
+			if (entryPoint == VirtualizationExecutionEntryPoints.EditDynamicValidation) {
+				var edit = EvaluateEditDynamicValidation();
+				return Ok(coordinator, new Dictionary<string, object?> {
+					["test_mode"] = true,
+					["entry_point"] = entryPoint,
+					["allowed"] = edit.Allowed,
+					["error_code"] = edit.ErrorCode,
+					["state"] = edit.State,
+					["execution_environment"] = EnvironmentResult(edit.Environment),
+				});
+			}
+			var decision = executionGate.Evaluate(entryPoint);
+			if (!decision.Allowed)
+				SpyInc("vm_gate_rejections:" + entryPoint);
+			return Ok(coordinator, new Dictionary<string, object?> {
+				["test_mode"] = true,
+				["entry_point"] = entryPoint,
+				["allowed"] = decision.Allowed,
+				["error_code"] = decision.Allowed ? null : DomainErrorCodes.CapabilityUnavailable,
+				["state"] = coordinator.State,
+				["execution_environment"] = EnvironmentResult(decision.Environment),
+			});
+		default:
+			throw new ArgumentException("p01_action must be inject_signals, clear_signals, snapshot, or evaluate", "p01_action");
+		}
+		return Ok(coordinator, new Dictionary<string, object?> {
+			["test_mode"] = true,
+			["execution_environment"] = EnvironmentResult(executionGate.Current),
+		});
+	}
+
+	internal static Dictionary<string, object?> EnvironmentResult(VirtualizationEnvironmentSnapshot environment) => new() {
+		["classification"] = environment.Classification,
+		["execution_allowed"] = environment.ExecutionAllowed,
+		["local_process_override_active"] = environment.LocalProcessOverrideActive,
+		["detection_source"] = environment.DetectionSource,
+		["marker_tags"] = environment.MarkerTags,
+	};
+
 
 	/// <summary>
 	/// ACC-016: value-tool arguments are closed (additionalProperties=false) with a depth
@@ -819,6 +904,7 @@ public sealed class DebugSessionService : IDisposable {
 				"debug_test_settings" => TestSettings(arguments),
 				"debug_test_artifact" => TestArtifact(arguments),
 				"debug_test_transport" => TestTransport(arguments),
+				"debug_test_environment" => TestExecutionEnvironment(arguments),
 				// The three fixed-disabled APIs (API-DYN-004/005/010) answer direct calls with
 				// the domain CAPABILITY_UNAVAILABLE envelope — never an "unknown tool" text —
 				// and without the unsupported-target details object.
@@ -976,6 +1062,12 @@ public sealed class DebugSessionService : IDisposable {
 	string LaunchCore(Dictionary<string, object>? args) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		var executionDecision = executionGate.Evaluate(VirtualizationExecutionEntryPoints.DebugLaunch);
+		if (!executionDecision.Allowed) {
+			SpyInc("vm_gate_rejections:" + VirtualizationExecutionEntryPoints.DebugLaunch);
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
+				message: $"sample execution requires VMware or VirtualBox (detected {executionDecision.Environment.Classification})");
+		}
 
 		var requestId = ArgString(args, "request_id", required: true);
 		var targetPath = ArgString(args, "target_path", required: true);
@@ -1392,6 +1484,12 @@ public sealed class DebugSessionService : IDisposable {
 	async Task<string> Restart(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
+		var executionDecision = executionGate.Evaluate(VirtualizationExecutionEntryPoints.DebugRestart);
+		if (!executionDecision.Allowed) {
+			SpyInc("vm_gate_rejections:" + VirtualizationExecutionEntryPoints.DebugRestart);
+			return Fail(coordinator, DomainErrorCodes.CapabilityUnavailable,
+				message: $"sample execution requires VMware or VirtualBox (detected {executionDecision.Environment.Classification})");
+		}
 		var identityErr = SessionIdentityError(args);
 		if (identityErr is not null)
 			return Fail(coordinator, identityErr, message: "request names a different session than the active one");

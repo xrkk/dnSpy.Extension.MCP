@@ -1,0 +1,54 @@
+{
+  "format": "dnspy.mcp.spike.evidence.v1",
+  "throwaway": true,
+  "utc_started": "2026-08-31T08:49:54.7200145Z",
+  "dnspy_process_architecture": "x64",
+  "dispatcher_access": true,
+  "fixture": "C:\\dnspy-mcp-spikes\\SpikeFixture.exe",
+  "document_present": true,
+  "s01": {
+    "before_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "module_reference_stable_initial": true,
+    "private_roundtrip_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "private_roundtrip_exact": true,
+    "private_mvid_preserved": true,
+    "private_token_map_preserved": true,
+    "private_edited_fingerprint": "d0dde16cd05eb7c57e554385f5a80b7edc7df0d7244a105f80bf68a26468e574",
+    "live_unchanged_after_private_edit": true,
+    "failure_injection": [
+      {
+        "fail_after_operation": 1,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      },
+      {
+        "fail_after_operation": 2,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      },
+      {
+        "fail_after_operation": 3,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      }
+    ],
+    "commit_fingerprint": "d0dde16cd05eb7c57e554385f5a80b7edc7df0d7244a105f80bf68a26468e574",
+    "commit_matches_private_copy": true,
+    "explicit_rollback_restored": true,
+    "inverse_failure_state": "LIVE_STATE_UNKNOWN",
+    "emergency_cleanup_restored": true,
+    "saved_reload_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "saved_reload_exact": true,
+    "dispatcher_access": true,
+    "document_module_reference_stable": true,
+    "pass": true
+  },
+  "completed": false,
+  "fatal": "System.ArgumentException: 已添加了具有相同键的项。\r\n   在 System.ThrowHelper.ThrowArgumentException(ExceptionResource resource)\r\n   在 System.Collections.Generic.Dictionary`2.Insert(TKey key, TValue value, Boolean add)\r\n   在 dnlib.DotNet.Pdb.PdbState.Add_NoLock(PdbDocument doc)\r\n   在 dnlib.DotNet.Pdb.PdbState.Add(PdbDocument doc)\r\n   在 DnSpy.Feasibility.Spike.FeasibilityExtension.NarrowImporter.CopyDocumentsTo(PdbState targetState)\r\n   在 DnSpy.Feasibility.Spike.FeasibilityExtension.<RunS02Async>d__13.MoveNext()\r\n--- 引发异常的上一位置中堆栈跟踪的末尾 ---\r\n   在 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()\r\n   在 System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)\r\n   在 DnSpy.Feasibility.Spike.FeasibilityExtension.<RunAsync>d__11.MoveNext()"
+}

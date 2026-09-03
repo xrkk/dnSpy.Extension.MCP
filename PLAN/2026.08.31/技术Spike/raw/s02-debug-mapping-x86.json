@@ -1,0 +1,495 @@
+{
+  "format": "dnspy.mcp.spike.s02-debug-mapping.v1",
+  "timestamp_utc": "2026-08-31T09:58:40.968904+00:00",
+  "automation": "AI -> Python client -> dnSpy MCP -> real dnSpy debugger",
+  "artifact_path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+  "architecture": "x86",
+  "checks": {
+    "edited_il_constants_present": true,
+    "reloaded_field_reference_resolved": true,
+    "reloaded_method_reference_resolved": true,
+    "breakpoint_event_received": true,
+    "compute_frame_at_il_zero": true,
+    "embedded_symbols_map_edited_compute": true,
+    "final_state_idle": true
+  },
+  "responses": {
+    "open_files": {
+      "loaded_count": 0,
+      "already_loaded_count": 1,
+      "failed_count": 0,
+      "loaded": [
+        {
+          "name": "SpikeFixture",
+          "path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+          "already_loaded": true
+        }
+      ],
+      "failed": []
+    },
+    "compute_method": {
+      "name": "Compute",
+      "token": 100663300,
+      "signature": "System.Int32 SpikeFixture.Target::Compute(System.Int32)",
+      "return_type": "System.Int32",
+      "parameter_types": [
+        "System.Int32"
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": "System.Int32",
+          "token": 134217730
+        }
+      ],
+      "generic_parameters": [],
+      "is_static": false,
+      "is_virtual": false,
+      "is_abstract": false,
+      "has_body": true
+    },
+    "compute_il": {
+      "method": {
+        "name": "Compute",
+        "token": 100663300,
+        "signature": "System.Int32 SpikeFixture.Target::Compute(System.Int32)"
+      },
+      "instructions": [
+        {
+          "index": 0,
+          "offset": 0,
+          "opcode": "ldarg.0",
+          "operand": ""
+        },
+        {
+          "index": 1,
+          "offset": 1,
+          "opcode": "ldarg.1",
+          "operand": ""
+        },
+        {
+          "index": 2,
+          "offset": 2,
+          "opcode": "call",
+          "operand": "method:System.Int32 SpikeFixture.Target::Helper(System.Int32)"
+        },
+        {
+          "index": 3,
+          "offset": 7,
+          "opcode": "ldc.i4.3",
+          "operand": ""
+        },
+        {
+          "index": 4,
+          "offset": 8,
+          "opcode": "mul",
+          "operand": ""
+        },
+        {
+          "index": 5,
+          "offset": 9,
+          "opcode": "ldarg.0",
+          "operand": ""
+        },
+        {
+          "index": 6,
+          "offset": 10,
+          "opcode": "ldfld",
+          "operand": "field:System.Int32 SpikeFixture.Target::Field"
+        },
+        {
+          "index": 7,
+          "offset": 15,
+          "opcode": "add",
+          "operand": ""
+        },
+        {
+          "index": 8,
+          "offset": 16,
+          "opcode": "ldc.i4.7",
+          "operand": ""
+        },
+        {
+          "index": 9,
+          "offset": 17,
+          "opcode": "add",
+          "operand": ""
+        },
+        {
+          "index": 10,
+          "offset": 18,
+          "opcode": "stloc.0",
+          "operand": ""
+        },
+        {
+          "index": 11,
+          "offset": 19,
+          "opcode": "leave.s",
+          "operand": "label:16"
+        },
+        {
+          "index": 12,
+          "offset": 21,
+          "opcode": "pop",
+          "operand": ""
+        },
+        {
+          "index": 13,
+          "offset": 22,
+          "opcode": "ldc.i4.s",
+          "operand": "int8:-2"
+        },
+        {
+          "index": 14,
+          "offset": 24,
+          "opcode": "stloc.0",
+          "operand": ""
+        },
+        {
+          "index": 15,
+          "offset": 25,
+          "opcode": "leave.s",
+          "operand": "label:16"
+        },
+        {
+          "index": 16,
+          "offset": 27,
+          "opcode": "ldloc.0",
+          "operand": ""
+        },
+        {
+          "index": 17,
+          "offset": 28,
+          "opcode": "ret",
+          "operand": ""
+        }
+      ],
+      "max_stack": 2,
+      "init_locals": true,
+      "keep_old_max_stack": false,
+      "local_var_sig_tok": 285212675,
+      "locals": [
+        {
+          "index": 0,
+          "type": "System.Int32",
+          "name": null
+        }
+      ],
+      "exception_handlers": [
+        {
+          "handler_type": "Catch",
+          "try_start": 0,
+          "try_end": 12,
+          "handler_start": 12,
+          "handler_end": 16,
+          "filter_start": null,
+          "catch_type": "System.Exception"
+        }
+      ],
+      "has_pending_patch": false
+    },
+    "launch": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 1,
+        "event_cursor": 2,
+        "state": "paused"
+      },
+      "result": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "state": "paused",
+        "claim_deadline_utc": "2026-08-31T09:59:11.372Z",
+        "launch_mode": "net48-exe",
+        "runtime_family": "net48",
+        "architecture": "x86",
+        "file_identities": [
+          {
+            "role": "target",
+            "object_kind": "file",
+            "final_path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+            "volume_serial": "0x00000000245ee12c",
+            "file_id": "0000000000000000000e000000081090",
+            "sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435"
+          }
+        ]
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "entry_status": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 3,
+        "event_cursor": 6,
+        "state": "paused"
+      },
+      "result": {
+        "state": "paused",
+        "active_session_id": "7e77431ad490e6db92f85eab",
+        "owned_process": {
+          "process_handle": "proc-116",
+          "pid": 116,
+          "start_time_utc": "2026-08-31T09:58:41.372Z",
+          "filename": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+          "image_identity": {
+            "role": "target",
+            "object_kind": "file",
+            "final_path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+            "volume_serial": "0x00000000245ee12c",
+            "file_id": "0000000000000000000e000000081090",
+            "sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435"
+          },
+          "runtime_identity": "net48-x86",
+          "runtime_family": "net48",
+          "architecture": "x86"
+        },
+        "observed_process_state": "paused",
+        "runtime_family": "net48",
+        "architecture": "x86",
+        "start_kind": "launch",
+        "launch_mode": "net48-exe"
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "startup_observations": [
+      {
+        "pause_epoch": 1,
+        "module_names": [],
+        "target_loaded": false,
+        "continue_race": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"session_id\":\"7e77431ad490e6db92f85eab\",\"generation\":1,\"pause_epoch\":2,\"event_cursor\":3,\"state\":\"running\"},\"error\":{\"code\":\"INVALID_STATE\",\"message\":\"The operation is invalid in the current state.\",\"recovery\":\"query_status\",\"current_state\":\"running\",\"required_states\":[\"paused\"]},\"warnings\":[],\"untrusted_sample_data\":false}"
+      },
+      {
+        "pause_epoch": 3,
+        "module_names": [
+          "mscorlib.dll",
+          "s02-imported-embedded-x86.exe"
+        ],
+        "target_loaded": true
+      }
+    ],
+    "target_module": {
+      "module_handle": "mod-g1-1",
+      "runtime_handle": "rt-0",
+      "name": "s02-imported-embedded-x86.exe",
+      "path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+      "mvid": "bb8d90aa-35ba-48a4-8c8d-ad7c2b24936b",
+      "sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435",
+      "base_address": "0xab0000",
+      "size": 32768,
+      "layout": "file",
+      "identity_strength": "disk_strong"
+    },
+    "breakpoint": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 3,
+        "event_cursor": 6,
+        "state": "paused"
+      },
+      "result": {
+        "breakpoint": {
+          "breakpoint_id": "IzrCecmc9w1GIYuu-1",
+          "owned": true,
+          "enabled": true,
+          "bound": false,
+          "module_identity": {
+            "module_handle": "mod-g1-1",
+            "runtime_handle": "rt-0",
+            "name": "s02-imported-embedded-x86.exe",
+            "path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+            "mvid": "bb8d90aa-35ba-48a4-8c8d-ad7c2b24936b",
+            "sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435",
+            "base_address": "0xab0000",
+            "size": 32768,
+            "layout": "file",
+            "identity_strength": "disk_strong"
+          },
+          "method_token": "0x06000004",
+          "il_offset": 0
+        }
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "continue": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 4,
+        "event_cursor": 7,
+        "state": "running"
+      },
+      "result": {
+        "state": "running",
+        "pause_epoch": 4
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "events": [
+      {
+        "schema_version": "dnspy.debug.v1",
+        "cursor": 8,
+        "timestamp_utc": "2026-08-31T09:58:42.341Z",
+        "kind": "paused",
+        "debug_context": {
+          "session_id": "7e77431ad490e6db92f85eab",
+          "generation": 1,
+          "pause_epoch": 5,
+          "event_cursor": 8,
+          "state": "paused"
+        },
+        "payload": {
+          "reason": "breakpoint"
+        },
+        "untrusted_sample_data": false
+      },
+      {
+        "schema_version": "dnspy.debug.v1",
+        "cursor": 9,
+        "timestamp_utc": "2026-08-31T09:58:42.341Z",
+        "kind": "breakpoint_hit",
+        "debug_context": {
+          "session_id": "7e77431ad490e6db92f85eab",
+          "generation": 1,
+          "pause_epoch": 5,
+          "event_cursor": 9,
+          "state": "paused"
+        },
+        "payload": {
+          "breakpoint_id": "IzrCecmc9w1GIYuu-1",
+          "thread_handle": "th-2",
+          "location": {
+            "module_handle": "mod-g1-1"
+          }
+        },
+        "untrusted_sample_data": false
+      }
+    ],
+    "hit_status": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 5,
+        "event_cursor": 9,
+        "state": "paused"
+      },
+      "result": {
+        "state": "paused",
+        "active_session_id": "7e77431ad490e6db92f85eab",
+        "owned_process": {
+          "process_handle": "proc-116",
+          "pid": 116,
+          "start_time_utc": "2026-08-31T09:58:41.372Z",
+          "filename": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+          "image_identity": {
+            "role": "target",
+            "object_kind": "file",
+            "final_path": "C:\\dnspy-mcp-artifacts\\spikes\\2026-08-31\\s02-imported-embedded-x86.exe",
+            "volume_serial": "0x00000000245ee12c",
+            "file_id": "0000000000000000000e000000081090",
+            "sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435"
+          },
+          "runtime_identity": "net48-x86",
+          "runtime_family": "net48",
+          "architecture": "x86"
+        },
+        "observed_process_state": "paused",
+        "runtime_family": "net48",
+        "architecture": "x86",
+        "start_kind": "launch",
+        "launch_mode": "net48-exe"
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "hit_event": {
+      "schema_version": "dnspy.debug.v1",
+      "cursor": 9,
+      "timestamp_utc": "2026-08-31T09:58:42.341Z",
+      "kind": "breakpoint_hit",
+      "debug_context": {
+        "session_id": "7e77431ad490e6db92f85eab",
+        "generation": 1,
+        "pause_epoch": 5,
+        "event_cursor": 9,
+        "state": "paused"
+      },
+      "payload": {
+        "breakpoint_id": "IzrCecmc9w1GIYuu-1",
+        "thread_handle": "th-2",
+        "location": {
+          "module_handle": "mod-g1-1"
+        }
+      },
+      "untrusted_sample_data": false
+    },
+    "matching_frame": {
+      "frame_handle": "fr-3",
+      "index": 0,
+      "location": {
+        "module_handle": "mod-g1-1",
+        "method_token": "0x06000004",
+        "il_offset": 0
+      },
+      "display_name": "s02-imported-embedded-x86.exe!0x06000004+0x0"
+    },
+    "terminate": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "generation": 1,
+        "pause_epoch": 5,
+        "event_cursor": 11,
+        "state": "idle"
+      },
+      "result": {
+        "state": "idle",
+        "terminal_cursor": 11
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    },
+    "final_status": {
+      "schema_version": "dnspy.debug.v1",
+      "ok": true,
+      "debug_context": {
+        "generation": 1,
+        "pause_epoch": 5,
+        "event_cursor": 11,
+        "state": "idle"
+      },
+      "result": {
+        "state": "idle",
+        "last_session_id": "7e77431ad490e6db92f85eab",
+        "runtime_family": "net48",
+        "architecture": "x86",
+        "start_kind": "launch",
+        "launch_mode": "net48-exe"
+      },
+      "warnings": [],
+      "untrusted_sample_data": false
+    }
+  },
+  "pass": true,
+  "artifact": {
+    "Exists": true,
+    "Sha256": "caf8aef2b1ba677c4b6076d62ae1878e31dc199119889c3de1f4e9b1d0439435",
+    "SidecarPdb": false
+  }
+}

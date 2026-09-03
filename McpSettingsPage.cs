@@ -4,6 +4,7 @@ using System.ComponentModel.Composition;
 using dnSpy.Contracts.Images;
 using dnSpy.Contracts.MVVM;
 using dnSpy.Contracts.Settings.Dialog;
+using dnSpy.Extension.MCP.Execution;
 
 namespace dnSpy.Extension.MCP {
 	/// <summary>
@@ -13,21 +14,24 @@ namespace dnSpy.Extension.MCP {
 	sealed class McpAppSettingsPageProvider : IAppSettingsPageProvider {
 		readonly McpSettings mcpSettings;
 		readonly IPickDirectory pickDirectory;
+		readonly VirtualizationExecutionGate executionGate;
 
 		/// <summary>
 		/// Initializes the settings page provider.
 		/// </summary>
 		[ImportingConstructor]
-		McpAppSettingsPageProvider(McpSettings mcpSettings, IPickDirectory pickDirectory) {
+		McpAppSettingsPageProvider(McpSettings mcpSettings, IPickDirectory pickDirectory,
+			VirtualizationExecutionGate executionGate) {
 			this.mcpSettings = mcpSettings;
 			this.pickDirectory = pickDirectory;
+			this.executionGate = executionGate;
 		}
 
 		/// <summary>
 		/// Creates the settings page.
 		/// </summary>
 		public IEnumerable<AppSettingsPage> Create() {
-			yield return new McpAppSettingsPage(mcpSettings, pickDirectory);
+			yield return new McpAppSettingsPage(mcpSettings, pickDirectory, executionGate);
 		}
 	}
 
@@ -70,7 +74,8 @@ namespace dnSpy.Extension.MCP {
 				if (uiObject is null) {
 					uiObject = new McpSettingsControl();
 					// Use a wrapper that combines editable settings with live logs from global settings
-					uiObject.DataContext = new SettingsViewModel(newSettings, globalSettings, pickDirectory);
+					uiObject.DataContext = new SettingsViewModel(newSettings, globalSettings, pickDirectory,
+						executionGate.LocalOverride, executionGate);
 				}
 				return uiObject;
 			}
@@ -80,13 +85,16 @@ namespace dnSpy.Extension.MCP {
 		readonly McpSettings globalSettings;
 		readonly McpSettings newSettings;
 		readonly IPickDirectory pickDirectory;
+		readonly VirtualizationExecutionGate executionGate;
 
 		/// <summary>
 		/// Initializes the settings page with the given settings instance.
 		/// </summary>
-		public McpAppSettingsPage(McpSettings mcpSettings, IPickDirectory pickDirectory) {
+		public McpAppSettingsPage(McpSettings mcpSettings, IPickDirectory pickDirectory,
+			VirtualizationExecutionGate executionGate) {
 			globalSettings = mcpSettings;
 			this.pickDirectory = pickDirectory;
+			this.executionGate = executionGate;
 			newSettings = mcpSettings.Clone();
 		}
 
@@ -95,6 +103,8 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		public override void OnApply() {
 			globalSettings.ApplyEdited(newSettings);
+			if (uiObject?.DataContext is SettingsViewModel viewModel)
+				viewModel.ApplyLocalExecutionOverride();
 			var token = globalSettings.ConsumeOneTimeRemoteToken();
 			if (token != null)
 				McpSettingsControl.ShowOneTimeRemoteToken(uiObject == null ? null : System.Windows.Window.GetWindow(uiObject), token);
@@ -115,14 +125,22 @@ namespace dnSpy.Extension.MCP {
 		readonly McpSettings editableSettings;
 		readonly McpSettings globalSettings;
 		readonly IPickDirectory pickDirectory;
+		readonly LocalVirtualizationExecutionOverride localExecutionOverride;
+		readonly IVirtualizationExecutionGate executionGate;
+		bool localExecutionOverrideRequested;
 
 		/// <summary>
 		/// Initializes the view model with editable and global settings instances.
 		/// </summary>
-		public SettingsViewModel(McpSettings editable, McpSettings global, IPickDirectory pickDirectory) {
+		public SettingsViewModel(McpSettings editable, McpSettings global, IPickDirectory pickDirectory,
+			LocalVirtualizationExecutionOverride localExecutionOverride,
+			IVirtualizationExecutionGate executionGate) {
 			editableSettings = editable;
 			globalSettings = global;
 			this.pickDirectory = pickDirectory;
+			this.localExecutionOverride = localExecutionOverride;
+			this.executionGate = executionGate;
+			localExecutionOverrideRequested = localExecutionOverride.Active;
 
 			// Forward property change notifications from editable settings
 			editableSettings.PropertyChanged += (s, e) => OnPropertyChanged(e.PropertyName ?? string.Empty);
@@ -138,6 +156,23 @@ namespace dnSpy.Extension.MCP {
 					OnPropertyChanged(nameof(ServerStatusText));
 				}
 			};
+		}
+
+		public bool LocalExecutionOverrideRequested {
+			get => localExecutionOverrideRequested;
+			set { if (localExecutionOverrideRequested != value) { localExecutionOverrideRequested = value; OnPropertyChanged(nameof(LocalExecutionOverrideRequested)); } }
+		}
+
+		public string ExecutionEnvironmentStatusText {
+			get {
+				var current = executionGate.Current;
+				return $"检测结果：{current.Classification}；样本执行：{(current.ExecutionAllowed ? "允许" : "拒绝")}；检测源：{current.DetectionSource}";
+			}
+		}
+
+		public void ApplyLocalExecutionOverride() {
+			localExecutionOverride.ApplyFromLocalSettingsPage(localExecutionOverrideRequested);
+			OnPropertyChanged(nameof(ExecutionEnvironmentStatusText));
 		}
 
 		/// <summary>

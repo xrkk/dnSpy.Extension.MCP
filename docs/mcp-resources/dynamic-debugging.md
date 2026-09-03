@@ -5,6 +5,12 @@ dedicated non-interactive dnSpy process, the debug-tools setting, the dedicated-
 acknowledgement and a dnSpy restart. Call `debug_capabilities` first and stop if `debug_enabled` is
 false. Attach, detach and attachable-process listing are deliberately unsupported.
 
+Also inspect `debug_capabilities.result.execution_environment`. VMware and VirtualBox are admitted;
+physical and unknown hosts are denied before any debugger start/terminate side effect. The local
+dnSpy settings page has an explicit high-risk, current-process-only override. It cannot be changed
+through MCP and resets on process exit. `debug_restart` rechecks the same gate without destroying
+the currently owned target when denied.
+
 ## Session workflow
 
 1. `debug_launch` starts a validated target under the debugger.

@@ -2793,7 +2793,10 @@ function Run-ACC016 {
         if ($tl.domain.ok -and @($tl.domain.result.items).Count -gt 0) {
             $th = $tl.domain.result.items[0].thread_handle
             $st = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $th }
-            if ($st.domain.ok -and @($st.domain.result.items).Count -gt 0) { $fr = $st.domain.result.items[0].frame_handle }
+            if ($st.domain.ok) {
+                $fixtureFrame = @($st.domain.result.items | Where-Object { "$($_.display_name)" -like 'SampleDataFixture.exe!*' } | Select-Object -First 1)
+                if ($fixtureFrame.Count -gt 0) { $fr = $fixtureFrame[0].frame_handle }
+            }
         }
         if (-not $fr) {
             $stx = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
@@ -2823,7 +2826,10 @@ function Run-ACC016 {
                 $ep = $wpl.epoch
                 $tll = Invoke-ToolNoInit 'debug_list_threads' @{ session_id = $sid; generation = $gen; pause_epoch = $ep }
                 $stl = Invoke-ToolNoInit 'debug_get_stack' @{ session_id = $sid; generation = $gen; pause_epoch = $ep; thread_handle = $tll.domain.result.items[0].thread_handle }
-                if ($stl.domain.ok -and @($stl.domain.result.items).Count -gt 0) { $fr = $stl.domain.result.items[0].frame_handle }
+                if ($stl.domain.ok) {
+                    $fixtureFrame = @($stl.domain.result.items | Where-Object { "$($_.display_name)" -like 'SampleDataFixture.exe!*' } | Select-Object -First 1)
+                    if ($fixtureFrame.Count -gt 0) { $fr = $fixtureFrame[0].frame_handle }
+                }
             }
         }
     }
@@ -2837,7 +2843,7 @@ function Run-ACC016 {
     Assert-Cond 'a16-unknown-budget-32602' 'unknown budget field (node_limit) = -32602' "error=$errN" ("$errN" -eq '-32602') @($eN.resp)
 
     # [2] Expand pagination: walk the whole cursor chain of a structured value (page_size=2).
-    $vh = (@($lo4.domain.result.items) | Where-Object { $_.value_handle } | Select-Object -First 1).value_handle
+    $vh = (@($lo4.domain.result.items) | Where-Object { $_.value_handle -and $_.has_children } | Select-Object -First 1).value_handle
     $seen = @(); $cursor = $null; $pages = 0
     do {
         $a = @{ session_id = $sid; generation = $gen; pause_epoch = $ep; value_handle = $vh; page_size = 2 }
@@ -3717,6 +3723,9 @@ function Run-ACC023 {
     # intentionally already configured as loopback and therefore is not a fresh-install default.
     $defaultsProbe = Invoke-ToolNoInit 'debug_test_settings' @{}
     $defOk = $defaultsProbe.domain.ok -and [bool]$defaultsProbe.domain.result.safe_defaults_match_deployment
+    $hostOnlyPredicate = $defaultsProbe.domain.ok `
+        -and [bool]$defaultsProbe.domain.result.trusted_host_peer_allowed `
+        -and [bool]$defaultsProbe.domain.result.vm_peer_rejected_by_trusted_host_only
     $ev1 = Save-Json 'a23-defaults.json' $defaultsProbe.domain.result
     Assert-Cond 'a23-default-snapshot' 'defaults: server off, 192.168.204.149:15378, host peer /32, no verifier, host-only ack' "ok=$defOk" $defOk @($ev1)
 
@@ -3741,24 +3750,30 @@ function Run-ACC023 {
     $ev2 = Save-Text 'a23-remote-capabilities.txt' ($rCap.body + "`nstatus=" + $rCap.status + "`nno_auth=" + $noAuth)
     Assert-Cond 'a23-authenticated-reach' 'remote: allowlisted source authenticated 200 tuple; unauthenticated 401' "tuple=$tupleOk no_auth=$noAuth" ($tupleOk -and ("$noAuth" -eq '401')) @($ev2)
 
-    # [3] Switch to the exact VMware host peer /32 with no verifier. The direct host reaches
-    # every endpoint without an Authorization header, while capabilities still report remote
-    # Host-Only mode with CIDR enforcement and auth_required=false.
+    # [3] The runner executes inside the VM, so a live request to vm_ip has vm_ip as its
+    # direct peer and cannot impersonate the VMware host. Prove the exact host-only predicate
+    # through the production CidrFilter seam, apply the exact host /32 tokenless posture,
+    # then prove the VM peer is denied by the live HTTP wall. The host-side orchestrator owns
+    # the complementary positive end-to-end request.
     $tokenlessCidrJson = '["' + $m.env.host_ip + '/32"]'
     $snapTokenless = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $tokenlessCidrJson $true 'null'
     Stop-DnSpyAndTargets
     Set-SnapshotJson $snapTokenless
     $tokenlessUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
     $tokenlessHealth = Invoke-PyHttp -Url ($remoteUrl.TrimEnd('/') + '/health') -Method GET -Format status -MaxSec 6
-    $tokenlessCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -BaseUrlOverride $remoteUrl
-    $tokenlessDom = $null
-    try { $tokenlessDom = ($tokenlessCap.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
-    $tokenlessTuple = $tokenlessDom -and ($tokenlessDom.result.security.bind_mode -eq 'remote_host_only') `
-        -and (-not $tokenlessDom.result.security.auth_required) -and $tokenlessDom.result.security.cidr_required
-    $evTokenless = Save-Text 'a23-tokenless-host-peer.txt' ($tokenlessCap.body + "`nhealth=$tokenlessHealth status=$($tokenlessCap.status)")
-    Assert-Cond 'a23-tokenless-host-peer' '192.168.204.1/32 reaches remote MCP without Token; CIDR remains required' `
-        "up=$tokenlessUp health=$tokenlessHealth tuple=$tokenlessTuple" `
-        ($tokenlessUp -and ("$tokenlessHealth" -eq '200') -and ("$($tokenlessCap.status)" -eq '200') -and $tokenlessTuple) @($evTokenless)
+    $tokenlessSnapshot = Read-SettingsSnapshot
+    $tokenlessConfigured = $tokenlessSnapshot `
+        -and ("$($tokenlessSnapshot.Host)" -eq $m.env.vm_ip) `
+        -and (@($tokenlessSnapshot.RemoteAllowedCidrs).Count -eq 1) `
+        -and ("$($tokenlessSnapshot.RemoteAllowedCidrs[0])" -eq "$($m.env.host_ip)/32") `
+        -and (-not $tokenlessSnapshot.RemoteTokenVerifier)
+    $evTokenless = Save-Json 'a23-tokenless-host-peer.json' @{
+        health_from_vm = "$tokenlessHealth"; health_wait_200 = $tokenlessUp
+        host_only_predicate = $hostOnlyPredicate; snapshot = $tokenlessSnapshot
+    }
+    Assert-Cond 'a23-tokenless-host-peer' 'production predicate allows only 192.168.204.1/32; exact tokenless posture starts and rejects the VM peer' `
+        "health-wait-200=$tokenlessUp health-from-vm=$tokenlessHealth configured=$tokenlessConfigured hostOnly=$hostOnlyPredicate" `
+        ($hostOnlyPredicate -and $tokenlessConfigured -and ("$tokenlessHealth" -eq '403')) @($evTokenless, $defaultsProbe.rpc.resp)
 
     # [4] Revoke: delete the urlacl/firewall rules, single ApplySnapshot back to every
     # default network field, restart — only loopback listens afterwards.
@@ -4087,7 +4102,7 @@ function Run-ACC003 {
     Set-SnapshotJson $cidrDeny
     $denyUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
     $denyCode = Invoke-PyHttp -Url $healthUrl -Method GET -Format status -MaxSec 6 -Token $goodTok
-    Assert-Cond 'a3-cidr-deny' 'valid token but direct peer outside allowlist = 403' "up=$denyUp code=$denyCode" ($denyUp -and ("$denyCode" -eq '403')) @(Save-Text 'a3-cidr-deny.txt' "code=$denyCode")
+    Assert-Cond 'a3-cidr-deny' 'valid token but direct peer outside allowlist = 403' "health-wait-200=$denyUp code=$denyCode" ("$denyCode" -eq '403') @(Save-Text 'a3-cidr-deny.txt' "code=$denyCode")
 
     # Restore loopback defaults + drop the provisioning (reversible).
     & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null

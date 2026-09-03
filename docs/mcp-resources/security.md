@@ -12,6 +12,19 @@ Non-loopback mode must use one explicit unicast bind IP and the host-only networ
 It always uses the remote security posture: CIDR admission on every endpoint, no wildcard CORS and
 no port drift. Use it only on an isolated Host-Only network because the transport is plain HTTP.
 
+## Sample-execution environment gate
+
+Before `debug_launch`, `debug_restart`, or dynamic validation used by structured editing, the
+extension reads only `SystemManufacturer`, `SystemProductName`, and `BIOSVendor` from the Windows
+BIOS registry key. VMware and VirtualBox markers are allowed; physical, empty, unreadable, and
+otherwise unknown environments fail closed. `Oracle Corporation` alone is not a VirtualBox marker.
+The reported classification is a gate decision, not proof that the environment is safely isolated.
+
+The local dnSpy settings page can temporarily override a physical/unknown denial for the current
+process. Apply commits it, Cancel does not; it is not stored in settings, files, environment
+variables, command-line arguments, or MCP state, and dnSpy exit clears it. No production MCP tool
+or request argument can set the override.
+
 ## Tokenless trusted-peer mode
 
 With **Require Bearer Token** disabled, the only valid allowlist is `192.168.204.1/32`. The Python

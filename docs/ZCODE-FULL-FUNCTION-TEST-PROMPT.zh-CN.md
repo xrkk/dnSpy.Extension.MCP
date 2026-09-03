@@ -19,13 +19,13 @@
 
 当前默认网络策略仅允许 VMware Host-Only 宿主机 `192.168.204.1/32`，不需要 Token。不要给智能体提供 `DNSPY_MCP_TOKEN`。
 
-完整位数验证要运行两轮：
+完整位数验证要运行两轮。测试由具备 Win10VM 管理 MCP 的 AI 自动部署、切换和清理；人工只负责预先准备虚拟机与 MCP 环境：
 
-1. 启动 `C:\Tools\dnSpy\dnSpy.exe`，执行一次提示词，要求 `host_architecture=x64`。
-2. 第一轮结束且 `debug_status=idle` 后，关闭 x64 dnSpy。若产生 `.dnspy-mcp-debug`，在 dnSpy 完全退出后将它改名保留或清空；再启动 `C:\Tools\dnSpy\dnSpy-x86.exe`，重新开启一个全新智能体会话执行同一提示词，要求 `host_architecture=x86`。
-3. x86 轮结束后恢复 `C:\Tools\dnSpy\dnSpy.exe`。
+1. AI 启动 `C:\Tools\dnSpy\dnSpy.exe`，执行一次提示词，要求 `host_architecture=x64`。
+2. 第一轮结束且 `debug_status=idle` 后，AI 关闭 x64 dnSpy，再启动 `C:\Tools\dnSpy\dnSpy-x86.exe`，以新 MCP 会话执行同一提示词，要求 `host_architecture=x86`。
+3. x86 轮结束后，AI 清理测试进程并恢复 `C:\Tools\dnSpy\dnSpy.exe`。
 
-安全账本会把上一个 dnSpy 进程遗留的 `.dnspy-mcp-debug` 视为不可信内容，因此切换位数前的人工处理是预期操作。不要在 dnSpy 运行时删除或移动该目录。
+不得为了让测试通过而删除 `.dnspy-mcp-debug`。安全账本必须把上一个 dnSpy 进程遗留内容作为不可信只读数据重新核验，正常旧 session 不得阻断新随机 session。
 
 ## 提示词正文
 
@@ -81,7 +81,7 @@
 
 ### C. 主动态样本的 22 工具完整生命周期
 
-1. `debug_capabilities` 必须证明当前 dnSpy 与选中样本架构一致，`net48-exe/<arch>` 的 launch/restart 可用。
+1. `debug_capabilities` 必须证明当前 dnSpy 与选中样本架构一致，`net48-exe/<arch>` 的 launch/restart 可用；`execution_environment.classification` 必须为 `vmware`、`execution_allowed=true`、`local_process_override_active=false`，并记录检测源与 marker tags。该结果只是执行门禁证据，不可写成虚拟机隔离证明。
 2. `debug_launch` 使用表中的精确 target path/SHA、`launch_mode=net48-exe`、当前 architecture、`break_kind=entry` 和唯一 UUID request_id。
 3. 立刻以同一 request_id、相同参数重试，验证返回同一成功结果；再以同一 request_id 改一个参数，必须返回 `REQUEST_ID_REUSE`。
 4. 使用每次响应最新的 session_id、generation、pause_epoch，覆盖：status、read/wait events、exception policy、modules、threads、stack、locals、memory。
@@ -112,6 +112,6 @@
 - 无论中途发生什么，只要启动了 debuggee，就必须清理断点、terminate，并确认 idle。
 - 不得输出 Token、Authorization header 或其他凭据。
 
-最终输出中文审计报告：逐项列出 14 个资源和 54 个工具的 PASS/FAIL/BLOCKED、关键真实证据、静态修改→验证→恢复、保存路径、动态状态时间线、断点/线程/栈/locals/memory/dump、两层 value expansion、幂等性和最终 idle。FAIL 与 BLOCKED 分开统计；明确声明是否覆盖原文件、是否留下测试进程，以及本轮是 x64 还是 x86。
+最终输出中文审计报告：逐项列出 14 个资源和 54 个工具的 PASS/FAIL/BLOCKED、关键真实证据、静态修改→验证→恢复、保存路径、环境门禁、动态状态时间线、断点/线程/栈/locals/memory/dump、两层 value expansion、幂等性和最终 idle。FAIL 与 BLOCKED 分开统计；明确声明是否覆盖原文件、是否留下测试进程，以及本轮是 x64 还是 x86。
 
 通过标准：本轮 14/14 资源、54/54 工具 PASS，FAIL 0、BLOCKED 0，全部临时修改已恢复，原始样本未覆盖，最终 coordinator idle。

@@ -1,0 +1,111 @@
+{
+  "format": "dnspy.mcp.spike.evidence.v1",
+  "throwaway": true,
+  "utc_started": "2026-08-31T08:54:06.6920708Z",
+  "dnspy_process_architecture": "x64",
+  "dispatcher_access": true,
+  "fixture": "C:\\dnspy-mcp-spikes\\SpikeFixture.exe",
+  "document_present": true,
+  "s01": {
+    "before_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "module_reference_stable_initial": true,
+    "private_roundtrip_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "private_roundtrip_exact": true,
+    "private_mvid_preserved": true,
+    "private_token_map_preserved": true,
+    "private_edited_fingerprint": "d0dde16cd05eb7c57e554385f5a80b7edc7df0d7244a105f80bf68a26468e574",
+    "live_unchanged_after_private_edit": true,
+    "failure_injection": [
+      {
+        "fail_after_operation": 1,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      },
+      {
+        "fail_after_operation": 2,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      },
+      {
+        "fail_after_operation": 3,
+        "caught": "InjectedFailureException",
+        "state": "ROLLED_BACK",
+        "fingerprint_restored": true,
+        "module_reference_stable": true
+      }
+    ],
+    "commit_fingerprint": "d0dde16cd05eb7c57e554385f5a80b7edc7df0d7244a105f80bf68a26468e574",
+    "commit_matches_private_copy": true,
+    "explicit_rollback_restored": true,
+    "inverse_failure_state": "LIVE_STATE_UNKNOWN",
+    "emergency_cleanup_restored": true,
+    "saved_reload_fingerprint": "649775b42b77bbb0341cd5dc41854a414ebea8b0e5076cd8e7b0745dc0f9e8fe",
+    "saved_reload_exact": true,
+    "dispatcher_access": true,
+    "document_module_reference_stable": true,
+    "pass": true
+  },
+  "s02": {
+    "providers": [
+      {
+        "type": "dnSpy.Roslyn.Compiler.VisualBasic.VisualBasicLanguageCompilerProvider",
+        "language": "b6849618-8239-4fbb-8dff-d45eb023c193",
+        "edit_method": true,
+        "edit_class": true
+      },
+      {
+        "type": "dnSpy.Roslyn.Compiler.CSharp.CSharpLanguageCompilerProvider",
+        "language": "f5a318d4-4b2a-48d2-ae33-f4d2b1eff4b0",
+        "edit_method": true,
+        "edit_class": true
+      }
+    ],
+    "selected_provider": "dnSpy.Roslyn.Compiler.CSharp.CSharpLanguageCompilerProvider",
+    "compile_success": true,
+    "diagnostics": [],
+    "debug_format": "PortablePdb",
+    "debug_bytes": 816,
+    "compiled_bytes": 2560,
+    "generated_pdb_loaded": true,
+    "generated_sequence_points": 7,
+    "import": {
+      "method_body_imported": true,
+      "new_method_imported": true,
+      "field_reference_mapped": false,
+      "method_reference_mapped": true,
+      "exception_handlers": 1,
+      "sequence_points": 5
+    },
+    "target_sequence_points_after_import": 8,
+    "sidecar_pdb_exists": false,
+    "reloaded_pdb_kind": "EmbeddedPortablePDB",
+    "reloaded_sequence_points": 8,
+    "compute_multiplier_3": true,
+    "compute_constant_7": true,
+    "compute_has_eh": true,
+    "added_method_present": true,
+    "added_is_generic": true,
+    "added_has_class_constraint": true,
+    "pass": true
+  },
+  "internal_reference_scan": {
+    "assembly_references": [
+      "dnlib",
+      "dnSpy.Contracts.DnSpy",
+      "mscorlib",
+      "PresentationFramework",
+      "System.ComponentModel.Composition",
+      "System.Core",
+      "System.Web.Extensions",
+      "WindowsBase"
+    ],
+    "asm_editor_reference_present": false,
+    "reflection_invoke_usage": false
+  },
+  "utc_finished": "2026-08-31T08:54:10.4845023Z",
+  "completed": true
+}

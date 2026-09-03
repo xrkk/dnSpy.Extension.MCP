@@ -6,6 +6,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using dnSpy.Extension.MCP.Tools;
+using dnSpy.Extension.MCP.Transport;
+using dnSpy.Extension.MCP.Execution;
 
 namespace dnSpy.Extension.MCP.Debugger;
 
@@ -21,14 +23,17 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 	readonly McpSettings settings;
 	readonly DebugGateService gateService;
 	readonly DebugSessionService sessionService;
+	readonly IVirtualizationExecutionGate executionGate;
 	readonly object schemaLock = new object();
 	JsonDocument? schemaDoc;
 
 	[ImportingConstructor]
-	public DebugToolProvider(McpSettings settings, DebugGateService gateService, DebugSessionService sessionService) {
+	public DebugToolProvider(McpSettings settings, DebugGateService gateService, DebugSessionService sessionService,
+		IVirtualizationExecutionGate executionGate) {
 		this.settings = settings;
 		this.gateService = gateService;
 		this.sessionService = sessionService;
+		this.executionGate = executionGate;
 	}
 
 	public string Name => "debug";
@@ -44,7 +49,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			var names = new List<string>(DisabledApiNames);
 			// Deterministic product-seam probes are callable only by the VM acceptance driver;
 			// they never change the advertised tool snapshot (including under DNMCP_TEST).
-			names.AddRange(new[] { "debug_test_settings", "debug_test_artifact", "debug_test_transport" });
+			names.AddRange(new[] { "debug_test_settings", "debug_test_artifact", "debug_test_transport", "debug_test_environment" });
 			if (!Gate.EffectiveDebugLaunch)
 				names.AddRange(AdvertisedSessionTools);
 			if (!DebugSessionService.TestModeEnabled)
@@ -172,14 +177,19 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		"debug_list_attachable_processes", "debug_attach", "debug_detach",
 	};
 
-	public CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments) {
+	CallToolResult? IMcpToolProvider.ExecuteTool(string toolName, Dictionary<string, object>? arguments, McpCallContext callContext) =>
+		ExecuteTool(toolName, arguments, callContext);
+
+	CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments, McpCallContext callContext) {
 		if (toolName != "debug_capabilities") {
 			// The three reserved disabled APIs are never advertised, but a schema-valid direct
 			// call gets the fixed zero-side-effect CAPABILITY_UNAVAILABLE envelope (§3.3) —
 			// never an "unknown tool" error and never a details object.
 			if (System.Linq.Enumerable.Contains(DisabledApiNames, toolName))
 				return FixedDisabledResult();
-			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump" || toolName == "debug_test_settings" || toolName == "debug_test_artifact" || toolName == "debug_test_transport")
+			if (toolName == "debug_test_transport" && TryGetString(arguments, "p01_action", out _))
+				return TransportContextProbe(arguments, callContext);
+			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump" || toolName == "debug_test_settings" || toolName == "debug_test_artifact" || toolName == "debug_test_transport" || toolName == "debug_test_environment")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
 				return sessionService.Execute(toolName, arguments);
@@ -195,6 +205,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			DedicatedInstanceAcknowledged = gate.DedicatedInstanceAcknowledged,
 			Tools = DebugCapabilitiesResultDto.ToolsFor(gate.EffectiveDebugLaunch),
 			RuntimeMatrix = DebugCapabilitiesResultDto.MatrixFor(HostArchitecture),
+			ExecutionEnvironment = DebugCapabilitiesResultDto.ExecutionEnvironmentDto.From(executionGate.Current),
 			// Security posture reflects the ACTIVE snapshot: loopback vs remote_host_only with
 			// its token/CIDR requirements (the DTO defaults describe loopback only).
 			Security = new DebugCapabilitiesResultDto.SecurityDto {
@@ -211,6 +222,61 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		return new CallToolResult {
 			Content = new List<ToolContent> { new ToolContent { Text = json } },
 		};
+	}
+
+	CallToolResult TransportContextProbe(Dictionary<string, object>? arguments, McpCallContext callContext) {
+		if (!DebugSessionService.TestModeEnabled)
+			return FixedDisabledResult();
+		if (!TryGetString(arguments, "p01_action", out var action))
+			throw new ArgumentException("p01_action is required", "p01_action");
+
+		object result;
+		switch (action) {
+		case "snapshot":
+			result = new Dictionary<string, object?> {
+				["test_mode"] = true,
+				["transport_kind"] = callContext.TransportKind.ToWireName(),
+				["authoritative_session_id"] = callContext.AuthoritativeSessionId,
+				["protocol_version"] = callContext.ProtocolVersion,
+				["is_initialized_session"] = callContext.IsInitializedSession,
+				["can_own_edit_transaction"] = callContext.CanOwnEditTransaction,
+				["lifecycle"] = McpTransportSessionLifecycle.GetTestDiagnostics(),
+			};
+			break;
+		case "reset":
+			McpTransportSessionLifecycle.ResetTestDiagnostics();
+			result = new Dictionary<string, object?> { ["test_mode"] = true, ["reset"] = true };
+			break;
+		case "arm_observer_fault":
+			McpTransportSessionLifecycle.ArmTestObserverFault();
+			result = new Dictionary<string, object?> { ["test_mode"] = true, ["armed"] = true };
+			break;
+		default:
+			throw new ArgumentException("p01_action must be snapshot, reset, or arm_observer_fault", "p01_action");
+		}
+
+		var envelope = new DebugSuccessEnvelope {
+			DebugContext = new DebugContextDto { State = DebugStates.Idle },
+			Result = result,
+		};
+		return new CallToolResult {
+			Content = new List<ToolContent> { new ToolContent { Text = JsonSerializer.Serialize(envelope, CanonicalOptions) } },
+		};
+	}
+
+	static bool TryGetString(Dictionary<string, object>? arguments, string name, out string value) {
+		value = string.Empty;
+		if (arguments == null || !arguments.TryGetValue(name, out var raw) || raw == null)
+			return false;
+		if (raw is string text) {
+			value = text;
+			return true;
+		}
+		if (raw is JsonElement element && element.ValueKind == JsonValueKind.String) {
+			value = element.GetString() ?? string.Empty;
+			return true;
+		}
+		return false;
 	}
 
 	static readonly JsonSerializerOptions CanonicalOptions = new JsonSerializerOptions {

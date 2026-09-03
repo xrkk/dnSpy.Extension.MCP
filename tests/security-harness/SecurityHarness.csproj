@@ -10,6 +10,7 @@
     <Compile Include="../../McpSettingsSnapshot.cs" Link="McpSettingsSnapshot.cs" />
     <Compile Include="../../Debugger/ArtifactStoreLedger.cs" Link="ArtifactStoreLedger.cs" />
     <Compile Include="../../Transport/TransportSecurity.cs" Link="TransportSecurity.cs" />
+    <Compile Include="../../Execution/VirtualizationClassification.cs" Link="VirtualizationClassification.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

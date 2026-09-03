@@ -27,6 +27,20 @@ CorDebug 引擎只能调试与 dnSpy OS 进程同位数的目标:
   异位数三项 `false` 且 `unavailable_reason=host_architecture_mismatch`;
 - E2E 的六项 launch 矩阵各自运行于同位数 dnSpy OS 进程。
 
+## 2.1 样本执行环境门禁
+
+`debug_launch`、`debug_restart` 和结构化编辑后续使用的动态验证入口共用同一门禁。
+门禁只读 `HKLM\HARDWARE\DESCRIPTION\System\BIOS` 的 `SystemManufacturer`、
+`SystemProductName`、`BIOSVendor`：VMware、VirtualBox 允许；physical、读取失败或空值形成的
+unknown 默认拒绝。`Oracle Corporation` 单独出现不算 VirtualBox。拒绝发生在启动、终止或
+调试状态变化之前；该分类只是执行许可判断，不代表扩展能够证明虚拟机隔离安全。
+
+确需在实体机或无法识别的虚拟化环境执行时，只能由本机操作者在
+**视图 → 选项 → MCP 服务器** 勾选高风险的“仅本次 dnSpy 进程”覆盖并应用。Cancel 不生效；
+该值不写设置、不进入环境变量/命令行/文件、没有 MCP setter，dnSpy 退出后自然清零。
+`debug_capabilities.result.execution_environment` 可核对分类、当前许可、检测源、命中标记和
+覆盖状态。
+
 ## 3. 当前实验 VM 的可逆网络示例
 
 实验环境为 Windows VM `192.168.204.149:15378`。界面默认使用免 Token 的单主机规则

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using dnSpy.Extension.MCP.Execution;
 
 namespace dnSpy.Extension.MCP.Debugger;
 
@@ -222,6 +223,23 @@ public sealed class RuntimeMatrixEntryDto
 /// <summary>API-DYN-001 capabilities result. All limit fields are fixed contract constants.</summary>
 public sealed class DebugCapabilitiesResultDto
 {
+	public sealed class ExecutionEnvironmentDto
+	{
+		[JsonPropertyName("classification")] public string Classification { get; set; } = VirtualizationClassifications.Unknown;
+		[JsonPropertyName("execution_allowed")] public bool ExecutionAllowed { get; set; }
+		[JsonPropertyName("local_process_override_active")] public bool LocalProcessOverrideActive { get; set; }
+		[JsonPropertyName("detection_source")] public string DetectionSource { get; set; } = "windows_bios_registry_v1";
+		[JsonPropertyName("marker_tags")] public List<string> MarkerTags { get; set; } = new();
+
+		public static ExecutionEnvironmentDto From(VirtualizationEnvironmentSnapshot snapshot) => new() {
+			Classification = snapshot.Classification,
+			ExecutionAllowed = snapshot.ExecutionAllowed,
+			LocalProcessOverrideActive = snapshot.LocalProcessOverrideActive,
+			DetectionSource = snapshot.DetectionSource,
+			MarkerTags = new List<string>(snapshot.MarkerTags),
+		};
+	}
+
     public sealed class SecurityDto
     {
         [JsonPropertyName("bind_mode")] public string BindMode { get; set; } = "loopback";
@@ -284,6 +302,7 @@ public sealed class DebugCapabilitiesResultDto
     [JsonPropertyName("attach_supported")] public bool AttachSupported { get; } = false;
     [JsonPropertyName("tools")] public List<string> Tools { get; set; } = new();
     [JsonPropertyName("runtime_matrix")] public List<RuntimeMatrixEntryDto> RuntimeMatrix { get; set; } = new();
+	[JsonPropertyName("execution_environment")] public ExecutionEnvironmentDto ExecutionEnvironment { get; set; } = new();
     [JsonPropertyName("security")] public SecurityDto Security { get; set; } = new();
     [JsonPropertyName("artifact_policy")] public ArtifactPolicyDto ArtifactPolicy { get; } = new();
     [JsonPropertyName("limits")] public LimitsDto Limits { get; } = new();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using dnSpy.Extension.MCP.Transport;
 
 namespace dnSpy.Extension.MCP.Tools;
 
@@ -22,7 +23,7 @@ internal interface IMcpToolProvider
     /// null when the name is not one of this provider's tools; the registry then reports the
     /// canonical unknown-tool error.
     /// </summary>
-    CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments);
+    CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments, McpCallContext callContext);
 
     /// <summary>
     /// Tool names this provider answers without advertising: the fixed-disabled debug APIs

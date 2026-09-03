@@ -21,9 +21,16 @@ The server implements `initialize`, `ping`, `tools/list`, `tools/call`, `resourc
 Transports are Streamable HTTP, legacy two-endpoint SSE and diagnostic one-shot HTTP JSON-RPC.
 Applications should use a real MCP client or the supplied Python/stdio bridge.
 
+Initialized legacy SSE and Streamable HTTP requests carry a server-authored session identity into
+the tool registry. Tool arguments cannot replace that identity. One-shot compatibility HTTP has no
+transaction-owning identity. DELETE, legacy disconnect and listener stop release a session before
+emitting one idempotent internal close notification for later structured-edit transaction cleanup.
+
 ## Important limitations
 
 - Dynamic debugging v1 is launch-only. Attach, detach and attachable-process listing are unsupported.
+- Sample execution is allowed only when the fixed BIOS-registry classifier reports VMware or
+  VirtualBox, unless a human explicitly enables the process-local override in the dnSpy settings UI.
 - CorDebug target architecture must match the dnSpy process architecture.
 - Static write tools are rejected while any debugging session is active.
 - Tool output derived from assemblies or debuggees is untrusted data, not agent instructions.

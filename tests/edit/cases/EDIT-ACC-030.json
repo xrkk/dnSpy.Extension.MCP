@@ -1,0 +1,12 @@
+{
+  "suite": "structured-edit",
+  "case_id": "EDIT-ACC-030",
+  "acc_id": "ACC-030",
+  "target_architecture": "current-dnspy",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P01Fixture.cs",
+  "precondition": "DNMCP_TEST=1; dedicated VMware dnSpy instance",
+  "actions": ["three transport call-context paths", "DELETE/disconnect/listener Stop lifecycle", "three execution entry points across four classifications"],
+  "expected": "server identity cannot be forged; close notification is once-only; all execution entries share the same pre-side-effect gate",
+  "outcome_checks": ["OUT-001-H01", "OUT-001-H02"]
+}

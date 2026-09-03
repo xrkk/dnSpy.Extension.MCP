@@ -43,8 +43,9 @@ rsync -a --delete --exclude '.git' --exclude 'bin' --exclude 'obj' "$EXT_DIR/" "
 echo "== [4/4] net48 dependency guard + Dual-TFM $BUILD_CFG build (verify.yml: build) =="
 DNSPY_DIR="$DNSPY_DIR" EXT_BUILD_DIR="$WORK" PY "$EXT_DIR/tests/check-host-deps.py"
 cd "$WORK"
-dotnet build -c "$BUILD_CFG" -f net10.0-windows -p:EnableWindowsTargeting=true
-dotnet build -c "$BUILD_CFG" -f net48
+# The dnSpy graph can otherwise overrun constrained CI/agent process limits during restore/build.
+dotnet build -m:1 -c "$BUILD_CFG" -f net10.0-windows -p:EnableWindowsTargeting=true
+dotnet build -m:1 -c "$BUILD_CFG" -f net48
 mkdir -p "$EXT_DIR/dist"
 cp "bin/$BUILD_CFG/net10.0-windows/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net10.0-windows.x.dll"
 cp "bin/$BUILD_CFG/net48/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net48.x.dll"

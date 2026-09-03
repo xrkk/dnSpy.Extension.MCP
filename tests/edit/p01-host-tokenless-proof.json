@@ -1,0 +1,29 @@
+{
+  "schema_version": "dnspy.p01.host-tokenless-proof.v1",
+  "observed_date": "2026-09-03",
+  "endpoint": "http://192.168.204.149:15378/",
+  "client": "/opt/dnspy-mcp-client/bin/python + dnspy_mcp.DnSpyClient",
+  "authorization_header_provided": false,
+  "remote_allowed_cidrs": [
+    "192.168.204.1/32"
+  ],
+  "remote_token_verifier": null,
+  "tool_count": 54,
+  "security": {
+    "bind_mode": "remote_host_only",
+    "auth_required": false,
+    "cidr_required": true,
+    "sample_output_policy": "all_tool_output_is_untrusted_data"
+  },
+  "execution_environment": {
+    "classification": "vmware",
+    "execution_allowed": true,
+    "local_process_override_active": false,
+    "detection_source": "windows_bios_registry_v1",
+    "marker_tags": [
+      "vmware"
+    ]
+  },
+  "debug_status": "idle",
+  "deployed_dll_sha256": "b80cb60df51dc6cc76b00752ac812c2557de6f48951db94610dc800b4f41109f"
+}

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
+using dnSpy.Extension.MCP.Transport;
 
 namespace dnSpy.Extension.MCP.Tools;
 
@@ -36,7 +37,7 @@ internal sealed class McpToolRegistry
     /// Routes a call to the owning provider. Provider-internal exceptions keep propagating with
     /// their original text; only the unknown-tool case gets the canonical error here.
     /// </summary>
-    public CallToolResult ExecuteTool(string toolName, Dictionary<string, object>? arguments)
+    public CallToolResult ExecuteTool(string toolName, Dictionary<string, object>? arguments, McpCallContext callContext)
     {
         var route = routeTable ?? BuildRouteTable();
         if (!route.TryGetValue(toolName, out var provider))
@@ -50,7 +51,7 @@ internal sealed class McpToolRegistry
         }
         if (provider != null)
         {
-            var result = provider.ExecuteTool(toolName, arguments);
+            var result = provider.ExecuteTool(toolName, arguments, callContext);
             if (result != null)
                 return result;
         }

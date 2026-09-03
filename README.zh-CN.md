@@ -84,7 +84,9 @@ English: see [README.md](README.md).
 - **模块与内存**：`debug_list_modules`、`debug_read_memory`、`debug_dump_module`
 - **异常策略**：`debug_set_exception_policy`
 
-动态调试仅支持由 MCP 启动并拥有的进程，不支持 attach/detach。CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。动态 dump 保留在 `ArtifactRoot\.dnspy-mcp-debug`；dnSpy 重启后旧 session 仍是不可信只读内容并计入配额，但不会阻断新 session，除非身份复核或配额检查失败。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
+动态调试仅支持由 MCP 启动并拥有的进程，不支持 attach/detach。样本执行采用 fail-closed 门禁：只读取固定的 Windows BIOS 注册表标记，分类为 VMware 或 VirtualBox 才允许执行。`debug_capabilities.result.execution_environment` 会返回分类、许可、检测源、命中标记和本进程覆盖状态。实体机或未知环境只能在 dnSpy 本地设置页临时放行；覆盖不会持久化、不能由远程 MCP 设置，并在 dnSpy 退出时清零。
+
+CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。动态 dump 保留在 `ArtifactRoot\.dnspy-mcp-debug`；dnSpy 重启后旧 session 仍是不可信只读内容并计入配额，但不会阻断新 session，除非身份复核或配额检查失败。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
 
 ### MCP 资源（共 14 个）
 
@@ -322,6 +324,8 @@ Token 模式。不要把调试器端点暴露到普通局域网或不可信网�
 单端点传输，codex 等新版 MCP 客户端使用。客户端在 POST 时携带 `Accept: application/json, text/event-stream`；服务器在 `initialize` 响应的 `Mcp-Session-Id` 头中分配会话 ID，后续请求需回传该头。同一端点的 `GET` 用于服务端主动推送（SSE），`DELETE` 用于显式结束会话。
 
 路径 `/` 与 `/mcp` 均可作为端点。
+
+工具链接收由服务端生成的权威调用上下文。只有完成初始化的 legacy SSE 或 Streamable HTTP 会话才具有所有者身份；工具参数不能伪造该身份，单次兼容调用也不能拥有编辑事务。DELETE、legacy 断连和监听器停止都会先释放会话名额，再发布一次幂等关闭通知。该内部契约只为后续结构化编辑事务提供基础，不增加产品工具。
 
 ```bash
 # 1. 初始化 —— 服务器在 Mcp-Session-Id 响应头中返回会话 ID

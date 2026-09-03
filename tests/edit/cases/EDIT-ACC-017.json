@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit",
+  "case_id": "EDIT-ACC-017",
+  "acc_id": "ACC-017",
+  "target_architecture": "current-dnspy",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P01Fixture.cs",
+  "precondition": "DNMCP_TEST=1; dedicated VMware dnSpy instance; local UI available",
+  "actions": ["real VMware classification", "inject VirtualBox/physical/unknown", "UI apply process override", "restart dnSpy and verify reset"],
+  "expected": "VMware and VirtualBox allow; physical and unknown deny; only local UI process override can temporarily allow"
+}

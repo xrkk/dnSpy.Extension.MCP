@@ -465,6 +465,17 @@
         "attach_supported": { "const": false },
         "tools": { "type": "array", "items": { "enum": [ "debug_capabilities", "debug_status", "debug_launch", "debug_pause", "debug_continue", "debug_restart", "debug_terminate", "debug_read_events", "debug_wait_event", "debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug_remove_breakpoint", "debug_list_threads", "debug_get_stack", "debug_step", "debug_get_locals", "debug_expand_value", "debug_list_modules", "debug_read_memory", "debug_dump_module", "debug_set_exception_policy" ] } },
         "runtime_matrix": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "$ref": "#/$defs/runtime_matrix_entry" } },
+        "execution_environment": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "classification": { "enum": [ "vmware", "virtualbox", "physical", "unknown" ] },
+            "execution_allowed": { "type": "boolean" },
+            "local_process_override_active": { "type": "boolean" },
+            "detection_source": { "const": "windows_bios_registry_v1" },
+            "marker_tags": { "type": "array", "maxItems": 2, "uniqueItems": true, "items": { "enum": [ "vmware", "virtualbox", "innotek_gmbh" ] } }
+          },
+          "required": [ "classification", "execution_allowed", "local_process_override_active", "detection_source", "marker_tags" ]
+        },
         "security": {
           "type": "object", "additionalProperties": false,
           "properties": {
@@ -524,7 +535,7 @@
         },
         "unsupported": { "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": { "enum": [ "debug_list_attachable_processes", "debug_attach", "debug_detach" ] } }
       },
-      "required": [ "debug_enabled", "schema_version", "extension_version", "dnspy_api", "host_architecture", "ownership_model", "dedicated_instance_required", "dedicated_instance_acknowledged", "attach_supported", "tools", "runtime_matrix", "security", "artifact_policy", "limits", "unsupported" ]
+      "required": [ "debug_enabled", "schema_version", "extension_version", "dnspy_api", "host_architecture", "ownership_model", "dedicated_instance_required", "dedicated_instance_acknowledged", "attach_supported", "tools", "runtime_matrix", "execution_environment", "security", "artifact_policy", "limits", "unsupported" ]
     },
     "debug_status_result": {
       "type": "object", "additionalProperties": false,

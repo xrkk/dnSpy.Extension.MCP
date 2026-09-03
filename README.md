@@ -84,7 +84,9 @@ From zero to "ask Claude about your assembly" in a few minutes:
 - **Modules and memory**: `debug_list_modules`, `debug_read_memory`, `debug_dump_module`
 - **Exception policy**: `debug_set_exception_policy`
 
-Dynamic debugging is limited to processes launched and owned by the MCP; attach/detach is not supported. CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. Dynamic dumps remain under `ArtifactRoot\.dnspy-mcp-debug`; after a dnSpy restart, old sessions remain untrusted/read-only and quota-counted but do not block a fresh session unless identity or quota verification fails. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
+Dynamic debugging is limited to processes launched and owned by the MCP; attach/detach is not supported. Sample execution is fail-closed unless fixed Windows BIOS registry markers classify the host as VMware or VirtualBox. `debug_capabilities.result.execution_environment` reports the classification, decision, detection source, marker tags, and whether the process-local override is active. Physical or unknown hosts can only be enabled temporarily from the local dnSpy settings page; the override is never persisted or remotely writable and resets when dnSpy exits.
+
+CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. Dynamic dumps remain under `ArtifactRoot\.dnspy-mcp-debug`; after a dnSpy restart, old sessions remain untrusted/read-only and quota-counted but do not block a fresh session unless identity or quota verification fails. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
 
 ### MCP Resources (14 total)
 
@@ -326,6 +328,8 @@ All three transports run on the same `HttpListener` on the same port. The server
 Single-endpoint transport used by codex and other modern MCP clients. The client POSTs JSON-RPC requests with `Accept: application/json, text/event-stream`; the server returns the JSON-RPC response inline as `application/json` and allocates a session on `initialize` via the `Mcp-Session-Id` response header. Subsequent POSTs must echo that header. The server also honours `GET` on the same endpoint for server-initiated SSE and `DELETE` for teardown.
 
 Both `/` and `/mcp` are accepted as the endpoint path.
+
+Tool providers receive a server-authored call context. Only an initialized legacy SSE or Streamable HTTP session has an authoritative owner identity; tool arguments cannot forge it, and one-shot compatibility calls cannot own edit transactions. DELETE, legacy disconnect, and listener stop release session capacity before publishing one idempotent close notification. These internal contracts prepare transaction ownership for the structured-edit phases without adding a new product tool.
 
 ```bash
 # 1. Initialize — server returns the session ID in the Mcp-Session-Id header.

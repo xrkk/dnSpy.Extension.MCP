@@ -7,6 +7,7 @@ from .client import (
     DnSpyError,
     DnSpyHttpError,
     DnSpyProtocolError,
+    LegacySseClient,
     HttpResponse,
     ToolCallError,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "DnSpyError",
     "DnSpyHttpError",
     "DnSpyProtocolError",
+    "LegacySseClient",
     "HttpResponse",
     "ToolCallError",
 ]

@@ -71,6 +71,11 @@
             <TextBlock Text="动态调试" FontWeight="Bold" Margin="0,10,0,5"/>
             <CheckBox Content="启用调试工具（重启后生效；启动时冻结）" IsChecked="{Binding DebugToolsEnabled}" Margin="0,0,0,5"/>
             <CheckBox Content="此 dnSpy 实例专用于 MCP 调试（已确认运行规程；重启后生效）" IsChecked="{Binding DedicatedDebugInstanceAcknowledged}" Margin="0,0,0,5"/>
+            <TextBlock Text="{Binding ExecutionEnvironmentStatusText}" Foreground="Gray" TextWrapping="Wrap" Margin="0,2,0,4"/>
+            <CheckBox Content="高风险：仅在本次 dnSpy 进程中允许物理机/未知环境执行样本（点击应用后生效）"
+                      IsChecked="{Binding LocalExecutionOverrideRequested}" Foreground="DarkOrange" Margin="0,0,0,5"/>
+            <TextBlock Text="此覆盖不会保存，退出 dnSpy 后自动清零；VM 检测不是隔离、防逃逸或网络安全保证。"
+                       Foreground="DarkOrange" TextWrapping="Wrap" Margin="20,0,0,5"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

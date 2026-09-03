@@ -5,6 +5,7 @@ using System.Net;
 using dnSpy.Extension.MCP;
 using dnSpy.Extension.MCP.Debugger;
 using dnSpy.Extension.MCP.Transport;
+using dnSpy.Extension.MCP.Execution;
 
 static class Program {
 	static int failures;
@@ -55,9 +56,49 @@ static class Program {
 		Assert(!CidrFilter.IsAllowed(null, new[] { "192.168.204.1/32" }), "missing peer is denied");
 
 		VerifyRestartedArtifactStore();
+		VerifyVirtualizationClassification();
 
 		if (failures != 0)
 			Environment.Exit(1);
+	}
+
+	static void VerifyVirtualizationClassification() {
+		VirtualizationEnvironmentSnapshot Classify(string? manufacturer, string? product, string? vendor,
+			bool readSucceeded = true, bool localOverride = false) =>
+			VirtualizationClassifier.Classify(
+				new VirtualizationClassifier.BiosSignals(manufacturer, product, vendor, readSucceeded), localOverride);
+
+		var vmware = Classify(" VMware, Inc. ", "VMware Virtual Platform", "Phoenix");
+		Assert(vmware.Classification == VirtualizationClassifications.VMware && vmware.ExecutionAllowed
+			&& vmware.MarkerTags.SequenceEqual(new[] { "vmware" }), "VMware marker is allowed");
+
+		var virtualBoxProduct = Classify("Oracle Corporation", "VirtualBox", "Oracle Corporation");
+		Assert(virtualBoxProduct.Classification == VirtualizationClassifications.VirtualBox
+			&& virtualBoxProduct.ExecutionAllowed, "VirtualBox product marker is allowed");
+
+		var virtualBoxPair = Classify("innotek GmbH", "innotek virtual machine", "vendor");
+		Assert(virtualBoxPair.Classification == VirtualizationClassifications.VirtualBox,
+			"distinct innotek fields classify VirtualBox");
+
+		var oracleOnly = Classify("Oracle Corporation", "Desktop", "Oracle Corporation");
+		Assert(oracleOnly.Classification == VirtualizationClassifications.Physical && !oracleOnly.ExecutionAllowed,
+			"Oracle alone is not VirtualBox");
+
+		var singleInnotek = Classify("innotek GmbH", "Desktop", "Vendor");
+		Assert(singleInnotek.Classification == VirtualizationClassifications.Physical,
+			"one innotek field alone is not VirtualBox");
+
+		var physical = Classify("Dell Inc.", "Precision", "Dell Inc.");
+		Assert(physical.Classification == VirtualizationClassifications.Physical && !physical.ExecutionAllowed,
+			"non-VM BIOS signals fail closed as physical");
+
+		var unknown = Classify(null, null, null, readSucceeded: false);
+		Assert(unknown.Classification == VirtualizationClassifications.Unknown && !unknown.ExecutionAllowed,
+			"BIOS read failure is unknown and denied");
+
+		var overridden = Classify(null, null, null, readSucceeded: false, localOverride: true);
+		Assert(overridden.Classification == VirtualizationClassifications.Unknown && overridden.ExecutionAllowed
+			&& overridden.LocalProcessOverrideActive, "process-local override permits unknown without reclassification");
 	}
 
 	static void VerifyRestartedArtifactStore() {

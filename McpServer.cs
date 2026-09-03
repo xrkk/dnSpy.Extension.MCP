@@ -25,6 +25,7 @@ namespace dnSpy.Extension.MCP {
 		readonly McpSettings settings;
 		readonly McpToolRegistry toolRegistry;
 		readonly BepInExResources bepinexResources;
+		readonly McpTransportSessionLifecycle sessionLifecycle;
 		HttpListener? httpListener;
 		CancellationTokenSource? cts;
 		int actualPort;
@@ -101,10 +102,12 @@ namespace dnSpy.Extension.MCP {
 		/// Initializes the MCP server with the specified settings, tools, and documentation.
 		/// </summary>
 		[ImportingConstructor]
-		public McpServer(McpSettings settings, McpToolRegistry toolRegistry, BepInExResources bepinexResources) {
+		public McpServer(McpSettings settings, McpToolRegistry toolRegistry, BepInExResources bepinexResources,
+			McpTransportSessionLifecycle sessionLifecycle) {
 			this.settings = settings;
 			this.toolRegistry = toolRegistry;
 			this.bepinexResources = bepinexResources;
+			this.sessionLifecycle = sessionLifecycle;
 		}
 
 		/// <summary>
@@ -585,8 +588,9 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 			finally {
-				sseSessions.TryRemove(sessionId, out _);
-				settings.Log($"SSE session closed: {sessionId}");
+				if (sessionLifecycle.RemoveAndNotify(sseSessions, McpTransportKind.LegacySse, sessionId,
+					McpTransportCloseReasons.LegacyDisconnect, ActiveTransportSessionCount))
+					settings.Log($"SSE session closed: {sessionId}");
 				try { context.Response.OutputStream.Close(); } catch { /* ignore */ }
 				try { context.Response.Close(); } catch { /* ignore */ }
 			}
@@ -626,7 +630,8 @@ namespace dnSpy.Extension.MCP {
 
 			try {
 				bool isNotification = request.Method?.StartsWith("notifications/", StringComparison.Ordinal) ?? false;
-				var response = HandleRequest(request, session.ProtocolVersion, v => session.ProtocolVersion = v);
+				var response = HandleRequest(request, session.CreateCallContext(),
+					v => session.ProtocolVersion = v, session.MarkInitialized);
 				if (!isNotification) {
 					session.WriteEvent("message", RenderBoundedResponse(response));
 				}
@@ -657,7 +662,8 @@ namespace dnSpy.Extension.MCP {
 			var plainVersion = !string.IsNullOrEmpty(headerVersion) && Array.IndexOf(supportedProtocolVersions, headerVersion) >= 0
 				? headerVersion!
 				: legacyPlainProtocolVersion;
-			var response = HandleRequest(request, plainVersion, v => legacyPlainProtocolVersion = v);
+			var response = HandleRequest(request, McpCallContext.CompatibilityPlainHttp(plainVersion),
+				v => legacyPlainProtocolVersion = v);
 			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 
@@ -721,18 +727,23 @@ namespace dnSpy.Extension.MCP {
 			}
 
 			bool isNotification = request.Method.StartsWith("notifications/", StringComparison.Ordinal) || request.Id == null;
+			var callContext = requestSession is null
+				? McpCallContext.CompatibilityPlainHttp(supportedProtocolVersions[0])
+				: requestSession.CreateCallContext();
 
 			if (isNotification) {
-				HandleRequest(request, requestSession?.ProtocolVersion ?? supportedProtocolVersions[0],
-					requestSession is null ? null : v => requestSession.ProtocolVersion = v);
+				HandleRequest(request, callContext,
+					requestSession is null ? null : v => requestSession.ProtocolVersion = v,
+					requestSession is null ? null : requestSession.MarkInitialized);
 				context.Response.StatusCode = 202;
 				context.Response.ContentLength64 = 0;
 				context.Response.Close();
 				return;
 			}
 
-			var response = HandleRequest(request, requestSession?.ProtocolVersion ?? supportedProtocolVersions[0],
-				requestSession is null ? null : v => requestSession.ProtocolVersion = v);
+			var response = HandleRequest(request, callContext,
+				requestSession is null ? null : v => requestSession.ProtocolVersion = v,
+				requestSession is null ? null : requestSession.MarkInitialized);
 			var responseJson = RenderBoundedResponse(response);
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 			context.Response.StatusCode = 200;
@@ -804,7 +815,9 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		void HandleStreamableHttpDelete(HttpListenerContext context) {
 			var sessionId = context.Request.Headers["Mcp-Session-Id"];
-			if (!string.IsNullOrEmpty(sessionId) && streamableSessions.TryRemove(sessionId!, out _))
+			if (!string.IsNullOrEmpty(sessionId) && sessionLifecycle.RemoveAndNotify(streamableSessions,
+				McpTransportKind.StreamableHttp, sessionId!, McpTransportCloseReasons.ClientDelete,
+				ActiveTransportSessionCount))
 				settings.Log($"Streamable HTTP session closed by DELETE: {sessionId}");
 			context.Response.StatusCode = 200;
 			context.Response.ContentLength64 = 0;
@@ -842,6 +855,7 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		public void Stop() {
 			try {
+				CloseAllTransportSessions();
 				cts?.Cancel();
 				httpListener?.Stop();
 				httpListener?.Close();
@@ -858,7 +872,19 @@ namespace dnSpy.Extension.MCP {
 			}
 		}
 
-		McpResponse HandleRequest(McpRequest request, string protocolVersion, Action<string>? rememberProtocolVersion = null) {
+		int ActiveTransportSessionCount() => sseSessions.Count + streamableSessions.Count;
+
+		void CloseAllTransportSessions() {
+			foreach (var sessionId in sseSessions.Keys)
+				sessionLifecycle.RemoveAndNotify(sseSessions, McpTransportKind.LegacySse, sessionId,
+					McpTransportCloseReasons.ListenerStop, ActiveTransportSessionCount);
+			foreach (var sessionId in streamableSessions.Keys)
+				sessionLifecycle.RemoveAndNotify(streamableSessions, McpTransportKind.StreamableHttp, sessionId,
+					McpTransportCloseReasons.ListenerStop, ActiveTransportSessionCount);
+		}
+
+		McpResponse HandleRequest(McpRequest request, McpCallContext callContext,
+			Action<string>? rememberProtocolVersion = null, Action? markInitialized = null) {
 			try {
 				// Handle notifications (no response needed)
 				if (request.Method.StartsWith("notifications/")) {
@@ -874,10 +900,10 @@ namespace dnSpy.Extension.MCP {
 				settings.Log($"MCP request: {request.Method}");
 
 				var result = request.Method switch {
-					"initialize" => HandleInitialize(request.Params, rememberProtocolVersion),
+					"initialize" => HandleInitializeAndMark(request.Params, rememberProtocolVersion, markInitialized),
 					"ping" => HandlePing(),
-					"tools/list" => HandleListTools(protocolVersion),
-					"tools/call" => HandleCallTool(request.Params, protocolVersion),
+					"tools/list" => HandleListTools(callContext.ProtocolVersion),
+					"tools/call" => HandleCallTool(request.Params, callContext),
 					"resources/list" => HandleListResources(),
 					"resources/templates/list" => HandleListResourceTemplates(),
 					"resources/read" => HandleReadResource(request.Params),
@@ -914,6 +940,13 @@ namespace dnSpy.Extension.MCP {
 					}
 				};
 			}
+		}
+
+		object HandleInitializeAndMark(Dictionary<string, object>? parameters,
+			Action<string>? rememberProtocolVersion, Action? markInitialized) {
+			var result = HandleInitialize(parameters, rememberProtocolVersion);
+			markInitialized?.Invoke();
+			return result;
 		}
 
 		static string LatestProtocolVersion => "2025-06-18";
@@ -983,7 +1016,7 @@ namespace dnSpy.Extension.MCP {
 			};
 		}
 
-		object HandleCallTool(Dictionary<string, object>? parameters, string protocolVersion) {
+		object HandleCallTool(Dictionary<string, object>? parameters, McpCallContext callContext) {
 			if (parameters == null)
 				throw new ArgumentException("Parameters required");
 
@@ -993,9 +1026,9 @@ namespace dnSpy.Extension.MCP {
 			if (toolCall == null)
 				throw new ArgumentException("Invalid tool call parameters");
 
-			var callResult = toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments);
+			var callResult = toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments, callContext);
 			// 2025-06-18 wire shape: structuredContent deep-equals the canonical text payload.
-			if (protocolVersion == LatestProtocolVersion && callResult != null) {
+			if (callContext.ProtocolVersion == LatestProtocolVersion && callResult != null) {
 				var text = callResult.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
 				if (!string.IsNullOrEmpty(text)) {
 					try {
@@ -1068,6 +1101,7 @@ namespace dnSpy.Extension.MCP {
 	sealed class SseSession {
 		readonly Stream stream;
 		readonly object writeLock = new object();
+		int initialized;
 
 		public string Id { get; }
 		public string ProtocolVersion { get; set; } = "2025-06-18";
@@ -1076,6 +1110,10 @@ namespace dnSpy.Extension.MCP {
 			Id = id;
 			this.stream = stream;
 		}
+
+		public void MarkInitialized() => Interlocked.Exchange(ref initialized, 1);
+		public McpCallContext CreateCallContext() => McpCallContext.LegacySse(
+			Id, ProtocolVersion, Volatile.Read(ref initialized) == 1);
 
 		/// <summary>
 		/// Writes an SSE named event. <paramref name="data"/> is split on newlines so that
@@ -1110,6 +1148,7 @@ namespace dnSpy.Extension.MCP {
 	/// session only tracks identity and liveness rather than owning a response stream.
 	/// </summary>
 	sealed class StreamableHttpSession {
+		int initialized;
 		public string Id { get; }
 		public DateTime CreatedAtUtc { get; } = DateTime.UtcNow;
 		public string ProtocolVersion { get; set; } = "2025-06-18";
@@ -1117,5 +1156,9 @@ namespace dnSpy.Extension.MCP {
 		public StreamableHttpSession(string id) {
 			Id = id;
 		}
+
+		public void MarkInitialized() => Interlocked.Exchange(ref initialized, 1);
+		public McpCallContext CreateCallContext() => McpCallContext.StreamableHttp(
+			Id, ProtocolVersion, Volatile.Read(ref initialized) == 1);
 	}
 }

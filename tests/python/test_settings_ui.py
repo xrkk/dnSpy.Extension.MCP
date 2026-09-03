@@ -101,6 +101,21 @@ class SettingsUiBindingTests(unittest.TestCase):
         )
         self.assertIn("if (activeSnapshot?.IsRemote != true)", server)
 
+    def test_vm_execution_override_is_local_process_only(self) -> None:
+        xaml = (REPO_ROOT / "McpSettingsControl.xaml").read_text(encoding="utf-8")
+        page = (REPO_ROOT / "McpSettingsPage.cs").read_text(encoding="utf-8")
+        settings = (REPO_ROOT / "McpSettings.cs").read_text(encoding="utf-8")
+        snapshot = (REPO_ROOT / "McpSettingsSnapshot.cs").read_text(encoding="utf-8")
+        gate = (REPO_ROOT / "Execution" / "VirtualizationExecutionGate.cs").read_text(encoding="utf-8")
+
+        self.assertIn("LocalExecutionOverrideRequested", xaml)
+        self.assertIn("仅在本次 dnSpy 进程", xaml)
+        self.assertIn("VM 检测不是隔离、防逃逸或网络安全保证", xaml)
+        self.assertIn("ApplyLocalExecutionOverride", page)
+        self.assertIn("ApplyFromLocalSettingsPage", gate)
+        self.assertNotIn("LocalExecutionOverride", settings)
+        self.assertNotIn("LocalExecutionOverride", snapshot)
+
 
 if __name__ == "__main__":
     unittest.main()

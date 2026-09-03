@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
+using dnSpy.Extension.MCP.Transport;
 
 namespace dnSpy.Extension.MCP.Tools;
 
@@ -29,7 +30,7 @@ internal sealed class StaticToolProvider : IMcpToolProvider
 
     public IReadOnlyList<ToolInfo> GetTools() => tools.GetAvailableTools();
 
-    public CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments)
+    public CallToolResult? ExecuteTool(string toolName, Dictionary<string, object>? arguments, McpCallContext callContext)
     {
         var known = knownNames ??= new HashSet<string>(tools.GetAvailableTools().Select(t => t.Name));
         if (!known.Contains(toolName))
