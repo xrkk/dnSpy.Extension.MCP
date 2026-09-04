@@ -23,7 +23,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 
 ## Features
 
-### MCP Tools (54 total: 32 static + 22 dynamic)
+### MCP Tools (59 total: 32 static + 5 structured-edit + 22 dynamic)
 
 #### Loading
 
@@ -69,6 +69,22 @@ From zero to "ask Claude about your assembly" in a few minutes:
 5. **revert_method_il** — restore the pre-patch body shape (also undoes force_return / nop_method)
 6. **rename_symbol_by_token** — unified metadata rename entry point. `target_kind` selects `type` / `class` / `enum` / `interface` / `struct` / `delegate`, `method`, `field`, `enum_member`, `enum_members`, `property`, `event`, `parameter`, or `generic_parameter`. Singular targets use `new_name`; `enum_members` uses the complete value-mapped `members` array. Matching same-module references and open decompiler tabs are refreshed where applicable
 7. **save_assembly** — write the module to disk (timestamped backup on overwrite, `NativeWrite` preserves native stubs / Win32 resources / delay-loaded imports, GAC refused)
+
+#### Transactional structured editing (5 tools)
+
+1. **edit_begin** — acquire the process-wide edit lease for one loaded, pure-managed, single-module assembly and create a private in-memory copy
+2. **edit_status** — inspect transaction state, revision, fingerprints, capacity and outstanding risk facts without changing the transaction
+3. **edit_apply** — apply one of 22 typed metadata/body operations to the private copy; every call carries `request_id` and `expected_revision`
+4. **edit_review** — validate the fixed revision, write/reload it, return canonical diffs and required risk confirmations, and optionally run an entry-pause validation through dnSpy's debugger
+5. **edit_rollback** — discard the private copy and release the edit lease without changing the live dnSpy module
+
+The 22 operation kinds cover add/update/remove for types, methods, fields, properties, events,
+parameters and generic parameters, plus whole method-body replacement. References use metadata
+tokens or transaction-scoped object IDs; raw PE/heap/RVA/hex editing is intentionally rejected.
+P02 does not publish a commit or export operation: reviewed changes still remain private and must
+be rolled back. Checkpointed commit/export is delivered by the later P03 workflow. While a
+structured-edit transaction is active, legacy live write tools are rejected to prevent bypassing
+the transaction.
 
 #### Codegen
 
@@ -404,7 +420,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 
 For a ZCode, Codex, or other third-party AI full-function acceptance run through the Python stdio
 client, use the Chinese [third-party full-function test prompt](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md).
-It covers two x64/x86 passes, exact fixtures and hashes, all 54 tools, reversible writes, dump,
+It covers two x64/x86 passes, exact fixtures and hashes, all 59 tools, reversible writes, dump,
 request-id idempotency, and two-level value expansion.
 
 #### Claude Code
@@ -451,11 +467,11 @@ See the Streamable HTTP section above for the `~/.codex/config.toml` snippet.
 
 ## Verified compatibility
 
-- MCP `2025-06-18`: 54 tools, 14 concrete resources, and an empty `resources/templates/list` page.
+- MCP `2025-06-18`: 59 tools, 14 concrete resources, and an empty `resources/templates/list` page.
 - All 22 debug input schemas are self-contained flat objects; output schemas describe the complete success/failure envelope without unresolved `$defs`.
 - `list_assemblies` returns object-shaped structured content: `{ "assemblies": [...] }`.
-- Real Win10 VM runs completed 54/54 successful tool paths on both x64 and x86, including two-level `debug_expand_value`, breakpoint hits, step/restart, module dump, and request-id idempotency.
-- Automated regression: Python/client/live 17/17, debug contract 189/189, security harness 10/10; both net48 and net10.0-windows build with 0 warnings and 0 errors.
+- The pre-structured-edit 54-tool baseline completed 54/54 successful paths on real Win10 x64 and x86 runs, including two-level `debug_expand_value`, breakpoint hits, step/restart, module dump, and request-id idempotency.
+- Automated regression: the local Python/client/UI suite passes 19/19 (7 deployment-only live checks are skipped unless their environment variables are supplied), debug contract 189/189, and security harness 22/22. Both net48 and net10.0-windows build with 0 errors; offline NuGet vulnerability lookup and upstream dependency warnings may still be reported.
 
 See the [full acceptance report](docs/CODEX-MCP-FULL-TEST-REPORT-2026-08-30.md) for evidence.
 

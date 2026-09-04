@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-003",
+  "acc_id": "ACC-003",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; generated P02 contract validates",
+  "actions": ["run all 22 operation kinds", "run TypeSig and attribute vectors", "run constant and accessor vectors", "run all pinned opcode/operand rows", "review and test apply/restore"],
+  "expected": "every positive and negative vector matches the generated contract and live fingerprint is restored"
+}

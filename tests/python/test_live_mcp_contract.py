@@ -56,7 +56,15 @@ class LiveMcpContractTests(unittest.TestCase):
                 return [item for child in value for item in keywords(child, name)]
             return []
 
-        debug_tools = [tool for tool in self.client.iter_tools() if str(tool.get("name", "")).startswith("debug_")]
+        # DNMCP_TEST exposes six debug_test_* fault-injection helpers in addition
+        # to the 22 public debugger tools.  They are test seams, not part of the
+        # published debugger contract counted by this assertion.
+        debug_tools = [
+            tool
+            for tool in self.client.iter_tools()
+            if str(tool.get("name", "")).startswith("debug_")
+            and not str(tool.get("name", "")).startswith("debug_test_")
+        ]
         self.assertEqual(22, len(debug_tools))
         for tool in debug_tools:
             for field in ("inputSchema", "outputSchema"):

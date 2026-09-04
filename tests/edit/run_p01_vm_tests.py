@@ -160,7 +160,7 @@ def start_dnspy(client: UiMcpClient, architecture: str) -> None:
     powershell(client, (
         'Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | Stop-Process -Force; '
         "$env:DNMCP_TEST='1'; "
-        f'Start-Process -FilePath "{executable}" -WorkingDirectory "C:\\Tools\\dnSpy"; '
+        f'Start-Process -FilePath "{executable}" -ArgumentList "--dont-load-files" -WorkingDirectory "C:\\Tools\\dnSpy"; '
         'for($i=0;$i -lt 60;$i++){ $p=Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | '
         'Where-Object MainWindowHandle -ne 0 | Select-Object -First 1; if($p){ break }; Start-Sleep -Milliseconds 500 }; '
         'if(-not $p){ throw "dnSpy main window did not start" }; Write-Output "started"'
@@ -187,16 +187,39 @@ def run_arch(client: UiMcpClient, architecture: str) -> dict[str, Any]:
     for case_id in ("EDIT-ACC-017", "EDIT-ACC-027", "EDIT-ACC-030"):
         print(f"[{architecture}] {case_id} started", flush=True)
         state_root = rf"C:\Tools\dnspy-mcp-edit-tests\state\{architecture}-{case_id}-{uuid.uuid4().hex[:8]}"
+        signal_root = state_root + r"\ui-signals"
         powershell(client, (
             f'New-Item -ItemType Directory -Force -Path "{state_root}" | Out-Null; '
             f'Start-Process powershell -WindowStyle Hidden -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass",'
             f'"-File","{VM_ROOT}\\tests\\edit\\run_case_detached.ps1","-Case","{case_id}",'
-            f'"-RepoRoot","{VM_ROOT}","-StateRoot","{state_root}"); Write-Output "started"'
+            f'"-RepoRoot","{VM_ROOT}","-StateRoot","{state_root}",'
+            f'"-UiSignalDir","{signal_root}"); Write-Output "started"'
         ))
         result_path = state_root + r"\result.json"
         deadline = time.time() + 300
         row: dict[str, Any] | None = None
+        next_signal = 1
         while time.time() < deadline:
+            request_path = signal_root + rf"\request-{next_signal:02d}.json"
+            request_body = read_vm_text(client, request_path)
+            if request_body.strip():
+                request = json.loads(request_body)
+                try:
+                    apply_settings(client, bool(request["enable"]), str(request.get("host", "")))
+                    acknowledgement = {"result": "PASS", "sequence": next_signal}
+                except Exception as exc:
+                    acknowledgement = {
+                        "result": "FAIL", "sequence": next_signal,
+                        "error": {"type": type(exc).__name__, "message": str(exc)},
+                    }
+                client.call_tool_json("FileSystem", {
+                    "mode": "write",
+                    "path": signal_root + rf"\ack-{next_signal:02d}.json",
+                    "content": json.dumps(acknowledgement),
+                    "encoding": "utf-8",
+                    "overwrite": True,
+                })
+                next_signal += 1
             try:
                 body = read_vm_text(client, result_path)
                 parsed = json.loads(body)

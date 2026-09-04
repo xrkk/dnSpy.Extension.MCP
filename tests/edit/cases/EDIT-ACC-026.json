@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-026",
+  "acc_id": "ACC-026",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; mixed-mode, NetModule and multi-file fixtures built",
+  "actions": ["analyze each unsupported fixture", "attempt edit_begin", "inject every raw-edit field"],
+  "expected": "analysis remains available; editing is capability-rejected with global idle and zero file/live side effect"
+}

@@ -1,0 +1,62 @@
+{
+  "workflow_id": "dnspy-edit-master-01a050b5",
+  "created_at": "2026-09-03T23:32:42+08:00",
+  "updated_at": "2026-09-03T23:32:42+08:00",
+  "parameters": {
+    "body_prompt_path": {
+      "value": "/mnt/d/vpb/话术/方案工作流/15-子方案逐个推进至总纲验收.md",
+      "source": "user_entry",
+      "sha256": "ff08891c099a86373dbf9e3c5f153a0db4da13ccc1c0fff750067b499d7a4ba4"
+    },
+    "platform": {
+      "value": "Codex",
+      "source": "user_entry"
+    },
+    "audit_model": {
+      "value": "gpt-5.6-sol",
+      "source": "user_entry"
+    },
+    "audit_reasoning": {
+      "value": "high",
+      "source": "user_entry"
+    },
+    "outline": {
+      "value": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.08.31/2026.08.31-02-总纲-dnSpy-MCP结构化程序集编辑.md",
+      "source": "user_entry",
+      "version": "v1",
+      "blob": "bcc7b2c1c84abb619b5d0c6dc64547472b7c486a"
+    },
+    "requirements": {
+      "value": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.08.31/2026.08.31-01-需求提炼-dnSpy-MCP结构化程序集编辑.md",
+      "source": "user_entry",
+      "version": "v0",
+      "blob": "22574a9054a5016e8a2899f0508d0069e7742843"
+    },
+    "execution_order": {
+      "value": "P01,P02,P03,P04,P05,P06,P07,P08,P09",
+      "source": "outline_section_8",
+      "locator": "总纲 §8 OUT产出契约与Pxx顺序"
+    },
+    "state_directory": {
+      "value": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.08.31/2026.08.31-02-总纲-dnSpy-MCP结构化程序集编辑-长程执行",
+      "source": "body_prompt_deterministic_default"
+    },
+    "implementation_authorization": {
+      "value": "active",
+      "source": "user_entry",
+      "scope": "本总纲 P02-P09 的连续方案、审核、引入、实施、验收、提交及总纲最终验收"
+    },
+    "paid_external_authorization": {
+      "value": "not_applicable",
+      "source": "read_only_inventory",
+      "authorized_services": [],
+      "data_scope": [],
+      "purpose": []
+    },
+    "automatic_recovery": {
+      "value": "Codex Goal",
+      "source": "platform_capability",
+      "goal_thread_id": "01a050b5-0d86-7c12-be59-cf0bd04fa2e7"
+    }
+  }
+}

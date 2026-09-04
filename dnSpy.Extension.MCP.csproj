@@ -9,7 +9,7 @@
     <!-- The SDK implicitly globs every .cs file under the project root. Keep the
          test fixture (tests/fixtures/) and its generated obj/ out of our compile
          so building the extension doesn't pull in TestIL.cs / AssemblyInfo.cs. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;PLAN/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +20,14 @@
     <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger\dnSpy.Contracts.Debugger.csproj" />
     <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger.DotNet\dnSpy.Contracts.Debugger.DotNet.csproj" />
     <ProjectReference Include="..\..\dnSpy\dnSpy.Contracts.Debugger.DotNet.CorDebug\dnSpy.Contracts.Debugger.DotNet.CorDebug.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/expanded-tool-schemas.json" LogicalName="dnspy.edit.expanded-tool-schemas.json" />
+    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/operation-lowering.json" LogicalName="dnspy.edit.operation-lowering.json" />
+    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/fault-golden.json" LogicalName="dnspy.edit.fault-golden.json" />
+    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/capacity-golden.json" LogicalName="dnspy.edit.capacity-golden.json" />
+    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/mutation-corpus.json" LogicalName="dnspy.edit.mutation-corpus.json" />
   </ItemGroup>
 
   <ItemGroup>

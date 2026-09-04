@@ -1057,9 +1057,23 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		}
 	}
 
-	string Launch(Dictionary<string, object>? args) => LaunchCore(args);
+	string Launch(Dictionary<string, object>? args) => LaunchCore(args, null);
 
-	string LaunchCore(Dictionary<string, object>? args) {
+	/// <summary>
+	/// Launches the executable written by edit_review under ArtifactRoot/edit-validation.
+	/// This is an in-process-only entry point: public debug_launch requests still require every
+	/// launch path to be inside AllowedSampleRoot.  The generated target may use the separately
+	/// leased ArtifactRoot, while any caller-supplied working directory still has to satisfy the
+	/// normal AllowedSampleRoot rule unless it is the generated artifact directory itself.
+	/// </summary>
+	internal string LaunchEditValidation(Dictionary<string, object>? args) {
+		var artifactRoot = settings.CurrentSnapshot?.ArtifactRoot;
+		var validationRoot = string.IsNullOrWhiteSpace(artifactRoot)
+			? null : Path.GetFullPath(Path.Combine(artifactRoot!, "edit-validation"));
+		return LaunchCore(args, validationRoot);
+	}
+
+	string LaunchCore(Dictionary<string, object>? args, string? internalValidationRoot) {
 		if (!gateService.Current.EffectiveDebugLaunch)
 			return Fail(coordinator, DomainErrorCodes.DebugDisabled);
 		var executionDecision = executionGate.Evaluate(VirtualizationExecutionEntryPoints.DebugLaunch);
@@ -1121,6 +1135,11 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				string candidateFull;
 				try { candidateFull = System.IO.Path.GetFullPath(candidate); }
 				catch (Exception ex) { return Fail(coordinator, DomainErrorCodes.TargetMismatch, message: ex.Message); }
+				var validationRoot = internalValidationRoot;
+				if (validationRoot is not null
+					&& (WindowsPathRelation.EqualPath(validationRoot, candidateFull)
+						|| WindowsPathRelation.Contains(validationRoot, candidateFull)))
+					continue;
 				if (!candidateFull.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
 					&& !string.Equals(candidateFull.TrimEnd(System.IO.Path.DirectorySeparatorChar),
 						rootFull.TrimEnd(System.IO.Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))

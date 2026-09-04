@@ -1,13 +1,16 @@
 param(
     [Parameter(Mandatory=$true)][string]$Case,
     [Parameter(Mandatory=$true)][string]$RepoRoot,
-    [Parameter(Mandatory=$true)][string]$StateRoot
+    [Parameter(Mandatory=$true)][string]$StateRoot,
+    [string]$UiSignalDir = ''
 )
 
 $ErrorActionPreference = 'Continue'
 New-Item -ItemType Directory -Force -Path $StateRoot | Out-Null
 Set-Location $RepoRoot
-$output = & powershell -NoProfile -ExecutionPolicy Bypass -File tests\edit\run-edit-tests.ps1 -Case $Case 2>&1 | Out-String
+$invokeArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File','tests\edit\run-edit-tests.ps1','-Case',$Case)
+if($UiSignalDir){ $invokeArgs += @('-UiSignalDir',$UiSignalDir) }
+$output = & powershell @invokeArgs 2>&1 | Out-String
 $code = $LASTEXITCODE
 [IO.File]::WriteAllText((Join-Path $StateRoot 'output.txt'), $output, (New-Object Text.UTF8Encoding($false)))
 $summary = Get-ChildItem -LiteralPath C:\dnspy-mcp-artifacts\edit-tests -Filter summary.json -Recurse |

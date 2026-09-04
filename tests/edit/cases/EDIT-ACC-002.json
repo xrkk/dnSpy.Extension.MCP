@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-002",
+  "acc_id": "ACC-002",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; dedicated VMware dnSpy instance; UI settings automation",
+  "actions": ["exercise DELETE and reconnect", "advance clock through 599999/600000 ms", "run request races", "restart listener", "change 15378 to 15379 and explicitly reconnect"],
+  "expected": "transaction and caches release, rollback wins races, no port scan or mutation replay"
+}

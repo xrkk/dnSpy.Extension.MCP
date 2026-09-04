@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-001",
+  "acc_id": "ACC-001",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; dedicated VMware dnSpy instance; Python MCP client",
+  "actions": ["begin private transaction", "apply private operation", "replay same and changed request ids", "attempt second-session ownership", "detect external live conflict"],
+  "expected": "private/live isolation, byte-identical replay, REQUEST_ID_REUSE, single owner, external edit preservation"
+}

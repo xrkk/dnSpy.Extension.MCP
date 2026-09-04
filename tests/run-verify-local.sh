@@ -44,8 +44,12 @@ echo "== [4/4] net48 dependency guard + Dual-TFM $BUILD_CFG build (verify.yml: b
 DNSPY_DIR="$DNSPY_DIR" EXT_BUILD_DIR="$WORK" PY "$EXT_DIR/tests/check-host-deps.py"
 cd "$WORK"
 # The dnSpy graph can otherwise overrun constrained CI/agent process limits during restore/build.
-dotnet build -m:1 -c "$BUILD_CFG" -f net10.0-windows -p:EnableWindowsTargeting=true
-dotnet build -m:1 -c "$BUILD_CFG" -f net48
+# dnSpy v6.6.0's DnSpyCommon.props declares net48 only.  Override the inherited
+# TargetFrameworks global property for each verification leg so this script's
+# advertised dual-TFM build is real even against that exact upstream checkout.
+dotnet build -m:1 -c "$BUILD_CFG" -f net10.0-windows \
+    -p:TargetFrameworks=net10.0-windows -p:EnableWindowsTargeting=true
+dotnet build -m:1 -c "$BUILD_CFG" -f net48 -p:TargetFrameworks=net48
 mkdir -p "$EXT_DIR/dist"
 cp "bin/$BUILD_CFG/net10.0-windows/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net10.0-windows.x.dll"
 cp "bin/$BUILD_CFG/net48/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net48.x.dll"

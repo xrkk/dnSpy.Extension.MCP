@@ -23,7 +23,7 @@ English: see [README.md](README.md).
 
 ## 功能
 
-### MCP 工具（共 54 个：静态 32 + 动态 22）
+### MCP 工具（共 59 个：静态 32 + 结构化编辑 5 + 动态 22）
 
 #### 加载
 
@@ -69,6 +69,16 @@ English: see [README.md](README.md).
 5. **revert_method_il** — 回滚到补丁前的方法体（force_return / nop_method 也能回滚）
 6. **rename_symbol_by_token** — 统一的元数据重命名入口。用 `target_kind` 选择 `type` / `class` / `enum` / `interface` / `struct` / `delegate`、`method`、`field`、`enum_member`、`enum_members`、`property`、`event`、`parameter` 或 `generic_parameter`。单个符号传 `new_name`；批量枚举成员传完整的按值映射 `members`。适用时会同步当前模块引用并刷新已打开的反编译标签页
 7. **save_assembly** — 将模块写回磁盘（覆盖原文件时会自动生成带时间戳的备份，`NativeWrite` 保留本机 stub / Win32 资源 / 延迟加载导入，GAC 路径被拒绝）
+
+#### 事务式结构化编辑（5 个工具）
+
+1. **edit_begin** — 为一个已加载的纯托管、单模块程序集取得进程级编辑租约，并创建内存私有副本
+2. **edit_status** — 查询事务状态、修订号、指纹、容量和风险事实，不改变事务
+3. **edit_apply** — 向私有副本应用 22 类强类型元数据/方法体操作；每次调用必须携带 `request_id` 与 `expected_revision`
+4. **edit_review** — 审查固定修订，执行写出/重载验证，返回规范 diff 和必需风险确认；可选地通过 dnSpy 调试器执行入口暂停验证
+5. **edit_rollback** — 丢弃私有副本并释放编辑租约，不改变 dnSpy 中的实时模块
+
+22 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数的新增/更新/删除，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。P02 不发布提交或导出工具：审查后的改动仍只存在于私有副本，最后必须回滚。带检查点的提交/导出由后续 P03 闭环提供。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。
 
 #### 代码生成
 
@@ -399,7 +409,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 ### 客户端配置
 
 需要让 ZCode、Codex 或其他第三方 AI 通过 Python stdio client 完成全功能验收时，可直接把
-[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、54 工具逐项清单、可恢复写入、模块 dump、幂等性和两层 value expansion 验证。
+[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、59 工具逐项清单、私有结构化编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion 验证。
 
 #### Claude Code
 
@@ -445,11 +455,11 @@ claude mcp list
 
 ## 已验证的兼容性
 
-- MCP `2025-06-18`：54 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
+- MCP `2025-06-18`：59 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
 - 22 个 debug inputSchema 均为自包含扁平对象；outputSchema 描述完整的成功/失败 envelope，不依赖客户端无法解析的缺失 `$defs`。
 - `list_assemblies` 使用对象型 `structuredContent`：`{ "assemblies": [...] }`。
-- Win10 VM 实机 x64 与 x86 均完成 54/54 工具成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。
-- 自动回归：Python/client/live 17/17、debug contract 189/189、security harness 10/10；net48 与 net10.0-windows 构建均为 0 warning / 0 error。
+- 引入结构化编辑前的 54 工具基线已在 Win10 VM x64 与 x86 实机完成 54/54 成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。
+- 自动回归：本地 Python/client/UI 19/19 通过（未提供部署态环境变量时另有 7 项 live 检查跳过）、debug contract 189/189、security harness 22/22；net48 与 net10.0-windows 构建均为 0 error，离线 NuGet 漏洞查询及上游依赖警告仍可能显示。
 
 完整证据见[全功能验收报告](docs/CODEX-MCP-FULL-TEST-REPORT-2026-08-30.md)。
 

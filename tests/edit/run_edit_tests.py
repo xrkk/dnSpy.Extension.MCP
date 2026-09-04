@@ -24,6 +24,10 @@ from dnspy_mcp import (  # noqa: E402
 )
 
 
+UI_SIGNAL_DIR: Path | None = None
+UI_SIGNAL_INDEX = 0
+
+
 def rpc_tool(client: DnSpyClient, name: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
     result = client.request("tools/call", {"name": name, "arguments": dict(arguments or {})})
     if not isinstance(result, dict):
@@ -258,6 +262,27 @@ def reconnect_after_listener_restart(old: DnSpyClient, url: str) -> DnSpyClient:
 
 
 def apply_ui_settings(enable: str, host: str = "") -> None:
+    global UI_SIGNAL_INDEX
+    if UI_SIGNAL_DIR is not None:
+        UI_SIGNAL_INDEX += 1
+        UI_SIGNAL_DIR.mkdir(parents=True, exist_ok=True)
+        request = UI_SIGNAL_DIR / f"request-{UI_SIGNAL_INDEX:02d}.json"
+        acknowledgement = UI_SIGNAL_DIR / f"ack-{UI_SIGNAL_INDEX:02d}.json"
+        request.write_text(json.dumps({
+            "schema_version": "dnspy.p01.ui-signal.v1",
+            "sequence": UI_SIGNAL_INDEX,
+            "enable": enable == "true",
+            "host": host,
+        }, indent=2) + "\n", encoding="utf-8")
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            if acknowledgement.is_file():
+                value = json.loads(acknowledgement.read_text(encoding="utf-8"))
+                if value.get("result") != "PASS":
+                    raise RuntimeError(f"AI UI apply failed: {value}")
+                return
+            time.sleep(0.1)
+        raise TimeoutError(f"AI UI apply acknowledgement timed out: {request}")
     command = [sys.executable, str(ROOT / "tests/edit/ui_apply_settings.py"), "--enable", enable]
     if host:
         command.extend(["--host", host])
@@ -557,7 +582,10 @@ def main() -> int:
     parser.add_argument("--case", required=True, choices=("EDIT-ACC-017", "EDIT-ACC-027", "EDIT-ACC-030"))
     parser.add_argument("--base-url", default="http://localhost:15378/")
     parser.add_argument("--artifact-root", default=r"C:\dnspy-mcp-artifacts")
+    parser.add_argument("--ui-signal-dir", type=Path)
     args = parser.parse_args()
+    global UI_SIGNAL_DIR
+    UI_SIGNAL_DIR = args.ui_signal_dir.resolve() if args.ui_signal_dir else None
     run = AcceptanceRun(args.case, args.base_url, Path(args.artifact_root))
     case_spec = json.loads((ROOT / "tests/edit/cases" / f"{args.case}.json").read_text(encoding="utf-8"))
     if case_spec.get("suite") != "structured-edit" or case_spec.get("case_id") != args.case:

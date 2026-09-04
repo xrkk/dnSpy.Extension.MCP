@@ -1,0 +1,56 @@
+{
+  "workflow_id": "dnspy-edit-master-01a050b5",
+  "overall_state": "RUNNING",
+  "started_at": "2026-09-03T23:32:42+08:00",
+  "updated_at": "2026-09-04T18:21:14+08:00",
+  "current_child": "P02",
+  "child_stage": "VERIFY_COMMIT",
+  "phase_state": "submitting",
+  "last_verified_checkpoint": {
+    "name": "P02_IMPLEMENT_ACCEPT_COMPLETE",
+    "plan_version": "v9",
+    "plan_blob": "b83d0eb6bcfae21538540e0df541a58f77d8457a",
+    "audit_record": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.03/2026.09.03-30-复审-P02-v9条目上限独立门禁.md",
+    "audit_blob": "eb1db9be2972ce40eaae17587d7400ceb0a9c585",
+    "import_record": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.03/2026.09.03-31-复审处理-P02-v9条目上限独立门禁.md",
+    "import_blob": "6165f45f9ad7d827116b8d6589d5172015e4afaa",
+    "implementation_record": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.03/2026.09.03-32-实施记录-P02-事务内核私有副本统一审查常用结构化编辑.md",
+    "requirements_fidelity": "6/6/0/0/0/0",
+    "verification": "all IMP-001..009 and ACC-001/002/003/009/010/026 PASS; pending scoped commit"
+  },
+  "children": {
+    "P01": {
+      "status": "complete",
+      "commit": "236d023c15990bd8240f0f8af98c8b8f8cad3c04"
+    },
+    "P02": {
+      "status": "verified_pending_commit",
+      "plan": "/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.03/2026.09.03-01-实施子方案-P02-事务内核私有副本统一审查常用结构化编辑.md",
+      "version": "v9",
+      "blob": "b83d0eb6bcfae21538540e0df541a58f77d8457a"
+    },
+    "P03": {"status": "not_started"},
+    "P04": {"status": "not_started"},
+    "P05": {"status": "not_started"},
+    "P06": {"status": "not_started"},
+    "P07": {"status": "not_started"},
+    "P08": {"status": "not_started"},
+    "P09": {"status": "not_started"}
+  },
+  "repository": {
+    "root": "/home/adminn/projects/dnSpy.Extension.MCP",
+    "branch": "feature/p01-public-contract-vm-gate",
+    "head": "236d023c15990bd8240f0f8af98c8b8f8cad3c04",
+    "protected_paths": [
+      "PLAN/dnSpy-MCP.md",
+      "PLAN/2026.08.26/独立核验/round-8/",
+      "tests/spikes/"
+    ]
+  },
+  "retry": {
+    "count": 0,
+    "next_retry_at": null,
+    "last_error_fingerprint": null
+  },
+  "blocker": null
+}

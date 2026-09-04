@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.request import ProxyHandler, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -38,6 +39,13 @@ def decode_sse(body: bytes) -> Mapping[str, Any]:
 
 
 class UiMcpClient(DnSpyClient):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Win10VM's MCP endpoint returns each JSON-RPC result as a finite SSE
+        # response.  Keep the urllib one-request transport here; the persistent
+        # HTTP path in the dnSpy client is intentionally for dnSpy HTTP.sys.
+        kwargs.setdefault("opener", build_opener(ProxyHandler({})))
+        super().__init__(*args, **kwargs)
+
     def request(
         self,
         method: str,
@@ -153,7 +161,7 @@ def open_options(client: DnSpyClient) -> None:
     raise RuntimeError("dnSpy Options dialog did not appear after UI click")
 
 
-def apply_settings(client: DnSpyClient, enable: bool, host: str = "") -> None:
+def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int | None = None) -> None:
     open_options(client)
     tree = snapshot(client, DESKTOP_REGION)
     item_lines = [line for line in tree.splitlines()
@@ -180,7 +188,8 @@ def apply_settings(client: DnSpyClient, enable: bool, host: str = "") -> None:
     if not page_found:
         raise RuntimeError(f"MCP settings page was not found; observed={sorted(set(observed_pages))}")
 
-    if host:
+    host_location: list[int] | None = None
+    if host or port is not None:
         host_line = None
         for line in tree.splitlines():
             # The Options search field is also an Edit control. Only use an
@@ -199,10 +208,31 @@ def apply_settings(client: DnSpyClient, enable: bool, host: str = "") -> None:
                 raise RuntimeError(f"MCP host edit anchor was not found; page_tree={tree[:8000]!r}")
             enable_location = line_location(enable_line, "MCP server enable checkbox")
             host_location = [enable_location[0] + 145, enable_location[1] + 72]
+        if host:
+            client.call_tool_json("Type", {
+                "loc": host_location,
+                "text": host,
+                "clear": True,
+            })
+            time.sleep(0.2)
+
+    if port is not None:
+        port_line = None
+        for line in tree.splitlines():
+            if re.search(r'(?:\u7f16\u8f91|\bedit)\s+"(?:\u7aef\u53e3|Port)"', line, re.IGNORECASE):
+                port_line = line
+                break
+        if port_line:
+            port_location = line_location(port_line, "MCP port edit")
+        elif host_location is not None:
+            # The Auto-sized rows place the TextBox centres 30 device pixels
+            # apart at the VM's 100% DPI.  dnSpy 6.6 may expose neither edit
+            # by name, so use the observed row-centre delta from the host box.
+            port_location = [host_location[0], host_location[1] + 30]
+        else:
+            raise RuntimeError("MCP port edit anchor was not found")
         client.call_tool_json("Type", {
-            "loc": host_location,
-            "text": host,
-            "clear": True,
+            "loc": port_location, "text": str(port), "clear": True,
         })
         time.sleep(0.2)
 
@@ -241,12 +271,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--enable", required=True, choices=("true", "false"))
     parser.add_argument("--host", default="")
+    parser.add_argument("--port", type=int)
     parser.add_argument("--ui-url", default="http://192.168.204.149:28787/mcp")
     args = parser.parse_args()
 
     client = UiMcpClient.connect(args.ui_url, client_name="dnspy-p01-ui-driver", timeout=30)
     try:
-        apply_settings(client, args.enable == "true", args.host)
+        apply_settings(client, args.enable == "true", args.host, args.port)
     finally:
         client.close()
     return 0

@@ -1,0 +1,2 @@
+{"operation_id":"EXT-001","at":"2026-09-03T23:32:42+08:00","service":"Codex isolated audit subagents","billing_class":"platform-internal","purpose":"P03-P09实施子方案第三方审核","data_scope":"本地方案、规范、代码和脱敏测试证据路径","secrets_sent":false,"status":"PLANNED"}
+{"operation_id":"EXT-002","at":"2026-09-03T23:32:42+08:00","service":"Win10VM MCP","billing_class":"local-no-fee","purpose":"部署、双架构运行、取证和清理","data_scope":"本项目构建产物、测试fixture和ArtifactRoot测试证据","secrets_sent":false,"status":"PLANNED"}

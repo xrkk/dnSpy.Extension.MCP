@@ -1,0 +1,4 @@
+{"event_id":"EVT-001","at":"2026-09-03T23:32:42+08:00","from":null,"to":"PREFLIGHT","child":"P02","stage":"IMPLEMENT","reason":"用户入口授权并指定从P02待实施继续","checkpoint":"P02_AUDIT_IMPORT_COMPLETE"}
+{"event_id":"EVT-002","at":"2026-09-03T23:32:42+08:00","from":"PREFLIGHT","to":"PREFLIGHT","child":"P02","stage":"IMPLEMENT","reason":"Codex Goal自动恢复能力已建立","goal_thread_id":"01a050b5-0d86-7c12-be59-cf0bd04fa2e7"}
+{"event_id":"EVT-003","at":"2026-09-03T23:35:12+08:00","from":"PREFLIGHT","to":"RUNNING","child":"P02","stage":"IMPLEMENT","reason":"P02 v9恢复核验、分支基线和受保护现场核验通过；创建实施记录后进入实现","checkpoint":"P02_IMPLEMENT_STARTED"}
+{"event_id":"EVT-004","at":"2026-09-04T18:21:14+08:00","from":"RUNNING","to":"RUNNING","child":"P02","stage":"VERIFY_COMMIT","reason":"P02全部IMP/ACC及共同回归完成；历史防火墙阻断已按用户精确授权解除；进入范围核对和提交","checkpoint":"P02_IMPLEMENT_ACCEPT_COMPLETE"}

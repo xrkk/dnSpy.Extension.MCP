@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-010",
+  "acc_id": "ACC-010",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; matching dynamic fixture and debugger architecture",
+  "actions": ["reject stale review", "reject live conflict", "reject non-idle debugger", "require all risk confirmations", "execute all five dynamic validation states"],
+  "expected": "all guards return exact codes and dynamic evidence ends with debugger idle and cleanup complete"
+}

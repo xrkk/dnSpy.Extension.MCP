@@ -847,15 +847,15 @@ function Run-ACC002 {
 
         $up = Restart-WithSnapshot $snapA
         Assert-Cond 'combo-A-restart' 'health 200 after (false,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'A' @{ tools_count = 39; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
+        if ($up) { Invoke-ComboSequence 'A' @{ tools_count = 44; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
 
         $up = Restart-WithSnapshot $snapB
         Assert-Cond 'combo-B-restart' 'health 200 after (true,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'B' @{ tools_count = 39; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
+        if ($up) { Invoke-ComboSequence 'B' @{ tools_count = 44; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
 
         $up = Restart-WithSnapshot $snapC
         Assert-Cond 'combo-C-restart' 'health 200 after (true,true) startup-idle restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'C' @{ tools_count = 60; debug_enabled = $true; continue_code = 'INVALID_STATE' } }
+        if ($up) { Invoke-ComboSequence 'C' @{ tools_count = 65; debug_enabled = $true; continue_code = 'INVALID_STATE' } }
 
         # Deep capability field checks on combo C, one representative + all-version tool shape checks.
         $vLatest = $m.protocol_versions[2]

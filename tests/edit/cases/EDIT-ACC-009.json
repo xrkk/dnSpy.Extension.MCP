@@ -1,0 +1,11 @@
+{
+  "suite": "structured-edit-p02",
+  "case_id": "EDIT-ACC-009",
+  "acc_id": "ACC-009",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "tests/edit/fixtures/P02DynamicFixture.cs",
+  "precondition": "DNMCP_TEST=1; writable ArtifactRoot; generated fault and capacity golden files",
+  "actions": ["run 240 independent fault transactions", "mutate six fingerprint channels", "exercise begin/apply/review/rollback capacity boundaries", "inject reverse failure and recover"],
+  "expected": "fault union is exact, forward failures restore, reverse failure alone enters unknown, over-limit requests have zero side effect"
+}

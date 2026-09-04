@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Linq;
@@ -748,8 +749,29 @@ namespace dnSpy.Extension.MCP {
 			var responseBytes = Encoding.UTF8.GetBytes(responseJson);
 			context.Response.StatusCode = 200;
 			context.Response.ContentType = "application/json";
-			context.Response.ContentLength64 = responseBytes.Length;
-			context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+			var acceptEncoding = context.Request.Headers["Accept-Encoding"] ?? string.Empty;
+			if (responseBytes.Length > 64 * 1024 && acceptEncoding.IndexOf("gzip", StringComparison.OrdinalIgnoreCase) >= 0) {
+				using var compressed = new MemoryStream();
+				using (var gzip = new GZipStream(compressed, CompressionMode.Compress, leaveOpen: true))
+					gzip.Write(responseBytes, 0, responseBytes.Length);
+				responseBytes = compressed.ToArray();
+				context.Response.AddHeader("Content-Encoding", "gzip");
+				context.Response.AddHeader("Vary", "Accept-Encoding");
+			}
+			if (responseBytes.Length <= 64 * 1024) {
+				context.Response.ContentLength64 = responseBytes.Length;
+				context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+			}
+			else {
+				// HTTP.sys on .NET Framework can drain a single large fixed-length entity only
+				// a few KiB at a time on a persistent connection.  P02 intentionally returns
+				// a complete generated fault manifest, so use ordinary HTTP/1.1 chunked
+				// framing for large (but still budget-checked) JSON.  Do not flush individual
+				// application chunks: HTTP.sys serializes every explicit flush and that adds
+				// seconds of latency per flush on the .NET Framework listener.
+				context.Response.SendChunked = true;
+				context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+			}
 			context.Response.Close();
 		}
 

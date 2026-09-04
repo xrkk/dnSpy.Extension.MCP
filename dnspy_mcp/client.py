@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import gzip
 import os
 import threading
 from dataclasses import dataclass
 from email.message import Message
-from http.client import HTTPResponse as StdlibHttpResponse
+from http.client import HTTPConnection, HTTPSConnection, HTTPResponse as StdlibHttpResponse
 from typing import Any, Iterator, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -164,6 +165,9 @@ class DnSpyClient:
         self.instructions: str | None = None
         self._request_id = 0
         self._id_lock = threading.Lock()
+        self._http_lock = threading.Lock()
+        self._http_connection: HTTPConnection | HTTPSConnection | None = None
+        self._use_direct_http = opener is None and not trust_environment_proxy
         if opener is not None:
             self._opener = opener
         elif trust_environment_proxy:
@@ -260,6 +264,16 @@ class DnSpyClient:
         shell quoting and curl argument parsing.
         """
 
+        if self._use_direct_http:
+            return self._decode_response_content(self._direct_raw_request(
+                method,
+                path=path,
+                body=body,
+                headers=headers,
+                include_session=include_session,
+                timeout=timeout,
+            ))
+
         with self.open_request(
             method,
             path=path,
@@ -268,7 +282,73 @@ class DnSpyClient:
             include_session=include_session,
             timeout=timeout,
         ) as opened:
-            response = HttpResponse(opened.status, opened.reason, opened.headers, opened.read())
+            response = self._decode_response_content(
+                HttpResponse(opened.status, opened.reason, opened.headers, opened.read())
+            )
+        session_id = response.header("Mcp-Session-Id")
+        if session_id:
+            self.session_id = session_id
+        return response
+
+    @staticmethod
+    def _decode_response_content(response: HttpResponse) -> HttpResponse:
+        encoding = response.header("Content-Encoding", "") or ""
+        if "gzip" not in encoding.casefold():
+            return response
+        try:
+            body = gzip.decompress(response.body)
+        except (OSError, EOFError) as exc:
+            raise DnSpyProtocolError("dnSpy MCP returned an invalid gzip response", response=response) from exc
+        return HttpResponse(response.status, response.reason, response.headers, body)
+
+    def _direct_raw_request(
+        self,
+        method: str,
+        *,
+        path: str | None,
+        body: bytes | str | None,
+        headers: Mapping[str, str] | None,
+        include_session: bool,
+        timeout: float | None,
+    ) -> HttpResponse:
+        """Use one persistent stdlib connection for normal MCP traffic.
+
+        Windows HTTP.sys can truncate larger responses when urllib opens a fresh
+        ``Connection: close`` socket for every request.  A persistent
+        ``http.client`` connection avoids that transport bug while keeping the
+        package dependency-free.  ``open_request`` remains urllib-based because
+        admission tests and legacy SSE intentionally hold independent sockets.
+        """
+
+        data = body.encode("utf-8") if isinstance(body, str) else body
+        request_headers = self._headers(headers, include_session=include_session)
+        if data is not None and not any(k.casefold() == "content-type" for k in request_headers):
+            request_headers["Content-Type"] = "application/json"
+        parsed = urlparse(self._url(path))
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+
+        with self._http_lock:
+            connection = self._http_connection
+            if connection is None:
+                connection_type = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
+                connection = connection_type(parsed.hostname, parsed.port, timeout=timeout or self.timeout)
+                self._http_connection = connection
+            try:
+                connection.request(method.upper(), target, body=data, headers=request_headers)
+                opened = connection.getresponse()
+                response = HttpResponse(
+                    int(opened.status),
+                    str(opened.reason or ""),
+                    _headers_to_dict(opened.headers),
+                    opened.read(),
+                )
+            except (OSError, TimeoutError) as exc:
+                connection.close()
+                self._http_connection = None
+                raise DnSpyConnectionError(f"Cannot reach dnSpy MCP at {self._url(path)}: {exc}") from exc
+
         session_id = response.header("Mcp-Session-Id")
         if session_id:
             self.session_id = session_id
@@ -287,7 +367,7 @@ class DnSpyClient:
         return self.raw_request(
             "POST",
             body=payload,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "Accept-Encoding": "gzip"},
             include_session=include_session,
             timeout=timeout,
         )
@@ -415,6 +495,73 @@ class DnSpyClient:
         except json.JSONDecodeError:
             return text
 
+    # P02 structured-edit convenience methods.  They deliberately preserve the caller's
+    # request_id and expected_revision: reconnecting never guesses a new endpoint or silently
+    # replays a mutation payload.
+    def edit_begin(
+        self,
+        request_id: str,
+        assembly_name: str,
+        *,
+        module_mvid: str | None = None,
+    ) -> Mapping[str, Any]:
+        arguments: dict[str, Any] = {
+            "request_id": request_id,
+            "assembly_name": assembly_name,
+        }
+        if module_mvid is not None:
+            arguments["module_mvid"] = module_mvid
+        return self._edit_call("edit_begin", arguments)
+
+    def edit_status(self) -> Mapping[str, Any]:
+        return self._edit_call("edit_status", {})
+
+    def edit_apply(
+        self,
+        request_id: str,
+        transaction_id: str,
+        expected_revision: int,
+        operation: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        return self._edit_call(
+            "edit_apply",
+            {
+                "request_id": request_id,
+                "transaction_id": transaction_id,
+                "expected_revision": expected_revision,
+                "operation": dict(operation),
+            },
+        )
+
+    def edit_review(
+        self,
+        request_id: str,
+        transaction_id: str,
+        expected_revision: int,
+        *,
+        dynamic_validation: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        arguments: dict[str, Any] = {
+            "request_id": request_id,
+            "transaction_id": transaction_id,
+            "expected_revision": expected_revision,
+        }
+        if dynamic_validation is not None:
+            arguments["dynamic_validation"] = dict(dynamic_validation)
+        return self._edit_call("edit_review", arguments)
+
+    def edit_rollback(self, request_id: str, transaction_id: str) -> Mapping[str, Any]:
+        return self._edit_call(
+            "edit_rollback",
+            {"request_id": request_id, "transaction_id": transaction_id},
+        )
+
+    def _edit_call(self, name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        result = self.call_tool_json(name, arguments)
+        if not isinstance(result, dict):
+            raise DnSpyProtocolError(f"{name} result is not an object")
+        return result
+
     @staticmethod
     def _first_text(result: Mapping[str, Any]) -> str | None:
         content = result.get("content")
@@ -445,11 +592,17 @@ class DnSpyClient:
         """Delete the remote session. Safe to call more than once."""
 
         if not self.session_id:
+            if self._http_connection is not None:
+                self._http_connection.close()
+                self._http_connection = None
             return None
         try:
             response = self.raw_request("DELETE")
         finally:
             self.session_id = None
+            if self._http_connection is not None:
+                self._http_connection.close()
+                self._http_connection = None
         return response
 
 

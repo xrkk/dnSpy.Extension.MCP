@@ -20,6 +20,18 @@ Read `dnspy://docs/il-editing`, then:
 `get_method_il` → `patch_method_il`/`force_return`/`nop_method` → `get_method_il` →
 `decompile_by_token` → `save_assembly`. Use `revert_method_il` before saving if validation fails.
 
+## Build a reviewed structured edit without committing it
+
+Read `dnspy://docs/il-editing`, then:
+`edit_begin` → one or more revision-checked `edit_apply` calls → `edit_review` → inspect diffs,
+fingerprints and required risk IDs → `edit_rollback`.
+
+This workflow never updates the live module or writes an output assembly in P02. Use returned object
+IDs to link operations created within the same transaction; use exact metadata tokens for existing
+objects. If a revision, owner, live fingerprint or review becomes stale, query `edit_status` and
+either retry with a new request ID or explicitly roll back—never scan endpoints or replay mutations
+automatically.
+
 ## Generate a runtime patch
 
 `list_methods`/`search_members` → `generate_harmony_patch`, or use
