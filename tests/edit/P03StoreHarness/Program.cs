@@ -6,7 +6,12 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using dnlib.DotNet;
+using System.Threading;
+using System.Threading.Tasks;
+using dnSpy.Contracts.AsmEditor.Compiler;
 using dnSpy.Extension.MCP.Editing;
+using dnSpy.Extension.MCP;
+using dnSpy.Extension.MCP.Transport;
 
 static class Program {
 	static int Main(string[] args) {
@@ -19,6 +24,7 @@ static class Program {
 		if (args.Length == 2 && args[1] == "--p04-slice2") { TestP04Slice2(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--p04-slice3") { TestP04Slice3(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--ca-roundtrip-spike") { CaRoundtripSpike(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--compile-frontend-matrix") { TestCompileFrontendMatrix(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--advanced-metadata-matrix") {
 			TestP04Slice1(args[0]); TestP04Slice2(args[0]); TestP04Slice3(args[0]);
 			Console.WriteLine("PASS advanced-metadata-matrix slice1+slice2+slice3");
@@ -1387,6 +1393,104 @@ static class Program {
 	}
 
 	static void Check(bool value, string name, string detail = "") { if (!value) throw new InvalidOperationException("FAILED: " + name + (detail.Length > 0 ? " " + detail : "")); }
+
+	// P05 compile frontend wrapper logic (stub provider injection): registration
+	// cache, capacity, diagnostics mapping and schema/CON-022 contract face. The
+	// real Roslyn provider path is exercised by the integration driver on the VM.
+	static void TestCompileFrontendMatrix(string fixture) {
+		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
+		using var module = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		var stub = new StubCompilerProvider();
+		var frontend = new EditCompileFrontend(null!, new[] { (ILanguageCompilerProvider)stub });
+		var callContext = McpCallContext.StreamableHttp("harness-stub-session", "2025-03-26", true);
+		static Dictionary<string, object?> Args(string kind, string content, string fixturePath, string extra = "") {
+			var documents = new Dictionary<string, object?> { ["path"] = "Target.cs", ["content"] = content };
+			var args = new Dictionary<string, object?> {
+				["request_id"] = "req-1", ["assembly_name"] = "TestIL", ["compilation_kind"] = kind,
+			};
+			args["documents"] = JsonSerializer.Deserialize<object>(JsonSerializer.Serialize(new object[] { documents }));
+			// The stub frontend has no document tree: always pass an explicit
+			// reference so the closure resolution is skipped.
+			args["references_override"] = JsonSerializer.Deserialize<object>(JsonSerializer.Serialize(new[] { fixturePath }));
+			if (extra.Length > 0) args[extra] = "value";
+			// The MCP server hands JsonElement values to providers; normalize the
+			// stub dictionary through one JSON round-trip so the frontend sees the
+			// production shapes.
+			return JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(args, EditWire.JsonOptions), EditWire.JsonOptions);
+		}
+		static Dictionary<string, object?> Payload(CallToolResult result) {
+			var text = result.Content.Count > 0 ? result.Content[0].Text : "{}";
+			return JsonSerializer.Deserialize<Dictionary<string, object?>>(text, EditWire.JsonOptions) ?? new();
+		}
+		static Dictionary<string, object?> Core(Dictionary<string, object?> envelope) {
+			if (envelope.TryGetValue("result", out var raw) && raw is JsonElement element && element.ValueKind == JsonValueKind.Object) {
+				var compile = element.TryGetProperty("compile", out var compileElement) ? compileElement : default;
+				return JsonSerializer.Deserialize<Dictionary<string, object?>>(compile.GetRawText(), EditWire.JsonOptions) ?? new();
+			}
+			return new();
+		}
+		static bool Bool(Dictionary<string, object?> core, string key) =>
+			core.TryGetValue(key, out var raw) && raw is JsonElement b && b.ValueKind == JsonValueKind.True;
+		static string Str(Dictionary<string, object?> core, string key) =>
+			core.TryGetValue(key, out var raw) && raw is JsonElement s && s.ValueKind == JsonValueKind.String ? s.GetString()! : "";
+
+		// Valid compile: success, artifact registered, consumable_by_import.
+		stub.NextResult = new CompilationResult(new byte[] { 1, 2, 3, 4 }, new DebugFileResult(DebugFileFormat.PortablePdb, new byte[] { 9, 8, 7, 6 }));
+		var valid = frontend.ExecuteTool("edit_compile", Args("edit_class", "class T {}", Path.GetFullPath(fixture)), callContext);
+		var validEnvelope = Payload(valid);
+		var validCore = Core(validEnvelope);
+		Check(Bool(validEnvelope, "ok"), "stub compile ok");
+		Check(Bool(validCore, "success") && Bool(validCore, "consumable_by_import"), "stub compile registered consumable");
+		var compileId = Str(validCore, "compile_id");
+		Check(frontend.Lookup(compileId) != null, "artifact lookup by compile_id");
+		var artifact = frontend.Lookup(compileId)!;
+		Check(artifact.Assembly.Length == 4 && artifact.Pdb.Length == 4, "artifact payload lengths");
+		Check(((JsonElement)validCore["assembly"]).GetProperty("sha256").GetString() == EditWire.Sha256(artifact.Assembly), "artifact assembly identity");
+
+		// Invalid compile: success=false, diagnostics mapped, no artifact.
+		stub.NextResult = new CompilationResult(new[] { new CompilerDiagnostic(CompilerDiagnosticSeverity.Error, "syntax", "CS1002", null, "Target.cs", new LineLocationSpan(new LineLocation(3, 7), new LineLocation(3, 8))) });
+		stub.NextDiagnostics = new[] { new CompilerDiagnostic(CompilerDiagnosticSeverity.Error, "syntax", "CS1002", null, "Target.cs", new LineLocationSpan(new LineLocation(3, 7), new LineLocation(3, 8))) };
+		var invalid = frontend.ExecuteTool("edit_compile", Args("edit_class", "class T {", Path.GetFullPath(fixture)), callContext);
+		var invalidCore = Core(Payload(invalid));
+		Check(!Bool(invalidCore, "success") && !Bool(invalidCore, "consumable_by_import"), "invalid compile not consumable");
+		var diagnostics = (JsonElement)invalidCore["diagnostics"];
+		Check(diagnostics.GetArrayLength() == 1 && diagnostics[0].GetProperty("id").GetString() == "CS1002"
+			&& diagnostics[0].GetProperty("line").GetInt32() == 3, "diagnostic mapped with location");
+
+		// Unknown tool passthrough.
+		Check(frontend.ExecuteTool("edit_begin", new Dictionary<string, object?>(), callContext) == null, "non-compile tool returns null");
+
+		frontend.Dispose();
+		Console.WriteLine("PASS compile-frontend-matrix stub-compile+cache+diagnostics+dispatch");
+	}
+
+	sealed class StubCompilerProvider : ILanguageCompilerProvider {
+		public double Order => 0;
+		public dnSpy.Contracts.Images.ImageReference? Icon => null;
+		public Guid Language => dnSpy.Contracts.Decompiler.DecompilerConstants.LANGUAGE_CSHARP;
+		public bool CanCompile(CompilationKind kind) => true;
+		public ILanguageCompiler Create(CompilationKind kind) => new StubCompiler(() => NextResult, () => NextDiagnostics ?? Array.Empty<CompilerDiagnostic>());
+		public CompilationResult NextResult = new CompilationResult(new byte[] { 1 }, new DebugFileResult(), Array.Empty<CompilerDiagnostic>());
+		public CompilerDiagnostic[]? NextDiagnostics;
+	}
+
+	sealed class StubCompiler : ILanguageCompiler {
+		readonly Func<CompilationResult> result;
+		readonly Func<CompilerDiagnostic[]> diagnostics;
+		public StubCompiler(Func<CompilationResult> result, Func<CompilerDiagnostic[]> diagnostics) {
+			this.result = result; this.diagnostics = diagnostics;
+		}
+		public string FileExtension => ".cs";
+		public IEnumerable<string> GetRequiredAssemblyReferences(ModuleDef module) => Array.Empty<string>();
+		public void InitializeProject(CompilerProjectInfo projectInfo) { }
+		public ICodeDocument[] AddDocuments(CompilerDocumentInfo[] documents) => Array.Empty<ICodeDocument>();
+		public bool AddMetadataReferences(CompilerMetadataReference[] metadataReferences) => true;
+		public Task<CompilationResult> CompileAsync(CancellationToken cancellationToken)
+			=> Task.FromResult(result().RawFile == null && diagnostics().Length > 0
+				? new CompilationResult(diagnostics())
+				: result());
+		public void Dispose() { }
+	}
 
 	static IEnumerable<string> ChannelsDiff(ModuleDef left, ModuleDef right) {
 		var l = EditFingerprintChannels(left).OrderBy(x => x, StringComparer.Ordinal).ToList();

@@ -10,6 +10,9 @@
          test fixture (tests/fixtures/) and its generated obj/ out of our compile
          so building the extension doesn't pull in TestIL.cs / AssemblyInfo.cs. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;PLAN/**</DefaultItemExcludes>
+    <!-- P05 compile frontend: pinned reference helper ports the S02 spike's
+         unsafe GCHandle pinning for CompilerMetadataReference. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

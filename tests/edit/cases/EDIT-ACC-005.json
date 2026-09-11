@@ -1,0 +1,19 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-005",
+  "acc_id": "ACC-005",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc005.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin (compile frontend MEF provider loaded); loopback 15378 healthy; ArtifactRoot edit dirs cleaned and dnSpy freshly started",
+  "actions": [
+    "tools/list advertises edit_compile",
+    "edit_compile with valid C# (fields/method/EH/generics/class constraint) returns success, diagnostics, assembly + Portable PDB in-memory identities and consumable_by_import=true",
+    "edit_compile with invalid syntax returns success=false with severity/id/location diagnostics and no compile_id",
+    "an unknown extension field (analyzer probe) is rejected provider-side (the contract has no analyzer/generator/script/build-task surface, CON-022)",
+    "coordinator stays idle after compiles; a compile artifact is not consumable through edit_apply (P06 importer is the sole consumer)",
+    "P06 will extend this same case file with import/save/reload/breakpoint actions for the final ACC-005 judgment; run-id prefix p05-compile- distinguishes this compile-frontend evidence"
+  ],
+  "expected": "per OUT-005 production outputs: compilation service, reference resolution, diagnostics and Portable PDB in-memory payloads through the dnSpy public Roslyn provider; no module import (that is OUT-006/P06); dual-TFM 0-warn/0-err build; forbidden extension points cannot be enabled"
+}

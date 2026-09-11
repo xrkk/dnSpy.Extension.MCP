@@ -9,4 +9,12 @@
   <ItemGroup>
     <ProjectReference Include="../../../dnSpy.Extension.MCP.csproj" />
   </ItemGroup>
+
+  <!-- P05 compile-frontend probe: the stub provider implements the public
+       dnSpy compiler contracts, so the harness needs those contract refs. -->
+  <ItemGroup>
+    <Reference Include="dnSpy.Contracts.DnSpy">
+      <HintPath>$(DNSPY_CONTRACTS_DIR)dnSpy.Contracts.DnSpy.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 </Project>
