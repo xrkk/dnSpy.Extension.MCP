@@ -1,0 +1,18 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-025",
+  "acc_id": "ACC-025",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc025.py",
+  "precondition": "DNMCP_TEST=1; dnSpy running with deployed plugin net48; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned (driver seeds its own active lineage via a real commit when the store is empty)",
+  "actions": [
+    "mutate the live module outside any transaction via the registered edit_test_lineage_mutation seam and read the diverged fingerprint",
+    "edit_begin must reject with EDIT_LINEAGE_DIVERGED carrying family_id/lineage_id and leave state idle with zero side effects",
+    "edit_accept_live with a wrong 64-hex fingerprint must be rejected with EDIT_HISTORY_CONFLICT and create no lineage",
+    "edit_accept_live with the exact diverged fingerprint and acknowledge_new_baseline=true",
+    "browse the superseded lineage (old checkpoints still readable) and the new lineage (single root, no parent, no forged operations), then begin/rollback a new transaction to prove usability"
+  ],
+  "expected": "no silent absorption on begin; wrong fingerprint never accepted; explicit accept creates a new baseline root linked to the superseded lineage; old package remains readable; new root carries no fabricated operations; coordinator usable after accept"
+}

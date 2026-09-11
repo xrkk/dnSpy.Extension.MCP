@@ -1,0 +1,18 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-029",
+  "acc_id": "ACC-029",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net10.0-windows (headless harness; production plugin assembly)",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "P03StoreHarness --capacity-resolution (registered in the default suite)",
+  "precondition": "harness directory with the current P03StoreHarness.dll and production plugin assembly; C:\\Tools\\dotnet10-x64 and dotnet10-x86 runtimes",
+  "actions": [
+    "22 real commits accumulate on one lineage: store bytes are monotonic non-shrinking (capacity curve), a single lineage holds 23 checkpoints, and metadata-only method_update commits add zero side-car payloads (payload dedup for content-identical payloads is covered by the payload-history suite test)",
+    "at the second commit window the previous final and the owned temp coexist (transient dual occupancy) and the temp is metered as a residual store object; after finalize every store object is trusted with no residual",
+    "history pagination: a 10-entry page carries the cursor and the cursor drains the remaining 13 with no extra page",
+    "a foreign-mvid lineage with identical content is skipped by the resolver; a fresh binding resolves the real lineage uniquely",
+    "deterministic capacity rejection with zero side effects is resident in the store suite tests (malicious zip rejection, duplicate prepare rejection, capacity errors)"
+  ],
+  "expected": "single package per lineage with deterministic accounting; transient occupancy and residual metering observable in the commit window; pagination and unique resolution hold against foreign identity; every limit rejection leaves the store unchanged"
+}

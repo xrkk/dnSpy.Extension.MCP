@@ -8,8 +8,8 @@ namespace dnSpy.Extension.MCP.Editing;
 
 [Export(typeof(IMcpToolProvider))]
 internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
-	static readonly string[] ProductTools = { "edit_begin", "edit_status", "edit_apply", "edit_review", "edit_rollback" };
-	static readonly string[] TestTools = { "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation", "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore" };
+	static readonly string[] ProductTools = { "edit_begin", "edit_status", "edit_apply", "edit_review", "edit_rollback", "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_restore", "edit_export", "edit_recover", "edit_accept_live" };
+	static readonly string[] TestTools = { "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation", "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore", "edit_test_storage_fault", "edit_test_lineage_mutation" };
 	readonly EditTransactionCoordinator coordinator;
 	readonly EditSchemaCatalog schemas = new();
 	readonly IReadOnlyList<ToolInfo> tools;
@@ -37,6 +37,14 @@ internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
 		"edit_apply" => "Apply one of the 22 structured metadata/body operations atomically to the transaction private copy.",
 		"edit_review" => "Validate and review the current private revision, returning canonical diffs, risks and roundtrip evidence.",
 		"edit_rollback" => "Discard the private transaction and release all in-memory edit state.",
+		"edit_commit" => "Commit an approved private edit to the live module and its persistent checkpoint as one recoverable operation.",
+		"edit_history" => "Browse persistent edit lineages, checkpoint trees, capacity and recovery facts.",
+		"edit_undo" => "Navigate an exact lineage head to its parent while preserving branches.",
+		"edit_redo" => "Navigate an exact lineage head to a selected child without silently choosing a branch.",
+		"edit_restore" => "Assess or explicitly restore a checkpoint using exact, validated-drift and unverified-drift rules.",
+		"edit_export" => "Atomically export an exact checkpoint below ArtifactRoot without overwriting the source sample.",
+		"edit_recover" => "Resolve a checkpoint-finalize or bound-temp cleanup recovery without repeating live mutations.",
+		"edit_accept_live" => "Explicitly accept a UI-diverged live module as a new baseline lineage without inventing semantic operations.",
 		_ => "DNMCP_TEST-only edit acceptance seam; never advertised.",
 	};
 	public void Dispose() => schemas.Dispose();

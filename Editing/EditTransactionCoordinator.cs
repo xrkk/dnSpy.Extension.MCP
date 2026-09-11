@@ -35,9 +35,28 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		public uint? ReviewRevision;
 		public readonly List<Action> PrivateUndo = new();
 		public bool CancelRequested;
+		public bool OwnerClosed;
 		public bool OperationBusy;
 		public string CurrentLiveFingerprint = string.Empty;
 		public string PrivateFingerprint = string.Empty;
+		public EditHistoryBinding HistoryBinding = null!;
+		public string CommitOperationKind = "commit";
+		public bool CommitStarted;
+		public bool LiveLinearized;
+	}
+	sealed class PartialCommit {
+		public string RecoveryId = string.Empty;
+		public string Kind = "checkpoint_finalize";
+		public string OperationKind = string.Empty;
+		public EditPreparedHistoryWrite Prepared = null!;
+		public ModuleDef LiveModule = null!;
+		public EditWorkspace? Workspace;
+		public List<Action> LiveUndo = new();
+		public string PreLiveFingerprint = string.Empty;
+		public string PostLiveFingerprint = string.Empty;
+		public string OriginalFailure = string.Empty;
+		public string[] AllowedActions = Array.Empty<string>();
+		public bool Resolved;
 	}
 	sealed class TestBarrierState : IDisposable {
 		public string Name = string.Empty;
@@ -59,6 +78,10 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	readonly EditFaultPlan faultPlan;
 	readonly EditRequestCache beginCache = new(64, 4 * 1024 * 1024);
 	readonly EditTerminalCache terminalCache = new();
+	readonly EditRequestCache commandCache = new(1024, 32 * 1024 * 1024);
+	readonly Dictionary<string, string> resolvedRecoveries = new(StringComparer.Ordinal);
+	readonly Queue<string> resolvedRecoveryOrder = new();
+	readonly EditHistoryModule history;
 	readonly Stopwatch clock = Stopwatch.StartNew();
 	Transaction? active;
 	long generation;
@@ -81,12 +104,16 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	readonly HashSet<string> closedPendingBeginSessions = new(StringComparer.Ordinal);
 	string? pendingBeginOwner;
 	McpTransportKind pendingBeginTransport;
+	PartialCommit? partial;
+	string? armedStorageFault;
+	bool navigateInverseFailure;
 
 	[ImportingConstructor]
 	public EditTransactionCoordinator(IDocumentTreeView tree, StaticWriteGate staticWriteGate, IEditDynamicValidationGate dynamicGate, McpSettings settings) {
 		this.tree = tree; this.staticWriteGate = staticWriteGate; this.dynamicGate = dynamicGate; this.settings = settings;
 		dynamicValidation = new EditDynamicValidationService(dynamicGate, settings);
 		faultPlan = new EditFaultPlan(catalog.Lowering, catalog.Faults);
+		history = new EditHistoryModule(() => settings.CurrentSnapshot, catalog.CheckpointPackage);
 		staticWriteGate.CoordinatorStateProvider = () => State == "idle" ? DebugStates.Idle : "editing";
 	}
 
@@ -97,9 +124,12 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? args, McpCallContext context) {
 		var serialized = toolName is not "edit_status" and not "edit_test_clock" and not "edit_test_barrier";
 		var acquired = false;
+		string? requestKey = null;
+		string? requestPayload = null;
 		try {
 			if (serialized) {
-				var requestKey = RequestKey(toolName, args, context);
+				requestKey = RequestKey(toolName, args, context);
+				requestPayload = requestKey == null ? null : PayloadHash(args);
 				if (!operationGate.Wait(0)) {
 					bool follower;
 					lock (gate) {
@@ -114,10 +144,17 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				acquired = true;
 				lock (gate) pendingRequestKey = requestKey;
 			}
+			if (requestKey != null && requestPayload != null && CacheableCommand(toolName)
+				&& commandCache.TryReplay(requestKey, requestPayload, out var cached))
+				return EditWire.Result(ParseEnvelope(cached));
 			lock (gate) {
 				ExpireLocked();
-				if (state == "live_state_unknown" && toolName is not "edit_status" and not "edit_rollback" and not "edit_test_fault")
+				if (state == "live_state_unknown" && toolName is not "edit_status" and not "edit_history" and not "edit_test_fault")
 					throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN", Internal("live state requires explicit recovery"));
+				if ((state == "committed_without_checkpoint" || state == "committing")
+					&& toolName is not "edit_status" and not "edit_history" and not "edit_recover"
+					and not "edit_test_storage_fault" and not "edit_test_fault" and not "edit_test_barrier")
+					throw new EditDomainException(state == "committing" ? "EDIT_CHECKPOINT_CLEANUP_FAILED" : "EDIT_CHECKPOINT_COMMIT_FAILED");
 			}
 			var envelope = toolName switch {
 					"edit_begin" => Begin(args, context),
@@ -125,21 +162,194 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					"edit_apply" => Apply(args, context),
 					"edit_review" => Review(args, context),
 					"edit_rollback" => Rollback(args, context),
+					"edit_commit" => Commit(args, context),
+					"edit_history" => History(args, context),
+					"edit_undo" => Undo(args, context),
+					"edit_redo" => Redo(args, context),
+					"edit_restore" => Restore(args, context),
+					"edit_export" => Export(args, context),
+					"edit_recover" => Recover(args, context),
+					"edit_accept_live" => AcceptLive(args, context),
 					"edit_test_clock" => TestClock(args),
 					"edit_test_barrier" => TestBarrier(args, context),
 					"edit_test_fault" => TestFault(args),
 					"edit_test_external_mutation" => TestExternalMutation(args, context),
 					"edit_test_live_mutation" => TestLiveMutation(args, context),
 					"edit_test_apply_and_restore" => TestApplyAndRestore(args, context),
+					"edit_test_storage_fault" => TestStorageFault(args),
+					"edit_test_lineage_mutation" => TestLineageMutation(args, context),
 					_ => throw new ArgumentException("Unknown edit tool", nameof(toolName)),
 				};
+			if (requestKey != null && requestPayload != null && CacheableCommand(toolName))
+				commandCache.Add(requestKey, requestPayload, EditWire.CanonicalPayload(envelope));
 			return EditWire.Result(envelope);
 		}
-		catch (EditReviewAttemptException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);failure["validation_attempt"]=ex.Attempt;return EditWire.Result(failure); } }
-		catch (EditDomainException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();return EditWire.Result(failure); } }
+		catch (EditReviewAttemptException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);failure["validation_attempt"]=ex.Attempt;CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
+		catch (EditDomainException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
 		catch (ArgumentException) { throw; }
-		catch (Exception ex) { lock (gate) { var failure=EditWire.Failure(state, "EDIT_INTERNAL_ERROR", Internal(ex.GetType().Name + ": " + ex.Message));if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();return EditWire.Result(failure); } }
+		catch (Exception ex) { lock (gate) { var failure=EditWire.Failure(state, "EDIT_INTERNAL_ERROR", Internal(ex.GetType().Name + ": " + ex.Message));if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
 		finally { if(acquired){lock(gate)pendingRequestKey=null;operationGate.Release();} }
+	}
+
+	/// <summary>Runs one legacy mutation through the same private graph, review, live apply and
+	/// checkpoint protocol. It is an internal adapter seam, not a second public transaction API.</summary>
+	internal Dictionary<string, object?> ExecuteLegacyMutation(string toolName, Dictionary<string, object>? sourceArgs,
+		McpCallContext context, Func<EditWorkspace, LegacyEditPlan> lower, out LegacyEditPlan plan) {
+		plan = null!;
+		if (!operationGate.Wait(0)) throw new EditDomainException("EDIT_TRANSACTION_BUSY");
+		Transaction? tx = null;
+		try {
+			RequireOwnerContext(context); RequireIdleForHistoryMutation();
+			var assembly = EditWire.String(sourceArgs, "assembly_name");
+			var beginArgs = new Dictionary<string, object> {
+				["request_id"] = EditWire.NewId("legacy"), ["assembly_name"] = assembly,
+			};
+			if (sourceArgs != null && sourceArgs.TryGetValue("module_mvid", out var mvid) && mvid != null) beginArgs["module_mvid"] = mvid;
+			Begin(beginArgs, context);
+			lock (gate) tx = active ?? throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+			plan = lower(tx.Workspace);
+			if (!plan.Changed) {
+				lock (gate) EndLocked(tx, "legacy_no_change");
+				return EditWire.Success("idle", new Dictionary<string, object?> { ["legacy_no_change"] = true });
+			}
+			foreach (var operation in plan.Operations) {
+				if (tx.Workspace.NormalizedOperations.Count >= EditWire.MaxOperations) CapacityError("operations", tx.Workspace.NormalizedOperations.Count, EditWire.MaxOperations);
+				var normalized = EditWire.CanonicalPayload(operation);
+				if (tx.Workspace.NormalizedOperations.Sum(Encoding.UTF8.GetByteCount) + Encoding.UTF8.GetByteCount(normalized) > EditWire.MaxNormalizedOperationBytes)
+					CapacityError("normalized_operation_bytes", Encoding.UTF8.GetByteCount(normalized), EditWire.MaxNormalizedOperationBytes);
+				using var document = JsonDocument.Parse(normalized);
+				var outcome = EditOperationRegistry.ApplyPersisted(tx.Workspace.PrivateModule, document.RootElement,
+					tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count);
+				EditStructuralValidator.Validate(tx.Workspace.PrivateModule);
+				var diff = new Dictionary<string, object?> {
+					["operation_index"] = tx.Workspace.NormalizedOperations.Count, ["kind"] = outcome.Kind,
+					["target"] = outcome.Target, ["path"] = "metadata/" + outcome.Kind,
+					["before"] = outcome.Before, ["after"] = outcome.After,
+					["risk_ids"] = outcome.Risks.Select(x => x["risk_id"]).ToArray(),
+				};
+				tx.Workspace.NormalizedOperations.Add(normalized); tx.Workspace.Diffs.Add(diff); tx.PrivateUndo.Add(outcome.Undo);
+				foreach (var risk in outcome.Risks) if (!tx.Workspace.Risks.Any(x => Equals(x["risk_id"], risk["risk_id"]))) tx.Workspace.Risks.Add(risk);
+				tx.Revision++; tx.PrivateFingerprint = tx.Workspace.PrivateFingerprint(); tx.ReviewId = null; tx.ReviewRevision = null;
+			}
+			tx.CommitOperationKind = "legacy_" + toolName;
+			var reviewArgs = new Dictionary<string, object> {
+				["request_id"] = EditWire.NewId("legacy-review"), ["transaction_id"] = tx.Id,
+				["expected_revision"] = (long)tx.Revision,
+			};
+			Review(reviewArgs, context);
+			var confirmed = tx.Workspace.Risks.Where(x => Equals(x["confirmation_required"], true)).Select(x => (string)x["risk_id"]!).ToArray();
+			var commitArgs = JsonArguments(new Dictionary<string, object?> {
+				["request_id"] = EditWire.NewId("legacy-commit"), ["transaction_id"] = tx.Id,
+				["expected_revision"] = tx.Revision, ["review_id"] = tx.ReviewId,
+				["review_revision"] = tx.ReviewRevision, ["confirmed_risk_ids"] = confirmed,
+			});
+			return Commit(commitArgs, context);
+		}
+		catch {
+			lock (gate) if (tx != null && ReferenceEquals(active, tx) && state != "live_state_unknown") EndLocked(tx, "legacy_failed");
+			throw;
+		}
+		finally { operationGate.Release(); }
+	}
+
+	/// <summary>Maps the historical single-method revert to a constrained history Undo.  It is
+	/// intentionally valid only when the current head is the requested method's direct legacy IL
+	/// checkpoint, so it cannot silently cross another edit.</summary>
+	internal Dictionary<string, object?> ExecuteLegacyRevert(Dictionary<string, object>? sourceArgs,
+		McpCallContext context, Func<EditWorkspace, uint> resolveMethodToken) {
+		if (!operationGate.Wait(0)) throw new EditDomainException("EDIT_TRANSACTION_BUSY");
+		try {
+			RequireOwnerContext(context); RequireIdleForHistoryMutation();
+			var assembly = EditWire.String(sourceArgs, "assembly_name");
+			var mvid = OptionalArgument(sourceArgs, "module_mvid");
+			using var workspace = EditWorkspace.Create(tree, assembly, mvid);
+			var binding = history.ResolveBegin(workspace, null);
+			if (binding.LineageId == null || binding.BaseCheckpointId == null)
+				throw new ArgumentException("No pending compatible method patch exists for this module");
+			var token = resolveMethodToken(workspace);
+			var head = history.RequireLegacyMethodHead(binding.LineageId, binding.BaseCheckpointId, token);
+			return Navigate(context, history.Load(binding.LineageId), head.CheckpointId,
+				head.ParentCheckpointId!, "undo");
+		}
+		finally { operationGate.Release(); }
+	}
+
+	/// <summary>Maps the historical save call to the safe checkpoint export path.  For an
+	/// unchanged source with no history it first creates exactly one baseline/root lineage.</summary>
+	internal Dictionary<string, object?> ExecuteLegacyExport(Dictionary<string, object>? sourceArgs, McpCallContext context) {
+		if (!operationGate.Wait(0)) throw new EditDomainException("EDIT_TRANSACTION_BUSY");
+		try {
+			RequireOwnerContext(context); RequireIdleForHistoryMutation();
+			if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
+				throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+			var assembly = EditWire.String(sourceArgs, "assembly_name");
+			var mvid = OptionalArgument(sourceArgs, "module_mvid");
+			using var workspace = EditWorkspace.Create(tree, assembly, mvid);
+			var binding = history.ResolveBegin(workspace, null);
+			EditLoadedLineage lineage;
+			if (binding.IsNewFamily) {
+				EditPreparedHistoryWrite? prepared = null;
+				try {
+					lock (gate) state = "committing";
+					StorageFault("prewrite");
+					prepared = history.PrepareInitialBaseline(workspace, binding);
+					StorageFault("readback"); StorageFault("finalize");
+					history.Finalize(prepared, workspace.LiveModule);
+					lineage = prepared.Lineage; lock (gate) state = "idle";
+				}
+				catch (EditStagedCleanupException ex) {
+					EnterCleanupRecovery(workspace.LiveModule, null, ex.Prepared, "legacy_save_assembly",
+						workspace.BaselineLiveFingerprint, ex.OriginalFailure);
+					throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+				}
+				catch (Exception ex) {
+					if (prepared != null) CleanupPreparedOrEnterRecovery(workspace.LiveModule, prepared,
+						"legacy_save_assembly", workspace.BaselineLiveFingerprint,
+						ex is EditDomainException domain ? domain.Code : ex.GetType().Name);
+					lock (gate) state = "idle"; throw;
+				}
+			}
+			else {
+				lineage = history.Load(binding.LineageId!);
+				if (!string.Equals(lineage.Manifest.HeadCheckpointId, binding.BaseCheckpointId, StringComparison.Ordinal))
+					throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			}
+			var liveFingerprint = workspace.CurrentLiveFingerprint();
+			var replay = history.Assess(lineage.Manifest.LineageId, lineage.Manifest.HeadCheckpointId, liveFingerprint);
+			if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprint()
+				|| replay.ImageSha256 != workspace.CurrentLiveImageSha256())
+				throw new EditDomainException("EDIT_EXPORT_BLOCKED");
+			var output = history.Export(replay, OptionalArgument(sourceArgs, "output_path"), workspace.FilePath);
+			return EditWire.Success("idle", new Dictionary<string, object?> {
+				["checkpoint"] = CheckpointResult(lineage, lineage.Manifest.HeadCheckpointId),
+				["history"] = LineageResult(lineage), ["output"] = OutputResult(output), ["replay"] = ReplayResult(replay),
+			});
+		}
+		finally { operationGate.Release(); }
+	}
+
+	internal bool HasPendingLegacyMethod(Dictionary<string, object>? sourceArgs, Func<EditWorkspace, uint> resolveMethodToken) {
+		if (!operationGate.Wait(0)) return false;
+		try {
+			lock (gate) if (active != null || partial != null || state != "idle") return false;
+			var assembly = EditWire.String(sourceArgs, "assembly_name");
+			using var workspace = EditWorkspace.Create(tree, assembly, OptionalArgument(sourceArgs, "module_mvid"));
+			var binding = history.ResolveBegin(workspace, null);
+			return binding.LineageId != null && binding.BaseCheckpointId != null
+				&& history.IsLegacyMethodHead(binding.LineageId, binding.BaseCheckpointId, resolveMethodToken(workspace));
+		}
+		catch { return false; }
+		finally { operationGate.Release(); }
+	}
+
+	static Dictionary<string, object> JsonArguments(object value) =>
+		JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(value, EditWire.JsonOptions), EditWire.JsonOptions) ?? new();
+
+	static bool CacheableCommand(string toolName) => toolName is "edit_commit" or "edit_undo" or "edit_redo"
+		or "edit_restore" or "edit_export" or "edit_recover" or "edit_accept_live";
+	void CacheFailure(string toolName,string? key,string? payload,Dictionary<string,object?> failure){
+		if(key==null||payload==null||!CacheableCommand(toolName))return;
+		try{commandCache.Add(key,payload,EditWire.CanonicalPayload(failure));}catch(EditDomainException){ }
 	}
 
 	static string? RequestKey(string toolName, Dictionary<string,object>? args, McpCallContext context) {
@@ -154,11 +364,16 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		lock(gate){if (beginCache.TryReplay(session + ":" + requestId, payload, out var replay)) return ParseEnvelope(replay);if (active != null) throw new EditDomainException("EDIT_TRANSACTION_BUSY");state="editing";pendingBeginSessions.Add(session);pendingBeginOwner=session;pendingBeginTransport=context.TransportKind;}
 		var assembly = EditWire.String(args, "assembly_name"); string? mvid = null;
 		if (args != null && args.TryGetValue("module_mvid", out var m) && m != null) mvid = m is JsonElement je ? je.GetString() : m.ToString();
+		string? sourceFamilyId = null;
+		if (args != null && args.TryGetValue("source_family_id", out var family) && family != null)
+			sourceFamilyId = family is JsonElement familyElement ? familyElement.GetString() : family.ToString();
 		EditWorkspace? workspace=null;
+		EditHistoryBinding? historyBinding=null;
 		try{
 			workspace = EditWorkspace.Create(tree, assembly, mvid);
 			BarrierPoint("begin_after_copy",session);
 			lock(gate)if(closedPendingBeginSessions.Contains(session))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+			historyBinding = history.ResolveBegin(workspace, sourceFamilyId);
 		}catch{
 			workspace?.Dispose();
 			lock(gate){pendingBeginSessions.Remove(session);closedPendingBeginSessions.Remove(session);pendingBeginOwner=null;state="idle";}
@@ -166,11 +381,11 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 		// Create() has already proved the private copy and live module have the same complete
 		// fingerprint.  Reuse that proven value rather than serializing the module a third time.
-		var now = Now; var tx = new Transaction { Id = EditWire.NewId("edit"), Owner = session, Transport = context.TransportKind, Generation = ++generation, Started = now, LastActivity = now, Workspace = workspace, CurrentLiveFingerprint=workspace.BaselineLiveFingerprint, PrivateFingerprint=workspace.BaselineLiveFingerprint };
+		var now = Now; var tx = new Transaction { Id = EditWire.NewId("edit"), Owner = session, Transport = context.TransportKind, Generation = ++generation, Started = now, LastActivity = now, Workspace = workspace, CurrentLiveFingerprint=workspace.BaselineLiveFingerprint, PrivateFingerprint=workspace.BaselineLiveFingerprint, HistoryBinding=historyBinding! };
 		lock(gate){pendingBeginSessions.Remove(session);closedPendingBeginSessions.Remove(session);pendingBeginOwner=null;active = tx; state = "editing";}
 		var env = EditWire.Success(state, new Dictionary<string, object?> {
 			["transaction"] = TransactionResult(tx), ["source"] = SourceResult(workspace), ["fingerprints"] = Fingerprints(tx),
-			["limits"] = Limits(), ["capacity"] = Capacity(tx), ["capabilities"] = new Dictionary<string, object?> {
+			["limits"] = Limits(), ["capacity"] = Capacity(tx), ["history"] = HistoryBindingResult(historyBinding!), ["capabilities"] = new Dictionary<string, object?> {
 				["operation_kinds"] = EditWire.OperationKinds, ["dynamic_validation"] = true, ["test_apply_restore"] = TestMode,
 			},
 		});
@@ -181,9 +396,9 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 
 	Dictionary<string, object?> Status(McpCallContext context) {
-		lock(gate){ExpireLocked();if(active==null&&pendingBeginOwner!=null)return EditWire.Success("editing",new Dictionary<string,object?>{{"busy",true},{"state","editing"},{"owner_transport_kind",pendingBeginTransport.ToWireName()}});if (active == null) return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = state!="idle", ["state"] = state });
+		lock(gate){ExpireLocked();if(active==null&&pendingBeginOwner!=null)return EditWire.Success("editing",new Dictionary<string,object?>{{"busy",true},{"state","editing"},{"owner_transport_kind",pendingBeginTransport.ToWireName()}});if (active == null) return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = state!="idle", ["state"] = state, ["history"] = SafeHistorySummary(), ["recovery"] = RecoveryResult(partial), ["capacity"] = SafeHistoryCapacity() });
 		if (context.AuthoritativeSessionId != active.Owner) return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["owner_transport_kind"] = active.Transport.ToWireName() });
-		return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["transaction"] = TransactionResult(active), ["fingerprints"] = Fingerprints(active), ["review"] = ReviewSummary(active), ["capacity"] = Capacity(active), ["risks"] = active.Workspace.Risks.ToArray() });}
+		return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["transaction"] = TransactionResult(active), ["fingerprints"] = Fingerprints(active), ["review"] = ReviewSummary(active), ["history"] = HistoryBindingResult(active.HistoryBinding), ["recovery"] = RecoveryResult(partial), ["capacity"] = MergeCapacity(Capacity(active), SafeHistoryCapacity()), ["risks"] = active.Workspace.Risks.ToArray() });}
 	}
 
 	Dictionary<string, object?> Apply(Dictionary<string, object>? args, McpCallContext context) {
@@ -227,7 +442,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			}
 			throw;
 		}
-		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();}}
+		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();else if(tx.CancelRequested&&tx.OwnerClosed&&ReferenceEquals(active,tx))EndLocked(tx,"session_closed");}}
 	}
 
 	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {
@@ -239,7 +454,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var env=EditWire.Success("reviewed", new Dictionary<string, object?> { ["transaction"] = TransactionResult(tx, activity, tx.Revision, tx.Revision), ["review"] = ReviewSummary(reviewId, tx.Revision, tx.Workspace), ["fingerprints"] = new Dictionary<string,object?>{{"baseline_live",tx.Workspace.BaselineLiveFingerprint},{"current_live",currentLive},{"private",privateFingerprint}}, ["diffs"] = tx.Workspace.Diffs.ToArray(), ["structural_validation"] = ValidationResult(structuralRules), ["roundtrip_validation"] = ValidationResult(1), ["dynamic_validation"] = dynamic, ["risks"] = tx.Workspace.Risks.ToArray(), ["limits"] = Limits() });
 		var json=EditWire.CanonicalPayload(env);tx.ReviewCache.EnsureResponseFits(json);tx.ReviewCache.Store(requestId,payload,reviewId,tx.Revision,json);
 		tx.CurrentLiveFingerprint=currentLive;tx.PrivateFingerprint=privateFingerprint;tx.ReviewId=reviewId;tx.ReviewRevision=tx.Revision;tx.LastActivity=activity;state="reviewed";return env;}}
-		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();}}
+		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();else if(tx.CancelRequested&&tx.OwnerClosed&&ReferenceEquals(active,tx))EndLocked(tx,"session_closed");}}
 	}
 
 	Dictionary<string, object?> Rollback(Dictionary<string, object>? args, McpCallContext context) {
@@ -249,6 +464,235 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var env=EditWire.Success("idle", new Dictionary<string, object?> { ["rolled_back"] = true, ["end_reason"] = "client_rollback", ["original_live_fingerprint"] = original, ["released"] = released });var json=EditWire.CanonicalPayload(env);
 		lock(gate){terminalCache.Store(session,requestId,payload,json);EndLocked(tx, "client_rollback");}
 		return env;
+	}
+
+	Dictionary<string, object?> Commit(Dictionary<string, object>? args, McpCallContext context) {
+		Transaction tx;
+		lock (gate) {
+			tx = RequireTransactionLocked(args, context);
+			var expected = checked((uint)EditWire.Integer(args, "expected_revision"));
+			var reviewRevision = checked((uint)EditWire.Integer(args, "review_revision"));
+			if (expected != tx.Revision || reviewRevision != tx.Revision) throw Revision(expected, tx.Revision);
+			if (tx.ReviewId == null || tx.ReviewRevision != tx.Revision || EditWire.String(args, "review_id") != tx.ReviewId)
+				throw new EditDomainException("EDIT_REVIEW_STALE");
+			tx.OperationBusy = true; tx.CommitStarted = true;
+		}
+		var confirmed = StringArray(args, "confirmed_risk_ids");
+		var required = tx.Workspace.Risks.Where(r => Equals(r["confirmation_required"], true)).Select(r => (string)r["risk_id"]!).ToArray();
+		var missing = required.Except(confirmed, StringComparer.Ordinal).ToArray();
+		if (missing.Length != 0) {
+			lock (gate) { tx.OperationBusy = false; tx.CommitStarted = false; }
+			throw new EditDomainException("EDIT_RISK_CONFIRMATION_REQUIRED", new Dictionary<string, object?> { ["kind"] = "risk_confirmation", ["missing_risk_ids"] = missing });
+		}
+		var prepared = default(EditPreparedHistoryWrite);
+		var inverses = new List<Action>();
+		var preLive = string.Empty;
+		var postLive = string.Empty;
+		try {
+			var currentLive = tx.Workspace.CurrentLiveFingerprint(); EnsureLiveUnchanged(tx, currentLive);
+			if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+			lock (gate) state = "committing";
+			BarrierPoint("commit_after_guard_before_temp", tx.Owner);
+			ThrowIfCanceledBeforeLinearization(tx);
+			StorageFault("prewrite");
+			prepared = history.PrepareCommit(tx.Workspace, tx.HistoryBinding, tx.Workspace.NormalizedOperations,
+				tx.ReviewId!, tx.Revision, confirmed, tx.CommitOperationKind);
+			StorageFault("readback");
+			BarrierPoint("commit_after_temp_validate", tx.Owner);
+			ThrowIfCanceledBeforeLinearization(tx);
+			BarrierPoint("commit_dispatcher_queued", tx.Owner);
+			ThrowIfCanceledBeforeLinearization(tx);
+			preLive = currentLive;
+			postLive = ApplyTransactionToLive(tx, inverses);
+			BarrierPoint("commit_after_live_complete", tx.Owner);
+			StorageFault("finalize");
+			history.Finalize(prepared, tx.Workspace.LiveModule);
+			BarrierPoint("commit_after_package_switch_before_response", tx.Owner);
+			var result = EditWire.Success("idle", new Dictionary<string, object?> {
+				["checkpoint"] = CheckpointResult(prepared.Lineage, prepared.PostHeadCheckpointId),
+				["history"] = LineageResult(prepared.Lineage),
+				["fingerprints"] = new Dictionary<string, object?> { ["before"] = preLive, ["after"] = postLive, ["private"] = tx.PrivateFingerprint },
+				["confirmed_risks"] = confirmed.Select(x => new Dictionary<string, object?> { ["risk_id"] = x }).ToArray(),
+			});
+			lock (gate) { tx.OperationBusy = false; active = null; state = "idle"; }
+			tx.Workspace.Dispose();
+			return result;
+		}
+		catch (EditStagedCleanupException ex) {
+			EnterCleanupRecovery(tx.Workspace.LiveModule, tx.Workspace, ex.Prepared, "commit", tx.Workspace.BaselineLiveFingerprint, ex.OriginalFailure);
+			lock (gate) { tx.OperationBusy = false; active = null; }
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+		catch (Exception ex) when (prepared != null && postLive == tx.PrivateFingerprint && state != "live_state_unknown") {
+			// Live reached the validated target but the one final package switch failed.  Keep
+			// the exact temp and inverse plan as the sole process-level recovery fact.
+			partial = new PartialCommit {
+				RecoveryId = EditWire.NewId("recovery"), Kind = "checkpoint_finalize", OperationKind = "commit",
+				Prepared = prepared, LiveModule = tx.Workspace.LiveModule, Workspace = tx.Workspace, LiveUndo = inverses,
+				PreLiveFingerprint = preLive, PostLiveFingerprint = postLive,
+				OriginalFailure = ex is EditDomainException domain ? domain.Code : ex.GetType().Name,
+				AllowedActions = new[] { "retry_checkpoint", "undo_live" },
+			};
+			lock (gate) { tx.OperationBusy = false; active = null; state = "committed_without_checkpoint"; }
+			throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", RecoveryResult(partial));
+		}
+		catch {
+			if (prepared != null && state != "live_state_unknown") CleanupPreparedOrEnterRecovery(tx, prepared, tx.CommitOperationKind + "_canceled");
+			lock (gate) {
+				tx.OperationBusy = false; tx.CommitStarted = false;
+				if (state == "live_state_unknown" && ReferenceEquals(active, tx)) active = null;
+				// A pre-prepared failure inside the committing window (e.g. an
+				// injected prewrite/readback fault) owns no partial and must fall
+				// back to the transaction state; only a live cleanup-recovery
+				// partial keeps the coordinator in "committing".  A close fact
+				// received before the first live mutation cancels the commit as an
+				// uncommitted transaction: the owner session is gone, so retaining
+				// the reviewed transaction would wedge every later session.
+				else if (ReferenceEquals(active, tx) && (state != "committing" || partial == null)) {
+					if (tx.OwnerClosed && !tx.LiveLinearized) EndLocked(tx, "session_closed");
+					else state = tx.ReviewId == null ? "editing" : "reviewed";
+				}
+			}
+			if (state == "live_state_unknown") tx.Workspace.Dispose();
+			throw;
+		}
+	}
+
+	Dictionary<string, object?> History(Dictionary<string, object>? args, McpCallContext context) {
+		if (!context.IsInitializedSession) return EditWire.Success(state, new Dictionary<string, object?> { ["view"] = "summary", ["busy"] = state != "idle", ["state"] = state });
+		var lineageId = OptionalArgument(args, "lineage_id"); var checkpointId = OptionalArgument(args, "checkpoint_id");
+		var cursor = OptionalArgument(args, "cursor"); var pageSize = (int)EditWire.Integer(args, "page_size", required: false, minimum: 1);
+		if (pageSize == 1 && (args == null || !args.ContainsKey("page_size"))) pageSize = 10;
+		if (pageSize > 100) throw new ArgumentException("page_size must be <= 100", "page_size");
+		var result = history.HistoryView(lineageId, checkpointId, EditHistoryModule.DecodeCursor(cursor), pageSize);
+		result["capacity"] = history.CapacityView(); result["recovery"] = RecoveryResult(partial);
+		return EditWire.Success(state, result);
+	}
+
+	Dictionary<string, object?> Export(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+		var lineageId = EditWire.String(args, "lineage_id"); var checkpointId = EditWire.String(args, "checkpoint_id");
+		var lineage = history.Load(lineageId); var live = FindLoadedModule(lineage.Manifest.SourceIdentity.OriginMvid);
+		var replay = history.Assess(lineageId, checkpointId, live == null ? string.Empty : EditFingerprint.Compute(live));
+		if (replay.Classification != "exact") throw new EditDomainException("EDIT_EXPORT_BLOCKED");
+		var output = history.Export(replay, OptionalArgument(args, "output_path"), live?.Location ?? string.Empty);
+		return EditWire.Success("idle", new Dictionary<string, object?> {
+			["checkpoint"] = CheckpointResult(lineage, checkpointId), ["output"] = OutputResult(output), ["replay"] = ReplayResult(replay),
+		});
+	}
+
+	Dictionary<string, object?> Undo(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		var lineageId = EditWire.String(args, "lineage_id"); var expected = EditWire.String(args, "expected_checkpoint_id");
+		var lineage = history.Load(lineageId); if (lineage.Manifest.HeadCheckpointId != expected) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		var current = lineage.Checkpoint(expected); if (current.ParentCheckpointId == null)
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT", new Dictionary<string, object?> { ["kind"] = "history_root", ["checkpoint_id"] = expected });
+		return Navigate(context, lineage, expected, current.ParentCheckpointId, "undo");
+	}
+
+	Dictionary<string, object?> Redo(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		var lineageId = EditWire.String(args, "lineage_id"); var expected = EditWire.String(args, "expected_checkpoint_id");
+		var lineage = history.Load(lineageId); if (lineage.Manifest.HeadCheckpointId != expected) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		var children = lineage.Manifest.Checkpoints.Where(x => x.ParentCheckpointId == expected).OrderBy(x => x.Sequence).ToArray();
+		if (children.Length == 0) throw new EditDomainException("EDIT_HISTORY_CONFLICT", new Dictionary<string, object?> { ["kind"] = "no_redo_child" });
+		var selected = OptionalArgument(args, "child_checkpoint_id");
+		if (selected == null && children.Length > 1) throw new EditDomainException("EDIT_BRANCH_SELECTION_REQUIRED",
+			new Dictionary<string, object?> { ["kind"] = "branch_selection", ["candidates"] = children.Select(x => x.CheckpointId).ToArray() });
+		var target = selected == null ? children[0] : children.SingleOrDefault(x => x.CheckpointId == selected)
+			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		return Navigate(context, lineage, expected, target.CheckpointId, "redo");
+	}
+
+	Dictionary<string, object?> Restore(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		var lineageId = EditWire.String(args, "lineage_id"); var checkpointId = EditWire.String(args, "checkpoint_id");
+		var action = EditWire.String(args, "action"); var lineage = history.Load(lineageId);
+		var live = RequireLoadedModule(lineage.Manifest.SourceIdentity.OriginMvid); var liveFingerprint = EditFingerprint.Compute(live);
+		if (action == "assess") return EditWire.Success("idle", new Dictionary<string, object?> { ["replay"] = ReplayResult(history.Assess(lineageId, checkpointId, liveFingerprint)) });
+		if (action != "apply") throw new ArgumentException("action must be assess or apply", "action");
+		var replayId = EditWire.String(args, "replay_id"); var expectedLive = EditWire.String(args, "expected_live_fingerprint");
+		if (expectedLive != liveFingerprint) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		var replay = history.RequireTicket(replayId, lineageId, checkpointId, liveFingerprint, lineage.Manifest.HeadCheckpointId);
+		if (replay.Classification == "unverified_drift") throw new EditDomainException("EDIT_REPLAY_UNVERIFIED");
+		if (replay.Classification == "validated_drift") {
+			if (!EditWire.Bool(args, "confirm_validated_drift")) throw new EditDomainException("EDIT_REPLAY_CONFIRMATION_REQUIRED");
+			return MigrateValidated(lineage, replay, live, liveFingerprint);
+		}
+		return Navigate(context, lineage, lineage.Manifest.HeadCheckpointId, checkpointId, "restore", replay);
+	}
+
+	Dictionary<string, object?> Recover(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); var recoveryId = EditWire.String(args, "recovery_id"); var action = EditWire.String(args, "action");
+		var resolvedKey = recoveryId + "\n" + action;
+		lock (gate) if (resolvedRecoveries.TryGetValue(resolvedKey, out var resolved)) return ParseEnvelope(resolved);
+		var current = partial; if (current == null || current.RecoveryId != recoveryId) throw new EditDomainException("EDIT_RECOVERY_NOT_FOUND");
+		if (!current.AllowedActions.Contains(action, StringComparer.Ordinal)) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		if (!history.TempMatches(current.Prepared) || !history.PreHeadUnchanged(current.Prepared)) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		if (action == "retry_checkpoint") {
+			if (current.Kind != "checkpoint_finalize" || CurrentLiveFingerprint(current) != current.PostLiveFingerprint)
+				throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			StorageFault("finalize"); history.Finalize(current.Prepared, current.LiveModule);
+			current.Resolved = true; partial = null; lock (gate) state = "idle";
+			var envelope = EditWire.Success("idle", new Dictionary<string, object?> { ["resolved"] = true, ["action"] = action,
+				["checkpoint"] = CheckpointResult(current.Prepared.Lineage, current.Prepared.PostHeadCheckpointId), ["history"] = LineageResult(current.Prepared.Lineage) });
+			RememberResolvedRecovery(resolvedKey, envelope); current.Workspace?.Dispose(); return envelope;
+		}
+		if (action == "undo_live") {
+			if (current.Kind != "checkpoint_finalize" || CurrentLiveFingerprint(current) != current.PostLiveFingerprint)
+				throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			try {
+				EditWorkspace.OnDispatcher(() => { for (var i = current.LiveUndo.Count - 1; i >= 0; i--) current.LiveUndo[i](); return 0; });
+				if (CurrentLiveFingerprint(current) != current.PreLiveFingerprint) throw new Exception("inverse fingerprint mismatch");
+			}
+			catch {
+				partial = null; lock (gate) state = "live_state_unknown";
+				throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN", Internal("partial inverse failed"));
+			}
+			try { StorageFault("cleanup"); history.DeleteOwnedTemp(current.Prepared); }
+			catch {
+				current.Kind = "aborted_temp_cleanup"; current.AllowedActions = new[] { "cleanup_temp" };
+				current.LiveUndo.Clear(); lock (gate) state = "committing";
+				throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(current));
+			}
+			partial = null; lock (gate) state = "idle"; var restored = CurrentLiveFingerprint(current);
+			var envelope = EditWire.Success("idle", new Dictionary<string, object?> { ["resolved"] = true, ["action"] = action,
+				["restored_fingerprint"] = restored, ["history"] = LineageResult(history.Load(current.Prepared.Lineage.Manifest.LineageId)) });
+			RememberResolvedRecovery(resolvedKey, envelope); current.Workspace?.Dispose(); return envelope;
+		}
+		if (action != "cleanup_temp" || current.Kind != "aborted_temp_cleanup") throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		if (CurrentLiveFingerprint(current) != current.PreLiveFingerprint) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		StorageFault("cleanup"); history.DeleteOwnedTemp(current.Prepared); partial = null; lock (gate) state = "idle";
+		var cleanupEnvelope = EditWire.Success("idle", new Dictionary<string, object?> { ["resolved"] = true, ["action"] = action,
+			["removed_temp"] = true, ["history"] = SafeHistorySummary() });
+		RememberResolvedRecovery(resolvedKey, cleanupEnvelope); current.Workspace?.Dispose(); return cleanupEnvelope;
+	}
+
+	Dictionary<string, object?> AcceptLive(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		if (!EditWire.Bool(args, "acknowledge_new_baseline")) throw new ArgumentException("acknowledge_new_baseline must be true", "acknowledge_new_baseline");
+		if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+		var assembly = EditWire.String(args, "assembly_name"); var family = EditWire.String(args, "source_family_id");
+		var superseded = EditWire.String(args, "superseded_lineage_id"); var expected = EditWire.String(args, "expected_live_fingerprint");
+		var mvid = OptionalArgument(args, "module_mvid"); using var workspace = EditWorkspace.Create(tree, assembly, mvid);
+		if (workspace.BaselineLiveFingerprint != expected) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		history.ValidateAcceptLive(workspace, family, superseded);
+		EditPreparedHistoryWrite prepared;
+		try { prepared = history.PrepareAcceptedBaseline(workspace, family, superseded); }
+		catch (EditStagedCleanupException ex) {
+			EnterCleanupRecovery(workspace.LiveModule, null, ex.Prepared, "accept_live", workspace.BaselineLiveFingerprint, ex.OriginalFailure);
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+		try { StorageFault("finalize"); history.Finalize(prepared, workspace.LiveModule); }
+		catch (Exception ex) {
+			CleanupPreparedOrEnterRecovery(workspace.LiveModule, prepared, "accept_live", workspace.BaselineLiveFingerprint,
+				ex is EditDomainException domain ? domain.Code : ex.GetType().Name);
+			throw;
+		}
+		return EditWire.Success("idle", new Dictionary<string, object?> { ["source_identity"] = prepared.Lineage.Manifest.SourceIdentity,
+			["lineage"] = LineageResult(prepared.Lineage), ["root_checkpoint"] = CheckpointResult(prepared.Lineage, prepared.PostHeadCheckpointId),
+			["superseded_lineage_id"] = superseded });
 	}
 
 	Dictionary<string, object?> TestClock(Dictionary<string, object>? args) {
@@ -434,8 +878,362 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		return EditWire.Success(state,new Dictionary<string,object?>{{"case_id",caseId},{"recipe_id","live-conflict"},{"component","ModuleMetadata"},{"recipe_sha256",EditWire.Sha256(Encoding.UTF8.GetBytes("live-conflict-v1"))},{"evidence_artifact",new Dictionary<string,object?>{{"path",artifactPath},{"sha256",EditWire.Sha256(Encoding.UTF8.GetBytes(artifactJson))}}},{"located_slice_before",before},{"located_slice_after",after},{"raw_order_before",before},{"raw_order_after",after},{"canonical_readback_before",before},{"canonical_readback_after",after},{"before_fingerprint",before},{"after_fingerprint",after},{"restored_fingerprint",restored?after:before},{"changed",after!=before},{"semantic_change",true},{"restored",restored}});
 	}
 
-	public void OnSessionClosed(McpTransportSessionClosed closed) { lock (gate) { if(pendingBeginSessions.Contains(closed.SessionId))closedPendingBeginSessions.Add(closed.SessionId);ReleaseBarrierLocked(closed.SessionId);if (active?.Owner == closed.SessionId) EndLocked(active, closed.Reason); beginCache.RemovePrefix(closed.SessionId + ":"); terminalCache.RemoveSession(closed.SessionId); } }
-	void ExpireLocked() { if (active != null && Now - active.LastActivity >= EditWire.IdleTimeoutMs) EndLocked(active, "timeout"); }
+	Dictionary<string, object?> MigrateValidated(EditLoadedLineage lineage, EditReplayAssessment target,
+		ModuleDef live, string liveFingerprint) {
+		if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+		var liveImage = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
+		var current = history.Assess(lineage.Manifest.LineageId, lineage.Manifest.HeadCheckpointId, liveFingerprint);
+		if (current.Classification != "exact" || current.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)) || current.ImageSha256 != liveImage)
+			throw new EditDomainException("EDIT_LINEAGE_DIVERGED");
+		var navigationPlan = history.PlanNavigation(lineage, lineage.Manifest.HeadCheckpointId, target.Checkpoint.CheckpointId);
+		EditPreparedHistoryWrite? prepared = null;
+		Action? inverse = null;
+		var liveApplied = false;
+		var postActionFingerprint = string.Empty;
+		try {
+			lock (gate) state = "committing";
+			StorageFault("prewrite"); prepared = history.PrepareMigration(target, target.Bytes, target.ReplayId);
+			StorageFault("readback"); inverse = EditWorkspace.OnDispatcher(() => {
+				if (EditFingerprint.Compute(live) != liveFingerprint || dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
+					throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				return navigationPlan.Apply(live);
+			});
+			StorageFault("navigate_forward");
+			StorageFault("navigate_inverse");
+			var actual = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live));
+			var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
+			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
+			liveApplied = true; StorageFault("finalize"); history.Finalize(prepared, live); lock (gate) state = "idle";
+			return EditWire.Success("idle", new Dictionary<string, object?> { ["replay"] = ReplayResult(target),
+				["history"] = LineageResult(prepared.Lineage),
+				["migration_checkpoint"] = CheckpointResult(prepared.Lineage, prepared.PostHeadCheckpointId),
+				["from_checkpoint_id"] = lineage.Manifest.HeadCheckpointId, ["to_checkpoint_id"] = prepared.PostHeadCheckpointId });
+		}
+		catch (EditStagedCleanupException ex) {
+			EnterCleanupRecovery(live, null, ex.Prepared, "migration", liveFingerprint, ex.OriginalFailure);
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+		catch (Exception ex) when (prepared != null && liveApplied) {
+			partial = new PartialCommit {
+				RecoveryId = EditWire.NewId("recovery"), Kind = "checkpoint_finalize", OperationKind = "migration",
+				Prepared = prepared, LiveModule = live, LiveUndo = inverse == null ? new List<Action>() : new List<Action> { inverse },
+				PreLiveFingerprint = liveFingerprint, PostLiveFingerprint = postActionFingerprint,
+				OriginalFailure = ex is EditDomainException domain ? domain.Code : ex.GetType().Name,
+				AllowedActions = new[] { "retry_checkpoint", "undo_live" },
+			};
+			lock (gate) state = "committed_without_checkpoint";
+			throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", RecoveryResult(partial));
+		}
+		catch (Exception ex) {
+			if (inverse != null) {
+				try {
+					EditWorkspace.OnDispatcher(() => { if (navigateInverseFailure) { navigateInverseFailure = false; throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", new Dictionary<string, object?> { ["kind"] = "injected_storage_fault", ["stage"] = "navigate_inverse" }); } inverse(); return 0; });
+					if (EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live)) != liveFingerprint) throw new InvalidOperationException("migration inverse fingerprint mismatch");
+				}
+				catch {
+					lock (gate) state = "live_state_unknown";
+					throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN", Internal("migration inverse failed"));
+				}
+			}
+			if (ex is EditDomainException { Code: "EDIT_LIVE_STATE_UNKNOWN" }) {
+				lock (gate) state = "live_state_unknown";
+				throw;
+			}
+			if (prepared != null) CleanupPreparedOrEnterRecovery(live, prepared, "migration", liveFingerprint,
+				ex is EditDomainException domain ? domain.Code : ex.GetType().Name);
+			lock (gate) state = "idle"; throw;
+		}
+	}
+
+	Dictionary<string, object?> Navigate(McpCallContext context, EditLoadedLineage lineage, string fromId,
+		string targetId, string operationKind, EditReplayAssessment? existingAssessment = null) {
+		if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+		var live = RequireLoadedModule(lineage.Manifest.SourceIdentity.OriginMvid); var liveFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
+		var liveImage = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
+		var from = history.Assess(lineage.Manifest.LineageId, fromId, liveFingerprint);
+		if (from.Classification != "exact" || from.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)) || from.ImageSha256 != liveImage)
+			throw new EditDomainException("EDIT_LINEAGE_DIVERGED");
+		var target = existingAssessment ?? history.Assess(lineage.Manifest.LineageId, targetId, liveFingerprint);
+		if (target.Classification == "validated_drift") throw new EditDomainException("EDIT_REPLAY_CONFIRMATION_REQUIRED",
+			new Dictionary<string, object?> { ["kind"] = "replay_confirmation", ["replay"] = ReplayResult(target) });
+		if (target.Classification == "unverified_drift") throw new EditDomainException("EDIT_REPLAY_UNVERIFIED");
+		if (target.Classification != "exact") throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+		var navigationPlan = history.PlanNavigation(lineage, fromId, targetId);
+		EditPreparedHistoryWrite? prepared = null;
+		Action? inverse = null;
+		var liveApplied = false;
+		var postActionFingerprint = string.Empty;
+		try {
+			lock (gate) state = "committing";
+			StorageFault("prewrite");
+			prepared = history.PrepareHeadMove(lineage.Manifest.LineageId, fromId, targetId, operationKind);
+			StorageFault("readback");
+			inverse = EditWorkspace.OnDispatcher(() => {
+				if (EditFingerprint.Compute(live) != liveFingerprint || dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
+					throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				return navigationPlan.Apply(live);
+			});
+			StorageFault("navigate_forward");
+			StorageFault("navigate_inverse");
+			var actual = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)); var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
+			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
+			liveApplied = true;
+			StorageFault("finalize"); history.Finalize(prepared, live); lock (gate) state = "idle";
+			return EditWire.Success("idle", new Dictionary<string, object?> { ["from_checkpoint_id"] = fromId, ["to_checkpoint_id"] = targetId,
+				["history"] = LineageResult(prepared.Lineage), ["replay"] = ReplayResult(target) });
+		}
+		catch (EditStagedCleanupException ex) {
+			EnterCleanupRecovery(live, null, ex.Prepared, operationKind, liveFingerprint, ex.OriginalFailure);
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+		catch (Exception ex) when (prepared != null && liveApplied) {
+			partial = new PartialCommit {
+				RecoveryId = EditWire.NewId("recovery"), Kind = "checkpoint_finalize", OperationKind = operationKind,
+				Prepared = prepared, LiveModule = live, LiveUndo = inverse == null ? new List<Action>() : new List<Action> { inverse },
+				PreLiveFingerprint = liveFingerprint, PostLiveFingerprint = postActionFingerprint,
+				OriginalFailure = ex is EditDomainException domain ? domain.Code : ex.GetType().Name,
+				AllowedActions = new[] { "retry_checkpoint", "undo_live" },
+			};
+			lock (gate) state = "committed_without_checkpoint";
+			throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", RecoveryResult(partial));
+		}
+		catch (Exception ex) {
+			if (inverse != null) {
+				try {
+					EditWorkspace.OnDispatcher(() => { if (navigateInverseFailure) { navigateInverseFailure = false; throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", new Dictionary<string, object?> { ["kind"] = "injected_storage_fault", ["stage"] = "navigate_inverse" }); } inverse(); return 0; });
+					if (EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live)) != liveFingerprint) throw new InvalidOperationException("navigation inverse fingerprint mismatch");
+				}
+				catch {
+					lock (gate) state = "live_state_unknown";
+					throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN", Internal("navigation inverse failed"));
+				}
+			}
+			if (ex is EditDomainException { Code: "EDIT_LIVE_STATE_UNKNOWN" }) {
+				lock (gate) state = "live_state_unknown";
+				throw;
+			}
+			if (prepared != null) CleanupPreparedOrEnterRecovery(live, prepared, operationKind, liveFingerprint,
+				ex is EditDomainException domain ? domain.Code : ex.GetType().Name);
+			lock (gate) state = "idle";
+			throw;
+		}
+	}
+
+	string ApplyTransactionToLive(Transaction tx, List<Action> inverses) {
+		var first = true;
+		return tx.Workspace.OnLive(() => {
+			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+			try {
+				lock (gate) if (tx.CancelRequested && !tx.LiveLinearized) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+				for (var i = 0; i < tx.Workspace.NormalizedOperations.Count; i++) {
+					using var document = JsonDocument.Parse(tx.Workspace.NormalizedOperations[i]);
+					var outcome = EditOperationRegistry.ApplyPersisted(tx.Workspace.LiveModule, document.RootElement, map, i); inverses.Add(outcome.Undo);
+					if (first) { first = false; lock (gate) tx.LiveLinearized = true; BarrierPoint("commit_after_live_first_mutation", tx.Owner); }
+				}
+				EditStructuralValidator.Validate(tx.Workspace.LiveModule);
+				var actual = EditFingerprint.Compute(tx.Workspace.LiveModule);
+				if (actual != tx.PrivateFingerprint) throw new EditDomainException("EDIT_VALIDATION_FAILED",
+					EditWorkspace.ValidationDetails("live_private_fingerprint", "live_apply", EditFingerprint.Difference(tx.Workspace.PrivateModule, tx.Workspace.LiveModule)));
+				return actual;
+			}
+			catch {
+				var inverseIndex = inverses.Count - 1;
+				try {
+					for (; inverseIndex >= 0; inverseIndex--) inverses[inverseIndex]();
+					if (EditFingerprint.Compute(tx.Workspace.LiveModule) != tx.Workspace.BaselineLiveFingerprint)
+						throw new InvalidOperationException("commit inverse fingerprint mismatch");
+				}
+				catch {
+					emergencyLiveUndo.Clear();
+					for (var i = inverseIndex; i >= 0; i--) emergencyLiveUndo.Add(inverses[i]);
+					lock (gate) state = "live_state_unknown";
+					throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN");
+				}
+				throw;
+			}
+		});
+	}
+
+	Dictionary<string, object?> TestStorageFault(Dictionary<string, object>? args) {
+		RequireTest(); var action = EditWire.String(args, "action");
+		if (action == "arm") { var stage = EditWire.String(args, "stage"); if (stage is not ("prewrite" or "readback" or "finalize" or "cleanup" or "navigate_forward" or "navigate_inverse")) throw new ArgumentException("unknown storage stage", "stage"); armedStorageFault = stage; if (stage == "navigate_inverse") navigateInverseFailure = true; }
+		else if (action == "reset") { armedStorageFault = null; navigateInverseFailure = false; }
+		else throw new ArgumentException("action must be arm or reset", "action");
+		return EditWire.Success(state, new Dictionary<string, object?> { ["action"] = action, ["stage"] = armedStorageFault, ["armed"] = armedStorageFault != null });
+	}
+
+	Dictionary<string, object?> TestLineageMutation(Dictionary<string, object>? args, McpCallContext context) {
+		RequireTest(); RequireOwnerContext(context); RequireIdleForHistoryMutation();
+		var action = EditWire.String(args, "action"); var assembly = EditWire.String(args, "assembly_name"); var mvid = OptionalArgument(args, "module_mvid");
+		var module = EditWorkspace.OnDispatcher(() => tree.GetAllModuleNodes().Select(n => n.Document?.ModuleDef).Where(x => x != null).Cast<ModuleDef>()
+			.SingleOrDefault(x => string.Equals(x.Assembly?.Name, assembly, StringComparison.OrdinalIgnoreCase)
+				&& (mvid == null || string.Equals(x.Mvid?.ToString("D"), mvid, StringComparison.OrdinalIgnoreCase))))
+			?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE");
+		var before = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(module));
+		if (action == "mutate") {
+			if (testExternalUndo != null) throw new ArgumentException("a test mutation is already active", "action");
+			EditWorkspace.OnDispatcher(() => { var old = module.Name; module.Name = old + ".lineage"; testExternalUndo = () => module.Name = old; return 0; });
+			testExternalOriginalFingerprint = before;
+		}
+		else if (action == "restore") {
+			if (testExternalUndo == null) throw new ArgumentException("no test mutation is active", "action");
+			EditWorkspace.OnDispatcher(() => { testExternalUndo(); return 0; }); testExternalUndo = null;
+		}
+		else throw new ArgumentException("action must be mutate or restore", "action");
+		var after = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(module)); var restored = action == "restore" && after == testExternalOriginalFingerprint;
+		if (restored) testExternalOriginalFingerprint = null;
+		return EditWire.Success(state, new Dictionary<string, object?> { ["action"] = action, ["before_fingerprint"] = before, ["after_fingerprint"] = after, ["restored"] = restored });
+	}
+
+	void ThrowIfCanceledBeforeLinearization(Transaction tx) {
+		lock (gate) if (tx.CancelRequested && !tx.LiveLinearized) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+	}
+
+	void CleanupPreparedOrEnterRecovery(Transaction tx, EditPreparedHistoryWrite prepared, string failure) {
+		try {
+			StorageFault("cleanup"); history.DeleteOwnedTemp(prepared);
+			lock (gate) { tx.OperationBusy = false; if (ReferenceEquals(active, tx)) EndLocked(tx, failure); state = "idle"; }
+		}
+		catch {
+			partial = new PartialCommit {
+				RecoveryId = EditWire.NewId("recovery"), Kind = "aborted_temp_cleanup", OperationKind = "commit",
+				Prepared = prepared, LiveModule = tx.Workspace.LiveModule, Workspace = tx.Workspace, PreLiveFingerprint = tx.Workspace.BaselineLiveFingerprint,
+				PostLiveFingerprint = tx.Workspace.BaselineLiveFingerprint, OriginalFailure = failure,
+				AllowedActions = new[] { "cleanup_temp" },
+			};
+			lock (gate) { active = null; state = "committing"; }
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+	}
+
+	void CleanupPreparedOrEnterRecovery(ModuleDef live, EditPreparedHistoryWrite prepared, string operationKind,
+		string preLiveFingerprint, string failure) {
+		try {
+			StorageFault("cleanup"); history.DeleteOwnedTemp(prepared);
+		}
+		catch {
+			partial = new PartialCommit {
+				RecoveryId = EditWire.NewId("recovery"), Kind = "aborted_temp_cleanup", OperationKind = operationKind,
+				Prepared = prepared, LiveModule = live, PreLiveFingerprint = preLiveFingerprint,
+				PostLiveFingerprint = preLiveFingerprint, OriginalFailure = failure,
+				AllowedActions = new[] { "cleanup_temp" },
+			};
+			lock (gate) state = "committing";
+			throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(partial));
+		}
+	}
+
+	void EnterCleanupRecovery(ModuleDef live, EditWorkspace? workspace, EditPreparedHistoryWrite prepared,
+		string operationKind, string preLiveFingerprint, string failure) {
+		partial = new PartialCommit {
+			RecoveryId = EditWire.NewId("recovery"), Kind = "aborted_temp_cleanup", OperationKind = operationKind,
+			Prepared = prepared, LiveModule = live, Workspace = workspace,
+			PreLiveFingerprint = preLiveFingerprint, PostLiveFingerprint = preLiveFingerprint,
+			OriginalFailure = failure, AllowedActions = new[] { "cleanup_temp" },
+		};
+		lock (gate) state = "committing";
+	}
+
+	void TryDeletePrepared(EditPreparedHistoryWrite prepared) { try { history.DeleteOwnedTemp(prepared); } catch { } }
+	static string CurrentLiveFingerprint(PartialCommit value) =>
+		EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(value.LiveModule));
+	void RememberResolvedRecovery(string key, Dictionary<string, object?> envelope) {
+		lock (gate) {
+			if (!resolvedRecoveries.ContainsKey(key)) resolvedRecoveryOrder.Enqueue(key);
+			resolvedRecoveries[key] = EditWire.CanonicalPayload(envelope);
+			while (resolvedRecoveryOrder.Count > 128) resolvedRecoveries.Remove(resolvedRecoveryOrder.Dequeue());
+		}
+	}
+	void StorageFault(string stage) {
+		if (!string.Equals(armedStorageFault, stage, StringComparison.Ordinal)) return;
+		armedStorageFault = null; throw new EditDomainException(stage == "cleanup" ? "EDIT_CHECKPOINT_CLEANUP_FAILED" : "EDIT_CHECKPOINT_COMMIT_FAILED",
+			new Dictionary<string, object?> { ["kind"] = "injected_storage_fault", ["stage"] = stage });
+	}
+
+	void RequireIdleForHistoryMutation() {
+		lock (gate) {
+			if (state == "live_state_unknown") throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN");
+			if (active != null) throw new EditDomainException("EDIT_TRANSACTION_BUSY");
+			if (partial != null || state != "idle") throw new EditDomainException("EDIT_TRANSACTION_BUSY");
+		}
+	}
+
+	ModuleDef? FindLoadedModule(string mvid) => EditWorkspace.OnDispatcher(() => {
+		var matches = tree.GetAllModuleNodes().Select(n => n.Document?.ModuleDef).Where(x => x != null).Cast<ModuleDef>()
+			.Where(x => string.Equals(x.Mvid?.ToString("D"), mvid, StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
+		return matches.Length == 1 ? matches[0] : null;
+	});
+	ModuleDef RequireLoadedModule(string mvid) => FindLoadedModule(mvid) ?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",
+		Capability("loaded_module", "The lineage source module is not uniquely loaded"));
+
+	static string? OptionalArgument(Dictionary<string, object>? args, string name) {
+		if (args == null || !args.TryGetValue(name, out var raw) || raw == null || raw is JsonElement { ValueKind: JsonValueKind.Null }) return null;
+		if (raw is string value) return value;
+		if (raw is JsonElement element && element.ValueKind == JsonValueKind.String) return element.GetString();
+		throw new ArgumentException(name + " must be a string", name);
+	}
+
+	Dictionary<string, object?> SafeHistorySummary() {
+		try { return new Dictionary<string, object?> { ["lineage_count"] = history.LoadAll().Count, ["available"] = true }; }
+		catch (Exception ex) { return new Dictionary<string, object?> { ["available"] = false, ["error"] = ex.GetType().Name }; }
+	}
+	Dictionary<string, object?> SafeHistoryCapacity() {
+		try { return history.CapacityView(); }
+		catch { return new Dictionary<string, object?>(); }
+	}
+	static Dictionary<string, object?> MergeCapacity(Dictionary<string, object?> left, Dictionary<string, object?> right) {
+		var result = new Dictionary<string, object?>(left, StringComparer.Ordinal); foreach (var row in right) result[row.Key] = row.Value; return result;
+	}
+	static Dictionary<string, object?> HistoryBindingResult(EditHistoryBinding binding) => new() {
+		["family_id"] = binding.FamilyId, ["lineage_id"] = binding.LineageId,
+		["base_checkpoint_id"] = binding.BaseCheckpointId, ["new_family"] = binding.IsNewFamily,
+		["match_basis"] = binding.MatchBasis,
+	};
+	static Dictionary<string, object?> LineageResult(EditLoadedLineage lineage) => new() {
+		["lineage_id"] = lineage.Manifest.LineageId, ["family_id"] = lineage.Manifest.FamilyId,
+		["head_checkpoint_id"] = lineage.Manifest.HeadCheckpointId, ["checkpoint_count"] = lineage.Manifest.Checkpoints.Count,
+		["superseded_lineage_id"] = lineage.Manifest.SupersededLineageId,
+	};
+	static Dictionary<string, object?> CheckpointResult(EditLoadedLineage lineage, string id) {
+		var row = lineage.Checkpoint(id); return new Dictionary<string, object?> {
+			["checkpoint_id"] = row.CheckpointId, ["parent_checkpoint_id"] = row.ParentCheckpointId,
+			["kind"] = row.Kind, ["sequence"] = row.Sequence, ["result_image_sha256"] = row.ResultImageSha256,
+			["result_semantic_fingerprint"] = row.ResultSemanticFingerprint,
+		};
+	}
+	static Dictionary<string, object?> ReplayResult(EditReplayAssessment replay) => new() {
+		["replay_id"] = replay.ReplayId, ["classification"] = replay.Classification,
+		["lineage_id"] = replay.Lineage.Manifest.LineageId, ["checkpoint_id"] = replay.Checkpoint.CheckpointId,
+		["image_sha256"] = replay.ImageSha256, ["semantic_fingerprint"] = replay.SemanticFingerprint,
+		["recorded_image_sha256"] = replay.Checkpoint.ResultImageSha256,
+		["recorded_semantic_fingerprint"] = replay.Checkpoint.ResultSemanticFingerprint,
+	};
+	static Dictionary<string, object?> OutputResult(EditOutputResult output) => new() {
+		["path"] = output.Path, ["length"] = output.Length, ["sha256"] = output.Sha256, ["file_id"] = output.FileId,
+	};
+	static object? RecoveryResult(PartialCommit? value) => value == null ? null : new Dictionary<string, object?> {
+		["recovery_id"] = value.RecoveryId, ["recovery_kind"] = value.Kind, ["operation_kind"] = value.OperationKind,
+		["allowed_actions"] = value.AllowedActions, ["pre_live_fingerprint"] = value.PreLiveFingerprint,
+		["post_live_fingerprint"] = value.PostLiveFingerprint, ["pre_head_checkpoint_id"] = value.Prepared.PreHeadCheckpointId,
+		["post_head_checkpoint_id"] = value.Prepared.PostHeadCheckpointId,
+		["temp"] = new Dictionary<string, object?> { ["path"] = value.Prepared.Temp.Path, ["file_id"] = value.Prepared.Temp.FileId,
+			["length"] = value.Prepared.Temp.Length, ["sha256"] = value.Prepared.Temp.Sha256 },
+		["original_failure"] = value.OriginalFailure,
+	};
+
+	public void OnSessionClosed(McpTransportSessionClosed closed) { lock (gate) {
+		if(pendingBeginSessions.Contains(closed.SessionId))closedPendingBeginSessions.Add(closed.SessionId);
+		ReleaseBarrierLocked(closed.SessionId);
+		if (active?.Owner == closed.SessionId) {
+			if (active.CommitStarted && active.LiveLinearized) active.CancelRequested = false;
+			else if (active.OperationBusy) { active.CancelRequested = true; active.OwnerClosed = true; }
+			else EndLocked(active, closed.Reason);
+		}
+		beginCache.RemovePrefix(closed.SessionId + ":"); commandCache.RemovePrefix(closed.SessionId + ":"); terminalCache.RemoveSession(closed.SessionId);
+	} }
+	void ExpireLocked() { if (active != null && !active.OperationBusy && Now - active.LastActivity >= EditWire.IdleTimeoutMs) EndLocked(active, "timeout"); }
 	void EndLocked(Transaction tx, string reason) { if (!ReferenceEquals(active, tx)) return; tx.CancelRequested=true;ReleaseBarrierLocked(tx.Owner);tx.ApplyCache.Clear();tx.ReviewCache.Clear();active = null; state = "idle";if(!tx.OperationBusy)tx.Workspace.Dispose(); }
 
 	Transaction RequireTransactionLocked(Dictionary<string, object>? args, McpCallContext context) { RequireOwnerContext(context); if (active == null || EditWire.String(args,"transaction_id") != active.Id) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND"); if (active.Owner != context.AuthoritativeSessionId) throw new EditDomainException("EDIT_OWNER_MISMATCH"); return active; }
@@ -468,7 +1266,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	void CaptureEmergency(IReadOnlyList<(string Kind,Action Undo)> inverses,ISet<int> undone){emergencyLiveUndo.Clear();for(int i=inverses.Count-1;i>=0;i--)if(!undone.Contains(i))emergencyLiveUndo.Add(inverses[i].Undo);}
 	static void RestoreOutstanding(Transaction tx,IReadOnlyList<(string Kind,Action Undo)> inverses,ISet<int> undone)=>tx.Workspace.OnLive(()=>{for(int i=inverses.Count-1;i>=0;i--)if(!undone.Contains(i)){inverses[i].Undo();undone.Add(i);}return 0;});
 	static string[] StringArray(Dictionary<string,object>? args,string name){if(args==null||!args.TryGetValue(name,out var raw)||raw is not JsonElement e||e.ValueKind!=JsonValueKind.Array)throw new ArgumentException(name+" is required",name);return e.EnumerateArray().Select(x=>x.GetString()??string.Empty).ToArray();}
-	public void Dispose(){lock(gate){if(active!=null)EndLocked(active,"dispose");if(testBarrier!=null){testBarrier.Released=true;testBarrier.Release.Set();testBarrier.Dispose();testBarrier=null;}catalog.Dispose();}}
+	public void Dispose(){lock(gate){if(active!=null)EndLocked(active,"dispose");if(testBarrier!=null){testBarrier.Released=true;testBarrier.Release.Set();testBarrier.Dispose();testBarrier=null;}history.Dispose();catalog.Dispose();}}
 	sealed class ReverseFaultException:Exception{}
 	sealed class ForwardFaultException:Exception{}
 }

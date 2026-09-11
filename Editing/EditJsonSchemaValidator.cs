@@ -14,8 +14,12 @@ namespace dnSpy.Extension.MCP.Editing;
 internal static class EditJsonSchemaValidator {
 	public static void Validate(JsonElement schema, Dictionary<string, object>? arguments, string toolName) {
 		using var document = JsonDocument.Parse(JsonSerializer.Serialize(arguments ?? new Dictionary<string, object>()));
-		if (!Matches(schema, document.RootElement, out var reason))
-			throw new ArgumentException($"{toolName} arguments do not match inputSchema: {reason}", "arguments");
+		ValidateValue(schema, document.RootElement, toolName + " arguments");
+	}
+
+	public static void ValidateValue(JsonElement schema, JsonElement value, string subject) {
+		if (!Matches(schema, value, out var reason))
+			throw new ArgumentException($"{subject} does not match schema: {reason}", subject);
 	}
 
 	static bool Matches(JsonElement schema, JsonElement value, out string reason) {

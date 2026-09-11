@@ -85,8 +85,8 @@ internal static class EditFingerprint {
 			"assembly|" + (module.Assembly?.FullName ?? string.Empty),
 		};
 			foreach (var type in module.GetTypes().OrderBy(TypeKey, StringComparer.Ordinal)) {
-				if (excludeWriterTombstones && IsWriterTombstoneType(type))
-					continue;
+			if (excludeWriterTombstones && (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsTombstone(type)))
+				continue;
 				rows.Add("type|" + TypeKey(type) + "|" + (uint)type.Attributes + "|" + Sig(type.BaseType?.ToTypeSig()) + "|" + Attributes(type.CustomAttributes));
 				foreach (var gp in type.GenericParameters.OrderBy(g => g.Number)) rows.Add(GenericRow("tgp", gp));
 				foreach (var iface in type.Interfaces.OrderBy(i => i.Interface?.FullName, StringComparer.Ordinal)) rows.Add("interface|" + Sig(iface.Interface?.ToTypeSig()) + "|" + Attributes(iface.CustomAttributes));
@@ -137,6 +137,7 @@ internal static class EditFingerprint {
 				string.Equals(ns, "dummy_ptr", StringComparison.Ordinal)) &&
 			Guid.TryParse(type.Name?.String, out _);
 	}
+
 
 	static string GenericRow(string prefix, GenericParam gp) => prefix + "|" + gp.Number + "|" + gp.Name + "|" + (uint)gp.Flags + "|" + string.Join(",", gp.GenericParamConstraints.Select(c => Sig(c.Constraint?.ToTypeSig())).OrderBy(x => x, StringComparer.Ordinal)) + "|" + Attributes(gp.CustomAttributes);
 	static string Token(IMDTokenProvider? provider) => provider == null ? string.Empty : "0x" + provider.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture);

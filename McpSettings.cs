@@ -235,11 +235,14 @@ namespace dnSpy.Extension.MCP {
 				LogText = string.Join(Environment.NewLine, LogMessages);
 			}
 
-			// Add to collection on UI thread if available
+			// Add to the UI-bound ring buffer without waiting for the dispatcher: the
+			// request pipeline logs every MCP call, and any tool legitimately occupying
+			// the UI thread (e.g. a commit parked mid-live-application) would otherwise
+			// stall every concurrent request behind this synchronous marshal.
 			var app = System.Windows.Application.Current;
 			if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted) {
 				try {
-					app.Dispatcher.Invoke(addToCollection);
+					app.Dispatcher.BeginInvoke((Action)addToCollection);
 				}
 				catch {
 					// Dispatcher may be busy or unavailable during startup; file log still has the entry.

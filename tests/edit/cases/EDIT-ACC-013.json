@@ -1,0 +1,19 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-013",
+  "acc_id": "ACC-013",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc013.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned and dnSpy freshly started (driver asserts an exact lineage listing)",
+  "actions": [
+    "two real commits seed a lineage (baseline + C1 + C2); three fixture packages are crafted by rewriting the real package manifest into the store: validated head, validated ancestor with exact head, unverified head (producer-B image stand-in; the real dual-writer divergence is proven by the registered harness probe --dual-tool-classification)",
+    "edit_restore assess classifies validated_drift and unverified_drift",
+    "edit_restore apply without confirm_validated_drift is rejected with EDIT_REPLAY_CONFIRMATION_REQUIRED (also closes ACC-011's validated auto-navigation rejection via restore); edit_undo to the validated ancestor is rejected by the same gate",
+    "edit_restore apply on the unverified fixture is rejected with EDIT_REPLAY_UNVERIFIED; lineage listing and real head unchanged after every rejection",
+    "a plain begin/commit never bypasses the confirmation gate (binds the real lineage, rolls back)",
+    "confirmed migration on the validated ancestor creates an exact migration child that becomes the fixture head; post-migration begin/rollback usable"
+  ],
+  "expected": "classifications match section 8 exactly; no movement without explicit confirmation; unverified never applied with zero side effects; the migration child is exact; the process binding follows the applied history; every assertion recorded in summary.json with artifacts"
+}

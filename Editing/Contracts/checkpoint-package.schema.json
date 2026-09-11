@@ -1,0 +1,401 @@
+{
+  "schema_version": "dnspy.edit.checkpoint-contract.v1",
+  "manifestSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "format",
+      "lineage_id",
+      "family_id",
+      "source_identity",
+      "baseline",
+      "head_checkpoint_id",
+      "checkpoints",
+      "payloads",
+      "default_output"
+    ],
+    "properties": {
+      "format": {
+        "const": "dnspy.edit.checkpoints.v1"
+      },
+      "lineage_id": {
+        "type": "string",
+        "pattern": "^lineage-[0-9a-f]{32}$"
+      },
+      "family_id": {
+        "type": "string",
+        "pattern": "^family-[0-9a-f]{32}$"
+      },
+      "superseded_lineage_id": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^lineage-[0-9a-f]{32}$"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "source_identity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "format",
+          "origin_mvid",
+          "baseline_image_sha256",
+          "baseline_semantic_fingerprint",
+          "path_hash",
+          "on_disk_sha256",
+          "volume_serial",
+          "file_id"
+        ],
+        "properties": {
+          "format": {
+            "const": "source_identity.v1"
+          },
+          "origin_mvid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "baseline_image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "baseline_semantic_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "path_hash": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "on_disk_sha256": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "volume_serial": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "baseline": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entry",
+          "length",
+          "sha256"
+        ],
+        "properties": {
+          "entry": {
+            "const": "baseline/module.bin"
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 16777216
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "head_checkpoint_id": {
+        "type": "string",
+        "pattern": "^checkpoint-[0-9a-f]{32}$"
+      },
+      "checkpoints": {
+        "type": "array",
+        "maxItems": 4094,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "checkpoint_id",
+            "parent_checkpoint_id",
+            "kind",
+            "operation_entry",
+            "operation_sha256",
+            "producer",
+            "review",
+            "confirmed_risks",
+            "result_image_sha256",
+            "result_semantic_fingerprint",
+            "sequence"
+          ],
+          "properties": {
+            "checkpoint_id": {
+              "type": "string",
+              "pattern": "^checkpoint-[0-9a-f]{32}$"
+            },
+            "parent_checkpoint_id": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^checkpoint-[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operation_entry": {
+              "type": "string",
+              "pattern": "^operations/checkpoint-[0-9a-f]{32}\\.json$"
+            },
+            "operation_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "producer": {
+              "type": "object"
+            },
+            "review": {
+              "type": "object"
+            },
+            "confirmed_risks": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "result_image_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "result_semantic_fingerprint": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4093
+            }
+          }
+        }
+      },
+      "payloads": {
+        "type": "array",
+        "maxItems": 4094,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sha256",
+            "entry",
+            "length"
+          ],
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^payloads/[0-9a-f]{64}\\.bin$"
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8388608
+            }
+          }
+        }
+      },
+      "default_output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relative_path",
+          "path_hash",
+          "image_sha256"
+        ],
+        "properties": {
+          "relative_path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32767
+          },
+          "path_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  },
+  "operationSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "format",
+      "checkpoint_id",
+      "operations"
+    ],
+    "properties": {
+      "format": {
+        "const": "dnspy.edit.op.v1"
+      },
+      "checkpoint_id": {
+        "type": "string",
+        "pattern": "^checkpoint-[0-9a-f]{32}$"
+      },
+      "operations": {
+        "type": "array",
+        "maxItems": 256,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation_id",
+            "kind",
+            "kind_version",
+            "forward",
+            "inverse",
+            "payload_sha256"
+          ],
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "pattern": "^operation-[0-9a-f]{32}$"
+            },
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "kind_version": {
+              "const": 1
+            },
+            "forward": {
+              "type": "object"
+            },
+            "inverse": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "format",
+                "strategy",
+                "parent_checkpoint_id",
+                "prefix_operation_count",
+                "operation_kind",
+                "semantic_source",
+                "state"
+              ],
+              "properties": {
+                "format": {
+                  "const": "dnspy.edit.inverse.v1"
+                },
+                "strategy": {
+                  "enum": [
+                    "compiled_state"
+                  ]
+                },
+                "parent_checkpoint_id": {
+                  "type": "string",
+                  "pattern": "^checkpoint-[0-9a-f]{32}$"
+                },
+                "prefix_operation_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "operation_kind": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "semantic_source": {
+                  "enum": [
+                    "compiled_pre_state"
+                  ]
+                },
+                "target": {
+                  "type": "object"
+                },
+                "parameter_target": {
+                  "type": "object"
+                },
+                "owner": {
+                  "type": "object"
+                },
+                "owner_type": {
+                  "type": "object"
+                },
+                "owner_method": {
+                  "type": "object"
+                },
+                "legacy": {
+                  "type": "object"
+                },
+                "state": {
+                  "type": "object",
+                  "minProperties": 1
+                }
+              }
+            },
+            "payload_sha256": {
+              "type": "array",
+              "maxItems": 256,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

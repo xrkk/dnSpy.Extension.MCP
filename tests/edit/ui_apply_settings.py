@@ -272,7 +272,7 @@ def main() -> int:
     parser.add_argument("--enable", required=True, choices=("true", "false"))
     parser.add_argument("--host", default="")
     parser.add_argument("--port", type=int)
-    parser.add_argument("--ui-url", default="http://192.168.204.149:28787/mcp")
+    parser.add_argument("--ui-url", default="http://192.168.204.240:28787/mcp")
     args = parser.parse_args()
 
     client = UiMcpClient.connect(args.ui_url, client_name="dnspy-p01-ui-driver", timeout=30)

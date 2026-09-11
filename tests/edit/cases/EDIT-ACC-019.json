@@ -1,0 +1,16 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-019",
+  "acc_id": "ACC-019",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc019b.py",
+  "precondition": "DNMCP_TEST=1; dnSpy running with deployed plugin net48; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned",
+  "actions": [
+    "for each of the six commit-phase barriers (commit_after_guard_before_temp, commit_after_temp_validate, commit_dispatcher_queued, commit_after_live_first_mutation, commit_after_live_complete, commit_after_package_switch_before_response): owner session arms the barrier, prepares a reviewed transaction, starts edit_commit in-thread, waits for entered, closes the owning session mid-phase, releases the barrier, then observes the unique terminal state from a fresh observer session",
+    "verify terminal state is idle or committed_without_checkpoint with actionable recovery, resolve any partial via edit_recover(retry_checkpoint), and prove a new session can immediately begin a transaction",
+    "open 16 concurrent streamable sessions, assert the 17th is refused, close one session and assert the freed slot readmits a new session"
+  ],
+  "expected": "every phase-close yields a legal unique terminal state (pre-live phases roll back as uncommitted per plan section 6; post-live phases let the commit complete), no wedge (no stuck committing without recovery), partial recovery succeeds without duplicate live operations, new sessions are usable immediately, quota release is observable"
+}

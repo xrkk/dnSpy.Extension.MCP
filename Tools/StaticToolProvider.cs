@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Linq;
 using dnSpy.Extension.MCP.Transport;
+using dnSpy.Extension.MCP.Editing;
+using dnSpy.Extension.MCP.Debugger;
 
 namespace dnSpy.Extension.MCP.Tools;
 
@@ -16,12 +18,14 @@ namespace dnSpy.Extension.MCP.Tools;
 internal sealed class StaticToolProvider : IMcpToolProvider
 {
     readonly McpTools tools;
+    readonly LegacyEditAdapter legacy;
     HashSet<string>? knownNames;
 
     [ImportingConstructor]
-    public StaticToolProvider(McpTools tools)
+    public StaticToolProvider(McpTools tools, EditTransactionCoordinator coordinator)
     {
         this.tools = tools;
+        legacy = new LegacyEditAdapter(tools, coordinator);
     }
 
     public string Name => "static";
@@ -35,6 +39,9 @@ internal sealed class StaticToolProvider : IMcpToolProvider
         var known = knownNames ??= new HashSet<string>(tools.GetAvailableTools().Select(t => t.Name));
         if (!known.Contains(toolName))
             return null;
-        return tools.ExecuteTool(toolName, arguments);
+        if (StaticWriteGate.IsGatedTool(toolName))
+            return legacy.Execute(toolName, arguments, callContext);
+        var result = tools.ExecuteTool(toolName, arguments);
+        return toolName == "get_method_il" ? legacy.EnrichMethodIl(arguments, result) : result;
     }
 }

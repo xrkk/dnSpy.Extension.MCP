@@ -1,0 +1,19 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-020",
+  "acc_id": "ACC-020",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc020.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned and dnSpy freshly started (driver asserts a single legacy-built lineage)",
+  "actions": [
+    "rename_symbol_by_token renames TestIL.GenericMethodOwner`1.Echo (referenced through a closed-generic MemberRef) and the caller IL is verified updated; the legacy projection carries checkpoint history and the compatibility warning",
+    "patch_method_il / force_return / nop_method run through the same structured transaction path (single lineage, idle after mutations)",
+    "edit_undo / edit_redo navigate the legacy-built lineage checkpoints",
+    "revert_method_il performs the constrained single-method undo for the head-patched method (pending patch must be at the current head)",
+    "save_assembly projects the ArtifactRoot export shape (saved_to, source_preserved, backup_path null, compatibility warning)",
+    "export is blocked with EDIT_EXPORT_BLOCKED for a non-exact (validated-drift) checkpoint and succeeds for the exact head (ACC-014 MCP-shape assertion)"
+  ],
+  "expected": "all six gated legacy tools route through the single checkpoint path with reference integrity (generic MemberRef), constrained revert semantics, safe save projection and the export gate; no direct writes, no source overwrite"
+}

@@ -26,8 +26,8 @@ from dnspy_mcp.client import DnSpyConnectionError, ToolCallError
 from ui_apply_settings import UiMcpClient, apply_settings
 
 
-VM_UI_URL = "http://192.168.204.149:28787/mcp"
-HOST = "192.168.204.149"
+VM_UI_URL = "http://192.168.204.240:28787/mcp"
+HOST = "192.168.204.240"
 OLD_URL = f"http://{HOST}:15378/"
 NEW_URL = f"http://{HOST}:15379/"
 BRIDGE = "/opt/dnspy-mcp-client/bin/dnspy-mcp-stdio"

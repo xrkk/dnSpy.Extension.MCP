@@ -11,6 +11,11 @@ internal static class EditStructuralValidator {
 	public static int Validate(ModuleDef module) {
 		var rules = 0;
 		foreach (var type in module.GetTypes()) {
+			// P03-CHANGE-002 v3 / AUD-106 registered exemption: the deleted-rows
+			// tombstone intentionally hosts ParamDef rows behind a zero-parameter
+			// void() signature while a deletion is active. It is writer bookkeeping
+			// excluded from semantic fingerprints, not sample metadata to validate.
+			if (EditDeletedRowsTombstone.IsTombstone(type)) continue;
 			rules++;
 			if (type.DeclaringType == null && !module.Types.Contains(type)) Fail("owner", type.FullName, "Top-level type is not owned by the module");
 			if (type.DeclaringType != null && !type.DeclaringType.NestedTypes.Contains(type)) Fail("owner", type.FullName, "Nested type owner is inconsistent");

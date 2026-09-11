@@ -1,0 +1,17 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-024",
+  "acc_id": "ACC-024",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc024c.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned and dnSpy freshly started. The commit/undo/redo/restore-path storage-fault matrices (prewrite/readback/finalize/cleanup) were evidenced in rounds 49-50 and the harness store tests; this case packages the navigate forward/inverse application-fault dimension",
+  "actions": [
+    "two real commits seed a lineage (head C2, parent C1)",
+    "arm the navigate_forward storage stage; edit_undo surfaces EDIT_CHECKPOINT_COMMIT_FAILED(stage=navigate_forward), the coordinator returns to idle with no recovery, the head stays at C2 (pre-head preserved) and a fresh begin binds cleanly (live restored by the inverse)",
+    "a real undo then a navigate_forward-armed edit_redo shows the same contract and the redo succeeds once the fault is cleared",
+    "arm the navigate_inverse stage (dual trigger: forward fails and the rollback inverse fails); edit_undo surfaces EDIT_LIVE_STATE_UNKNOWN, all edit tools are blocked, the emergency-cleanup attempt does NOT fake a restore (state stays live_state_unknown), the owned temp is metered as a residual store object and the head is unchanged; dnSpy restart is the documented recovery"
+  ],
+  "expected": "plan section 6 navigate semantics hold under application-period faults: forward failure restores to pre-head and ends idle after temp cleanup; inverse failure enters the terminal no-product-recovery live_state_unknown with residual metering and no false recovery"
+}

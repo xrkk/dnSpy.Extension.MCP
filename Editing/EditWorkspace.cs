@@ -15,11 +15,17 @@ internal sealed class EditWorkspace : IDisposable {
 	public ModuleDef LiveModule { get; }
 	public ModuleDefMD PrivateModule { get; private set; }
 	readonly byte[] baselinePrivateBytes;
+	readonly byte[] baselineCheckpointBytes;
+	readonly Dictionary<string, BodyHeader> baselineBodyHeaders;
 	public string AssemblyName { get; }
 	public string ModuleName => LiveModule.Name;
 	public string FilePath => LiveModule.Location ?? string.Empty;
 	public string FileSha256 { get; }
 	public string BaselineLiveFingerprint { get; }
+	public string BaselineSemanticFingerprint { get; }
+	public string ModuleMvid => (LiveModule.Mvid?.ToString("D") ?? string.Empty).ToLowerInvariant();
+	public byte[] BaselineBytes => (byte[])baselineCheckpointBytes.Clone();
+	public string BaselineImageSha256 { get; }
 	public Dictionary<string, IMDTokenProvider> ObjectIds { get; } = new(StringComparer.Ordinal);
 	public List<string> NormalizedOperations { get; } = new();
 	public List<Dictionary<string, object?>> Diffs { get; } = new();
@@ -29,9 +35,13 @@ internal sealed class EditWorkspace : IDisposable {
 		LiveModule = live;
 		PrivateModule = privateModule;
 		this.baselinePrivateBytes = baselinePrivateBytes;
+		baselineCheckpointBytes = WriteCheckpointImage(privateModule);
+		baselineBodyHeaders = CaptureBodyHeaders(privateModule);
 		AssemblyName = assemblyName;
 		FileSha256 = fileSha256;
 		BaselineLiveFingerprint = baseline;
+		BaselineSemanticFingerprint = EditFingerprint.ComputeRoundtrip(privateModule);
+		BaselineImageSha256 = EditWire.Sha256(baselineCheckpointBytes);
 	}
 
 	public static EditWorkspace Create(IDocumentTreeView tree, string assemblyName, string? requestedMvid) => OnDispatcher(() => {
@@ -52,6 +62,7 @@ internal sealed class EditWorkspace : IDisposable {
 		var resourceBytes = live.Resources.OfType<EmbeddedResource>().Sum(r => (long)r.CreateReader().Length);
 		if (resourceBytes > EditWire.MaxResourceBytes) throw Capability("resource_bytes", "Module exceeds max_resource_bytes");
 		var privateModule = ModuleDefMD.Load(bytes, new ModuleCreationOptions { TryToLoadPdbFromDisk = true });
+		RestoreBodyHeaders(privateModule, CaptureBodyHeaders(live));
 		var baseline = EditFingerprint.Compute(live);
 		if (!string.Equals(baseline, EditFingerprint.Compute(privateModule), StringComparison.Ordinal)) {
 			var difference=EditFingerprint.Difference(live,privateModule);
@@ -63,8 +74,93 @@ internal sealed class EditWorkspace : IDisposable {
 		return new EditWorkspace(live, privateModule, bytes, assemblyName, fileSha, baseline);
 	});
 
+	internal static EditWorkspace CreateForTesting(ModuleDef live) {
+		if (!string.Equals(Environment.GetEnvironmentVariable("DNMCP_TEST"), "1", StringComparison.Ordinal))
+			throw new InvalidOperationException("DNMCP_TEST=1 is required");
+		if (live.Assembly == null) throw Capability("netmodule", "NetModule targets are not supported");
+		var bytes = Write(live);
+		var privateModule = ModuleDefMD.Load(bytes);
+		RestoreBodyHeaders(privateModule, CaptureBodyHeaders(live));
+		var baseline = EditFingerprint.Compute(live);
+		if (baseline != EditFingerprint.Compute(privateModule)) {
+			privateModule.Dispose();
+			throw Capability("roundtrip_fingerprint", "Test private copy does not preserve the canonical module image");
+		}
+		var fileSha = File.Exists(live.Location) ? HashFile(live.Location) : EditWire.Sha256(bytes);
+		return new EditWorkspace(live, privateModule, bytes, live.Assembly.Name.String, fileSha, baseline);
+	}
+
 	public static byte[] Write(ModuleDef module) => WriteCore(module, MetadataFlags.PreserveAll | MetadataFlags.KeepOldMaxStack);
 	public static byte[] WriteCanonical(ModuleDef module) => WriteCore(module, MetadataFlags.KeepOldMaxStack);
+
+	internal static byte[] WriteCheckpointImage(ModuleDef module) {
+		// Preserve row/token identity and opaque signature suffixes, but rebuild
+		// heap offsets: PreserveAll copies the original heaps, making the output
+		// depend on whether a ModuleDefMD came from source or an emitted baseline.
+		// This is the actual checkpoint/export image; no hash regions are ignored.
+		var semantic = EditFingerprint.ComputeRoundtrip(module);
+		var originalNames = new HashSet<string>(module.GetTypes().Select(t => t.FullName), StringComparer.Ordinal);
+		const MetadataFlags flags = MetadataFlags.PreserveRids | MetadataFlags.PreserveExtraSignatureData | MetadataFlags.KeepOldMaxStack;
+		var bytes = WriteCore(module, flags);
+		using var materialized = ModuleDefMD.Load(bytes);
+		if (EditFingerprint.ComputeRoundtrip(materialized) != semantic)
+			throw new EditDomainException("EDIT_VALIDATION_FAILED");
+		// dnlib creates random GUID names for deleted-row placeholders. Only
+		// placeholders newly emitted by this write are ours to name; even a sample
+		// type matching the dummy naming pattern remains untouched. Rewriting the
+		// detached image rebuilds its heaps without retaining the random strings.
+		foreach (var type in materialized.GetTypes().Where(t => EditFingerprint.IsWriterTombstoneType(t) && !originalNames.Contains(t.FullName))) {
+			var attempt = 0;
+			string name;
+			do {
+				name = new Guid((int)type.Rid, (short)(attempt >> 16), (short)attempt, new byte[8]).ToString("B");
+				attempt++;
+			} while (originalNames.Contains(type.Namespace + "." + name));
+			type.Name = name;
+			originalNames.Add(type.FullName);
+		}
+		return WriteCore(materialized, flags);
+	}
+
+	// Tiny method headers cannot encode InitLocals/MaxStack. Preserve those live
+	// object properties in the private copy, rather than weakening the complete
+	// live/private conflict fingerprint when dnlib normalizes their disk encoding.
+	readonly struct BodyHeader {
+		public readonly bool InitLocals;
+		public readonly ushort MaxStack;
+		public BodyHeader(bool initLocals, ushort maxStack) { InitLocals = initLocals; MaxStack = maxStack; }
+	}
+	// These are private-copy positions, not persisted identities. Newly added
+	// methods all have RID zero until emission; using MDToken as a dictionary key
+	// both collides and cannot address their emitted copies. Hierarchical slots
+	// survive this unedited roundtrip, and the complete fingerprint below remains
+	// the final guard against any unsupported writer reordering or data loss.
+	static Dictionary<string, MethodDef> MethodSlots(ModuleDef module) {
+		var slots = new Dictionary<string, MethodDef>(StringComparer.Ordinal);
+		void AddTypes(IList<TypeDef> types, string prefix) {
+			for (var i = 0; i < types.Count; i++) {
+				var type = types[i];
+				var path = prefix + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+				for (var j = 0; j < type.Methods.Count; j++)
+					slots.Add(path + "/m/" + j.ToString(System.Globalization.CultureInfo.InvariantCulture), type.Methods[j]);
+				AddTypes(type.NestedTypes, path + "/t/");
+			}
+		}
+		AddTypes(module.Types, "t/");
+		return slots;
+	}
+	static Dictionary<string, BodyHeader> CaptureBodyHeaders(ModuleDef module) => MethodSlots(module)
+		.Where(pair => pair.Value.HasBody)
+		.ToDictionary(pair => pair.Key, pair => new BodyHeader(pair.Value.Body.InitLocals, pair.Value.Body.MaxStack), StringComparer.Ordinal);
+	static void RestoreBodyHeaders(ModuleDefMD module, Dictionary<string, BodyHeader> headers) {
+		var slots = MethodSlots(module);
+		foreach (var pair in headers) {
+			if (!slots.TryGetValue(pair.Key, out var method) || !method.HasBody)
+				throw Capability("roundtrip_fingerprint", "Private copy did not preserve the method body identity");
+			method.Body.InitLocals = pair.Value.InitLocals;
+			method.Body.MaxStack = pair.Value.MaxStack;
+		}
+	}
 
 	static byte[] WriteCore(ModuleDef module, MetadataFlags metadataFlags) {
 		using var stream = new MemoryStream();
@@ -93,6 +189,8 @@ internal sealed class EditWorkspace : IDisposable {
 	}
 
 	public string CurrentLiveFingerprint() => OnDispatcher(() => EditFingerprint.Compute(LiveModule));
+	public string CurrentLiveSemanticFingerprint() => OnDispatcher(() => EditFingerprint.ComputeRoundtrip(LiveModule));
+	public string CurrentLiveImageSha256() => OnDispatcher(() => EditWire.Sha256(WriteCheckpointImage(LiveModule)));
 	public string PrivateFingerprint() => EditFingerprint.Compute(PrivateModule);
 	public byte[] ValidateRoundtrip() {
 		var bytes = Write(PrivateModule);
@@ -115,9 +213,10 @@ internal sealed class EditWorkspace : IDisposable {
 		var rebuilt = ModuleDefMD.Load(baselinePrivateBytes);
 		var rebuiltIds = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 		try {
+			RestoreBodyHeaders(rebuilt, baselineBodyHeaders);
 			for (int index = 0; index < NormalizedOperations.Count; index++) {
 				using var document = System.Text.Json.JsonDocument.Parse(NormalizedOperations[index]);
-				EditOperationRegistry.Apply(rebuilt, document.RootElement, rebuiltIds, index);
+				EditOperationRegistry.ApplyPersisted(rebuilt, document.RootElement, rebuiltIds, index);
 			}
 			EditStructuralValidator.Validate(rebuilt);
 		}

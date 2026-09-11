@@ -15,7 +15,7 @@ from run_p01_vm_tests import (UiMcpClient, powershell, read_vm_text, start_dnspy
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VM_URL = "http://192.168.204.149:28787/mcp"
+VM_URL = "http://192.168.204.240:28787/mcp"
 VM_ROOT = r"C:\Tools\dnspy-mcp-edit-tests\repo"
 VM_SAMPLE_ROOT = r"C:\Tools\MefCheck\dnspy-mcp-p02-tests"
 VM_EXTENSION = r"C:\Tools\dnSpy\bin\Extensions\dnSpy.Extension.MCP\dnSpy.Extension.MCP.x.dll"

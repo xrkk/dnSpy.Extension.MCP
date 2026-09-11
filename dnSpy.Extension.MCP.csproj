@@ -23,7 +23,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/expanded-tool-schemas.json" LogicalName="dnspy.edit.expanded-tool-schemas.json" />
+    <EmbeddedResource Include="Editing/Contracts/p03-tool-schemas.json" LogicalName="dnspy.edit.p03-tool-schemas.json" />
+    <EmbeddedResource Include="Editing/Contracts/checkpoint-package.schema.json" LogicalName="dnspy.edit.checkpoint-package.schema.json" />
+    <EmbeddedResource Include="Editing/Contracts/p03-acceptance.json" LogicalName="dnspy.edit.p03-acceptance.json" />
     <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/operation-lowering.json" LogicalName="dnspy.edit.operation-lowering.json" />
     <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/fault-golden.json" LogicalName="dnspy.edit.fault-golden.json" />
     <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/capacity-golden.json" LogicalName="dnspy.edit.capacity-golden.json" />
@@ -32,6 +34,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.Text.UI.Wpf" Version="$(MSVSTextVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>P03StoreHarness</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <!--

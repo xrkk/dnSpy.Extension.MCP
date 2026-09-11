@@ -495,7 +495,7 @@ class DnSpyClient:
         except json.JSONDecodeError:
             return text
 
-    # P02 structured-edit convenience methods.  They deliberately preserve the caller's
+    # Structured-edit convenience methods.  They deliberately preserve the caller's
     # request_id and expected_revision: reconnecting never guesses a new endpoint or silently
     # replays a mutation payload.
     def edit_begin(
@@ -504,6 +504,7 @@ class DnSpyClient:
         assembly_name: str,
         *,
         module_mvid: str | None = None,
+        source_family_id: str | None = None,
     ) -> Mapping[str, Any]:
         arguments: dict[str, Any] = {
             "request_id": request_id,
@@ -511,6 +512,8 @@ class DnSpyClient:
         }
         if module_mvid is not None:
             arguments["module_mvid"] = module_mvid
+        if source_family_id is not None:
+            arguments["source_family_id"] = source_family_id
         return self._edit_call("edit_begin", arguments)
 
     def edit_status(self) -> Mapping[str, Any]:
@@ -555,6 +558,120 @@ class DnSpyClient:
             "edit_rollback",
             {"request_id": request_id, "transaction_id": transaction_id},
         )
+
+    def edit_commit(
+        self,
+        request_id: str,
+        transaction_id: str,
+        expected_revision: int,
+        review_id: str,
+        review_revision: int,
+        confirmed_risk_ids: list[str] | tuple[str, ...],
+    ) -> Mapping[str, Any]:
+        return self._edit_call("edit_commit", {
+            "request_id": request_id,
+            "transaction_id": transaction_id,
+            "expected_revision": expected_revision,
+            "review_id": review_id,
+            "review_revision": review_revision,
+            "confirmed_risk_ids": list(confirmed_risk_ids),
+        })
+
+    def edit_history(
+        self,
+        *,
+        lineage_id: str | None = None,
+        checkpoint_id: str | None = None,
+        cursor: str | None = None,
+        page_size: int | None = None,
+    ) -> Mapping[str, Any]:
+        arguments: dict[str, Any] = {}
+        for name, value in (("lineage_id", lineage_id), ("checkpoint_id", checkpoint_id),
+                            ("cursor", cursor), ("page_size", page_size)):
+            if value is not None:
+                arguments[name] = value
+        return self._edit_call("edit_history", arguments)
+
+    def edit_undo(self, request_id: str, lineage_id: str, expected_checkpoint_id: str) -> Mapping[str, Any]:
+        return self._edit_call("edit_undo", {
+            "request_id": request_id, "lineage_id": lineage_id,
+            "expected_checkpoint_id": expected_checkpoint_id,
+        })
+
+    def edit_redo(
+        self,
+        request_id: str,
+        lineage_id: str,
+        expected_checkpoint_id: str,
+        *,
+        child_checkpoint_id: str | None = None,
+    ) -> Mapping[str, Any]:
+        arguments = {
+            "request_id": request_id, "lineage_id": lineage_id,
+            "expected_checkpoint_id": expected_checkpoint_id,
+        }
+        if child_checkpoint_id is not None:
+            arguments["child_checkpoint_id"] = child_checkpoint_id
+        return self._edit_call("edit_redo", arguments)
+
+    def edit_restore(
+        self,
+        request_id: str,
+        lineage_id: str,
+        checkpoint_id: str,
+        action: str,
+        *,
+        replay_id: str | None = None,
+        expected_live_fingerprint: str | None = None,
+        confirm_validated_drift: bool | None = None,
+    ) -> Mapping[str, Any]:
+        arguments: dict[str, Any] = {
+            "request_id": request_id, "lineage_id": lineage_id,
+            "checkpoint_id": checkpoint_id, "action": action,
+        }
+        for name, value in (("replay_id", replay_id), ("expected_live_fingerprint", expected_live_fingerprint),
+                            ("confirm_validated_drift", confirm_validated_drift)):
+            if value is not None:
+                arguments[name] = value
+        return self._edit_call("edit_restore", arguments)
+
+    def edit_export(
+        self,
+        request_id: str,
+        lineage_id: str,
+        checkpoint_id: str,
+        *,
+        output_path: str | None = None,
+    ) -> Mapping[str, Any]:
+        arguments = {"request_id": request_id, "lineage_id": lineage_id, "checkpoint_id": checkpoint_id}
+        if output_path is not None:
+            arguments["output_path"] = output_path
+        return self._edit_call("edit_export", arguments)
+
+    def edit_recover(self, request_id: str, recovery_id: str, action: str) -> Mapping[str, Any]:
+        return self._edit_call("edit_recover", {
+            "request_id": request_id, "recovery_id": recovery_id, "action": action,
+        })
+
+    def edit_accept_live(
+        self,
+        request_id: str,
+        assembly_name: str,
+        source_family_id: str,
+        superseded_lineage_id: str,
+        expected_live_fingerprint: str,
+        *,
+        module_mvid: str | None = None,
+    ) -> Mapping[str, Any]:
+        arguments = {
+            "request_id": request_id, "assembly_name": assembly_name,
+            "source_family_id": source_family_id, "superseded_lineage_id": superseded_lineage_id,
+            "expected_live_fingerprint": expected_live_fingerprint,
+            "acknowledge_new_baseline": True,
+        }
+        if module_mvid is not None:
+            arguments["module_mvid"] = module_mvid
+        return self._edit_call("edit_accept_live", arguments)
 
     def _edit_call(self, name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         result = self.call_tool_json(name, arguments)

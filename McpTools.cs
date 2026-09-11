@@ -1130,12 +1130,8 @@ namespace dnSpy.Extension.MCP
                         "find_path_to_type" => FindPathToType(arguments),
                         "list_methods" => ListMethods(arguments),
                         "get_method_il" => GetMethodIL(arguments),
-                        "patch_method_il" => PatchMethodIL(arguments),
-                        "force_return" => ForceReturn(arguments),
-                        "nop_method" => NopMethod(arguments),
-                        "revert_method_il" => RevertMethodIL(arguments),
-                        "rename_symbol_by_token" => RenameSymbolByToken(arguments),
-                        "save_assembly" => SaveAssembly(arguments),
+                        "patch_method_il" or "force_return" or "nop_method" or "revert_method_il"
+                            or "rename_symbol_by_token" or "save_assembly" => LegacyWriteRequiresContext(toolName),
                         _ => new CallToolResult
                         {
                             Content = new List<ToolContent> {
@@ -1157,6 +1153,13 @@ namespace dnSpy.Extension.MCP
                 }
             });
         }
+
+		static CallToolResult LegacyWriteRequiresContext(string toolName) => new CallToolResult {
+			IsError = true,
+			Content = new List<ToolContent> { new ToolContent {
+				Text = "Write tool '" + toolName + "' requires StaticToolProvider's authoritative MCP call context."
+			} },
+		};
 
         /// <summary>
         /// Loads .NET assemblies/modules from disk into dnSpy's document tree so the other tools can

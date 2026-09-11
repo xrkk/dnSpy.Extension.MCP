@@ -1,0 +1,19 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-014",
+  "acc_id": "ACC-014",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc014b.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned and dnSpy freshly started",
+  "actions": [
+    "seed one real commit; begin a second transaction with the finalize storage fault armed and park it at the commit_after_live_complete barrier",
+    "take a REAL read-only filesystem lock on the owned temp package on disk (locker subprocess; no product seam)",
+    "release the barrier: the finalize fault creates a checkpoint_finalize partial (retry_checkpoint / undo_live)",
+    "edit_recover(undo_live): the real inverse restores pre-live, then the real WindowsEditCheckpointStore.DeleteTemp fails on the locked file",
+    "assert EDIT_CHECKPOINT_CLEANUP_FAILED with recovery_kind aborted_temp_cleanup, state committing and allowed_actions exactly [cleanup_temp]",
+    "release the lock; edit_recover(cleanup_temp) resolves to idle; the temp file is gone from disk"
+  ],
+  "expected": "a genuinely locked (but observable) temp drives the real adapter cleanup failure into the unique aborted_temp_cleanup recovery; unlock then cleanup_temp restores idle with the temp removed; no forged success and no wedge"
+}

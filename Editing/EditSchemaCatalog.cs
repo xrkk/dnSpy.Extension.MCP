@@ -11,12 +11,16 @@ internal sealed class EditSchemaCatalog : IDisposable {
 	readonly JsonDocument lowering;
 	readonly JsonDocument faults;
 	readonly JsonDocument mutations;
+	readonly JsonDocument checkpointPackage;
+	readonly JsonDocument acceptance;
 
 	public EditSchemaCatalog() {
-		schemas = Load("dnspy.edit.expanded-tool-schemas.json");
+		schemas = Load("dnspy.edit.p03-tool-schemas.json");
 		lowering = Load("dnspy.edit.operation-lowering.json");
 		faults = Load("dnspy.edit.fault-golden.json");
 		mutations = Load("dnspy.edit.mutation-corpus.json");
+		checkpointPackage = Load("dnspy.edit.checkpoint-package.schema.json");
+		acceptance = Load("dnspy.edit.p03-acceptance.json");
 	}
 
 	public Dictionary<string, object> InputSchema(string tool) => ConvertObject(schemas.RootElement.GetProperty(tool).GetProperty("inputSchema"));
@@ -25,6 +29,8 @@ internal sealed class EditSchemaCatalog : IDisposable {
 	public JsonElement Lowering => lowering.RootElement;
 	public JsonElement Faults => faults.RootElement;
 	public JsonElement Mutations => mutations.RootElement;
+	public JsonElement CheckpointPackage => checkpointPackage.RootElement;
+	public JsonElement Acceptance => acceptance.RootElement;
 
 	static JsonDocument Load(string suffix) {
 		var assembly = typeof(EditSchemaCatalog).Assembly;
@@ -53,5 +59,5 @@ internal sealed class EditSchemaCatalog : IDisposable {
 		}
 	}
 
-	public void Dispose() { schemas.Dispose(); lowering.Dispose(); faults.Dispose(); mutations.Dispose(); }
+	public void Dispose() { schemas.Dispose(); lowering.Dispose(); faults.Dispose(); mutations.Dispose(); checkpointPackage.Dispose(); acceptance.Dispose(); }
 }

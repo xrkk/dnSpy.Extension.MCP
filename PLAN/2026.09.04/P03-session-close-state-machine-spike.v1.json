@@ -1,0 +1,52 @@
+{
+  "schema_version": "dnspy.p03.session-close-spike.v1",
+  "scope": "commit/session-close/live/inverse/temp/finalize/recovery",
+  "decisions": {
+    "session_close_role": "release_authoritative_transport_owner_and_slot_only; an operation holding the coordinator serial gate determines its own outcome",
+    "checkpoint_rule": "only verified post-live can produce a checkpoint or checkpoint-finalize partial",
+    "unknown_rule": "live_state_unknown has no product recovery action; only status/query are allowed until dnSpy process restart reloads the source",
+    "unknown_temp_rule": "the bound temp is retained as an untrusted counted residual; it is never finalized, trusted, or remotely deleted",
+    "terminal_rule": "terminal request records remain session-scoped and may disappear with the closed session; cross-session acceptance uses observable state, not a new terminal query",
+    "cleanup_rule": "aborted_temp_cleanup is the only known-pre-state recovery; cleanup_temp may only delete the bound temp"
+  },
+  "observable_surfaces": {
+    "idle_pre_state": ["edit_status.state=idle", "live_fingerprint=pre", "history.head=pre", "package_identity=pre", "owned_temp_absent"],
+    "checkpoint_success": ["edit_status.state=idle", "history.head=post", "package_identity=post", "owned_temp_absent"],
+    "checkpoint_partial": ["edit_status.state=committed_without_checkpoint", "recovery.kind=checkpoint_finalize", "history.head=pre", "live_fingerprint=post", "owned_temp=present"],
+    "cleanup_pending": ["edit_status.state=committing", "recovery.kind=aborted_temp_cleanup", "history.head=pre", "live_fingerprint=pre", "owned_temp=present"],
+    "unknown": ["edit_status.state=live_state_unknown", "recovery=null", "history.head=pre", "owned_temp_reported_as_untrusted_residual", "recovery_guidance=restart_dnspy"]
+  },
+  "transitions": [
+    {"id":"T01","phase":"pre_linearization","live":"pre","inverse":"not_needed","storage":"no_temp_or_cleanup_ok","state":"idle","surface":"idle_pre_state","checkpoint":false,"allowed":["query","begin"]},
+    {"id":"T02","phase":"pre_linearization","live":"pre","inverse":"not_needed","storage":"cleanup_failed","state":"committing","surface":"cleanup_pending","checkpoint":false,"allowed":["query","cleanup_temp"]},
+    {"id":"T03","phase":"post_linearization","live":"post_verified","inverse":"not_needed","storage":"finalize_ok","state":"idle","surface":"checkpoint_success","checkpoint":true,"allowed":["query","begin","history_navigation","export"]},
+    {"id":"T04","phase":"post_linearization","live":"post_verified","inverse":"not_needed","storage":"finalize_failed","state":"committed_without_checkpoint","surface":"checkpoint_partial","checkpoint":false,"allowed":["query","retry_checkpoint","undo_live"]},
+    {"id":"T05","phase":"post_linearization","live":"forward_failed","inverse":"succeeded","storage":"cleanup_ok","state":"idle","surface":"idle_pre_state","checkpoint":false,"allowed":["query","begin"]},
+    {"id":"T06","phase":"post_linearization","live":"forward_failed","inverse":"succeeded","storage":"cleanup_failed","state":"committing","surface":"cleanup_pending","checkpoint":false,"allowed":["query","cleanup_temp"]},
+    {"id":"T07","phase":"post_linearization","live":"forward_failed","inverse":"failed","storage":"temp_retained","state":"live_state_unknown","surface":"unknown","checkpoint":false,"allowed":["query"]},
+    {"id":"T08","phase":"recovery","live":"post_verified","inverse":"not_needed","storage":"retry_finalize_ok","state":"idle","surface":"checkpoint_success","checkpoint":true,"allowed":["query","begin","history_navigation","export"]},
+    {"id":"T09","phase":"recovery","live":"post_verified","inverse":"not_needed","storage":"retry_finalize_failed","state":"committed_without_checkpoint","surface":"checkpoint_partial","checkpoint":false,"allowed":["query","retry_checkpoint","undo_live"]},
+    {"id":"T10","phase":"recovery","live":"post_verified","inverse":"succeeded","storage":"cleanup_ok","state":"idle","surface":"idle_pre_state","checkpoint":false,"allowed":["query","begin"]},
+    {"id":"T11","phase":"recovery","live":"post_verified","inverse":"succeeded","storage":"cleanup_failed","state":"committing","surface":"cleanup_pending","checkpoint":false,"allowed":["query","cleanup_temp"]},
+    {"id":"T12","phase":"recovery","live":"post_verified","inverse":"failed","storage":"temp_retained","state":"live_state_unknown","surface":"unknown","checkpoint":false,"allowed":["query"]},
+    {"id":"T13","phase":"recovery","live":"pre","inverse":"not_needed","storage":"cleanup_retry_ok","state":"idle","surface":"idle_pre_state","checkpoint":false,"allowed":["query","begin"]},
+    {"id":"T14","phase":"recovery","live":"pre","inverse":"not_needed","storage":"cleanup_retry_failed","state":"committing","surface":"cleanup_pending","checkpoint":false,"allowed":["query","cleanup_temp"]},
+    {"id":"T15","phase":"process_restart","live":"source_reloaded","inverse":"not_available","storage":"unknown_temp_becomes_counted_residual","state":"idle","surface":"idle_pre_state","checkpoint":false,"allowed":["query","begin"]}
+  ],
+  "session_invariants": {
+    "closed_session_invalid": true,
+    "closed_session_slot_released": true,
+    "new_session_cannot_resume_transaction": true,
+    "new_session_can_query_state_and_history": true,
+    "uncertain_mutation_request_is_never_replayed": true,
+    "cross_session_terminal_query_required": false
+  },
+  "acceptance_oracles": {
+    "T01_T05": "new session proves unchanged live/head/package and no owned temp; no terminal lookup is required",
+    "T03": "new session proves exactly one post checkpoint through history and package identity",
+    "T04_T09": "new session proves checkpoint-finalize recovery through status and allowed actions",
+    "T02_T06_T11_T14": "new session proves cleanup-only recovery and exact temp identity",
+    "T07_T12": "new session proves unknown blocks every mutation/export and exposes restart-only guidance; DNMCP_TEST may clean the fixture after the oracle but is not a product recovery",
+    "all": "old session fails, one of sixteen slots is released, and no request is replayed"
+  }
+}

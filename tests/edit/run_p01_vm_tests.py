@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "tests/edit"))
 
 from ui_apply_settings import UiMcpClient, apply_settings  # noqa: E402
 
-VM_URL = "http://192.168.204.149:28787/mcp"
+VM_URL = "http://192.168.204.240:28787/mcp"
 VM_ROOT = r"C:\Tools\dnspy-mcp-edit-tests\repo"
 VM_EXTENSION = r"C:\Tools\dnSpy\bin\Extensions\dnSpy.Extension.MCP\dnSpy.Extension.MCP.x.dll"
 
@@ -305,7 +305,7 @@ def main() -> int:
             summary["existing_regressions"] = run_existing_regressions(client)
     finally:
         try:
-            configure_host(client, "192.168.204.149")
+            configure_host(client, "192.168.204.240")
         except Exception:
             pass
         powershell(client, 'Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | Stop-Process -Force; Write-Output "stopped"')

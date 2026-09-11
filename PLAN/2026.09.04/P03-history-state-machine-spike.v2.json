@@ -1,0 +1,74 @@
+{
+  "schema_version": "dnspy.p03.history-state-spike.v2",
+  "scope": "unknown-product-actions/cleanup-recovery/history-navigation/replay-classification",
+  "decisions": {
+    "unknown_product_rule": "live_state_unknown permits edit_status and edit_history only; every product mutation including edit_rollback and every export returns EDIT_LIVE_STATE_UNKNOWN without changing state",
+    "unknown_exit_rule": "only dnSpy process restart and source reload exits live_state_unknown; DNMCP_TEST emergency cleanup is fixture teardown after assertions and is not a product transition",
+    "cleanup_rule": "after inverse restores the verified pre-live state but bound-temp deletion fails, the sole public state is committing with recovery.kind=aborted_temp_cleanup and allowed action cleanup_temp",
+    "head_live_rule": "every successful direct history navigation leaves the selected head exact under the current toolchain and live image/semantic fingerprints equal to that exact replay result",
+    "navigation_rule": "Undo, Redo, and exact restore assess the target under the current toolchain before any write; exact may navigate, validated_drift requires explicit edit_restore confirmation and creates a migration child, unverified_drift and unknown versions are rejected without side effects",
+    "migration_rule": "a migration child records the current exact image with a zero-semantic operation and the confirmed validated parent; automatic navigation to a validated parent is rejected rather than moving head to a non-exact node"
+  },
+  "unknown_actions": [
+    {"action": "edit_status", "class": "query", "result": "allowed", "state_after": "live_state_unknown"},
+    {"action": "edit_history", "class": "query", "result": "allowed", "state_after": "live_state_unknown"},
+    {"action": "edit_begin", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_apply", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_review", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_rollback", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_commit", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_undo", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_redo", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_restore", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_accept_live", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_recover", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "edit_export", "class": "export", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "legacy_mutation", "class": "mutation", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"},
+    {"action": "legacy_save", "class": "export", "result": "EDIT_LIVE_STATE_UNKNOWN", "state_after": "live_state_unknown"}
+  ],
+  "cleanup_transitions": [
+    {
+      "id": "C01",
+      "event": "partial_undo_live_inverse_succeeded_cleanup_failed",
+      "state": "committing",
+      "recovery_kind": "aborted_temp_cleanup",
+      "allowed_actions": ["edit_status", "edit_history", "cleanup_temp"],
+      "inverse_may_repeat": false
+    },
+    {
+      "id": "C02",
+      "event": "cleanup_temp_retry_failed",
+      "state": "committing",
+      "recovery_kind": "aborted_temp_cleanup",
+      "allowed_actions": ["edit_status", "edit_history", "cleanup_temp"],
+      "inverse_may_repeat": false
+    },
+    {
+      "id": "C03",
+      "event": "cleanup_temp_retry_succeeded",
+      "state": "idle",
+      "recovery_kind": null,
+      "allowed_actions": ["query", "begin", "history_navigation", "export"],
+      "inverse_may_repeat": false
+    }
+  ],
+  "navigation_transitions": [
+    {"id": "N01", "target_classification": "exact", "action": "undo_or_redo", "result": "navigate", "head_changes": true, "live_changes_to_current_replay": true, "checkpoint_created": false},
+    {"id": "N02", "target_classification": "validated_drift", "action": "undo_or_redo", "result": "EDIT_REPLAY_CONFIRMATION_REQUIRED", "head_changes": false, "live_changes_to_current_replay": false, "checkpoint_created": false},
+    {"id": "N03", "target_classification": "validated_drift", "action": "restore_assess", "result": "diagnostic_with_replay_id", "head_changes": false, "live_changes_to_current_replay": false, "checkpoint_created": false},
+    {"id": "N04", "target_classification": "validated_drift", "action": "restore_apply_confirmed", "result": "create_exact_migration_child", "head_changes": true, "live_changes_to_current_replay": true, "checkpoint_created": true},
+    {"id": "N05", "target_classification": "unverified_drift", "action": "undo_redo_or_restore_apply", "result": "EDIT_REPLAY_UNVERIFIED", "head_changes": false, "live_changes_to_current_replay": false, "checkpoint_created": false},
+    {"id": "N06", "target_classification": "unknown_format_kind_or_version", "action": "undo_redo_or_restore", "result": "EDIT_OPERATION_VERSION_UNSUPPORTED", "head_changes": false, "live_changes_to_current_replay": false, "checkpoint_created": false},
+    {"id": "N07", "target_classification": "exact_migration_child", "action": "redo_or_restore", "result": "navigate", "head_changes": true, "live_changes_to_current_replay": true, "checkpoint_created": false},
+    {"id": "N08", "target_classification": "validated_parent_of_migration", "action": "undo", "result": "EDIT_REPLAY_CONFIRMATION_REQUIRED", "head_changes": false, "live_changes_to_current_replay": false, "checkpoint_created": false}
+  ],
+  "invariants": {
+    "successful_navigation_head_is_exact": true,
+    "begin_and_commit_require_exact_head_and_matching_live_image_and_semantic_fingerprints": true,
+    "validated_confirmation_always_creates_migration_child": true,
+    "unverified_or_unknown_has_zero_live_package_head_output_side_effects": true,
+    "unknown_has_no_product_exit_action": true,
+    "cleanup_has_one_state_kind_and_action": true,
+    "no_full_assembly_per_checkpoint": true
+  }
+}

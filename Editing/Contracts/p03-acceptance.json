@@ -1,0 +1,16 @@
+{
+  "schema_version": "dnspy.edit.p03.acceptance.v1",
+  "architectures": ["x86", "x64"],
+  "evidence_required": ["fixture_sha256", "dnspy_version", "extension_version", "tool_version", "tfm", "architecture", "request", "response", "state", "fingerprints", "package_or_output_identity", "cleanup"],
+  "cases": [
+    {"id":"ACC-011","actions":["commit","undo","redo","branch","ctrl_z","migration_parent_undo"],"expect":["exact_head","live_image_semantic_match","branch_preserved","validated_auto_navigation_rejected"]},
+    {"id":"ACC-012","actions":["commit_repeated_payload","restore_and_branch","history_pages","source_identity_matrix"],"expect":["one_baseline","payload_deduplicated","immutable_parent_tree","unique_source_resolution"]},
+    {"id":"ACC-013","actions":["assess_exact","assess_validated","assess_unverified","unknown_version","migration_navigation_matrix"],"expect":["three_state_permissions","confirmed_migration_child","rejected_paths_zero_delta"]},
+    {"id":"ACC-014","actions":["default_export","explicit_export","reload_fault","replace_fault","legacy_save"],"expect":["source_identity_unchanged","atomic_output","old_output_unchanged_on_failure","legacy_projection"]},
+    {"id":"ACC-019","actions":["barrier_schema_matrix","delete_session","stream_disconnect","listener_stop","reinitialize","unknown_product_matrix"],"expect":["six_commit_barriers_entered","old_session_invalid","slot_released","unique_observable_outcome","no_request_replay"]},
+    {"id":"ACC-020","actions":["six_legacy_tools","generic_type_method_field_rename","undo_redo_export_reload_execute","source_scan"],"expect":["single_write_path","reference_repair_persisted","safe_save_difference","old_state_removed"]},
+    {"id":"ACC-024","actions":["storage_fault_matrix","retry_checkpoint","undo_live","cleanup_temp","wrong_action","repeat_action"],"expect":["single_recovery","no_repeat_forward_or_inverse","unknown_restart_only","exports_blocked"]},
+    {"id":"ACC-025","actions":["external_live_mutation","begin","accept_live","history"],"expect":["divergence_detected","explicit_new_baseline","old_lineage_readable","no_forged_operation"]},
+    {"id":"ACC-029","actions":["twenty_checkpoints","capacity_boundaries","malicious_zip","residual_accounting","concurrency"],"expect":["single_package","single_baseline","bounded_temp","deterministic_limits","residual_untrusted"]}
+  ]
+}
