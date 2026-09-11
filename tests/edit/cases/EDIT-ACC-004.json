@@ -1,0 +1,22 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-004",
+  "acc_id": "ACC-004",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll (SHA-256 5F4B6D832A741E6E402684B4793006DCBBABD1783D64C17AF6B9B29ECBE997EE)",
+  "driver": "p03_vm_acc004.py",
+  "precondition": "DNMCP_TEST=1; dnSpy with deployed plugin; loopback 15378 healthy; ArtifactRoot edit-checkpoints/edit-output cleaned and dnSpy freshly started",
+  "actions": [
+    "C1 generic constraints: method_add commit then whole-list constraints update (harness slice-1 reload-exact; integration addressability via same-batch object ids)",
+    "C2 custom attribute: attribute_add commit (obsolete with fixed args), arity-mismatch illegal rejected, attribute_remove commit restores absence",
+    "C3 MethodImpl: method_update.impl_attributes legal commit and frozen illegal vector 2048 rejected",
+    "C4 layout: sequential pack 8 commit with layout_change risk, illegal pack 3 rejected, auto restore commit",
+    "C5 marshal: covered by harness slice-2 (field/parameter shapes reload-exact; custom-without-guid rejected)",
+    "C6 P/Invoke: method_add with pinvoke (kernel32/Sleep/ansi/last_error) commit with external_code_entry risk; pinvoke on a non-static-extern instance method rejected",
+    "C7 security: security_add deny commit with security_change risk, unknown action rejected, security_remove commit",
+    "C8 initial data: type-sized initial_data commit with data_section_change risk, wrong-size rejected, clear commit (harness slice-1 reload byte-exact with RVA)",
+    "F1-F3: coordinator idle, single lineage, undo/redo restore"
+  ],
+  "expected": "per REQ-003/RACC-004: every advanced-metadata category has one real success sample (reloaded semantics preserved per harness write/reload probes) and one illegal-structure sample rejected before any mutation with unchanged fingerprints; risk reporting per the P04 risk table (CON-017); the head identity recorded from the deterministic replay graph keeps the staged exact gate green and later begins exact"
+}

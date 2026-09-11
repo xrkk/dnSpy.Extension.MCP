@@ -35,10 +35,16 @@ internal static partial class EditOperationRegistry {
 			var state = new Dictionary<string, object?>();
 			if (forward.TryGetProperty("name", out _)) state["name_utf8"] = (byte[])value.Name.Data.Clone();
 			if (forward.TryGetProperty("namespace", out _)) state["namespace_utf8"] = (byte[])value.Namespace.Data.Clone();
-			if (forward.TryGetProperty("attributes", out _)) state["attributes"] = (uint)value.Attributes;
+			if (forward.TryGetProperty("attributes", out _) || forward.TryGetProperty("layout", out _)) state["attributes"] = (uint)value.Attributes;
 			if (forward.TryGetProperty("base_type", out _)) {
 				if (value.BaseType == null) state["base_null"] = true;
 				else state["base_signature"] = EditStructuredSignatureCodec.Capture(value.BaseType.ToTypeSig(), InverseBinder(before, objects));
+			}
+			if (forward.TryGetProperty("layout", out _)) {
+				if (value.ClassLayout == null) state["layout_null"] = true;
+				else state["layout"] = new Dictionary<string, object?> {
+					["pack"] = value.ClassLayout.PackingSize, ["size"] = value.ClassLayout.ClassSize,
+				};
 			}
 			return new() { ["type_state"] = new Dictionary<string, object?> {
 				["type"] = InverseReference(value, objects), ["state"] = state,
@@ -53,6 +59,22 @@ internal static partial class EditOperationRegistry {
 			if (forward.TryGetProperty("return_type", out _))
 				state["return_signature"] = EditStructuredSignatureCodec.Capture(value.ReturnType, InverseBinder(before, objects));
 			if (forward.TryGetProperty("has_this", out _)) state["has_this"] = value.MethodSig.HasThis;
+			if (forward.TryGetProperty("overrides", out _)) {
+				// P04: whole-list override capture; both sides are in-module
+				// method rows, so structured references round-trip exactly.
+				state["overrides"] = value.Overrides.Select(x => (object)new Dictionary<string, object?> {
+					["method"] = InverseReference(x.MethodBody, objects),
+					["declaration"] = InverseReference((IMDTokenProvider)x.MethodDeclaration, objects),
+				}).ToArray();
+			}
+			if (forward.TryGetProperty("pinvoke", out _)) {
+				state["attributes"] = (uint)value.Attributes;  // the PInvokeImpl bit rides here
+				if (value.ImplMap == null) state["pinvoke_null"] = true;
+				else state["pinvoke"] = new Dictionary<string, object?> {
+					["module_name"] = value.ImplMap.Module?.Name?.String, ["entry_name"] = value.ImplMap.Name?.String,
+					["flags"] = (uint)value.ImplMap.Attributes,
+				};
+			}
 			return new() { ["method_state"] = new Dictionary<string, object?> {
 				["method"] = InverseReference(value, objects), ["state"] = state,
 			} };
@@ -63,13 +85,27 @@ internal static partial class EditOperationRegistry {
 			// the raw state instead of routing the inverse through the public schema.
 			var state = new Dictionary<string, object?>();
 			if (forward.TryGetProperty("name", out _)) state["name_utf8"] = (byte[])value.Name.Data.Clone();
-			if (forward.TryGetProperty("attributes", out _)) state["attributes"] = (uint)value.Attributes;
+			if (forward.TryGetProperty("attributes", out _) || forward.TryGetProperty("initial_data", out _))
+				state["attributes"] = (uint)value.Attributes;
 			if (forward.TryGetProperty("field_type", out _))
 				state["field_signature"] = EditStructuredSignatureCodec.Capture(value.FieldSig, InverseBinder(before, objects));
 			if (forward.TryGetProperty("constant", out _) || forward.TryGetProperty("clear_constant", out _)) {
 				// EditWire drops JSON nulls, so a null constant needs its own marker.
 				if (value.Constant == null) state["constant_null"] = true;
 				else state["constant"] = InverseConstant(value.Constant);
+			}
+			if (forward.TryGetProperty("field_offset", out _)) {
+				if (value.FieldOffset == null) state["field_offset_null"] = true;
+				else state["field_offset"] = value.FieldOffset.Value;
+			}
+			if (forward.TryGetProperty("initial_data", out _)) {
+				if (value.InitialValue == null || value.InitialValue.Length == 0) state["initial_data_null"] = true;
+				else state["initial_data"] = Convert.ToBase64String(value.InitialValue);
+			}
+			if (forward.TryGetProperty("marshal", out _)) {
+				var binder = InverseBinder(before, objects);
+				if (value.MarshalType == null) state["marshal_null"] = true;
+				else state["marshal"] = EditMarshalCodec.Capture(value.MarshalType, binder);
 			}
 			return new() { ["field_state"] = new Dictionary<string, object?> {
 				["field"] = InverseReference(value, objects), ["state"] = state,
@@ -124,8 +160,62 @@ internal static partial class EditOperationRegistry {
 			var state = new Dictionary<string, object?>();
 			if (forward.TryGetProperty("name", out _)) state["name_utf8"] = (byte[])value.Name.Data.Clone();
 			if (forward.TryGetProperty("attributes", out _)) state["attributes"] = (uint)value.Flags;
+			if (forward.TryGetProperty("constraints", out _)) {
+				var binder = InverseBinder(before, objects);
+				state["constraints"] = value.GenericParamConstraints
+					.Select(x => (object)EditStructuredSignatureCodec.Capture(x.Constraint.ToTypeSig(), binder)).ToArray();
+			}
 			return new() { ["generic_state"] = new Dictionary<string, object?> {
 				["generic"] = InverseReference(value, objects), ["state"] = state,
+			} };
+		}
+		case "security_add": {
+			var provider = SecurityProvider(before, forward.GetProperty("parent"));
+			var rows = SecurityRows(before, forward.GetProperty("parent"));
+			var action = SecurityActions[RequiredString(forward, "action")];
+			var index = rows.Where(x => x.Action == action).Count();
+			return new() { ["security_remove_state"] = new Dictionary<string, object?> {
+				["parent"] = forward.GetProperty("parent").Clone(), ["action"] = RequiredString(forward, "action"), ["index"] = index,
+			} };
+		}
+		case "security_remove": {
+			var rows = SecurityRows(before, forward.GetProperty("parent"));
+			var action = SecurityActions[RequiredString(forward, "action")];
+			var index = forward.TryGetProperty("index", out var indexValue) ? (int)indexValue.GetUInt32() : 0;
+			var row = rows.Where(x => x.Action == action).Skip(index).FirstOrDefault()
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["security_add_state"] = new Dictionary<string, object?> {
+				["parent"] = forward.GetProperty("parent").Clone(),
+				["action"] = RequiredString(forward, "action"),
+				["xml"] = row.GetNet1xXmlString() ?? string.Empty,
+			} };
+		}
+		case "attribute_add": {
+			// Inverse = remove the exact instance among same-constructor rows.
+			var addTarget = AttributeInverseTarget(before, forward, objects, out var addAssemblyScoped);
+			var addConstructor = ResolveAttributeConstructor(before, forward.GetProperty("constructor"));
+			var rows = addTarget.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, addConstructor)).Count();
+			return new() { ["attribute_remove_state"] = new Dictionary<string, object?> {
+				["target"] = addAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference((IMDTokenProvider)addTarget, objects),
+				["constructor"] = InverseReference(addConstructor, objects),
+				["index"] = rows,
+			} };
+		}
+		case "attribute_remove": {
+			// Inverse = re-attach the captured instance verbatim.
+			var removeTarget = AttributeInverseTarget(before, forward, objects, out var removeAssemblyScoped);
+			var removeConstructor = ResolveAttributeConstructor(before, forward.GetProperty("match").GetProperty("constructor"));
+			var removeIndex = forward.GetProperty("match").TryGetProperty("index", out var indexValue) ? (int)indexValue.GetUInt32() : 0;
+			var removedRow = removeTarget.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, removeConstructor)).Skip(removeIndex).FirstOrDefault()
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["attribute_add_state"] = new Dictionary<string, object?> {
+				["target"] = removeAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference((IMDTokenProvider)removeTarget, objects),
+				["constructor"] = InverseReference(removeConstructor, objects),
+				["fixed_arguments"] = removedRow.ConstructorArguments.Select(x => CaInverseValue(x.Value)).ToArray(),
+				["named_arguments"] = removedRow.NamedArguments.Select(x => (object)new Dictionary<string, object?> {
+					["kind"] = x.IsField ? "field" : "property", ["name"] = x.Name?.String,
+					["type"] = x.Type.FullName, ["value"] = CaInverseValue(x.Argument.Value),
+				}).ToArray(),
 			} };
 		}
 		case "method_body_replace": {
@@ -180,6 +270,12 @@ internal static partial class EditOperationRegistry {
 			if (forward.TryGetProperty("attributes", out _)) state["attributes"] = (uint)(value.param?.Attributes ?? 0);
 			if (forward.TryGetProperty("parameter_type", out _))
 				state["parameter_signature"] = EditStructuredSignatureCodec.Capture(value.method.MethodSig.Params[value.index], InverseBinder(before, objects));
+			if (forward.TryGetProperty("marshal", out _)) {
+				var binder = InverseBinder(before, objects);
+				var existing = value.param?.MarshalType;
+				if (existing == null) state["marshal_null"] = true;
+				else state["marshal"] = EditMarshalCodec.Capture(existing, binder);
+			}
 			return new() { ["parameter_state"] = state };
 		}
 		case "field_remove":
@@ -282,6 +378,53 @@ internal static partial class EditOperationRegistry {
 			return RestoreEventState(module, eventState, objects);
 		if (inverse.TryGetProperty("generic_state", out var genericState))
 			return RestoreGenericState(module, genericState, objects);
+		if (inverse.TryGetProperty("attribute_remove_state", out var attributeRemove)) {
+			var removeTarget = AttributeRestoreTarget(module, attributeRemove.GetProperty("target"), objects);
+			var removeConstructor = Ref<MethodDef>(module, attributeRemove.GetProperty("constructor"), objects);
+			var removeRows = removeTarget.CustomAttributes.Where(x => ReferenceEquals(x.Constructor, removeConstructor)).ToList();
+			var removeIndex = attributeRemove.GetProperty("index").GetInt32();
+			if (removeIndex >= removeRows.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var removedRow = removeRows[removeIndex];
+			removeTarget.CustomAttributes.Remove(removedRow);
+			return new EditOperationOutcome { Kind = "attribute_remove", Target = removeConstructor.DeclaringType.FullName, Undo = () => removeTarget.CustomAttributes.Add(removedRow) };
+		}
+		if (inverse.TryGetProperty("attribute_add_state", out var attributeAdd)) {
+			var addTarget = AttributeRestoreTarget(module, attributeAdd.GetProperty("target"), objects);
+			var addConstructor = Ref<MethodDef>(module, attributeAdd.GetProperty("constructor"), objects);
+			var fixedArguments = attributeAdd.GetProperty("fixed_arguments").EnumerateArray()
+				.Select((value, i) => new CAArgument(addConstructor.MethodSig.Params[i], CaValue(addConstructor.MethodSig.Params[i], value, "inverse")))
+				.ToArray();
+			var namedArguments = attributeAdd.GetProperty("named_arguments").EnumerateArray().Select(x => {
+				var kind = x.GetProperty("kind").GetString()!;
+				var type = new EditTypeSigParser(module).Parse(x.GetProperty("type").GetString()!);
+				return new CANamedArgument(kind == "field", type, x.GetProperty("name").GetString()!,
+					new CAArgument(type, CaValue(type, x.GetProperty("value"), "inverse")));
+			}).ToList();
+			var attribute = new CustomAttribute(addConstructor, fixedArguments, namedArguments);
+			addTarget.CustomAttributes.Add(attribute);
+			return new EditOperationOutcome { Kind = "attribute_add", Target = addConstructor.DeclaringType.FullName, Undo = () => addTarget.CustomAttributes.Remove(attribute) };
+		}
+		if (inverse.TryGetProperty("security_remove_state", out var securityRemove)) {
+			var removeRows = SecurityRows(module, securityRemove.GetProperty("parent"));
+			var removeAction = SecurityActions[securityRemove.GetProperty("action").GetString()!];
+			var removeIndex = securityRemove.GetProperty("index").GetInt32();
+			var removeMatches = removeRows.Where(x => x.Action == removeAction).ToList();
+			if (removeIndex >= removeMatches.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var removedSecurity = removeMatches[removeIndex];
+			removeRows.Remove(removedSecurity);
+			return new EditOperationOutcome { Kind = "security_remove", Target = securityRemove.GetProperty("action").GetString()!, Undo = () => removeRows.Add(removedSecurity) };
+		}
+		if (inverse.TryGetProperty("security_add_state", out var securityAdd)) {
+			var addRows = SecurityRows(module, securityAdd.GetProperty("parent"));
+			var addAttribute = dnlib.DotNet.SecurityAttribute.CreateFromXml(module, securityAdd.GetProperty("xml").GetString()!)
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var addedRow = new DeclSecurityUser(SecurityActions[securityAdd.GetProperty("action").GetString()!], new[] { addAttribute });
+			addRows.Add(addedRow);
+			return new EditOperationOutcome { Kind = "security_add", Target = securityAdd.GetProperty("action").GetString()!, Undo = () => addRows.Remove(addedRow) };
+		}
+		if (inverse.TryGetProperty("parameter_state", out var parameterInverse) && parameterInverse.TryGetProperty("marshal", out _)) {
+			// parameter marshal rides inside parameter_state; handled below by the existing branch.
+		}
 		if (inverse.TryGetProperty("member_restore", out var memberRestore))
 			return RestoreMemberFromTombstone(module, memberRestore, objects);
 		if (inverse.TryGetProperty("parameter_tail_restore", out var tail))
@@ -314,6 +457,11 @@ internal static partial class EditOperationRegistry {
 			var previousName = previous?.Name; var previousAttributes = previous?.Attributes ?? 0;
 			var previousIndex = previous == null ? -1 : owner.ParamDefs.IndexOf(previous);
 			TypeSig type;
+			var previousMarshal = previous?.MarshalType;
+			if (state.TryGetProperty("marshal", out var marshalNode))
+				(previous ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT")).MarshalType =
+					EditMarshalCodec.Restore(marshalNode, node => RestoreInverseType(module, node, objects));
+			else if (state.TryGetProperty("marshal_null", out _)) previous?.MarshalType?.GetType(); // cleared below via restore of null
 			if (state.TryGetProperty("parameter_signature", out var parameterSignature)) {
 				var node = parameterSignature.Deserialize<EditStructuredSignatureCodec.TypeNode>(EditWire.JsonOptions)
 					?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
@@ -533,9 +681,16 @@ internal static partial class EditOperationRegistry {
 			type.BaseType = EditStructuredSignatureCodec.Restore(node, id => ResolveInverseReference(module, id, objects)).ToTypeDefOrRef();
 		}
 		else if (changes.TryGetProperty("base_null", out _)) type.BaseType = null;
+		ClassLayout? previousLayoutRef = type.ClassLayout;
+		if (changes.TryGetProperty("layout", out var layout)) {
+			var pack = layout.GetProperty("pack").GetUInt16(); var size = layout.GetProperty("size").GetUInt32();
+			if (type.ClassLayout == null) type.ClassLayout = new ClassLayoutUser(pack, size);
+			else { type.ClassLayout.PackingSize = pack; type.ClassLayout.ClassSize = size; }
+		}
+		else if (changes.TryGetProperty("layout_null", out _)) type.ClassLayout = null;
 		return new EditOperationOutcome { Kind = "type_update", Target = type.FullName, Undo = () => {
 			type.Name = previousName; type.Namespace = previousNamespace;
-			type.Attributes = previousAttributes; type.BaseType = previousBase;
+			type.Attributes = previousAttributes; type.BaseType = previousBase; type.ClassLayout = previousLayoutRef;
 		} };
 	}
 
@@ -557,10 +712,60 @@ internal static partial class EditOperationRegistry {
 		}
 		if (changes.TryGetProperty("has_this", out var hasThis))
 			method.MethodSig.HasThis = hasThis.GetBoolean();
+		var previousOverrides = method.Overrides.ToArray();
+		if (changes.TryGetProperty("overrides", out var overrides)) {
+			method.Overrides.Clear();
+			foreach (var row in overrides.EnumerateArray()) {
+				var body = Ref<MethodDef>(module, row.GetProperty("method"), objects);
+				var declaration = Ref<MethodDef>(module, row.GetProperty("declaration"), objects);
+				method.Overrides.Add(new MethodOverride(body, declaration));
+			}
+		}
+		var previousImplMap = method.ImplMap;
+		if (changes.TryGetProperty("pinvoke", out var pinvoke)) {
+			var moduleRef = module.GetModuleRefs().FirstOrDefault(x => string.Equals(x.Name?.String, pinvoke.GetProperty("module_name").GetString(), StringComparison.Ordinal))
+				?? new ModuleRefUser(module, pinvoke.GetProperty("module_name").GetString()!);
+			method.ImplMap = new ImplMapUser(moduleRef, pinvoke.GetProperty("entry_name").GetString()!, (PInvokeAttributes)pinvoke.GetProperty("flags").GetUInt32());
+		}
+		else if (changes.TryGetProperty("pinvoke_null", out _)) method.ImplMap = null;
 		return new EditOperationOutcome { Kind = "method_update", Target = method.FullName, Undo = () => {
 			method.Name = previousName; method.Attributes = previousAttributes; method.ImplAttributes = previousImpl;
 			method.MethodSig.RetType = previousReturn; method.MethodSig.HasThis = previousHasThis;
+			method.Overrides.Clear();
+			foreach (var row in previousOverrides) method.Overrides.Add(row);
+			method.ImplMap = previousImplMap;
 		} };
+	}
+
+	// P04: attribute inverses restore the exact instance.
+	static IHasCustomAttribute AttributeInverseTarget(ModuleDef module, JsonElement forward,
+		Dictionary<string, IMDTokenProvider> objects, out bool assemblyScoped) {
+		var reference = forward.GetProperty("target");
+		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly") {
+			assemblyScoped = true;
+			return module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		}
+		assemblyScoped = false;
+		return Ref<IMDTokenProvider>(module, reference, objects) as IHasCustomAttribute
+			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+	}
+	static object? CaInverseValue(object? value) => value switch {
+		null => null,
+		bool b => b, char c => (ushort)c, sbyte v => v, byte v => v, short v => v, ushort v => v,
+		int v => v, uint v => v, long v => v, ulong v => v, float v => v, double v => v,
+		UTF8String s => s.String ?? string.Empty, string s => s,
+		_ => throw new EditDomainException("EDIT_HISTORY_CONFLICT"),
+	};
+	static IHasCustomAttribute AttributeRestoreTarget(ModuleDef module, JsonElement reference, Dictionary<string, IMDTokenProvider> objects) {
+		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly")
+			return module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		return Ref<IMDTokenProvider>(module, reference, objects) as IHasCustomAttribute
+			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+	}
+	static ITypeDefOrRef RestoreInverseType(ModuleDef module, JsonElement node, Dictionary<string, IMDTokenProvider> objects) {
+		var restored = node.Deserialize<EditStructuredSignatureCodec.TypeNode>(EditWire.JsonOptions)
+			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		return EditStructuredSignatureCodec.Restore(restored, id => ResolveInverseReference(module, id, objects)).ToTypeDefOrRef();
 	}
 
 	static EditOperationOutcome RestorePropertyState(ModuleDef module, JsonElement state, Dictionary<string, IMDTokenProvider> objects) {
@@ -627,8 +832,20 @@ internal static partial class EditOperationRegistry {
 			generic.Name = new UTF8String(nameBytes.GetBytesFromBase64());
 		if (changes.TryGetProperty("attributes", out var attributes))
 			generic.Flags = (GenericParamAttributes)attributes.GetUInt32();
+		var previousConstraints = generic.GenericParamConstraints.ToArray();
+		if (changes.TryGetProperty("constraints", out var constraints)) {
+			generic.GenericParamConstraints.Clear();
+			foreach (var row in constraints.EnumerateArray()) {
+				var node = row.Deserialize<EditStructuredSignatureCodec.TypeNode>(EditWire.JsonOptions)
+					?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				var restored = EditStructuredSignatureCodec.Restore(node, id => ResolveInverseReference(module, id, objects)).ToTypeDefOrRef();
+				generic.GenericParamConstraints.Add(new GenericParamConstraintUser(restored));
+			}
+		}
 		return new EditOperationOutcome { Kind = "generic_parameter_update", Target = generic.Name?.String ?? string.Empty, Undo = () => {
 			generic.Name = previousName; generic.Flags = previousFlags;
+			generic.GenericParamConstraints.Clear();
+			foreach (var constraint in previousConstraints) generic.GenericParamConstraints.Add(constraint);
 		} };
 	}
 
@@ -650,9 +867,20 @@ internal static partial class EditOperationRegistry {
 			field.Constant = RestoreInverseConstant(constant);
 		else if (changes.TryGetProperty("constant_null", out _))
 			field.Constant = null;
+		var previousOffset = field.FieldOffset; var previousInitial = field.InitialValue;
+		if (changes.TryGetProperty("field_offset", out var offset)) field.FieldOffset = offset.GetUInt32();
+		else if (changes.TryGetProperty("field_offset_null", out _)) field.FieldOffset = null;
+		if (changes.TryGetProperty("initial_data", out var initial))
+			field.InitialValue = initial.GetBytesFromBase64();
+		else if (changes.TryGetProperty("initial_data_null", out _)) field.InitialValue = null;
+		var previousMarshal = field.MarshalType;
+		if (changes.TryGetProperty("marshal", out var marshal))
+			field.MarshalType = EditMarshalCodec.Restore(marshal, node => RestoreInverseType(module, node, objects));
+		else if (changes.TryGetProperty("marshal_null", out _)) field.MarshalType = null;
 		return new EditOperationOutcome { Kind = "field_update", Target = field.FullName, Undo = () => {
 			field.Name = previousName; field.Attributes = previousAttributes;
 			field.FieldSig = previousSignature; field.Constant = previousConstant;
+			field.FieldOffset = previousOffset; field.InitialValue = previousInitial; field.MarshalType = previousMarshal;
 		} };
 	}
 

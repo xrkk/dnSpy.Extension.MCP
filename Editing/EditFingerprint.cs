@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 
@@ -91,11 +92,11 @@ internal static class EditFingerprint {
 				foreach (var gp in type.GenericParameters.OrderBy(g => g.Number)) rows.Add(GenericRow("tgp", gp));
 				foreach (var iface in type.Interfaces.OrderBy(i => i.Interface?.FullName, StringComparer.Ordinal)) rows.Add("interface|" + Sig(iface.Interface?.ToTypeSig()) + "|" + Attributes(iface.CustomAttributes));
 				foreach (var field in type.Fields.OrderBy(FieldKey, StringComparer.Ordinal))
-					rows.Add("field|" + FieldKey(field) + "|" + (uint)field.Attributes + "|" + Constant(field.Constant) + "|" + Bytes(field.InitialValue) + "|" + field.FieldOffset + "|" + field.MarshalType + "|" + Attributes(field.CustomAttributes));
+					rows.Add("field|" + FieldKey(field) + "|" + (uint)field.Attributes + "|" + Constant(field.Constant) + "|" + Bytes(field.InitialValue) + "|" + field.FieldOffset + "|" + MarshalRow(field.MarshalType) + "|" + Attributes(field.CustomAttributes));
 				foreach (var method in type.Methods.OrderBy(MethodKey, StringComparer.Ordinal)) {
-					rows.Add("method|" + MethodKey(method) + "|" + (uint)method.Attributes + "|" + (uint)method.ImplAttributes + "|" + method.ImplMap + "|" + Attributes(method.CustomAttributes));
+					rows.Add("method|" + MethodKey(method) + "|" + (uint)method.Attributes + "|" + (uint)method.ImplAttributes + "|" + ImplMapRow(method.ImplMap) + "|" + Attributes(method.CustomAttributes));
 					foreach (var gp in method.GenericParameters.OrderBy(g => g.Number)) rows.Add(GenericRow("mgp", gp));
-					foreach (var p in method.ParamDefs.OrderBy(p => p.Sequence)) rows.Add("param|" + p.Sequence + "|" + p.Name + "|" + (uint)p.Attributes + "|" + Constant(p.Constant) + "|" + p.MarshalType + "|" + Attributes(p.CustomAttributes));
+					foreach (var p in method.ParamDefs.OrderBy(p => p.Sequence)) rows.Add("param|" + p.Sequence + "|" + p.Name + "|" + (uint)p.Attributes + "|" + Constant(p.Constant) + "|" + MarshalRow(p.MarshalType) + "|" + Attributes(p.CustomAttributes));
 				if (!method.HasBody) continue;
 				// KeepOldMaxStack is a dnlib writer hint and is never part of the
 				// encoded method body.  During writer/reload validation dnlib may also
@@ -147,7 +148,24 @@ internal static class EditFingerprint {
 	static string PropertyKey(PropertyDef value) => value.DeclaringType?.FullName + "::" + value.Name + PropertySignature(value.PropertySig);
 	static string EventKey(EventDef value) => value.DeclaringType?.FullName + "::" + value.Name + ":" + Sig(value.EventType?.ToTypeSig());
 	static string Bytes(byte[]? bytes) => bytes == null ? string.Empty : EditWire.Sha256(bytes);
-	static string Attributes(CustomAttributeCollection attributes) => string.Join(",", attributes.Select(a => a.Constructor?.FullName + ":" + a.RawData).OrderBy(x => x, StringComparer.Ordinal));
+	static string Attributes(CustomAttributeCollection attributes) => string.Join(",", attributes.Select(CustomAttributeRow).OrderBy(x => x, StringComparer.Ordinal));
+	// RawData is null for constructed attributes and a byte[] after a reload, so
+	// the canonical row projects the parsed shape instead (P04 round-trip fact).
+	static string CustomAttributeRow(CustomAttribute a) {
+		var fixedArguments = string.Join(",", a.ConstructorArguments.Select(x => x.Value == null ? "null" : x.Value.ToString()));
+		var named = string.Join(",", a.NamedArguments.Select(x => (x.IsField ? "f:" : "p:") + x.Name + "=" + (x.Argument.Value == null ? "null" : x.Argument.Value.ToString())).OrderBy(x => x, StringComparer.Ordinal));
+		return a.Constructor?.FullName + ":" + fixedArguments + ":" + named;
+	}
+	// MarshalType and ImplMap rows differ as User-vs-MD object ToString; project
+	// their semantic fields instead (P04).
+	static string MarshalRow(MarshalType? marshal) {
+		if (marshal == null) return "";
+		return JsonSerializer.Serialize(EditMarshalCodec.Capture(marshal, sig => (object)sig.FullName), EditWire.JsonOptions);
+	}
+	static string ImplMapRow(ImplMap? map) {
+		if (map == null) return "";
+		return map.Module?.Name + ":" + map.Name + ":" + (uint)map.Attributes;
+	}
 	static string InstructionIndex(IList<Instruction> instructions, Instruction? instruction) => instruction == null ? "end" : instructions.IndexOf(instruction).ToString(CultureInfo.InvariantCulture);
 	static string Constant(Constant? value) => value == null ? string.Empty : value.Type + ":" + System.Convert.ToString(value.Value, CultureInfo.InvariantCulture);
 	static string Operand(object? operand, IList<Instruction> instructions) {

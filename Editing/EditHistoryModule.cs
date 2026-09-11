@@ -264,7 +264,23 @@ internal sealed class EditHistoryModule : IDisposable {
 			if (binding.BaseCheckpointId != preHead) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		}
 		var checkpointId = EditWire.NewId("checkpoint");
-		var operations = SerializeOperations(next, checkpointId, preHead, normalizedOperations);
+		var operations = SerializeOperations(next, checkpointId, preHead, normalizedOperations, out var replayModule);
+		// P04: the recorded head identity comes from the deterministic replay graph,
+		// not the private copy — reference rows created by prefix operations (e.g.
+		// attribute ctors) have different provenance in a private module loaded
+		// from live bytes, which made the staged exact gate and every later
+		// begin/replay compare images across provenance classes. The replay graph
+		// is the single canonical image source; semantics still cross-check
+		// against the validated private module below.
+		string replayImage; string replaySemantic;
+		try {
+			replayImage = EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replayModule));
+			replaySemantic = EditFingerprint.ComputeRoundtrip(replayModule);
+			if (replaySemantic != targetSemantic) throw new EditDomainException("EDIT_VALIDATION_FAILED",
+				EditWorkspace.ValidationDetails("replay_private_semantic", operationKind, EditFingerprint.Difference(replayModule, workspace.PrivateModule)));
+		}
+		finally { replayModule.Dispose(); }
+		targetImage = replayImage; targetSemantic = replaySemantic;
 		var operationBytes = JsonSerializer.SerializeToUtf8Bytes(operations, EditWire.JsonOptions);
 		var node = Node(checkpointId, preHead, operationKind, operationBytes, targetImage, targetSemantic,
 			next.Manifest.Checkpoints.Count, reviewId, reviewRevision, confirmedRisks);
@@ -396,8 +412,12 @@ internal sealed class EditHistoryModule : IDisposable {
 				|| verified.PackageSha256 != staged.Sha256
 				|| verified.PackageSha256 != EditWire.Sha256(package))
 				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-			if (Replay(verified, postHeadCheckpointId, verified.Head.ResultSemanticFingerprint).Classification != "exact")
-				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			var stagedReplay = Replay(verified, postHeadCheckpointId, verified.Head.ResultSemanticFingerprint);
+			if (stagedReplay.Classification != "exact")
+				throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "ck_invalid_2",
+					["classification"] = stagedReplay.Classification, ["replayed_semantic"] = stagedReplay.SemanticFingerprint,
+					["recorded_semantic"] = verified.Head.ResultSemanticFingerprint,
+					["replayed_image"] = stagedReplay.ImageSha256, ["recorded_image"] = verified.Head.ResultImageSha256 });
 			return new EditPreparedHistoryWrite {
 				Lineage = verified, Temp = staged, ReplacesExisting = replacesExisting,
 				PreHeadCheckpointId = preHeadCheckpointId, PostHeadCheckpointId = postHeadCheckpointId,
@@ -770,8 +790,8 @@ internal sealed class EditHistoryModule : IDisposable {
 			if (!operation.Forward.TryGetValue("kind", out var forwardKind) || !string.Equals(ValueString(forwardKind), operation.Kind, StringComparison.Ordinal))
 				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			if (operation.PayloadSha256.Distinct(StringComparer.Ordinal).Count() != operation.PayloadSha256.Length
-				|| operation.PayloadSha256.Any(x => !payloads.Contains(x))) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-			if (node.ParentCheckpointId == null) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				|| operation.PayloadSha256.Any(x => !payloads.Contains(x))) throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "envelope_payload" });
+			if (node.ParentCheckpointId == null) throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "envelope_parent" });
 			using var inverse = JsonDocument.Parse(JsonSerializer.Serialize(operation.Inverse, EditWire.JsonOptions));
 			var root = inverse.RootElement;
 			if (root.ValueKind != JsonValueKind.Object
@@ -781,19 +801,22 @@ internal sealed class EditHistoryModule : IDisposable {
 				|| !StringProperty(root, "operation_kind", operation.Kind)
 				|| !StringProperty(root, "semantic_source", "compiled_pre_state")
 				|| !root.TryGetProperty("prefix_operation_count", out var count) || !count.TryGetInt32(out var prefix) || prefix != index)
-				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "envelope_root", ["operation_kind"] = operation.Kind });
 			// The state must carry exactly one known executable inverse shape.
 			if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
-				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "envelope_state_missing", ["operation_kind"] = operation.Kind });
 			var shapes = new[] {
 				"field_state", "type_state", "method_state", "property_state", "event_state", "generic_state",
 				"parameter_state", "member_restore", "definition_tail_remove", "absent_body",
 				"parameter_tail_restore", "generic_tail_restore", "generic_tail_remove", "legacy",
+				// P04 compiled-state shapes: attribute/security add-remove inverse states.
+				"attribute_remove_state", "attribute_add_state", "security_remove_state", "security_add_state",
 			};
 			var hits = shapes.Count(shape => state.TryGetProperty(shape, out _));
 			var bodyShape = state.TryGetProperty("kind", out var stateKind)
 				&& string.Equals(ValueString(stateKind), "method_body_replace", StringComparison.Ordinal);
-			if (hits != 1 && !bodyShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			if (hits != 1 && !bodyShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID",
+				new Dictionary<string, object?> { ["kind"] = "envelope_shape", ["operation_kind"] = operation.Kind, ["state_keys"] = state.EnumerateObject().Select(x => x.Name).ToArray() });
 			if (operation.Kind == "legacy_symbol_rename") {
 				if (!state.TryGetProperty("legacy", out var legacy) || legacy.ValueKind != JsonValueKind.Object)
 					throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
@@ -818,13 +841,15 @@ internal sealed class EditHistoryModule : IDisposable {
 			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 	}
 
-	static EditCheckpointOperations SerializeOperations(EditLoadedLineage lineage, string checkpointId, string parentId, IReadOnlyList<string> rows) {
+	static EditCheckpointOperations SerializeOperations(EditLoadedLineage lineage, string checkpointId, string parentId, IReadOnlyList<string> rows, out ModuleDef replayModule) {
 		var result = new EditCheckpointOperations { CheckpointId = checkpointId };
 		// P03-CHANGE-001: the envelope carries the executable compiled inverse.
 		// Each inverse is compiled against the replayed pre-state of its own
 		// operation, so its references are either metadata tokens or the same
 		// deterministic object ids any later replay of this prefix assigns.
-		using var module = ModuleDefMD.Load(lineage.BaselineBytes);
+		// The module outlives this method: PrepareCommit records the canonical
+		// head image from it after return.
+		var module = ModuleDefMD.Load(lineage.BaselineBytes);
 		foreach (var node in PathTo(lineage, parentId).Skip(1)) {
 			if (!lineage.Operations.TryGetValue(node.CheckpointId, out var ancestor)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 			var ancestorMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
@@ -870,6 +895,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			});
 		}
 		EditStructuralValidator.Validate(module);
+		replayModule = module;
 		return result;
 	}
 

@@ -78,6 +78,32 @@
                       "type": "object"
                     }
                   ]
+                },
+                "layout": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "auto",
+                        "sequential",
+                        "explicit"
+                      ]
+                    },
+                    "pack": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
                 }
               },
               "required": [
@@ -154,6 +180,32 @@
                       "type": "object"
                     }
                   ]
+                },
+                "layout": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "auto",
+                        "sequential",
+                        "explicit"
+                      ]
+                    },
+                    "pack": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
                 }
               },
               "required": [
@@ -713,6 +765,133 @@
                     "generic_parameters"
                   ],
                   "type": "object"
+                },
+                "overrides": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "declaration"
+                        ],
+                        "properties": {
+                          "method": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "owner_type",
+                              "name"
+                            ],
+                            "properties": {
+                              "owner_type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "parameter_types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 4096
+                                },
+                                "maxItems": 64
+                              }
+                            }
+                          },
+                          "declaration": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "owner_type",
+                              "name"
+                            ],
+                            "properties": {
+                              "owner_type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "parameter_types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 4096
+                                },
+                                "maxItems": 64
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "maxItems": 64
+                    }
+                  ]
+                },
+                "pinvoke": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "module_name"
+                      ],
+                      "properties": {
+                        "module_name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "entry_name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "charset": {
+                          "enum": [
+                            "none",
+                            "ansi",
+                            "unicode",
+                            "auto"
+                          ]
+                        },
+                        "no_mangle": {
+                          "type": "boolean"
+                        },
+                        "last_error": {
+                          "type": "boolean"
+                        },
+                        "calling_convention": {
+                          "enum": [
+                            "winapi",
+                            "cdecl",
+                            "stdcall",
+                            "thiscall",
+                            "fastcall"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               "required": [
@@ -788,6 +967,133 @@
                         "object_id"
                       ],
                       "type": "object"
+                    }
+                  ]
+                },
+                "overrides": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "declaration"
+                        ],
+                        "properties": {
+                          "method": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "owner_type",
+                              "name"
+                            ],
+                            "properties": {
+                              "owner_type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "parameter_types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 4096
+                                },
+                                "maxItems": 64
+                              }
+                            }
+                          },
+                          "declaration": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "owner_type",
+                              "name"
+                            ],
+                            "properties": {
+                              "owner_type": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "parameter_types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 4096
+                                },
+                                "maxItems": 64
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "maxItems": 64
+                    }
+                  ]
+                },
+                "pinvoke": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "module_name"
+                      ],
+                      "properties": {
+                        "module_name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "entry_name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "charset": {
+                          "enum": [
+                            "none",
+                            "ansi",
+                            "unicode",
+                            "auto"
+                          ]
+                        },
+                        "no_mangle": {
+                          "type": "boolean"
+                        },
+                        "last_error": {
+                          "type": "boolean"
+                        },
+                        "calling_convention": {
+                          "enum": [
+                            "winapi",
+                            "cdecl",
+                            "stdcall",
+                            "thiscall",
+                            "fastcall"
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
@@ -1157,6 +1463,255 @@
                       "type": "object"
                     }
                   ]
+                },
+                "field_offset": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  ]
+                },
+                "initial_data": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "bytes_base64"
+                      ],
+                      "properties": {
+                        "bytes_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 1398102
+                        }
+                      }
+                    }
+                  ]
+                },
+                "marshal": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "simple",
+                            "raw",
+                            "fixed_string",
+                            "fixed_array",
+                            "array",
+                            "safe_array",
+                            "custom",
+                            "interface"
+                          ]
+                        },
+                        "native": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "element": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "param_number": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "flags": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "iid_param_index": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "variant": {
+                          "enum": [
+                            "Empty",
+                            "Null",
+                            "I2",
+                            "I4",
+                            "R4",
+                            "R8",
+                            "CY",
+                            "Date",
+                            "BStr",
+                            "Dispatch",
+                            "Error",
+                            "Bool",
+                            "Variant",
+                            "Unknown",
+                            "Decimal",
+                            "I1",
+                            "UI1",
+                            "UI2",
+                            "UI4",
+                            "I8",
+                            "UI8",
+                            "Int",
+                            "UInt",
+                            "Void",
+                            "HResult",
+                            "Ptr",
+                            "SafeArray",
+                            "CArray",
+                            "UserDefined",
+                            "Record",
+                            "IntPtr",
+                            "UIntPtr"
+                          ]
+                        },
+                        "user_defined_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "custom_marshaler_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "data_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        },
+                        "guid_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "native_name_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "cookie_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               "required": [
@@ -1487,6 +2042,255 @@
                         "object_id"
                       ],
                       "type": "object"
+                    }
+                  ]
+                },
+                "field_offset": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  ]
+                },
+                "initial_data": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "bytes_base64"
+                      ],
+                      "properties": {
+                        "bytes_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 1398102
+                        }
+                      }
+                    }
+                  ]
+                },
+                "marshal": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "simple",
+                            "raw",
+                            "fixed_string",
+                            "fixed_array",
+                            "array",
+                            "safe_array",
+                            "custom",
+                            "interface"
+                          ]
+                        },
+                        "native": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "element": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "param_number": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "flags": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "iid_param_index": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "variant": {
+                          "enum": [
+                            "Empty",
+                            "Null",
+                            "I2",
+                            "I4",
+                            "R4",
+                            "R8",
+                            "CY",
+                            "Date",
+                            "BStr",
+                            "Dispatch",
+                            "Error",
+                            "Bool",
+                            "Variant",
+                            "Unknown",
+                            "Decimal",
+                            "I1",
+                            "UI1",
+                            "UI2",
+                            "UI4",
+                            "I8",
+                            "UI8",
+                            "Int",
+                            "UInt",
+                            "Void",
+                            "HResult",
+                            "Ptr",
+                            "SafeArray",
+                            "CArray",
+                            "UserDefined",
+                            "Record",
+                            "IntPtr",
+                            "UIntPtr"
+                          ]
+                        },
+                        "user_defined_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "custom_marshaler_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "data_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        },
+                        "guid_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "native_name_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "cookie_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        }
+                      }
                     }
                   ]
                 }
@@ -2346,6 +3150,222 @@
                   "minLength": 1,
                   "type": "string",
                   "x-dnspy-contract": "p02-typesig-v1"
+                },
+                "marshal": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "simple",
+                            "raw",
+                            "fixed_string",
+                            "fixed_array",
+                            "array",
+                            "safe_array",
+                            "custom",
+                            "interface"
+                          ]
+                        },
+                        "native": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "element": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "param_number": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "flags": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "iid_param_index": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "variant": {
+                          "enum": [
+                            "Empty",
+                            "Null",
+                            "I2",
+                            "I4",
+                            "R4",
+                            "R8",
+                            "CY",
+                            "Date",
+                            "BStr",
+                            "Dispatch",
+                            "Error",
+                            "Bool",
+                            "Variant",
+                            "Unknown",
+                            "Decimal",
+                            "I1",
+                            "UI1",
+                            "UI2",
+                            "UI4",
+                            "I8",
+                            "UI8",
+                            "Int",
+                            "UInt",
+                            "Void",
+                            "HResult",
+                            "Ptr",
+                            "SafeArray",
+                            "CArray",
+                            "UserDefined",
+                            "Record",
+                            "IntPtr",
+                            "UIntPtr"
+                          ]
+                        },
+                        "user_defined_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "custom_marshaler_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "data_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        },
+                        "guid_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "native_name_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "cookie_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2466,6 +3486,222 @@
                   "minLength": 1,
                   "type": "string",
                   "x-dnspy-contract": "p02-typesig-v1"
+                },
+                "marshal": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "simple",
+                            "raw",
+                            "fixed_string",
+                            "fixed_array",
+                            "array",
+                            "safe_array",
+                            "custom",
+                            "interface"
+                          ]
+                        },
+                        "native": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "element": {
+                          "enum": [
+                            "NotInitialized",
+                            "Void",
+                            "Boolean",
+                            "I1",
+                            "U1",
+                            "I2",
+                            "U2",
+                            "I4",
+                            "U4",
+                            "I8",
+                            "U8",
+                            "R4",
+                            "R8",
+                            "Currency",
+                            "BStr",
+                            "LPStr",
+                            "LPWStr",
+                            "LPTStr",
+                            "LPUTF8Str",
+                            "FixedSysString",
+                            "ObjectRef",
+                            "Decimal",
+                            "Struct",
+                            "IntF",
+                            "Int",
+                            "UInt",
+                            "IntPtr",
+                            "ByValStr",
+                            "TBStr",
+                            "ANSIBStr",
+                            "IDispatch",
+                            "IUnknown",
+                            "StructEnd",
+                            "SafeArray",
+                            "FixedArray",
+                            "NestedStruct",
+                            "CustomMarshaler",
+                            "Error",
+                            "IInspectable",
+                            "HString",
+                            "Ptr",
+                            "Array",
+                            "Func",
+                            "AsAny",
+                            "Variant",
+                            "SysChar",
+                            "Void2"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "param_number": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "flags": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "iid_param_index": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "variant": {
+                          "enum": [
+                            "Empty",
+                            "Null",
+                            "I2",
+                            "I4",
+                            "R4",
+                            "R8",
+                            "CY",
+                            "Date",
+                            "BStr",
+                            "Dispatch",
+                            "Error",
+                            "Bool",
+                            "Variant",
+                            "Unknown",
+                            "Decimal",
+                            "I1",
+                            "UI1",
+                            "UI2",
+                            "UI4",
+                            "I8",
+                            "UI8",
+                            "Int",
+                            "UInt",
+                            "Void",
+                            "HResult",
+                            "Ptr",
+                            "SafeArray",
+                            "CArray",
+                            "UserDefined",
+                            "Record",
+                            "IntPtr",
+                            "UIntPtr"
+                          ]
+                        },
+                        "user_defined_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "custom_marshaler_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "data_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        },
+                        "guid_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "native_name_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 512
+                        },
+                        "cookie_base64": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+                          "maxLength": 4096
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2632,6 +3868,22 @@
                       "type": "object"
                     }
                   ]
+                },
+                "constraints": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "maxItems": 64
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2691,6 +3943,22 @@
                         "object_id"
                       ],
                       "type": "object"
+                    }
+                  ]
+                },
+                "constraints": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "maxItems": 64
                     }
                   ]
                 }
@@ -3153,6 +4421,369 @@
                 "body"
               ],
               "type": "object"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "target",
+                "constructor"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "attribute_add"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "token": {
+                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "token"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "object_id": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "object_id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "scope": {
+                          "const": "assembly"
+                        }
+                      },
+                      "required": [
+                        "scope"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "constructor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "attribute_type"
+                  ],
+                  "properties": {
+                    "attribute_type": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "parameter_types": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "maxItems": 64
+                    }
+                  }
+                },
+                "fixed_arguments": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 4096
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "maxItems": 64
+                },
+                "named_arguments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "type",
+                      "name",
+                      "value"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "field",
+                          "property"
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "maxLength": 4096
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "maxItems": 64
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "target",
+                "match"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "attribute_remove"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "token": {
+                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "token"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "object_id": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "object_id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "scope": {
+                          "const": "assembly"
+                        }
+                      },
+                      "required": [
+                        "scope"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "match": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "constructor"
+                  ],
+                  "properties": {
+                    "constructor": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "attribute_type"
+                      ],
+                      "properties": {
+                        "attribute_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096
+                        },
+                        "parameter_types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4096
+                          },
+                          "maxItems": 64
+                        }
+                      }
+                    },
+                    "index": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "parent",
+                "action",
+                "xml"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "security_add"
+                },
+                "parent": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "token": {
+                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "token"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "scope": {
+                          "const": "assembly"
+                        }
+                      },
+                      "required": [
+                        "scope"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "action": {
+                  "enum": [
+                    "deny",
+                    "permit_only",
+                    "request_minimum",
+                    "request_optional",
+                    "request_refuse",
+                    "assert",
+                    "link_demand",
+                    "inherit_demand",
+                    "demand"
+                  ]
+                },
+                "xml": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 65536
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "parent",
+                "action"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "security_remove"
+                },
+                "parent": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "token": {
+                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "token"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "scope": {
+                          "const": "assembly"
+                        }
+                      },
+                      "required": [
+                        "scope"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "action": {
+                  "enum": [
+                    "deny",
+                    "permit_only",
+                    "request_minimum",
+                    "request_optional",
+                    "request_refuse",
+                    "assert",
+                    "link_demand",
+                    "inherit_demand",
+                    "demand"
+                  ]
+                },
+                "index": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
             }
           ]
         },

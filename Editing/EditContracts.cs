@@ -21,6 +21,7 @@ internal static class EditWire {
 	public const int MaxModuleBytes = 16 * 1024 * 1024;
 	public const int MaxMetadataRows = 100000;
 	public const int MaxResourceBytes = 8 * 1024 * 1024;
+	public const int MaxInitialDataBytes = 1024 * 1024;
 	public const int MaxPdbBytes = 8 * 1024 * 1024;
 	public const int MaxIlInstructions = 250000;
 	public const int MaxDispatcherMs = 1000;
@@ -37,6 +38,7 @@ internal static class EditWire {
 		"field_add", "field_update", "field_remove", "property_add", "property_update", "property_remove",
 		"event_add", "event_update", "event_remove", "parameter_add", "parameter_update", "parameter_remove",
 		"generic_parameter_add", "generic_parameter_update", "generic_parameter_remove", "method_body_replace",
+		"attribute_add", "attribute_remove", "security_add", "security_remove",
 	};
 
 	public static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {

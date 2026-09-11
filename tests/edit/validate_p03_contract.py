@@ -34,6 +34,7 @@ OPERATIONS = [
     "property_update", "property_remove", "event_add", "event_update", "event_remove",
     "parameter_add", "parameter_update", "parameter_remove", "generic_parameter_add",
     "generic_parameter_update", "generic_parameter_remove", "method_body_replace",
+    "attribute_add", "attribute_remove", "security_add", "security_remove",
 ]
 ACCS = ["ACC-011", "ACC-012", "ACC-013", "ACC-014", "ACC-019", "ACC-020", "ACC-024", "ACC-025", "ACC-029"]
 BARRIERS = [
@@ -90,7 +91,7 @@ def main() -> int:
 
     operation_branches = schemas["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]
     actual_operations = [row["properties"]["kind"]["const"] for row in operation_branches]
-    check(actual_operations == OPERATIONS, "edit_apply:22-operation-order", failures)
+    check(actual_operations == OPERATIONS, "edit_apply:26-operation-order", failures)
     barrier_names = schemas["edit_test_barrier"]["inputSchema"]["oneOf"][0]["properties"]["name"]["enum"]
     check(barrier_names == BARRIERS, "barrier:nine-names", failures)
     check(schemas["edit_begin"]["inputSchema"]["properties"].get("source_family_id", {}).get("pattern") == r"^family-[0-9a-f]{32}$", "begin:family-id", failures)

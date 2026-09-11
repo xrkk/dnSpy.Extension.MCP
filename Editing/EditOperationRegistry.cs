@@ -65,6 +65,10 @@ internal static partial class EditOperationRegistry {
 			"generic_parameter_update" => GenericUpdate(module, operation, objects),
 			"generic_parameter_remove" => GenericRemove(module, operation, objects),
 			"method_body_replace" => BodyReplace(module, operation, objects),
+			"attribute_add" => AttributeAdd(module, operation, objects),
+			"attribute_remove" => AttributeRemove(module, operation, objects),
+			"security_add" => SecurityAdd(module, operation, objects),
+			"security_remove" => SecurityRemove(module, operation, objects),
 			_ => throw new EditDomainException("EDIT_VALIDATION_FAILED"),
 		};
 	}
@@ -94,13 +98,48 @@ internal static partial class EditOperationRegistry {
 
 	static EditOperationOutcome TypeUpdate(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
 		var t = Ref<TypeDef>(module, op.GetProperty("target"), map); var before = t.FullName;
-		var oldName = t.Name; var oldNs = t.Namespace; var oldAttrs = t.Attributes; var oldBase = t.BaseType;
+		var oldName = t.Name; var oldNs = t.Namespace; var oldAttrs = t.Attributes; var oldBase = t.BaseType; var oldLayout = t.ClassLayout;
 		if (op.TryGetProperty("name", out var n)) t.Name = NonEmpty(n, "name");
 		if (op.TryGetProperty("namespace", out var ns)) t.Namespace = ns.GetString() ?? string.Empty;
-		if (op.TryGetProperty("attributes", out var a)) t.Attributes = (TypeAttributes)Attributes(a, "type");
+		if (op.TryGetProperty("attributes", out var a)) {
+			var updated = (TypeAttributes)Attributes(a, "type");
+			// P04 bit ownership: the two layout bits belong to the structured
+			// layout field exclusively (ECMA-335 II 23.1.3 via ClassLayout).
+			if ((((ulong)updated ^ (ulong)t.Attributes) & 0x18ul) != 0) Invalid("attributes", "layout bits are owned by the layout field");
+			t.Attributes = updated;
+		}
 		if (op.TryGetProperty("base_type", out var b)) t.BaseType = b.ValueKind == JsonValueKind.Null ? null : new EditTypeSigParser(module, t.GenericParameters.Count).Parse(b.GetString()!).ToTypeDefOrRef();
-		return Outcome("type_update", null, t, before, t.FullName, () => { t.Name = oldName; t.Namespace = oldNs; t.Attributes = oldAttrs; t.BaseType = oldBase; });
+		Dictionary<string, object?>? layoutRisk = null;
+		if (op.TryGetProperty("layout", out var lay)) { SetLayout(t, lay); layoutRisk = Risk("layout_change", t); }
+		var risks = layoutRisk == null ? Array.Empty<Dictionary<string, object?>>() : new[] { layoutRisk };
+		return Outcome("type_update", null, t, before, t.FullName, () => { t.Name = oldName; t.Namespace = oldNs; t.Attributes = oldAttrs; t.BaseType = oldBase; t.ClassLayout = oldLayout; }, risks);
 	}
+
+	// P04 IMP-004: whole-row layout semantics. auto clears the row and both
+	// bits; sequential/explicit own exactly one bit and materialize the row.
+	static void SetLayout(TypeDef t, JsonElement lay) {
+		var kind = RequiredString(lay, "kind");
+		ushort pack = 0; uint size = 0;
+		if (lay.TryGetProperty("pack", out var p)) {
+			pack = (ushort)p.GetUInt32();
+			if (Array.IndexOf(LegalPacks, pack) < 0) Invalid("layout.pack", "pack must be one of 0,1,2,4,8,16,32,64,128 (ECMA-335 II 23.11)");
+		}
+		if (lay.TryGetProperty("size", out var s)) size = s.GetUInt32();
+		var layoutBits = TypeAttributes.SequentialLayout | TypeAttributes.ExplicitLayout;
+		switch (kind) {
+			case "auto": t.ClassLayout = null; t.Attributes &= ~layoutBits; return;
+			case "sequential":
+			case "explicit":
+				if (t.ClassLayout == null) t.ClassLayout = new ClassLayoutUser(pack, size);
+				else { t.ClassLayout.PackingSize = pack; t.ClassLayout.ClassSize = size; }
+				t.Attributes = kind == "sequential"
+					? (t.Attributes & ~layoutBits) | TypeAttributes.SequentialLayout
+					: (t.Attributes & ~layoutBits) | TypeAttributes.ExplicitLayout;
+				return;
+			default: Invalid("layout.kind", "layout.kind must be auto, sequential or explicit"); return;
+		}
+	}
+	static readonly ushort[] LegalPacks = { 0, 1, 2, 4, 8, 16, 32, 64, 128 };
 
 	static EditOperationOutcome TypeRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
 		RequireRemoveMode(op); var t = Ref<TypeDef>(module, op.GetProperty("target"), map);
@@ -141,8 +180,12 @@ internal static partial class EditOperationRegistry {
 				method.ParamDefs.Add(new ParamDefUser(pn.GetString(), (ushort)(i + 1), (ParamAttributes)OptionalAttributes(p, "attributes", "parameter", 0)));
 		}
 		if (op.TryGetProperty("body", out var body)) method.Body = BuildBody(module, method, body, map);
+		if (op.TryGetProperty("overrides", out var addOverrides)) ApplyOverrides(module, method, addOverrides);
+		Dictionary<string, object?>? pinvokeAddRisk = null;
+		if (op.TryGetProperty("pinvoke", out var addPInvoke)) { ApplyPInvoke(module, method, addPInvoke); pinvokeAddRisk = Risk("external_code_entry", method); }
 		owner.Methods.Add(method); var id = ObjectId(index, 0); map[id] = method;
-		return Outcome("method_add", id, method, null, method.FullName, () => { owner.Methods.Remove(method); map.Remove(id); });
+		var methodAddRisks = pinvokeAddRisk == null ? Array.Empty<Dictionary<string, object?>>() : new[] { pinvokeAddRisk! };
+		return Outcome("method_add", id, method, null, method.FullName, () => { owner.Methods.Remove(method); map.Remove(id); }, methodAddRisks);
 	}
 
 	static EditOperationOutcome MethodUpdate(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
@@ -154,7 +197,14 @@ internal static partial class EditOperationRegistry {
 		if (op.TryGetProperty("return_type",out var r)) m.MethodSig.RetType=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(r.GetString()!,true);
 		if (op.TryGetProperty("has_this",out var h)) m.MethodSig.HasThis=h.GetBoolean();
 		var risks = new List<Dictionary<string, object?>>(); if (m.ReturnType != oldRet || m.MethodSig.HasThis != oldHas) risks.Add(Risk("signature_change",m)); if (m.Attributes != oldAttrs) risks.Add(Risk("visibility_change",m));
-		return Outcome("method_update",null,m,before,m.FullName,()=>{m.Name=oldName;m.Attributes=oldAttrs;m.ImplAttributes=oldImpl;m.MethodSig.RetType=oldRet;m.MethodSig.HasThis=oldHas;},risks);
+		var oldOverrides=m.Overrides.ToArray();var overrideRisk=false;
+		if(op.TryGetProperty("overrides",out var ov)){ApplyOverrides(module,m,ov);overrideRisk=true;}
+		var oldImplMap=m.ImplMap;var oldPInvokeBit=m.IsPinvokeImpl;
+		var pinvokeRisk=false;
+		if(op.TryGetProperty("pinvoke",out var pi)){ApplyPInvoke(module,m,pi);pinvokeRisk=true;}
+		if((overrideRisk||pinvokeRisk)&&!risks.Any(r=>Equals(r["risk_id"],Risk("signature_change",m)["risk_id"])))risks.Add(Risk("signature_change",m));
+		if(pinvokeRisk)risks.Add(Risk("external_code_entry",m));
+		return Outcome("method_update",null,m,before,m.FullName,()=>{m.Name=oldName;m.Attributes=oldAttrs;m.ImplAttributes=oldImpl;m.MethodSig.RetType=oldRet;m.MethodSig.HasThis=oldHas;m.Overrides.Clear();foreach(var o in oldOverrides)m.Overrides.Add(o);m.ImplMap=oldImplMap;if(oldPInvokeBit)m.IsPinvokeImpl=true;else m.IsPinvokeImpl=false;},risks);
 	}
 
 	static EditOperationOutcome MethodRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
@@ -172,16 +222,55 @@ internal static partial class EditOperationRegistry {
 		var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map); var type=new EditTypeSigParser(module,owner.GenericParameters.Count).Parse(RequiredString(op,"field_type"));
 		var f=new FieldDefUser(RequiredString(op,"name"),new FieldSig(type),(FieldAttributes)OptionalAttributes(op,"attributes","field",0));
 		if(op.TryGetProperty("constant",out var c)) f.Constant=ParseConstant(c,type);
+		Dictionary<string,object?>? dataRisk=null;
+		if(op.TryGetProperty("initial_data",out var init)){ApplyInitialData(f,init);dataRisk=Risk("data_section_change",f);}
+		if(op.TryGetProperty("marshal",out var addMarshal))f.MarshalType=EditMarshalCodec.Parse(module,addMarshal,new EditTypeSigParser(module,owner.GenericParameters.Count));
 		owner.Fields.Add(f); var id=ObjectId(index,0); map[id]=f;
-		return Outcome("field_add",id,f,null,f.FullName,()=>{owner.Fields.Remove(f);map.Remove(id);});
+		var addRisks=dataRisk==null?(f.MarshalType!=null?new[]{Risk("signature_change",f)}:Array.Empty<Dictionary<string,object?>>()):new[]{dataRisk!,Risk("signature_change",f)};
+		return Outcome("field_add",id,f,null,f.FullName,()=>{owner.Fields.Remove(f);map.Remove(id);},addRisks);
 	}
 
+	// P04 IMP-008: static-field RVA initial data. Literal fields carry a
+	// metadata constant instead; instance fields have no data slot.
+	static void ApplyInitialData(FieldDef f, JsonElement v) {
+		if (!f.IsStatic) Invalid("initial_data", "initial_data requires a static field");
+		if (f.IsLiteral) Invalid("initial_data", "literal fields carry a constant, not initial data");
+		if (v.ValueKind == JsonValueKind.Null) { f.InitialValue = null; f.HasFieldRVA = false; return; }
+		var bytes = v.GetProperty("bytes_base64").GetBytesFromBase64();
+		if (bytes.Length > EditWire.MaxInitialDataBytes) Invalid("initial_data", "initial_data exceeds MaxInitialDataBytes");
+		// ECMA-335 FieldRVA rows carry no length: readers (dnlib included) return
+		// exactly the field type's size, so byte-exact round trips require the
+		// payload to equal that size; arbitrary-length blobs need a same-size
+		// value type and stay outside the primitive domain declared here.
+		var size = PrimitiveSize(f.FieldType);
+		if (size < 0 || bytes.Length != size)
+			Invalid("initial_data", "initial_data length must equal the field type size (primitive types only)");
+		// dnlib 4.5.0 documented contract (FieldDef.InitialValue remarks): the
+		// module writer only emits the FieldRVA row when HasFieldRVA is set.
+		f.InitialValue = bytes; f.HasFieldRVA = true;
+	}
+	static int PrimitiveSize(TypeSig t) => t.ElementType switch {
+		ElementType.Boolean or ElementType.U1 or ElementType.I1 => 1,
+		ElementType.Char or ElementType.U2 or ElementType.I2 => 2,
+		ElementType.I4 or ElementType.U4 or ElementType.R4 => 4,
+		ElementType.I8 or ElementType.U8 or ElementType.R8 => 8,
+		_ => -1,
+	};
+
 	static EditOperationOutcome FieldUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){
-		var f=Ref<FieldDef>(module,op.GetProperty("target"),map);var before=f.FullName;var oldName=f.Name;var oldType=f.FieldType;var oldAttrs=f.Attributes;var oldConst=f.Constant;
+		var f=Ref<FieldDef>(module,op.GetProperty("target"),map);var before=f.FullName;var oldName=f.Name;var oldType=f.FieldType;var oldAttrs=f.Attributes;var oldConst=f.Constant;var oldOffset=f.FieldOffset;var oldInitial=f.InitialValue;
 		if(op.TryGetProperty("name",out var n))f.Name=NonEmpty(n,"name"); if(op.TryGetProperty("field_type",out var t))f.FieldSig.Type=new EditTypeSigParser(module,f.DeclaringType.GenericParameters.Count).Parse(t.GetString()!);
 		if(op.TryGetProperty("attributes",out var a))f.Attributes=(FieldAttributes)Attributes(a,"field"); if(op.TryGetProperty("clear_constant",out var clear)&&clear.GetBoolean())f.Constant=null; else if(op.TryGetProperty("constant",out var c))f.Constant=ParseConstant(c,f.FieldType);
-		var risks=new List<Dictionary<string,object?>>();if(f.FieldType!=oldType)risks.Add(Risk("signature_change",f));if(f.Attributes!=oldAttrs)risks.Add(Risk("visibility_change",f));
-		return Outcome("field_update",null,f,before,f.FullName,()=>{f.Name=oldName;f.FieldSig.Type=oldType;f.Attributes=oldAttrs;f.Constant=oldConst;},risks);
+		if(op.TryGetProperty("field_offset",out var fo)){
+			var owner=f.DeclaringType;
+			if(owner==null||(owner.Attributes&TypeAttributes.ExplicitLayout)==0)Invalid("field_offset","field_offset requires an explicit-layout owner type");
+			f.FieldOffset=fo.ValueKind==JsonValueKind.Null?(uint?)null:fo.GetUInt32();
+		}
+		if(op.TryGetProperty("initial_data",out var init))ApplyInitialData(f,init);
+		var oldMarshal=f.MarshalType;if(op.TryGetProperty("marshal",out var ma))f.MarshalType=EditMarshalCodec.Parse(module,ma,new EditTypeSigParser(module,f.DeclaringType.GenericParameters.Count));
+		var risks=new List<Dictionary<string,object?>>();if(f.FieldType!=oldType||f.MarshalType!=oldMarshal)risks.Add(Risk("signature_change",f));if(f.Attributes!=oldAttrs)risks.Add(Risk("visibility_change",f));
+		if(f.InitialValue!=oldInitial)risks.Add(Risk("data_section_change",f));if(f.FieldOffset!=oldOffset)risks.Add(Risk("layout_change",f));
+		return Outcome("field_update",null,f,before,f.FullName,()=>{f.Name=oldName;f.FieldSig.Type=oldType;f.Attributes=oldAttrs;f.Constant=oldConst;f.FieldOffset=oldOffset;f.InitialValue=oldInitial;f.MarshalType=oldMarshal;},risks);
 	}
 
 	static EditOperationOutcome FieldRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var f=Ref<FieldDef>(module,op.GetProperty("target"),map);if(HasReference(module,f)||HasAttachment(module,f))Invalid("operation.target","Field is referenced or attached");var owner=f.DeclaringType;var i=owner.Fields.IndexOf(f);var before=f.FullName;owner.Fields.Remove(f);RemoveMapValue(map,f);var tombstoneRow=f.MDToken.Rid!=0;dnlib.DotNet.TypeDef? tombstone=null;if(tombstoneRow){tombstone=EditDeletedRowsTombstone.GetOrCreate(module);EditDeletedRowsTombstone.AcquireRow(module,f);}var risks=IsPublic(f.Attributes)?new[]{Risk("public_delete",f)}:Array.Empty<Dictionary<string,object?>>();return Outcome("field_remove",null,f,before,null,()=>{if(tombstoneRow)EditDeletedRowsTombstone.ReleaseRow(f,tombstone!);owner.Fields.Insert(i,f);},risks);}
@@ -208,12 +297,65 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	static void ReattachAccessors(TypeDef owner,TypeDef tombstone,(dnlib.DotNet.MethodDef? method,int index)[] slots){foreach(var (method,index) in slots.OrderBy(s=>s.index))if(method!=null){tombstone.Methods.Remove(method);owner.Methods.Insert(index,method);}}
 
 
-	static EditOperationOutcome ParameterAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var m=Ref<MethodDef>(module,op.GetProperty("owner_method"),map);var requested=(int)RequiredUInt(op,"parameter_index");if(requested!=m.MethodSig.Params.Count)Invalid("parameter_index","Only tail parameter insertion is supported");var type=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(RequiredString(op,"parameter_type"));m.MethodSig.Params.Add(type);var p=new ParamDefUser(RequiredString(op,"name"),(ushort)(requested+1),(ParamAttributes)OptionalAttributes(op,"attributes","parameter",0));m.ParamDefs.Add(p);var id=ObjectId(index,0);map[id]=p;return Outcome("parameter_add",id,p,null,p.Name,()=>{m.ParamDefs.Remove(p);m.MethodSig.Params.RemoveAt(m.MethodSig.Params.Count-1);map.Remove(id);},new[]{Risk("signature_change",m)});}
-	static EditOperationOutcome ParameterUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;var p=target.param;var index=target.index;var oldName=p?.Name;var oldAttrs=p?.Attributes??0;var oldType=m.MethodSig.Params[index];var materialized=p==null;if(p==null){p=new ParamDefUser(null,(ushort)(index+1));m.ParamDefs.Add(p);}if(op.TryGetProperty("name",out var n))p.Name=n.ValueKind==JsonValueKind.Null?null:NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))p.Attributes=(ParamAttributes)Attributes(a,"parameter");if(op.TryGetProperty("parameter_type",out var t))m.MethodSig.Params[index]=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(t.GetString()!);var current=p;return Outcome("parameter_update",null,current,"parameter:"+index,current.Name,()=>{m.MethodSig.Params[index]=oldType;if(materialized)m.ParamDefs.Remove(current);else{current.Name=oldName;current.Attributes=oldAttrs;}},new[]{Risk("signature_change",m)});}
+	static EditOperationOutcome ParameterAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var m=Ref<MethodDef>(module,op.GetProperty("owner_method"),map);var requested=(int)RequiredUInt(op,"parameter_index");if(requested!=m.MethodSig.Params.Count)Invalid("parameter_index","Only tail parameter insertion is supported");var type=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(RequiredString(op,"parameter_type"));m.MethodSig.Params.Add(type);var p=new ParamDefUser(RequiredString(op,"name"),(ushort)(requested+1),(ParamAttributes)OptionalAttributes(op,"attributes","parameter",0));if(op.TryGetProperty("marshal",out var addMarshal))p.MarshalType=EditMarshalCodec.Parse(module,addMarshal,new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count));m.ParamDefs.Add(p);var id=ObjectId(index,0);map[id]=p;return Outcome("parameter_add",id,p,null,p.Name,()=>{m.ParamDefs.Remove(p);m.MethodSig.Params.RemoveAt(m.MethodSig.Params.Count-1);map.Remove(id);},new[]{Risk("signature_change",m)});}
+	static EditOperationOutcome ParameterUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;var p=target.param;var index=target.index;var oldName=p?.Name;var oldAttrs=p?.Attributes??0;var oldType=m.MethodSig.Params[index];var materialized=p==null;if(p==null){p=new ParamDefUser(null,(ushort)(index+1));m.ParamDefs.Add(p);}if(op.TryGetProperty("name",out var n))p.Name=n.ValueKind==JsonValueKind.Null?null:NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))p.Attributes=(ParamAttributes)Attributes(a,"parameter");var oldMarshal=p.MarshalType;var paramParser=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count);if(op.TryGetProperty("parameter_type",out var t))m.MethodSig.Params[index]=paramParser.Parse(t.GetString()!);if(op.TryGetProperty("marshal",out var ma))p.MarshalType=EditMarshalCodec.Parse(module,ma,paramParser);var current=p;return Outcome("parameter_update",null,current,"parameter:"+index,current.Name,()=>{m.MethodSig.Params[index]=oldType;current.MarshalType=oldMarshal;if(materialized)m.ParamDefs.Remove(current);else{current.Name=oldName;current.Attributes=oldAttrs;}},new[]{Risk("signature_change",m)});}
 	static EditOperationOutcome ParameterRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;if(target.index!=m.MethodSig.Params.Count-1)Invalid("parameter_target","Only tail parameter removal is supported");var p=target.param;if(HasParameterReference(m,target.index)||(p!=null&&HasAttachment(module,p)))Invalid("parameter_target","Parameter is referenced or attached");var oldType=m.MethodSig.Params[target.index];var wasInParamDefs=p!=null;dnlib.DotNet.MethodDef? host=null;if(p!=null){m.ParamDefs.Remove(p);RemoveMapValue(map,p);if(p.MDToken.Rid!=0)host=EditDeletedRowsTombstone.AcquireParamHost(module,p);}m.MethodSig.Params.RemoveAt(target.index);IMDTokenProvider removedTarget=p is null ? m : p;return Outcome("parameter_remove",null,removedTarget,"parameter:"+target.index,null,()=>{m.MethodSig.Params.Add(oldType);if(wasInParamDefs){host!.ParamDefs.Remove(p!);m.ParamDefs.Add(p!);EditDeletedRowsTombstone.ReleaseParamHost(host!);}},new[]{Risk("signature_change",m)});}
 
-	static EditOperationOutcome GenericAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<IMDTokenProvider>(module,op.GetProperty("owner"),map);IList<GenericParam> collection;if(owner is TypeDef t)collection=t.GenericParameters;else if(owner is MethodDef m)collection=m.GenericParameters;else throw Validation("owner","Generic owner must be type or method");var oldArity=owner is MethodDef oldMethod ? oldMethod.MethodSig.GenParamCount : 0;var oldCallingConvention=owner is MethodDef oldConventionMethod?oldConventionMethod.MethodSig.CallingConvention:0;var requested=(int)RequiredUInt(op,"generic_index");if(requested!=collection.Count)Invalid("generic_index","Only tail generic parameter insertion is supported");var gp=new GenericParamUser((ushort)requested,(GenericParamAttributes)OptionalAttributes(op,"attributes","generic",0),RequiredString(op,"name"));collection.Add(gp);if(owner is MethodDef method){method.MethodSig.GenParamCount=(uint)collection.Count;method.MethodSig.CallingConvention|=CallingConvention.Generic;}var id=ObjectId(index,0);map[id]=gp;return Outcome("generic_parameter_add",id,gp,null,gp.Name,()=>{collection.Remove(gp);if(owner is MethodDef mm){mm.MethodSig.GenParamCount=oldArity;mm.MethodSig.CallingConvention=oldCallingConvention;}map.Remove(id);},new[]{Risk("signature_change",owner)});}
-	static EditOperationOutcome GenericUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);var oldName=gp.Name;var oldFlags=gp.Flags;if(op.TryGetProperty("name",out var n))gp.Name=NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))gp.Flags=(GenericParamAttributes)Attributes(a,"generic");return Outcome("generic_parameter_update",null,gp,oldName,gp.Name,()=>{gp.Name=oldName;gp.Flags=oldFlags;},new[]{Risk("signature_change",gp)});}
+	static EditOperationOutcome GenericAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<IMDTokenProvider>(module,op.GetProperty("owner"),map);IList<GenericParam> collection;if(owner is TypeDef t)collection=t.GenericParameters;else if(owner is MethodDef m)collection=m.GenericParameters;else throw Validation("owner","Generic owner must be type or method");var oldArity=owner is MethodDef oldMethod ? oldMethod.MethodSig.GenParamCount : 0;var oldCallingConvention=owner is MethodDef oldConventionMethod?oldConventionMethod.MethodSig.CallingConvention:0;var requested=(int)RequiredUInt(op,"generic_index");if(requested!=collection.Count)Invalid("generic_index","Only tail generic parameter insertion is supported");var gp=new GenericParamUser((ushort)requested,(GenericParamAttributes)OptionalAttributes(op,"attributes","generic",0),RequiredString(op,"name"));if(op.TryGetProperty("constraints",out var addCons))SetGenericConstraints(module,gp,addCons);collection.Add(gp);if(owner is MethodDef method){method.MethodSig.GenParamCount=(uint)collection.Count;method.MethodSig.CallingConvention|=CallingConvention.Generic;}var id=ObjectId(index,0);map[id]=gp;return Outcome("generic_parameter_add",id,gp,null,gp.Name,()=>{collection.Remove(gp);if(owner is MethodDef mm){mm.MethodSig.GenParamCount=oldArity;mm.MethodSig.CallingConvention=oldCallingConvention;}map.Remove(id);},new[]{Risk("signature_change",owner)});}
+	static EditOperationOutcome GenericUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);var oldName=gp.Name;var oldFlags=gp.Flags;var oldConstraints=gp.GenericParamConstraints.ToArray();if(op.TryGetProperty("name",out var n))gp.Name=NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))gp.Flags=(GenericParamAttributes)Attributes(a,"generic");if(op.TryGetProperty("constraints",out var cons))SetGenericConstraints(module,gp,cons);return Outcome("generic_parameter_update",null,gp,oldName,gp.Name,()=>{gp.Name=oldName;gp.Flags=oldFlags;gp.GenericParamConstraints.Clear();foreach(var c in oldConstraints)gp.GenericParamConstraints.Add(c);},new[]{Risk("signature_change",gp)});}
+
+	// P04 IMP-002: whole-list generic constraint replacement. Self constraints
+	// and constraint cycles are structural errors (dnlib GenericParamConstraints).
+	static void SetGenericConstraints(ModuleDef module, GenericParam gp, JsonElement cons) {
+		if (cons.ValueKind == JsonValueKind.Null) { gp.GenericParamConstraints.Clear(); return; }
+		if (cons.ValueKind != JsonValueKind.Array) Invalid("constraints", "constraints must be an array of type signature strings");
+		var ownerType = gp.Owner as TypeDef; var ownerMethod = gp.Owner as MethodDef;
+		var parser = new EditTypeSigParser(module, ownerType?.GenericParameters.Count ?? 0, ownerMethod?.GenericParameters.Count ?? 0);
+		var parsed = new List<ITypeDefOrRef>();
+		foreach (var row in cons.EnumerateArray()) {
+			if (row.ValueKind != JsonValueKind.String) Invalid("constraints", "constraint entries must be type signature strings");
+			var signature = parser.Parse(row.GetString()!);
+			// A bare generic variable target becomes a TypeSpec row (ECMA-335
+			// II 23.2.5: constraints to another generic parameter); its own
+			// parameter is what the self/cycle checks reason about.
+			ITypeDefOrRef? target = signature is GenericVar or GenericMVar ? new TypeSpecUser(signature) : signature.ToTypeDefOrRef();
+			if (target == null) { Invalid("constraints", "constraint must resolve to a type definition, reference or generic parameter"); throw new InvalidOperationException(); }
+			var parameter = GenericParameterOf(signature, gp);
+			if (parameter != null) {
+				if (ReferenceEquals(parameter, gp)) Invalid("constraints", "a generic parameter cannot constrain itself");
+				if (ConstraintClosureUses(parameter, gp)) Invalid("constraints", "constraint cycle detected");
+			}
+			if (parsed.Any(x => string.Equals(x.FullName, target!.FullName, StringComparison.Ordinal))) Invalid("constraints", "duplicate constraint");
+			parsed.Add(target);
+		}
+		gp.GenericParamConstraints.Clear();
+		foreach (var target in parsed) gp.GenericParamConstraints.Add(new GenericParamConstraintUser(target!));
+	}
+	static GenericParam? GenericParameterOf(TypeSig signature, GenericParam owner) {
+		if (signature is GenericVar variable) {
+			var container = owner.Owner as TypeDef;
+			var index = (int)variable.Number;
+			return container != null && index < container.GenericParameters.Count ? container.GenericParameters[index] : null;
+		}
+		if (signature is GenericMVar methodVariable) {
+			var container = owner.Owner as MethodDef;
+			var index = (int)methodVariable.Number;
+			return container != null && index < container.GenericParameters.Count ? container.GenericParameters[index] : null;
+		}
+		return null;
+	}
+	static bool ConstraintClosureUses(GenericParam start, GenericParam target) {
+		var seen = new HashSet<GenericParam>(); var queue = new Queue<GenericParam>(); queue.Enqueue(start);
+		while (queue.Count > 0) {
+			var current = queue.Dequeue();
+			foreach (var constraint in current.GenericParamConstraints)
+				if (constraint.Constraint is GenericParam candidate) {
+					if (ReferenceEquals(candidate, target)) return true;
+					if (seen.Add(candidate)) queue.Enqueue(candidate);
+				}
+		}
+		return false;
+	}
 	static EditOperationOutcome GenericRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);IList<GenericParam> col;MethodDef? method=null;if(gp.Owner is TypeDef t)col=t.GenericParameters;else if(gp.Owner is MethodDef m){method=m;col=m.GenericParameters;}else throw Validation("target","Generic parameter has no owner");if(gp.Number!=col.Count-1)Invalid("target","Only tail generic parameter removal is supported");if(IsGenericUsed(module,gp)||HasAttachment(module,gp))Invalid("target","Generic parameter is used or attached");var oldArity=method?.MethodSig.GenParamCount??0;var oldCallingConvention=method?.MethodSig.CallingConvention??0;var riskOwner=(IMDTokenProvider?)gp.Owner??gp;col.Remove(gp);if(method!=null){method.MethodSig.GenParamCount=(uint)col.Count;if(col.Count==0)method.MethodSig.CallingConvention&=~CallingConvention.Generic;}RemoveMapValue(map,gp);return Outcome("generic_parameter_remove",null,gp,gp.Name,null,()=>{col.Add(gp);if(method!=null){method.MethodSig.GenParamCount=oldArity;method.MethodSig.CallingConvention=oldCallingConvention;}},new[]{Risk("signature_change",riskOwner)});}
 
 	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>m.Body=old,risks);}
@@ -377,6 +519,252 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	static void RemoveMapValue(Dictionary<string,IMDTokenProvider> map,IMDTokenProvider value){foreach(var k in map.Where(p=>ReferenceEquals(p.Value,value)).Select(p=>p.Key).ToList())map.Remove(k);}
 	static string ObjectId(int index,int sub)=>"obj-"+index.ToString("D3")+"-"+sub.ToString("D2");
 	static void RequireRemoveMode(JsonElement op){if(RequiredString(op,"remove_mode")!="reject_if_referenced")Invalid("remove_mode","Only reject_if_referenced is supported");}
+	// P04 IMP-003: whole-list method override mapping. Both sides must be
+	// virtual methods of in-module types; declarations resolve by owner type,
+	// name and parameter shape (FindMethod semantics).
+	static void ApplyOverrides(ModuleDef module, MethodDef body, JsonElement value) {
+		if (value.ValueKind == JsonValueKind.Null) { body.Overrides.Clear(); return; }
+		if (!body.IsVirtual) Invalid("overrides", "override mapping requires a virtual method body");
+		var rows = new List<MethodOverride>();
+		foreach (var row in value.EnumerateArray()) {
+			var declarationMethod = ResolveMethodReference(module, row.GetProperty("declaration"));
+			if (!declarationMethod.IsVirtual) Invalid("overrides.declaration", "override declaration must be virtual");
+			if (ReferenceEquals(declarationMethod, body)) Invalid("overrides.declaration", "a method cannot override itself");
+			if (rows.Any(x => ReferenceEquals(x.MethodDeclaration, declarationMethod))) Invalid("overrides", "duplicate override declaration");
+			var methodRef = row.TryGetProperty("method", out var methodValue) ? ResolveMethodReference(module, methodValue) : body;
+			if (!ReferenceEquals(methodRef, body)) Invalid("overrides.method", "override rows must map the updated method");
+			rows.Add(new MethodOverride(body, declarationMethod));
+		}
+		body.Overrides.Clear();
+		foreach (var row in rows) body.Overrides.Add(row);
+	}
+	static MethodDef ResolveMethodReference(ModuleDef module, JsonElement reference) {
+		var ownerRef = new EditTypeSigParser(module).Parse(RequiredString(reference, "owner_type")).ToTypeDefOrRef();
+		if (ownerRef is not TypeDef ownerType) { Invalid("owner_type", "override owner_type must resolve to a type in the current module"); throw new InvalidOperationException(); }
+		var parameterTypes = reference.TryGetProperty("parameter_types", out var parameters)
+			? parameters.EnumerateArray().Select(x => new EditTypeSigParser(module, ownerType.GenericParameters.Count).Parse(x.GetString()!)).ToArray() : Array.Empty<TypeSig>();
+		var candidates = ownerType.FindMethods(RequiredString(reference, "name"));
+		foreach (var candidate in candidates) {
+			if (candidate.MethodSig.Params.Count != parameterTypes.Length) continue;
+			var match = true;
+			for (int i = 0; i < parameterTypes.Length; i++)
+				if (!string.Equals(candidate.MethodSig.Params[i].FullName, parameterTypes[i].FullName, StringComparison.Ordinal)) { match = false; break; }
+			if (match) return candidate;
+		}
+		Invalid("overrides", "override method reference did not resolve to a unique method");
+		throw new InvalidOperationException();
+	}
+
+	// P04 IMP-001: custom attributes on every definition kind plus the assembly.
+	static IHasCustomAttribute ResolveAttributeTarget(ModuleDef module, JsonElement reference) {
+		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly") {
+			if (module.Assembly == null) { Invalid("target", "module has no assembly"); throw new InvalidOperationException(); }
+			return module.Assembly;
+		}
+		var resolved = ResolveToken(module, ParseToken(RequiredString(reference, "token")));
+		if (resolved is not IHasCustomAttribute attributeTarget) { Invalid("target", "attribute target must be a definition that carries attributes"); throw new InvalidOperationException(); }
+		return attributeTarget;
+	}
+	static ICustomAttributeType ResolveAttributeConstructor(ModuleDef module, JsonElement reference) {
+		var attributeTypeRef = new EditTypeSigParser(module).Parse(RequiredString(reference, "attribute_type")).ToTypeDefOrRef();
+		if (attributeTypeRef == null) { Invalid("constructor.attribute_type", "attribute type must resolve to a type"); throw new InvalidOperationException(); }
+		var parameterSigs = reference.TryGetProperty("parameter_types", out var parameters)
+			? parameters.EnumerateArray().Select(x => new EditTypeSigParser(module).Parse(x.GetString()!)).ToArray() : Array.Empty<TypeSig>();
+		var parameterTypes = reference.TryGetProperty("parameter_types", out var parameterTexts)
+			? parameterTexts.EnumerateArray().Select(x => x.GetString()!).ToArray() : Array.Empty<string>();
+		// Bind to the real .ctor row whenever the type resolves (in-module or
+		// through the module's assembly resolver, which the harness/runtimes
+		// provide for corlib); only unresolved references synthesize a MemberRef
+		// with the declared shape so the writer can still emit the row.
+		var resolvedType = attributeTypeRef switch {
+			TypeDef definition => definition,
+			TypeRef typeReference => typeReference.ResolveTypeDef(),
+			_ => null,
+		};
+		if (resolvedType != null) {
+			foreach (var constructor in resolvedType.Methods.Where(x => x.IsConstructor)) {
+				if (constructor.MethodSig.Params.Count != parameterSigs.Length) continue;
+				var match = true;
+				for (int i = 0; i < parameterSigs.Length; i++)
+					if (!string.Equals(constructor.MethodSig.Params[i].TypeName, parameterTypes[i], StringComparison.Ordinal)
+						&& !string.Equals(constructor.MethodSig.Params[i].FullName, parameterTypes[i], StringComparison.Ordinal)) { match = false; break; }
+				if (!match) continue;
+				// dnSpy's module context resolves corlib attribute types to MethodDefs
+				// of ANOTHER module; a CustomAttribute ctor bound to a foreign
+				// MethodDef writes an invalid row and reloads empty. Bind through a
+				// same-module MemberRef in that case (dnlib CustomAttribute contract).
+				if (!ReferenceEquals(constructor.Module, module))
+					return new MemberRefUser(module, constructor.Name, constructor.MethodSig, attributeTypeRef);
+				return constructor;
+			}
+			Invalid("constructor", "attribute constructor with the given parameter shape was not found");
+			throw new InvalidOperationException();
+		}
+		var signature = MethodSig.CreateInstance(module.CorLibTypes.Void, parameterSigs);
+		return new MemberRefUser(module, ".ctor", signature, attributeTypeRef);
+	}
+	// Synthesized MemberRefs are per-call instances, so constructor identity
+	// compares declaring type plus parameter shape, not references.
+	static bool SameAttributeConstructor(ICustomAttributeType? left, ICustomAttributeType? right) {
+		if (ReferenceEquals(left, right)) return true;
+		if (left is not IMethod leftMethod || right is not IMethod rightMethod) return false;
+		if (!string.Equals(leftMethod.DeclaringType?.FullName, rightMethod.DeclaringType?.FullName, StringComparison.Ordinal)) return false;
+		if (leftMethod.MethodSig.Params.Count != rightMethod.MethodSig.Params.Count) return false;
+		for (int i = 0; i < leftMethod.MethodSig.Params.Count; i++)
+			if (!string.Equals(leftMethod.MethodSig.Params[i].FullName, rightMethod.MethodSig.Params[i].FullName, StringComparison.Ordinal)) return false;
+		return true;
+	}
+	static EditOperationOutcome AttributeAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		var target = ResolveAttributeTarget(module, op.GetProperty("target"));
+		var constructor = ResolveAttributeConstructor(module, op.GetProperty("constructor"));
+		var parameterTypes = constructor is MethodDef ctorDef ? ctorDef.MethodSig.Params : ((MemberRef)constructor).MethodSig.Params;
+		var fixedArguments = op.TryGetProperty("fixed_arguments", out var fixedValues)
+			? fixedValues.EnumerateArray().Select((value, i) => new CAArgument(parameterTypes[i], CaValue(parameterTypes[i], value, "fixed_arguments"))).ToArray() : Array.Empty<CAArgument>();
+		if (fixedArguments.Length != parameterTypes.Count) Invalid("fixed_arguments", "fixed_arguments must match the constructor parameter count");
+		var namedArguments = op.TryGetProperty("named_arguments", out var namedValues)
+			? namedValues.EnumerateArray().Select(NamedArgument).ToList() : new List<CANamedArgument>();
+		if (!AllowsMultiple((constructor as MethodDef)?.DeclaringType) && target.CustomAttributes.Any(x => SameAttributeConstructor(x.Constructor, constructor)))
+			Invalid("target", "the attribute type does not allow multiple instances on one target");
+		var attribute = new CustomAttribute(constructor, fixedArguments, namedArguments);
+		target.CustomAttributes.Add(attribute);
+		var index = AttributeIndex(target, constructor, attribute);
+		return Outcome("attribute_add", null, target, null, target is TypeDef t ? t.FullName : constructor.DeclaringType?.FullName,
+			() => { var rows = target.CustomAttributes.Where(x => x.Constructor == constructor).ToList(); if (index < rows.Count) target.CustomAttributes.Remove(rows[index]); },
+			new[] { Risk("attribute_change", target is IMDTokenProvider provider ? provider : constructor) });
+	}
+	static EditOperationOutcome AttributeRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		var target = ResolveAttributeTarget(module, op.GetProperty("target"));
+		var constructor = ResolveAttributeConstructor(module, op.GetProperty("match").GetProperty("constructor"));
+		var rows = target.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, constructor)).ToList();
+		var index = op.GetProperty("match").TryGetProperty("index", out var indexValue) ? (int)indexValue.GetUInt32() : 0;
+		if (index >= rows.Count) Invalid("match.index", "attribute instance index is out of range");
+		var row = rows[index];
+		target.CustomAttributes.Remove(row);
+		return Outcome("attribute_remove", null, target, null, target is TypeDef t ? t.FullName : constructor.DeclaringType?.FullName,
+			() => target.CustomAttributes.Add(row), new[] { Risk("attribute_change", target is IMDTokenProvider provider ? provider : constructor) });
+	}
+	static int AttributeIndex(IHasCustomAttribute target, ICustomAttributeType constructor, CustomAttribute added)
+		=> target.CustomAttributes.Where(x => x.Constructor == constructor).ToList().IndexOf(added);
+	static bool AllowsMultiple(TypeDef? attributeType) {
+		var usage = attributeType?.CustomAttributes.FirstOrDefault(x => x.TypeFullName == "System.AttributeUsageAttribute");
+		if (usage == null) return false;
+		foreach (var named in usage.NamedArguments)
+			if (named.Name == "AllowMultiple" && named.Argument.Value is bool allow) return allow;
+		return false;
+	}
+	static CANamedArgument NamedArgument(JsonElement value) {
+		var kind = RequiredString(value, "kind");
+		if (kind is not ("field" or "property")) Invalid("named_arguments.kind", "kind must be field or property");
+		var type = new EditTypeSigParser(null!).Parse(RequiredString(value, "type"));
+		var argument = new CAArgument(type, CaValue(type, value.GetProperty("value"), "named_arguments.value"));
+		return new CANamedArgument(kind == "field", type, RequiredString(value, "name"), argument);
+	}
+	static object CaValue(TypeSig type, JsonElement value, string location) {
+		if (value.ValueKind == JsonValueKind.Null) return null!;
+		switch (type.ElementType) {
+			case ElementType.Boolean: return value.GetBoolean();
+			case ElementType.Char: return (char)value.GetUInt16();
+			case ElementType.I1: return (sbyte)value.GetSByte();
+			case ElementType.U1: return value.GetByte();
+			case ElementType.I2: return value.GetInt16();
+			case ElementType.U2: return value.GetUInt16();
+			case ElementType.I4: return value.GetInt32();
+			case ElementType.U4: return value.GetUInt32();
+			case ElementType.I8: return value.GetInt64();
+			case ElementType.U8: return value.GetUInt64();
+			case ElementType.R4: return value.GetSingle();
+			case ElementType.R8: return value.GetDouble();
+			case ElementType.String: return value.GetString()!;
+			default: Invalid(location, "attribute argument type must be a primitive, string or null in the P04 domain"); throw new InvalidOperationException();
+		}
+	}
+
+	// P04 IMP-006: P/Invoke binding. dnlib 4.5.0 flag set (AUD-003): charset,
+	// no_mangle, supports_last_error, calling_convention; exact-import and
+	// best-fit flags do not exist in dnlib and are excluded by the schema.
+	static void ApplyPInvoke(ModuleDef module, MethodDef method, JsonElement value) {
+		if (value.ValueKind == JsonValueKind.Null) { method.ImplMap = null; method.IsPinvokeImpl = false; return; }
+		if (!method.IsStatic || method.Body != null)
+			Invalid("pinvoke", "pinvoke requires a static extern method");
+		var moduleName = RequiredString(value, "module_name");
+		var entryName = value.TryGetProperty("entry_name", out var entry) && entry.ValueKind == JsonValueKind.String ? entry.GetString()! : method.Name.String;
+		var charset = value.TryGetProperty("charset", out var charsetValue) ? charsetValue.GetString()! : "none";
+		var attributes = charset switch {
+			"none" => PInvokeAttributes.CharSetNotSpec, "ansi" => PInvokeAttributes.CharSetAnsi,
+			"unicode" => PInvokeAttributes.CharSetUnicode, "auto" => PInvokeAttributes.CharSetAuto,
+			_ => throw (ArgumentException)InvalidArgument("pinvoke.charset", "charset must be none, ansi, unicode or auto"),
+		};
+		if (value.TryGetProperty("no_mangle", out var noMangle) && noMangle.GetBoolean()) attributes |= PInvokeAttributes.NoMangle;
+		if (value.TryGetProperty("last_error", out var lastError) && lastError.GetBoolean()) attributes |= PInvokeAttributes.SupportsLastError;
+		if (value.TryGetProperty("calling_convention", out var callConv) && callConv.GetString() is { } convention && convention != "winapi")
+			attributes |= convention switch {
+				"cdecl" => PInvokeAttributes.CallConvCdecl, "stdcall" => PInvokeAttributes.CallConvStdcall,
+				"thiscall" => PInvokeAttributes.CallConvThiscall, "fastcall" => PInvokeAttributes.CallConvFastcall,
+				_ => throw (ArgumentException)InvalidArgument("pinvoke.calling_convention", "calling_convention must be winapi, cdecl, stdcall, thiscall or fastcall"),
+			};
+		var moduleRef = module.GetModuleRefs().FirstOrDefault(x => string.Equals(x.Name, moduleName, StringComparison.Ordinal))
+			?? new ModuleRefUser(module, moduleName);
+		method.ImplMap = new ImplMapUser(moduleRef, entryName, attributes);
+		method.IsPinvokeImpl = true;
+	}
+	static ArgumentException InvalidArgument(string location, string message) => new(message, location);
+
+	// P04 IMP-007: security declarations on assembly/type/method. The XML path is
+	// the round-1 spike fact: SecurityAttribute.CreateFromXml -> DeclSecurityUser.
+	static readonly Dictionary<string, SecurityAction> SecurityActions = new(StringComparer.Ordinal) {
+		["deny"] = SecurityAction.Deny, ["permit_only"] = SecurityAction.PermitOnly,
+		["request_minimum"] = SecurityAction.RequestMinimum, ["request_optional"] = SecurityAction.RequestOptional,
+		["request_refuse"] = SecurityAction.RequestRefuse, ["assert"] = SecurityAction.Assert,
+		["link_demand"] = SecurityAction.LinktimeCheck, ["inherit_demand"] = SecurityAction.InheritDemand,
+		["demand"] = SecurityAction.Demand,
+	};
+	static IMDTokenProvider SecurityProvider(ModuleDef module, JsonElement reference) {
+		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly") {
+			if (module.Assembly == null) { Invalid("parent", "module has no assembly"); throw new InvalidOperationException(); }
+			return module.Assembly;
+		}
+		return ResolveToken(module, ParseToken(RequiredString(reference, "token")));
+	}
+	static IList<DeclSecurity> SecurityRows(ModuleDef module, JsonElement reference) {
+		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly") {
+			if (module.Assembly == null) { Invalid("parent", "module has no assembly"); throw new InvalidOperationException(); }
+			return module.Assembly.DeclSecurities;
+		}
+		var resolved = ResolveToken(module, ParseToken(RequiredString(reference, "token")));
+		if (resolved is TypeDef type) return type.DeclSecurities;
+		if (resolved is MethodDef method) return method.DeclSecurities;
+		Invalid("parent", "security parent must be assembly, type or method");
+		throw new InvalidOperationException();
+	}
+	static EditOperationOutcome SecurityAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		var provider = SecurityProvider(module, op.GetProperty("parent"));
+		var rows = SecurityRows(module, op.GetProperty("parent"));
+		var actionText = RequiredString(op, "action");
+		if (!SecurityActions.TryGetValue(actionText, out var action))
+			Invalid("action", "action must be one of " + string.Join(",", SecurityActions.Keys));
+		var xml = RequiredString(op, "xml");
+		var attribute = dnlib.DotNet.SecurityAttribute.CreateFromXml(module, xml)
+			?? throw (ArgumentException)InvalidArgument("xml", "the permission-set XML did not parse into a security attribute");
+		var row = new DeclSecurityUser(action, new[] { attribute });
+		rows.Add(row);
+		return Outcome("security_add", null, provider, null, actionText,
+			() => rows.Remove(row), new[] { Risk("security_change", provider) });
+	}
+	static EditOperationOutcome SecurityRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		var provider = SecurityProvider(module, op.GetProperty("parent"));
+		var rows = SecurityRows(module, op.GetProperty("parent"));
+		var actionText = RequiredString(op, "action");
+		if (!SecurityActions.TryGetValue(actionText, out var action))
+			Invalid("action", "action must be one of " + string.Join(",", SecurityActions.Keys));
+		var index = op.TryGetProperty("index", out var indexValue) ? (int)indexValue.GetUInt32() : 0;
+		var matching = rows.Where(x => x.Action == action).ToList();
+		if (index >= matching.Count) Invalid("index", "security declaration index is out of range");
+		var row = matching[index];
+		rows.Remove(row);
+		return Outcome("security_remove", null, provider, null, actionText,
+			() => rows.Add(row), new[] { Risk("security_change", provider) });
+	}
+
 	static void RejectUnknownRawFields(JsonElement op){foreach(var name in new[]{"raw_metadata","pe_bytes","heap","rva","hex_patch"})if(op.TryGetProperty(name,out _))throw new ArgumentException("Unknown raw edit field: "+name,name);}
 	static ulong OptionalAttributes(JsonElement op,string name,string domain,ulong fallback)=>op.TryGetProperty(name,out var v)?Attributes(v,domain):fallback;
 	static ulong Attributes(JsonElement v,string domain){var value=v.GetUInt64();var mask=AttributeMasks[domain];if((value&~mask)!=0)throw new ArgumentException("Undefined "+domain+" attribute bits","attributes");return value;}

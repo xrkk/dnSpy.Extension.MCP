@@ -1,1 +1,1413 @@
-{"operand_kinds":{"InlineBrTarget":{"kind":"label","maximum":4095,"minimum":0},"InlineField":{"kind":["token","object"],"tables":["Field","MemberRef"]},"InlineI":{"kind":"i32","maximum":2147483647,"minimum":-2147483648},"InlineI8":{"kind":"i64","maximum":9223372036854775807,"minimum":-9223372036854775808},"InlineMethod":{"kind":["token","object"],"tables":["MethodDef","MemberRef","MethodSpec"]},"InlineNone":{"operand":null},"InlineR":{"finite":true,"kind":"f64"},"InlineSig":{"error":"EDIT_CAPABILITY_UNAVAILABLE","supported":false},"InlineString":{"kind":"string","maxLength":65535},"InlineSwitch":{"kind":"switch","maxItems":4096},"InlineTok":{"kind":["token","object"],"tables":["TypeDef","TypeRef","TypeSpec","Field","MethodDef","MemberRef","MethodSpec"]},"InlineType":{"kind":["token","object"],"tables":["TypeDef","TypeRef","TypeSpec"]},"InlineVar":{"kind":["local","arg"],"maximum":65535,"minimum":0},"Phi":{"error":"EDIT_CAPABILITY_UNAVAILABLE","supported":false},"ShortInlineBrTarget":{"kind":"label","maximum":4095,"minimum":0},"ShortInlineI":{"kind":"i32","maximum":127,"minimum":-128},"ShortInlineR":{"finite":true,"kind":"f32"},"ShortInlineVar":{"kind":["local","arg"],"maximum":255,"minimum":0}},"operation_semantics":{"accessor_rules":{"event":"add/remove are required void(T) methods with the same owner; raise is optional but must share owner and compatible flags","property":"accessors must have the same owner and compatible signature/has-this/static flags"},"add_nullability":{"event_add":{"raise_method":"omitted-or-ref; explicit-null-invalid"},"property_add":{"getter":"omitted-or-ref; explicit-null-invalid","setter":"omitted-or-ref; explicit-null-invalid"}},"attribute_domains":{"EventAttributes":{"add_default":0,"mask":1536},"FieldAttributes":{"add_default":0,"mask":47095},"GenericParamAttributes":{"add_default":0,"mask":63},"MethodAttributes":{"add_default":128,"mask":65535},"MethodImplAttributes":{"add_default":0,"mask":6143},"ParamAttributes":{"add_default":0,"mask":12319},"PropertyAttributes":{"add_default":0,"mask":5632},"TypeAttributes":{"add_default":0,"mask":16219583}},"attribute_invalid_vectors":{"EventAttributes":[1],"FieldAttributes":[8],"GenericParamAttributes":[64],"MethodAttributes":[65536],"MethodImplAttributes":[2048],"ParamAttributes":[32],"PropertyAttributes":[1],"TypeAttributes":[64]},"constants":{"char_pattern":"^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])$","float_policy":"finite IEEE-754 value only; NaN and infinities are invalid JSON input","null_policy":"kind=null is permitted only for a compatible reference-type Constant; clear_constant=true removes the Constant row"},"dependency":{"assembly_file_sha256":"3b88e0948e2a6c49e5372c7e7d27817f5d2fb7ffed949b40cc98a2e5037b73ef","assembly_version":"4.5.0.0","name":"dnlib","version":"4.5.0"},"opcode_operand_table":{"UNKNOWN1":"InlineNone","UNKNOWN2":"InlineNone","add":"InlineNone","add.ovf":"InlineNone","add.ovf.un":"InlineNone","and":"InlineNone","arglist":"InlineNone","beq":"InlineBrTarget","beq.s":"ShortInlineBrTarget","bge":"InlineBrTarget","bge.s":"ShortInlineBrTarget","bge.un":"InlineBrTarget","bge.un.s":"ShortInlineBrTarget","bgt":"InlineBrTarget","bgt.s":"ShortInlineBrTarget","bgt.un":"InlineBrTarget","bgt.un.s":"ShortInlineBrTarget","ble":"InlineBrTarget","ble.s":"ShortInlineBrTarget","ble.un":"InlineBrTarget","ble.un.s":"ShortInlineBrTarget","blt":"InlineBrTarget","blt.s":"ShortInlineBrTarget","blt.un":"InlineBrTarget","blt.un.s":"ShortInlineBrTarget","bne.un":"InlineBrTarget","bne.un.s":"ShortInlineBrTarget","box":"InlineType","br":"InlineBrTarget","br.s":"ShortInlineBrTarget","break":"InlineNone","brfalse":"InlineBrTarget","brfalse.s":"ShortInlineBrTarget","brtrue":"InlineBrTarget","brtrue.s":"ShortInlineBrTarget","call":"InlineMethod","calli":"InlineSig","callvirt":"InlineMethod","castclass":"InlineType","ceq":"InlineNone","cgt":"InlineNone","cgt.un":"InlineNone","ckfinite":"InlineNone","clt":"InlineNone","clt.un":"InlineNone","constrained.":"InlineType","conv.i":"InlineNone","conv.i1":"InlineNone","conv.i2":"InlineNone","conv.i4":"InlineNone","conv.i8":"InlineNone","conv.ovf.i":"InlineNone","conv.ovf.i.un":"InlineNone","conv.ovf.i1":"InlineNone","conv.ovf.i1.un":"InlineNone","conv.ovf.i2":"InlineNone","conv.ovf.i2.un":"InlineNone","conv.ovf.i4":"InlineNone","conv.ovf.i4.un":"InlineNone","conv.ovf.i8":"InlineNone","conv.ovf.i8.un":"InlineNone","conv.ovf.u":"InlineNone","conv.ovf.u.un":"InlineNone","conv.ovf.u1":"InlineNone","conv.ovf.u1.un":"InlineNone","conv.ovf.u2":"InlineNone","conv.ovf.u2.un":"InlineNone","conv.ovf.u4":"InlineNone","conv.ovf.u4.un":"InlineNone","conv.ovf.u8":"InlineNone","conv.ovf.u8.un":"InlineNone","conv.r.un":"InlineNone","conv.r4":"InlineNone","conv.r8":"InlineNone","conv.u":"InlineNone","conv.u1":"InlineNone","conv.u2":"InlineNone","conv.u4":"InlineNone","conv.u8":"InlineNone","cpblk":"InlineNone","cpobj":"InlineType","div":"InlineNone","div.un":"InlineNone","dup":"InlineNone","endfilter":"InlineNone","endfinally":"InlineNone","initblk":"InlineNone","initobj":"InlineType","isinst":"InlineType","jmp":"InlineMethod","ldarg":"InlineVar","ldarg.0":"InlineNone","ldarg.1":"InlineNone","ldarg.2":"InlineNone","ldarg.3":"InlineNone","ldarg.s":"ShortInlineVar","ldarga":"InlineVar","ldarga.s":"ShortInlineVar","ldc.i4":"InlineI","ldc.i4.0":"InlineNone","ldc.i4.1":"InlineNone","ldc.i4.2":"InlineNone","ldc.i4.3":"InlineNone","ldc.i4.4":"InlineNone","ldc.i4.5":"InlineNone","ldc.i4.6":"InlineNone","ldc.i4.7":"InlineNone","ldc.i4.8":"InlineNone","ldc.i4.m1":"InlineNone","ldc.i4.s":"ShortInlineI","ldc.i8":"InlineI8","ldc.r4":"ShortInlineR","ldc.r8":"InlineR","ldelem":"InlineType","ldelem.i":"InlineNone","ldelem.i1":"InlineNone","ldelem.i2":"InlineNone","ldelem.i4":"InlineNone","ldelem.i8":"InlineNone","ldelem.r4":"InlineNone","ldelem.r8":"InlineNone","ldelem.ref":"InlineNone","ldelem.u1":"InlineNone","ldelem.u2":"InlineNone","ldelem.u4":"InlineNone","ldelema":"InlineType","ldfld":"InlineField","ldflda":"InlineField","ldftn":"InlineMethod","ldind.i":"InlineNone","ldind.i1":"InlineNone","ldind.i2":"InlineNone","ldind.i4":"InlineNone","ldind.i8":"InlineNone","ldind.r4":"InlineNone","ldind.r8":"InlineNone","ldind.ref":"InlineNone","ldind.u1":"InlineNone","ldind.u2":"InlineNone","ldind.u4":"InlineNone","ldlen":"InlineNone","ldloc":"InlineVar","ldloc.0":"InlineNone","ldloc.1":"InlineNone","ldloc.2":"InlineNone","ldloc.3":"InlineNone","ldloc.s":"ShortInlineVar","ldloca":"InlineVar","ldloca.s":"ShortInlineVar","ldnull":"InlineNone","ldobj":"InlineType","ldsfld":"InlineField","ldsflda":"InlineField","ldstr":"InlineString","ldtoken":"InlineTok","ldvirtftn":"InlineMethod","leave":"InlineBrTarget","leave.s":"ShortInlineBrTarget","localloc":"InlineNone","mkrefany":"InlineType","mul":"InlineNone","mul.ovf":"InlineNone","mul.ovf.un":"InlineNone","neg":"InlineNone","newarr":"InlineType","newobj":"InlineMethod","no.":"ShortInlineI","nop":"InlineNone","not":"InlineNone","or":"InlineNone","pop":"InlineNone","prefix1":"InlineNone","prefix2":"InlineNone","prefix3":"InlineNone","prefix4":"InlineNone","prefix5":"InlineNone","prefix6":"InlineNone","prefix7":"InlineNone","prefixref":"InlineNone","readonly.":"InlineNone","refanytype":"InlineNone","refanyval":"InlineType","rem":"InlineNone","rem.un":"InlineNone","ret":"InlineNone","rethrow":"InlineNone","shl":"InlineNone","shr":"InlineNone","shr.un":"InlineNone","sizeof":"InlineType","starg":"InlineVar","starg.s":"ShortInlineVar","stelem":"InlineType","stelem.i":"InlineNone","stelem.i1":"InlineNone","stelem.i2":"InlineNone","stelem.i4":"InlineNone","stelem.i8":"InlineNone","stelem.r4":"InlineNone","stelem.r8":"InlineNone","stelem.ref":"InlineNone","stfld":"InlineField","stind.i":"InlineNone","stind.i1":"InlineNone","stind.i2":"InlineNone","stind.i4":"InlineNone","stind.i8":"InlineNone","stind.r4":"InlineNone","stind.r8":"InlineNone","stind.ref":"InlineNone","stloc":"InlineVar","stloc.0":"InlineNone","stloc.1":"InlineNone","stloc.2":"InlineNone","stloc.3":"InlineNone","stloc.s":"ShortInlineVar","stobj":"InlineType","stsfld":"InlineField","sub":"InlineNone","sub.ovf":"InlineNone","sub.ovf.un":"InlineNone","switch":"InlineSwitch","tail.":"InlineNone","throw":"InlineNone","unaligned.":"ShortInlineI","unbox":"InlineType","unbox.any":"InlineType","volatile.":"InlineNone","xor":"InlineNone"},"operand_dispatch":"resolve lowercase opcode through the dnlib 4.5.0 OpCodes table, then accept exactly the matching operand_kinds row; InlineNone requires omitted operand","type_sig":{"context_rules":{"field_parameter_local_generic_argument":"System.Void forbidden","generic_index":"!n requires n < owner_type_arity; !!n requires n < owner_method_arity; both arities are explicit vector inputs","method_return":"naked System.Void allowed","suffix":"zero or more array/pointer suffixes followed by at most one final byref; suffix after byref is invalid"},"ebnf":["type = primary, { suffix } ;","primary = primitive | type_ref | generic_var | generic_instance ;","primitive = one of primitives ;","type_ref = qualified_name, { '/', nested_name } ;","generic_var = '!', uint | '!!', uint ;","generic_name = type_ref ending in '`', positive_uint ;","generic_instance = generic_name, '<', type, { ',', type }, '>' ; argument count must equal generic arity","suffix = '[]' | '[', { ',' }, ']' | '*' | '&' ;"],"forbidden":["modreq","modopt","fnptr","sentinel"],"forbidden_error":"EDIT_CAPABILITY_UNAVAILABLE","invalid_examples":[{"reason":"empty","text":""},{"reason":"whitespace","text":"System.Int32 "},{"reason":"unsupported","text":"modreq(System.Int32)"},{"reason":"unsupported","text":"fnptr<System.Void>"},{"reason":"generic-index","text":"!"},{"reason":"generic-argument","text":"Example.Box`1<>"},{"reason":"missing-generic-arity","text":"Example.Box<System.String>"},{"reason":"generic-arity-mismatch","text":"Example.Box`1<System.String,System.Int32>"},{"reason":"primitive-generic","text":"System.Int32<System.String>"},{"context":"field","reason":"void-context","text":"System.Void[]"},{"context":"field","reason":"generic-index-range","text":"!65536"},{"context":"field","owner_method_arity":0,"owner_type_arity":0,"reason":"owner-type-arity","text":"!0"},{"context":"field","owner_method_arity":0,"owner_type_arity":1,"reason":"owner-type-boundary","text":"!1"},{"context":"parameter","owner_method_arity":0,"owner_type_arity":0,"reason":"owner-method-arity","text":"!!0"},{"context":"parameter","reason":"byref-not-final","text":"System.Int32&&"},{"context":"parameter","reason":"suffix-after-byref","text":"System.Int32&*"},{"context":"field","reason":"void-generic-argument","text":"Example.Box`1<System.Void>"},{"reason":"unterminated-array","text":"System.Int32[,,"}],"primitives":["System.Void","System.Boolean","System.Char","System.SByte","System.Byte","System.Int16","System.UInt16","System.Int32","System.UInt32","System.Int64","System.UInt64","System.Single","System.Double","System.String","System.Object","System.IntPtr","System.UIntPtr","System.TypedReference"],"qualified_name_rule":"dot-separated identifiers; nested identifiers use '/'; generic arity is a decimal suffix after backtick","required_vectors":[{"context":"field","expected":true,"owner_method_arity":0,"owner_type_arity":1,"text":"!0","vector_id":"type-var-zero-valid"},{"context":"field","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"!0","vector_id":"type-var-zero-invalid"},{"context":"field","expected":false,"owner_method_arity":0,"owner_type_arity":1,"text":"!1","vector_id":"type-var-boundary-invalid"},{"context":"parameter","expected":true,"owner_method_arity":1,"owner_type_arity":0,"text":"!!0","vector_id":"method-var-zero-valid"},{"context":"parameter","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"!!0","vector_id":"method-var-zero-invalid"},{"context":"parameter","expected":false,"owner_method_arity":1,"owner_type_arity":0,"text":"!!1","vector_id":"method-var-boundary-invalid"},{"context":"method_return","expected":true,"owner_method_arity":0,"owner_type_arity":0,"text":"System.Void","vector_id":"void-return-valid"},{"context":"field","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"System.Void","vector_id":"void-field-invalid"},{"context":"field","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"Example.Box`1<System.Void>","vector_id":"void-generic-invalid"},{"context":"parameter","expected":true,"owner_method_arity":0,"owner_type_arity":0,"text":"Example.Widget*&","vector_id":"final-byref-valid"},{"context":"parameter","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"System.Int32&&","vector_id":"double-byref-invalid"},{"context":"parameter","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"System.Int32&*","vector_id":"suffix-after-byref-invalid"},{"context":"field","expected":true,"owner_method_arity":0,"owner_type_arity":0,"text":"Example.Map`2<System.String,System.Int32[]>","vector_id":"generic-arity-valid"},{"context":"field","expected":false,"owner_method_arity":0,"owner_type_arity":0,"text":"Example.Box`1<System.String,System.Int32>","vector_id":"generic-arity-mismatch"}],"resolution":"TypeDefOrRef must resolve uniquely in the current module or an existing AssemblyRef; zero or multiple matches is EDIT_VALIDATION_FAILED","suffix_order":"parse left-to-right after primary; apply each suffix from inner to outer","valid_examples":[{"context":"field","text":"System.Int32"},{"context":"field","text":"Example.Widget"},{"context":"field","text":"Example.Outer/Inner"},{"context":"field","owner_method_arity":0,"owner_type_arity":1,"text":"!0"},{"context":"parameter","owner_method_arity":13,"owner_type_arity":0,"text":"!!12"},{"context":"method_return","text":"System.Void"},{"context":"field","text":"Example.Box`1<System.String>"},{"context":"field","text":"Example.Map`2<System.String,System.Int32[]>"},{"context":"field","text":"System.Int32[,,]"},{"context":"parameter","text":"Example.Widget*&"}],"version":"p02-typesig-v1"},"update_nullability":{"event_update":{"raise_method":"omitted-keeps; null-clears"},"property_update":{"getter":"omitted-keeps; null-clears","setter":"omitted-keeps; null-clears"},"type_update":{"base_type":"omitted-keeps; null-clears"}}},"operations":[{"kind":"type_add","live_forward":["insert:type_collection"],"live_reverse":["remove:type_collection"],"optional":["namespace","attributes","base_type","owner_type"],"private":["construct_type","validate","insert_private_type"],"required":["name"]},{"kind":"type_update","live_forward":["set:name:if_changed","set:namespace:if_changed","set:attributes:if_changed","set:base_type:if_changed"],"live_reverse":["restore:base_type:if_changed","restore:attributes:if_changed","restore:namespace:if_changed","restore:name:if_changed"],"optional":["name","namespace","attributes","base_type"],"private":["patch_private_type","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"type_remove","live_forward":["remove:type_collection"],"live_reverse":["insert:type_collection"],"optional":[],"private":["reject_if_referenced_or_attached","remove_private_type","validate"],"required":["target","remove_mode"]},{"kind":"method_add","live_forward":["insert:method_collection"],"live_reverse":["remove:method_collection"],"optional":["attributes","impl_attributes","body"],"private":["construct_method_subgraph","validate","insert_private_method"],"required":["owner_type","name","signature"]},{"kind":"method_update","live_forward":["set:name:if_changed","set:attributes:if_changed","set:impl_attributes:if_changed","set:return_type:if_changed","set:has_this:if_changed"],"live_reverse":["restore:has_this:if_changed","restore:return_type:if_changed","restore:impl_attributes:if_changed","restore:attributes:if_changed","restore:name:if_changed"],"optional":["name","attributes","impl_attributes","return_type","has_this"],"private":["patch_private_method","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"method_remove","live_forward":["remove:method_collection"],"live_reverse":["insert:method_collection"],"optional":[],"private":["reject_if_referenced_or_attached","remove_private_method","validate"],"required":["target","remove_mode"]},{"kind":"field_add","live_forward":["insert:field_collection"],"live_reverse":["remove:field_collection"],"optional":["attributes","constant"],"private":["construct_field","validate","insert_private_field"],"required":["owner_type","name","field_type"]},{"kind":"field_update","live_forward":["set:name:if_changed","set:field_type:if_changed","set:attributes:if_changed","set:constant:if_changed"],"live_reverse":["restore:constant:if_changed","restore:attributes:if_changed","restore:field_type:if_changed","restore:name:if_changed"],"optional":["name","field_type","attributes","constant","clear_constant"],"private":["patch_private_field","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"field_remove","live_forward":["remove:field_collection"],"live_reverse":["insert:field_collection"],"optional":[],"private":["reject_if_referenced_or_attached","remove_private_field","validate"],"required":["target","remove_mode"]},{"kind":"property_add","live_forward":["insert:property_collection","insert:getter_semantics:if_present","insert:setter_semantics:if_present"],"live_reverse":["remove:setter_semantics:if_present","remove:getter_semantics:if_present","remove:property_collection"],"optional":["index_parameter_types","attributes","getter","setter"],"private":["construct_property","validate","insert_private_property","link_private_accessors"],"required":["owner_type","name","property_type"]},{"kind":"property_update","live_forward":["set:name:if_changed","set:property_type:if_changed","set:index_signature:if_changed","set:attributes:if_changed","set:getter_semantics:if_changed","set:setter_semantics:if_changed"],"live_reverse":["restore:setter_semantics:if_changed","restore:getter_semantics:if_changed","restore:attributes:if_changed","restore:index_signature:if_changed","restore:property_type:if_changed","restore:name:if_changed"],"optional":["name","property_type","index_parameter_types","attributes","getter","setter"],"private":["patch_private_property","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"property_remove","live_forward":["remove:setter_semantics:if_present","remove:getter_semantics:if_present","remove:property_collection"],"live_reverse":["insert:property_collection","insert:getter_semantics:if_present","insert:setter_semantics:if_present"],"optional":[],"private":["reject_if_referenced_or_attached","unlink_private_accessors","remove_private_property","validate"],"required":["target","remove_mode"]},{"kind":"event_add","live_forward":["insert:event_collection","insert:add_semantics","insert:remove_semantics","insert:raise_semantics:if_present"],"live_reverse":["remove:raise_semantics:if_present","remove:remove_semantics","remove:add_semantics","remove:event_collection"],"optional":["attributes","raise_method"],"private":["construct_event","validate","insert_private_event","link_private_accessors"],"required":["owner_type","name","event_type","add_method","remove_method"]},{"kind":"event_update","live_forward":["set:name:if_changed","set:event_type:if_changed","set:attributes:if_changed","set:add_semantics:if_changed","set:remove_semantics:if_changed","set:raise_semantics:if_changed"],"live_reverse":["restore:raise_semantics:if_changed","restore:remove_semantics:if_changed","restore:add_semantics:if_changed","restore:attributes:if_changed","restore:event_type:if_changed","restore:name:if_changed"],"optional":["name","event_type","attributes","add_method","remove_method","raise_method"],"private":["patch_private_event","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"event_remove","live_forward":["remove:raise_semantics:if_present","remove:remove_semantics","remove:add_semantics","remove:event_collection"],"live_reverse":["insert:event_collection","insert:add_semantics","insert:remove_semantics","insert:raise_semantics:if_present"],"optional":[],"private":["reject_if_referenced_or_attached","unlink_private_accessors","remove_private_event","validate"],"required":["target","remove_mode"]},{"kind":"parameter_add","live_forward":["insert:signature_tail","insert:paramdef_collection"],"live_reverse":["remove:paramdef_collection","remove:signature_tail"],"optional":["attributes"],"private":["require_tail","construct_paramdef","append_private_signature_slot","append_private_paramdef","validate"],"required":["owner_method","parameter_index","name","parameter_type"]},{"kind":"parameter_update","live_forward":["insert:paramdef_collection:if_missing","set:name:if_changed","set:attributes:if_changed","set:signature_slot_type:if_changed"],"live_reverse":["restore:signature_slot_type:if_changed","restore:attributes:if_changed","restore:name:if_changed","remove:paramdef_collection:if_materialized"],"optional":["name","attributes","parameter_type"],"private":["reject_return_param","materialize_private_paramdef_if_missing","patch_private_parameter","validate"],"required":["parameter_target"]},{"delete_policy":"hard_fail_if_referenced;public_unreferenced_is_risk","kind":"parameter_remove","live_forward":["remove:paramdef_collection:if_present","remove:signature_tail"],"live_reverse":["insert:signature_tail","insert:paramdef_collection:if_was_present"],"optional":[],"private":["require_tail","reject_return_param","reject_if_referenced_or_attached","remove_private_paramdef_if_present","remove_private_signature_slot","validate"],"required":["parameter_target","remove_mode"]},{"kind":"generic_parameter_add","live_forward":["insert:generic_collection","set:method_generic_arity:if_method"],"live_reverse":["restore:method_generic_arity:if_method","remove:generic_collection"],"optional":["attributes"],"private":["require_tail","construct_generic_param","append_private_generic","validate"],"required":["owner","generic_index","name"]},{"kind":"generic_parameter_update","live_forward":["set:name:if_changed","set:attributes:if_changed"],"live_reverse":["restore:attributes:if_changed","restore:name:if_changed"],"optional":["name","attributes"],"private":["patch_private_generic","validate"],"required":["target"]},{"delete_policy":"hard_fail_if_used_or_attached;public_unreferenced_is_risk","kind":"generic_parameter_remove","live_forward":["remove:generic_collection","set:method_generic_arity:if_method"],"live_reverse":["restore:method_generic_arity:if_method","insert:generic_collection"],"optional":[],"private":["require_tail","reject_if_used_or_attached","remove_private_generic","validate"],"required":["target","remove_mode"]},{"kind":"method_body_replace","live_forward":["set:body_reference"],"live_reverse":["restore:body_reference"],"optional":[],"private":["construct_body","validate","swap_private_body"],"required":["target","body"]}]}
+{
+  "operand_kinds": {
+    "InlineBrTarget": {
+      "kind": "label",
+      "maximum": 4095,
+      "minimum": 0
+    },
+    "InlineField": {
+      "kind": [
+        "token",
+        "object"
+      ],
+      "tables": [
+        "Field",
+        "MemberRef"
+      ]
+    },
+    "InlineI": {
+      "kind": "i32",
+      "maximum": 2147483647,
+      "minimum": -2147483648
+    },
+    "InlineI8": {
+      "kind": "i64",
+      "maximum": 9223372036854775807,
+      "minimum": -9223372036854775808
+    },
+    "InlineMethod": {
+      "kind": [
+        "token",
+        "object"
+      ],
+      "tables": [
+        "MethodDef",
+        "MemberRef",
+        "MethodSpec"
+      ]
+    },
+    "InlineNone": {
+      "operand": null
+    },
+    "InlineR": {
+      "finite": true,
+      "kind": "f64"
+    },
+    "InlineSig": {
+      "error": "EDIT_CAPABILITY_UNAVAILABLE",
+      "supported": false
+    },
+    "InlineString": {
+      "kind": "string",
+      "maxLength": 65535
+    },
+    "InlineSwitch": {
+      "kind": "switch",
+      "maxItems": 4096
+    },
+    "InlineTok": {
+      "kind": [
+        "token",
+        "object"
+      ],
+      "tables": [
+        "TypeDef",
+        "TypeRef",
+        "TypeSpec",
+        "Field",
+        "MethodDef",
+        "MemberRef",
+        "MethodSpec"
+      ]
+    },
+    "InlineType": {
+      "kind": [
+        "token",
+        "object"
+      ],
+      "tables": [
+        "TypeDef",
+        "TypeRef",
+        "TypeSpec"
+      ]
+    },
+    "InlineVar": {
+      "kind": [
+        "local",
+        "arg"
+      ],
+      "maximum": 65535,
+      "minimum": 0
+    },
+    "Phi": {
+      "error": "EDIT_CAPABILITY_UNAVAILABLE",
+      "supported": false
+    },
+    "ShortInlineBrTarget": {
+      "kind": "label",
+      "maximum": 4095,
+      "minimum": 0
+    },
+    "ShortInlineI": {
+      "kind": "i32",
+      "maximum": 127,
+      "minimum": -128
+    },
+    "ShortInlineR": {
+      "finite": true,
+      "kind": "f32"
+    },
+    "ShortInlineVar": {
+      "kind": [
+        "local",
+        "arg"
+      ],
+      "maximum": 255,
+      "minimum": 0
+    }
+  },
+  "operation_semantics": {
+    "accessor_rules": {
+      "event": "add/remove are required void(T) methods with the same owner; raise is optional but must share owner and compatible flags",
+      "property": "accessors must have the same owner and compatible signature/has-this/static flags"
+    },
+    "add_nullability": {
+      "event_add": {
+        "raise_method": "omitted-or-ref; explicit-null-invalid"
+      },
+      "property_add": {
+        "getter": "omitted-or-ref; explicit-null-invalid",
+        "setter": "omitted-or-ref; explicit-null-invalid"
+      }
+    },
+    "attribute_domains": {
+      "EventAttributes": {
+        "add_default": 0,
+        "mask": 1536
+      },
+      "FieldAttributes": {
+        "add_default": 0,
+        "mask": 47095
+      },
+      "GenericParamAttributes": {
+        "add_default": 0,
+        "mask": 63
+      },
+      "MethodAttributes": {
+        "add_default": 128,
+        "mask": 65535
+      },
+      "MethodImplAttributes": {
+        "add_default": 0,
+        "mask": 6143
+      },
+      "ParamAttributes": {
+        "add_default": 0,
+        "mask": 12319
+      },
+      "PropertyAttributes": {
+        "add_default": 0,
+        "mask": 5632
+      },
+      "TypeAttributes": {
+        "add_default": 0,
+        "mask": 16219583
+      }
+    },
+    "attribute_invalid_vectors": {
+      "EventAttributes": [
+        1
+      ],
+      "FieldAttributes": [
+        8
+      ],
+      "GenericParamAttributes": [
+        64
+      ],
+      "MethodAttributes": [
+        65536
+      ],
+      "MethodImplAttributes": [
+        2048
+      ],
+      "ParamAttributes": [
+        32
+      ],
+      "PropertyAttributes": [
+        1
+      ],
+      "TypeAttributes": [
+        64
+      ]
+    },
+    "constants": {
+      "char_pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])$",
+      "float_policy": "finite IEEE-754 value only; NaN and infinities are invalid JSON input",
+      "null_policy": "kind=null is permitted only for a compatible reference-type Constant; clear_constant=true removes the Constant row"
+    },
+    "dependency": {
+      "assembly_file_sha256": "3b88e0948e2a6c49e5372c7e7d27817f5d2fb7ffed949b40cc98a2e5037b73ef",
+      "assembly_version": "4.5.0.0",
+      "name": "dnlib",
+      "version": "4.5.0"
+    },
+    "opcode_operand_table": {
+      "UNKNOWN1": "InlineNone",
+      "UNKNOWN2": "InlineNone",
+      "add": "InlineNone",
+      "add.ovf": "InlineNone",
+      "add.ovf.un": "InlineNone",
+      "and": "InlineNone",
+      "arglist": "InlineNone",
+      "beq": "InlineBrTarget",
+      "beq.s": "ShortInlineBrTarget",
+      "bge": "InlineBrTarget",
+      "bge.s": "ShortInlineBrTarget",
+      "bge.un": "InlineBrTarget",
+      "bge.un.s": "ShortInlineBrTarget",
+      "bgt": "InlineBrTarget",
+      "bgt.s": "ShortInlineBrTarget",
+      "bgt.un": "InlineBrTarget",
+      "bgt.un.s": "ShortInlineBrTarget",
+      "ble": "InlineBrTarget",
+      "ble.s": "ShortInlineBrTarget",
+      "ble.un": "InlineBrTarget",
+      "ble.un.s": "ShortInlineBrTarget",
+      "blt": "InlineBrTarget",
+      "blt.s": "ShortInlineBrTarget",
+      "blt.un": "InlineBrTarget",
+      "blt.un.s": "ShortInlineBrTarget",
+      "bne.un": "InlineBrTarget",
+      "bne.un.s": "ShortInlineBrTarget",
+      "box": "InlineType",
+      "br": "InlineBrTarget",
+      "br.s": "ShortInlineBrTarget",
+      "break": "InlineNone",
+      "brfalse": "InlineBrTarget",
+      "brfalse.s": "ShortInlineBrTarget",
+      "brtrue": "InlineBrTarget",
+      "brtrue.s": "ShortInlineBrTarget",
+      "call": "InlineMethod",
+      "calli": "InlineSig",
+      "callvirt": "InlineMethod",
+      "castclass": "InlineType",
+      "ceq": "InlineNone",
+      "cgt": "InlineNone",
+      "cgt.un": "InlineNone",
+      "ckfinite": "InlineNone",
+      "clt": "InlineNone",
+      "clt.un": "InlineNone",
+      "constrained.": "InlineType",
+      "conv.i": "InlineNone",
+      "conv.i1": "InlineNone",
+      "conv.i2": "InlineNone",
+      "conv.i4": "InlineNone",
+      "conv.i8": "InlineNone",
+      "conv.ovf.i": "InlineNone",
+      "conv.ovf.i.un": "InlineNone",
+      "conv.ovf.i1": "InlineNone",
+      "conv.ovf.i1.un": "InlineNone",
+      "conv.ovf.i2": "InlineNone",
+      "conv.ovf.i2.un": "InlineNone",
+      "conv.ovf.i4": "InlineNone",
+      "conv.ovf.i4.un": "InlineNone",
+      "conv.ovf.i8": "InlineNone",
+      "conv.ovf.i8.un": "InlineNone",
+      "conv.ovf.u": "InlineNone",
+      "conv.ovf.u.un": "InlineNone",
+      "conv.ovf.u1": "InlineNone",
+      "conv.ovf.u1.un": "InlineNone",
+      "conv.ovf.u2": "InlineNone",
+      "conv.ovf.u2.un": "InlineNone",
+      "conv.ovf.u4": "InlineNone",
+      "conv.ovf.u4.un": "InlineNone",
+      "conv.ovf.u8": "InlineNone",
+      "conv.ovf.u8.un": "InlineNone",
+      "conv.r.un": "InlineNone",
+      "conv.r4": "InlineNone",
+      "conv.r8": "InlineNone",
+      "conv.u": "InlineNone",
+      "conv.u1": "InlineNone",
+      "conv.u2": "InlineNone",
+      "conv.u4": "InlineNone",
+      "conv.u8": "InlineNone",
+      "cpblk": "InlineNone",
+      "cpobj": "InlineType",
+      "div": "InlineNone",
+      "div.un": "InlineNone",
+      "dup": "InlineNone",
+      "endfilter": "InlineNone",
+      "endfinally": "InlineNone",
+      "initblk": "InlineNone",
+      "initobj": "InlineType",
+      "isinst": "InlineType",
+      "jmp": "InlineMethod",
+      "ldarg": "InlineVar",
+      "ldarg.0": "InlineNone",
+      "ldarg.1": "InlineNone",
+      "ldarg.2": "InlineNone",
+      "ldarg.3": "InlineNone",
+      "ldarg.s": "ShortInlineVar",
+      "ldarga": "InlineVar",
+      "ldarga.s": "ShortInlineVar",
+      "ldc.i4": "InlineI",
+      "ldc.i4.0": "InlineNone",
+      "ldc.i4.1": "InlineNone",
+      "ldc.i4.2": "InlineNone",
+      "ldc.i4.3": "InlineNone",
+      "ldc.i4.4": "InlineNone",
+      "ldc.i4.5": "InlineNone",
+      "ldc.i4.6": "InlineNone",
+      "ldc.i4.7": "InlineNone",
+      "ldc.i4.8": "InlineNone",
+      "ldc.i4.m1": "InlineNone",
+      "ldc.i4.s": "ShortInlineI",
+      "ldc.i8": "InlineI8",
+      "ldc.r4": "ShortInlineR",
+      "ldc.r8": "InlineR",
+      "ldelem": "InlineType",
+      "ldelem.i": "InlineNone",
+      "ldelem.i1": "InlineNone",
+      "ldelem.i2": "InlineNone",
+      "ldelem.i4": "InlineNone",
+      "ldelem.i8": "InlineNone",
+      "ldelem.r4": "InlineNone",
+      "ldelem.r8": "InlineNone",
+      "ldelem.ref": "InlineNone",
+      "ldelem.u1": "InlineNone",
+      "ldelem.u2": "InlineNone",
+      "ldelem.u4": "InlineNone",
+      "ldelema": "InlineType",
+      "ldfld": "InlineField",
+      "ldflda": "InlineField",
+      "ldftn": "InlineMethod",
+      "ldind.i": "InlineNone",
+      "ldind.i1": "InlineNone",
+      "ldind.i2": "InlineNone",
+      "ldind.i4": "InlineNone",
+      "ldind.i8": "InlineNone",
+      "ldind.r4": "InlineNone",
+      "ldind.r8": "InlineNone",
+      "ldind.ref": "InlineNone",
+      "ldind.u1": "InlineNone",
+      "ldind.u2": "InlineNone",
+      "ldind.u4": "InlineNone",
+      "ldlen": "InlineNone",
+      "ldloc": "InlineVar",
+      "ldloc.0": "InlineNone",
+      "ldloc.1": "InlineNone",
+      "ldloc.2": "InlineNone",
+      "ldloc.3": "InlineNone",
+      "ldloc.s": "ShortInlineVar",
+      "ldloca": "InlineVar",
+      "ldloca.s": "ShortInlineVar",
+      "ldnull": "InlineNone",
+      "ldobj": "InlineType",
+      "ldsfld": "InlineField",
+      "ldsflda": "InlineField",
+      "ldstr": "InlineString",
+      "ldtoken": "InlineTok",
+      "ldvirtftn": "InlineMethod",
+      "leave": "InlineBrTarget",
+      "leave.s": "ShortInlineBrTarget",
+      "localloc": "InlineNone",
+      "mkrefany": "InlineType",
+      "mul": "InlineNone",
+      "mul.ovf": "InlineNone",
+      "mul.ovf.un": "InlineNone",
+      "neg": "InlineNone",
+      "newarr": "InlineType",
+      "newobj": "InlineMethod",
+      "no.": "ShortInlineI",
+      "nop": "InlineNone",
+      "not": "InlineNone",
+      "or": "InlineNone",
+      "pop": "InlineNone",
+      "prefix1": "InlineNone",
+      "prefix2": "InlineNone",
+      "prefix3": "InlineNone",
+      "prefix4": "InlineNone",
+      "prefix5": "InlineNone",
+      "prefix6": "InlineNone",
+      "prefix7": "InlineNone",
+      "prefixref": "InlineNone",
+      "readonly.": "InlineNone",
+      "refanytype": "InlineNone",
+      "refanyval": "InlineType",
+      "rem": "InlineNone",
+      "rem.un": "InlineNone",
+      "ret": "InlineNone",
+      "rethrow": "InlineNone",
+      "shl": "InlineNone",
+      "shr": "InlineNone",
+      "shr.un": "InlineNone",
+      "sizeof": "InlineType",
+      "starg": "InlineVar",
+      "starg.s": "ShortInlineVar",
+      "stelem": "InlineType",
+      "stelem.i": "InlineNone",
+      "stelem.i1": "InlineNone",
+      "stelem.i2": "InlineNone",
+      "stelem.i4": "InlineNone",
+      "stelem.i8": "InlineNone",
+      "stelem.r4": "InlineNone",
+      "stelem.r8": "InlineNone",
+      "stelem.ref": "InlineNone",
+      "stfld": "InlineField",
+      "stind.i": "InlineNone",
+      "stind.i1": "InlineNone",
+      "stind.i2": "InlineNone",
+      "stind.i4": "InlineNone",
+      "stind.i8": "InlineNone",
+      "stind.r4": "InlineNone",
+      "stind.r8": "InlineNone",
+      "stind.ref": "InlineNone",
+      "stloc": "InlineVar",
+      "stloc.0": "InlineNone",
+      "stloc.1": "InlineNone",
+      "stloc.2": "InlineNone",
+      "stloc.3": "InlineNone",
+      "stloc.s": "ShortInlineVar",
+      "stobj": "InlineType",
+      "stsfld": "InlineField",
+      "sub": "InlineNone",
+      "sub.ovf": "InlineNone",
+      "sub.ovf.un": "InlineNone",
+      "switch": "InlineSwitch",
+      "tail.": "InlineNone",
+      "throw": "InlineNone",
+      "unaligned.": "ShortInlineI",
+      "unbox": "InlineType",
+      "unbox.any": "InlineType",
+      "volatile.": "InlineNone",
+      "xor": "InlineNone"
+    },
+    "operand_dispatch": "resolve lowercase opcode through the dnlib 4.5.0 OpCodes table, then accept exactly the matching operand_kinds row; InlineNone requires omitted operand",
+    "type_sig": {
+      "context_rules": {
+        "field_parameter_local_generic_argument": "System.Void forbidden",
+        "generic_index": "!n requires n < owner_type_arity; !!n requires n < owner_method_arity; both arities are explicit vector inputs",
+        "method_return": "naked System.Void allowed",
+        "suffix": "zero or more array/pointer suffixes followed by at most one final byref; suffix after byref is invalid"
+      },
+      "ebnf": [
+        "type = primary, { suffix } ;",
+        "primary = primitive | type_ref | generic_var | generic_instance ;",
+        "primitive = one of primitives ;",
+        "type_ref = qualified_name, { '/', nested_name } ;",
+        "generic_var = '!', uint | '!!', uint ;",
+        "generic_name = type_ref ending in '`', positive_uint ;",
+        "generic_instance = generic_name, '<', type, { ',', type }, '>' ; argument count must equal generic arity",
+        "suffix = '[]' | '[', { ',' }, ']' | '*' | '&' ;"
+      ],
+      "forbidden": [
+        "modreq",
+        "modopt",
+        "fnptr",
+        "sentinel"
+      ],
+      "forbidden_error": "EDIT_CAPABILITY_UNAVAILABLE",
+      "invalid_examples": [
+        {
+          "reason": "empty",
+          "text": ""
+        },
+        {
+          "reason": "whitespace",
+          "text": "System.Int32 "
+        },
+        {
+          "reason": "unsupported",
+          "text": "modreq(System.Int32)"
+        },
+        {
+          "reason": "unsupported",
+          "text": "fnptr<System.Void>"
+        },
+        {
+          "reason": "generic-index",
+          "text": "!"
+        },
+        {
+          "reason": "generic-argument",
+          "text": "Example.Box`1<>"
+        },
+        {
+          "reason": "missing-generic-arity",
+          "text": "Example.Box<System.String>"
+        },
+        {
+          "reason": "generic-arity-mismatch",
+          "text": "Example.Box`1<System.String,System.Int32>"
+        },
+        {
+          "reason": "primitive-generic",
+          "text": "System.Int32<System.String>"
+        },
+        {
+          "context": "field",
+          "reason": "void-context",
+          "text": "System.Void[]"
+        },
+        {
+          "context": "field",
+          "reason": "generic-index-range",
+          "text": "!65536"
+        },
+        {
+          "context": "field",
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "reason": "owner-type-arity",
+          "text": "!0"
+        },
+        {
+          "context": "field",
+          "owner_method_arity": 0,
+          "owner_type_arity": 1,
+          "reason": "owner-type-boundary",
+          "text": "!1"
+        },
+        {
+          "context": "parameter",
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "reason": "owner-method-arity",
+          "text": "!!0"
+        },
+        {
+          "context": "parameter",
+          "reason": "byref-not-final",
+          "text": "System.Int32&&"
+        },
+        {
+          "context": "parameter",
+          "reason": "suffix-after-byref",
+          "text": "System.Int32&*"
+        },
+        {
+          "context": "field",
+          "reason": "void-generic-argument",
+          "text": "Example.Box`1<System.Void>"
+        },
+        {
+          "reason": "unterminated-array",
+          "text": "System.Int32[,,"
+        }
+      ],
+      "primitives": [
+        "System.Void",
+        "System.Boolean",
+        "System.Char",
+        "System.SByte",
+        "System.Byte",
+        "System.Int16",
+        "System.UInt16",
+        "System.Int32",
+        "System.UInt32",
+        "System.Int64",
+        "System.UInt64",
+        "System.Single",
+        "System.Double",
+        "System.String",
+        "System.Object",
+        "System.IntPtr",
+        "System.UIntPtr",
+        "System.TypedReference"
+      ],
+      "qualified_name_rule": "dot-separated identifiers; nested identifiers use '/'; generic arity is a decimal suffix after backtick",
+      "required_vectors": [
+        {
+          "context": "field",
+          "expected": true,
+          "owner_method_arity": 0,
+          "owner_type_arity": 1,
+          "text": "!0",
+          "vector_id": "type-var-zero-valid"
+        },
+        {
+          "context": "field",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "!0",
+          "vector_id": "type-var-zero-invalid"
+        },
+        {
+          "context": "field",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 1,
+          "text": "!1",
+          "vector_id": "type-var-boundary-invalid"
+        },
+        {
+          "context": "parameter",
+          "expected": true,
+          "owner_method_arity": 1,
+          "owner_type_arity": 0,
+          "text": "!!0",
+          "vector_id": "method-var-zero-valid"
+        },
+        {
+          "context": "parameter",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "!!0",
+          "vector_id": "method-var-zero-invalid"
+        },
+        {
+          "context": "parameter",
+          "expected": false,
+          "owner_method_arity": 1,
+          "owner_type_arity": 0,
+          "text": "!!1",
+          "vector_id": "method-var-boundary-invalid"
+        },
+        {
+          "context": "method_return",
+          "expected": true,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "System.Void",
+          "vector_id": "void-return-valid"
+        },
+        {
+          "context": "field",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "System.Void",
+          "vector_id": "void-field-invalid"
+        },
+        {
+          "context": "field",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "Example.Box`1<System.Void>",
+          "vector_id": "void-generic-invalid"
+        },
+        {
+          "context": "parameter",
+          "expected": true,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "Example.Widget*&",
+          "vector_id": "final-byref-valid"
+        },
+        {
+          "context": "parameter",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "System.Int32&&",
+          "vector_id": "double-byref-invalid"
+        },
+        {
+          "context": "parameter",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "System.Int32&*",
+          "vector_id": "suffix-after-byref-invalid"
+        },
+        {
+          "context": "field",
+          "expected": true,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "Example.Map`2<System.String,System.Int32[]>",
+          "vector_id": "generic-arity-valid"
+        },
+        {
+          "context": "field",
+          "expected": false,
+          "owner_method_arity": 0,
+          "owner_type_arity": 0,
+          "text": "Example.Box`1<System.String,System.Int32>",
+          "vector_id": "generic-arity-mismatch"
+        }
+      ],
+      "resolution": "TypeDefOrRef must resolve uniquely in the current module or an existing AssemblyRef; zero or multiple matches is EDIT_VALIDATION_FAILED",
+      "suffix_order": "parse left-to-right after primary; apply each suffix from inner to outer",
+      "valid_examples": [
+        {
+          "context": "field",
+          "text": "System.Int32"
+        },
+        {
+          "context": "field",
+          "text": "Example.Widget"
+        },
+        {
+          "context": "field",
+          "text": "Example.Outer/Inner"
+        },
+        {
+          "context": "field",
+          "owner_method_arity": 0,
+          "owner_type_arity": 1,
+          "text": "!0"
+        },
+        {
+          "context": "parameter",
+          "owner_method_arity": 13,
+          "owner_type_arity": 0,
+          "text": "!!12"
+        },
+        {
+          "context": "method_return",
+          "text": "System.Void"
+        },
+        {
+          "context": "field",
+          "text": "Example.Box`1<System.String>"
+        },
+        {
+          "context": "field",
+          "text": "Example.Map`2<System.String,System.Int32[]>"
+        },
+        {
+          "context": "field",
+          "text": "System.Int32[,,]"
+        },
+        {
+          "context": "parameter",
+          "text": "Example.Widget*&"
+        }
+      ],
+      "version": "p02-typesig-v1"
+    },
+    "update_nullability": {
+      "event_update": {
+        "raise_method": "omitted-keeps; null-clears"
+      },
+      "property_update": {
+        "getter": "omitted-keeps; null-clears",
+        "setter": "omitted-keeps; null-clears"
+      },
+      "type_update": {
+        "base_type": "omitted-keeps; null-clears"
+      }
+    }
+  },
+  "operations": [
+    {
+      "kind": "type_add",
+      "live_forward": [
+        "insert:type_collection"
+      ],
+      "live_reverse": [
+        "remove:type_collection"
+      ],
+      "optional": [
+        "attributes",
+        "base_type",
+        "layout",
+        "namespace",
+        "owner_type"
+      ],
+      "private": [
+        "construct_type",
+        "validate",
+        "insert_private_type"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    {
+      "kind": "type_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:namespace:if_changed",
+        "set:attributes:if_changed",
+        "set:base_type:if_changed"
+      ],
+      "live_reverse": [
+        "restore:base_type:if_changed",
+        "restore:attributes:if_changed",
+        "restore:namespace:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "attributes",
+        "base_type",
+        "layout",
+        "name",
+        "namespace"
+      ],
+      "private": [
+        "patch_private_type",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "type_remove",
+      "live_forward": [
+        "remove:type_collection"
+      ],
+      "live_reverse": [
+        "insert:type_collection"
+      ],
+      "optional": [],
+      "private": [
+        "reject_if_referenced_or_attached",
+        "remove_private_type",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "method_add",
+      "live_forward": [
+        "insert:method_collection"
+      ],
+      "live_reverse": [
+        "remove:method_collection"
+      ],
+      "optional": [
+        "attributes",
+        "body",
+        "impl_attributes",
+        "overrides",
+        "pinvoke"
+      ],
+      "private": [
+        "construct_method_subgraph",
+        "validate",
+        "insert_private_method"
+      ],
+      "required": [
+        "owner_type",
+        "name",
+        "signature"
+      ]
+    },
+    {
+      "kind": "method_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:attributes:if_changed",
+        "set:impl_attributes:if_changed",
+        "set:return_type:if_changed",
+        "set:has_this:if_changed"
+      ],
+      "live_reverse": [
+        "restore:has_this:if_changed",
+        "restore:return_type:if_changed",
+        "restore:impl_attributes:if_changed",
+        "restore:attributes:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "attributes",
+        "has_this",
+        "impl_attributes",
+        "name",
+        "overrides",
+        "pinvoke",
+        "return_type"
+      ],
+      "private": [
+        "patch_private_method",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "method_remove",
+      "live_forward": [
+        "remove:method_collection"
+      ],
+      "live_reverse": [
+        "insert:method_collection"
+      ],
+      "optional": [],
+      "private": [
+        "reject_if_referenced_or_attached",
+        "remove_private_method",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "field_add",
+      "live_forward": [
+        "insert:field_collection"
+      ],
+      "live_reverse": [
+        "remove:field_collection"
+      ],
+      "optional": [
+        "attributes",
+        "constant",
+        "field_offset",
+        "initial_data",
+        "marshal"
+      ],
+      "private": [
+        "construct_field",
+        "validate",
+        "insert_private_field"
+      ],
+      "required": [
+        "owner_type",
+        "name",
+        "field_type"
+      ]
+    },
+    {
+      "kind": "field_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:field_type:if_changed",
+        "set:attributes:if_changed",
+        "set:constant:if_changed"
+      ],
+      "live_reverse": [
+        "restore:constant:if_changed",
+        "restore:attributes:if_changed",
+        "restore:field_type:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "attributes",
+        "clear_constant",
+        "constant",
+        "field_offset",
+        "field_type",
+        "initial_data",
+        "marshal",
+        "name"
+      ],
+      "private": [
+        "patch_private_field",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "field_remove",
+      "live_forward": [
+        "remove:field_collection"
+      ],
+      "live_reverse": [
+        "insert:field_collection"
+      ],
+      "optional": [],
+      "private": [
+        "reject_if_referenced_or_attached",
+        "remove_private_field",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "property_add",
+      "live_forward": [
+        "insert:property_collection",
+        "insert:getter_semantics:if_present",
+        "insert:setter_semantics:if_present"
+      ],
+      "live_reverse": [
+        "remove:setter_semantics:if_present",
+        "remove:getter_semantics:if_present",
+        "remove:property_collection"
+      ],
+      "optional": [
+        "index_parameter_types",
+        "attributes",
+        "getter",
+        "setter"
+      ],
+      "private": [
+        "construct_property",
+        "validate",
+        "insert_private_property",
+        "link_private_accessors"
+      ],
+      "required": [
+        "owner_type",
+        "name",
+        "property_type"
+      ]
+    },
+    {
+      "kind": "property_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:property_type:if_changed",
+        "set:index_signature:if_changed",
+        "set:attributes:if_changed",
+        "set:getter_semantics:if_changed",
+        "set:setter_semantics:if_changed"
+      ],
+      "live_reverse": [
+        "restore:setter_semantics:if_changed",
+        "restore:getter_semantics:if_changed",
+        "restore:attributes:if_changed",
+        "restore:index_signature:if_changed",
+        "restore:property_type:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "name",
+        "property_type",
+        "index_parameter_types",
+        "attributes",
+        "getter",
+        "setter"
+      ],
+      "private": [
+        "patch_private_property",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "property_remove",
+      "live_forward": [
+        "remove:setter_semantics:if_present",
+        "remove:getter_semantics:if_present",
+        "remove:property_collection"
+      ],
+      "live_reverse": [
+        "insert:property_collection",
+        "insert:getter_semantics:if_present",
+        "insert:setter_semantics:if_present"
+      ],
+      "optional": [],
+      "private": [
+        "reject_if_referenced_or_attached",
+        "unlink_private_accessors",
+        "remove_private_property",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "event_add",
+      "live_forward": [
+        "insert:event_collection",
+        "insert:add_semantics",
+        "insert:remove_semantics",
+        "insert:raise_semantics:if_present"
+      ],
+      "live_reverse": [
+        "remove:raise_semantics:if_present",
+        "remove:remove_semantics",
+        "remove:add_semantics",
+        "remove:event_collection"
+      ],
+      "optional": [
+        "attributes",
+        "raise_method"
+      ],
+      "private": [
+        "construct_event",
+        "validate",
+        "insert_private_event",
+        "link_private_accessors"
+      ],
+      "required": [
+        "owner_type",
+        "name",
+        "event_type",
+        "add_method",
+        "remove_method"
+      ]
+    },
+    {
+      "kind": "event_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:event_type:if_changed",
+        "set:attributes:if_changed",
+        "set:add_semantics:if_changed",
+        "set:remove_semantics:if_changed",
+        "set:raise_semantics:if_changed"
+      ],
+      "live_reverse": [
+        "restore:raise_semantics:if_changed",
+        "restore:remove_semantics:if_changed",
+        "restore:add_semantics:if_changed",
+        "restore:attributes:if_changed",
+        "restore:event_type:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "name",
+        "event_type",
+        "attributes",
+        "add_method",
+        "remove_method",
+        "raise_method"
+      ],
+      "private": [
+        "patch_private_event",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "event_remove",
+      "live_forward": [
+        "remove:raise_semantics:if_present",
+        "remove:remove_semantics",
+        "remove:add_semantics",
+        "remove:event_collection"
+      ],
+      "live_reverse": [
+        "insert:event_collection",
+        "insert:add_semantics",
+        "insert:remove_semantics",
+        "insert:raise_semantics:if_present"
+      ],
+      "optional": [],
+      "private": [
+        "reject_if_referenced_or_attached",
+        "unlink_private_accessors",
+        "remove_private_event",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "parameter_add",
+      "live_forward": [
+        "insert:signature_tail",
+        "insert:paramdef_collection"
+      ],
+      "live_reverse": [
+        "remove:paramdef_collection",
+        "remove:signature_tail"
+      ],
+      "optional": [
+        "attributes",
+        "marshal"
+      ],
+      "private": [
+        "require_tail",
+        "construct_paramdef",
+        "append_private_signature_slot",
+        "append_private_paramdef",
+        "validate"
+      ],
+      "required": [
+        "owner_method",
+        "parameter_index",
+        "name",
+        "parameter_type"
+      ]
+    },
+    {
+      "kind": "parameter_update",
+      "live_forward": [
+        "insert:paramdef_collection:if_missing",
+        "set:name:if_changed",
+        "set:attributes:if_changed",
+        "set:signature_slot_type:if_changed"
+      ],
+      "live_reverse": [
+        "restore:signature_slot_type:if_changed",
+        "restore:attributes:if_changed",
+        "restore:name:if_changed",
+        "remove:paramdef_collection:if_materialized"
+      ],
+      "optional": [
+        "attributes",
+        "marshal",
+        "name",
+        "parameter_type"
+      ],
+      "private": [
+        "reject_return_param",
+        "materialize_private_paramdef_if_missing",
+        "patch_private_parameter",
+        "validate"
+      ],
+      "required": [
+        "parameter_target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_referenced;public_unreferenced_is_risk",
+      "kind": "parameter_remove",
+      "live_forward": [
+        "remove:paramdef_collection:if_present",
+        "remove:signature_tail"
+      ],
+      "live_reverse": [
+        "insert:signature_tail",
+        "insert:paramdef_collection:if_was_present"
+      ],
+      "optional": [],
+      "private": [
+        "require_tail",
+        "reject_return_param",
+        "reject_if_referenced_or_attached",
+        "remove_private_paramdef_if_present",
+        "remove_private_signature_slot",
+        "validate"
+      ],
+      "required": [
+        "parameter_target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "generic_parameter_add",
+      "live_forward": [
+        "insert:generic_collection",
+        "set:method_generic_arity:if_method"
+      ],
+      "live_reverse": [
+        "restore:method_generic_arity:if_method",
+        "remove:generic_collection"
+      ],
+      "optional": [
+        "attributes",
+        "constraints"
+      ],
+      "private": [
+        "require_tail",
+        "construct_generic_param",
+        "append_private_generic",
+        "validate"
+      ],
+      "required": [
+        "owner",
+        "generic_index",
+        "name"
+      ]
+    },
+    {
+      "kind": "generic_parameter_update",
+      "live_forward": [
+        "set:name:if_changed",
+        "set:attributes:if_changed"
+      ],
+      "live_reverse": [
+        "restore:attributes:if_changed",
+        "restore:name:if_changed"
+      ],
+      "optional": [
+        "attributes",
+        "constraints",
+        "name"
+      ],
+      "private": [
+        "patch_private_generic",
+        "validate"
+      ],
+      "required": [
+        "target"
+      ]
+    },
+    {
+      "delete_policy": "hard_fail_if_used_or_attached;public_unreferenced_is_risk",
+      "kind": "generic_parameter_remove",
+      "live_forward": [
+        "remove:generic_collection",
+        "set:method_generic_arity:if_method"
+      ],
+      "live_reverse": [
+        "restore:method_generic_arity:if_method",
+        "insert:generic_collection"
+      ],
+      "optional": [],
+      "private": [
+        "require_tail",
+        "reject_if_used_or_attached",
+        "remove_private_generic",
+        "validate"
+      ],
+      "required": [
+        "target",
+        "remove_mode"
+      ]
+    },
+    {
+      "kind": "method_body_replace",
+      "live_forward": [
+        "set:body_reference"
+      ],
+      "live_reverse": [
+        "restore:body_reference"
+      ],
+      "optional": [],
+      "private": [
+        "construct_body",
+        "validate",
+        "swap_private_body"
+      ],
+      "required": [
+        "target",
+        "body"
+      ]
+    },
+    {
+      "kind": "attribute_add",
+      "live_forward": [
+        "insert:custom_attribute_collection"
+      ],
+      "live_reverse": [
+        "remove:custom_attribute_by_constructor_index"
+      ],
+      "optional": [
+        "fixed_arguments",
+        "named_arguments"
+      ],
+      "private": [
+        "resolve_constructor",
+        "validate_allow_multiple",
+        "insert_attribute"
+      ],
+      "required": [
+        "target",
+        "constructor"
+      ]
+    },
+    {
+      "kind": "attribute_remove",
+      "live_forward": [
+        "remove:custom_attribute_by_constructor_index"
+      ],
+      "live_reverse": [
+        "restore:captured_attribute"
+      ],
+      "optional": [],
+      "private": [
+        "resolve_constructor",
+        "capture_row"
+      ],
+      "required": [
+        "target",
+        "match"
+      ]
+    },
+    {
+      "kind": "security_add",
+      "live_forward": [
+        "insert:decl_security_collection"
+      ],
+      "live_reverse": [
+        "remove:decl_security_by_action_index"
+      ],
+      "optional": [],
+      "private": [
+        "xml_to_blob_spike_path",
+        "insert_row"
+      ],
+      "required": [
+        "parent",
+        "action",
+        "xml"
+      ]
+    },
+    {
+      "kind": "security_remove",
+      "live_forward": [
+        "remove:decl_security_by_action_index"
+      ],
+      "live_reverse": [
+        "restore:captured_decl_security_xml"
+      ],
+      "optional": [
+        "index"
+      ],
+      "private": [
+        "resolve_parent",
+        "capture_row"
+      ],
+      "required": [
+        "parent",
+        "action"
+      ]
+    }
+  ]
+}
