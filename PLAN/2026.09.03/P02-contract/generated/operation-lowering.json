@@ -1487,6 +1487,157 @@
       "live_reverse": [
         "restore:captured_entry_point"
       ]
+    },
+    {
+      "kind": "managed_resource_add",
+      "required": [
+        "kind",
+        "name",
+        "data_base64"
+      ],
+      "optional": [
+        "attributes"
+      ],
+      "private": [
+        "decode_base64",
+        "capacity_check"
+      ],
+      "live_forward": [
+        "add:embedded_resource_row"
+      ],
+      "live_reverse": [
+        "remove:captured_row"
+      ]
+    },
+    {
+      "kind": "managed_resource_update",
+      "required": [
+        "kind",
+        "target"
+      ],
+      "optional": [
+        "entry",
+        "data_base64"
+      ],
+      "private": [
+        "parse_resources_blob",
+        "surgical_entry_rebuild"
+      ],
+      "live_forward": [
+        "write:resource_bytes"
+      ],
+      "live_reverse": [
+        "restore:captured_bytes"
+      ]
+    },
+    {
+      "kind": "managed_resource_remove",
+      "required": [
+        "kind",
+        "target",
+        "remove_mode"
+      ],
+      "optional": [],
+      "private": [
+        "resolve_resource_row",
+        "capture_bytes"
+      ],
+      "live_forward": [
+        "remove:resource_row"
+      ],
+      "live_reverse": [
+        "restore:captured_row"
+      ]
+    },
+    {
+      "kind": "win32_resource_add",
+      "required": [
+        "kind",
+        "data_base64"
+      ],
+      "optional": [
+        "type_id",
+        "type_name",
+        "name_id",
+        "name_string",
+        "lang_id"
+      ],
+      "private": [
+        "decode_base64",
+        "directory_tree_create"
+      ],
+      "live_forward": [
+        "add:win32_resource_row"
+      ],
+      "live_reverse": [
+        "remove:row_and_prune"
+      ]
+    },
+    {
+      "kind": "win32_resource_update",
+      "required": [
+        "kind",
+        "data_base64"
+      ],
+      "optional": [
+        "type_id",
+        "type_name",
+        "name_id",
+        "name_string",
+        "lang_id"
+      ],
+      "private": [
+        "decode_base64",
+        "icon_group_validate"
+      ],
+      "live_forward": [
+        "swap:win32_resource_row"
+      ],
+      "live_reverse": [
+        "restore:captured_row"
+      ]
+    },
+    {
+      "kind": "win32_resource_remove",
+      "required": [
+        "kind",
+        "remove_mode"
+      ],
+      "optional": [
+        "type_id",
+        "type_name",
+        "name_id",
+        "name_string",
+        "lang_id"
+      ],
+      "private": [
+        "resolve_row",
+        "icon_group_validate"
+      ],
+      "live_forward": [
+        "remove:win32_resource_row"
+      ],
+      "live_reverse": [
+        "restore:captured_row"
+      ]
+    },
+    {
+      "kind": "strong_name_remove",
+      "required": [
+        "kind",
+        "dynamic_failure"
+      ],
+      "optional": [],
+      "private": [
+        "validate_one_time_evidence",
+        "capture_public_key"
+      ],
+      "live_forward": [
+        "clear:public_key_and_flag"
+      ],
+      "live_reverse": [
+        "restore:captured_key_and_attributes"
+      ]
     }
   ]
 }

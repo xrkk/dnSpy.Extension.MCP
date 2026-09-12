@@ -1,0 +1,26 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-008",
+ "acc_id": "ACC-008",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ImportHost\\ImportHost.exe",
+ "driver": "p03_vm_acc008.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P08 plugin",
+ "actions": [
+  "a 64 KiB resource inlines through edit_apply within the existing 1 MiB request budget",
+  "a 1.5 MiB inline attempt is rejected by the existing transport rule (limits unchanged)",
+  "a 2 MiB payload generated ON THE VM imports through edit_resource_import (vm_path) — identity/length/SHA-256 returned",
+  "commit through the unified checkpoint chain",
+  "edit_resource_export writes the payload below ArtifactRoot with matching identity",
+  "the exported file's SHA-256 matches on disk"
+ ],
+ "expected": "per OUT-008/RACC-008: inline limits unchanged, VM path import/export with full file identity, reload consistent; x64/x86 both green",
+ "review": {
+  "owner": "P08",
+  "covered_acc": [
+   "ACC-008"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-008"
+ }
+}

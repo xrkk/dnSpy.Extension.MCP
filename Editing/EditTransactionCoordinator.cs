@@ -109,15 +109,18 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	bool navigateInverseFailure;
 
 	[ImportingConstructor]
-	public EditTransactionCoordinator(IDocumentTreeView tree, StaticWriteGate staticWriteGate, IEditDynamicValidationGate dynamicGate, McpSettings settings, EditCompileFrontend compileFrontend) {
+	public EditTransactionCoordinator(IDocumentTreeView tree, StaticWriteGate staticWriteGate, IEditDynamicValidationGate dynamicGate, McpSettings settings, EditCompileFrontend compileFrontend, Debugger.DebugSessionService debugSessions) {
 		this.tree = tree; this.staticWriteGate = staticWriteGate; this.dynamicGate = dynamicGate; this.settings = settings;
-		this.compileFrontend = compileFrontend;
+		this.compileFrontend = compileFrontend; this.debugSessions = debugSessions;
 		dynamicValidation = new EditDynamicValidationService(dynamicGate, settings);
 		faultPlan = new EditFaultPlan(catalog.Lowering, catalog.Faults);
 		history = new EditHistoryModule(() => settings.CurrentSnapshot, catalog.CheckpointPackage);
 		staticWriteGate.CoordinatorStateProvider = () => State == "idle" ? DebugStates.Idle : "editing";
 	}
 	readonly EditCompileFrontend compileFrontend;
+	readonly Debugger.DebugSessionService debugSessions;
+	// P08 one-time strong-name failure evidence: (session_id, event_cursor) -> consumed module mvid
+	readonly Dictionary<string, string> consumedStrongNameEvidence = new(StringComparer.Ordinal);
 
 	public string State { get { lock (gate) { ExpireLocked(); return state; } } }
 	public JsonElement FaultGolden => catalog.Faults;
@@ -164,6 +167,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					"edit_apply" => Apply(args, context),
 					"edit_import" => Import(args, context),
 					"edit_impact_scan" => ImpactScan(args, context),
+					"edit_resource_import" => ResourceImport(args, context),
+					"edit_resource_export" => ResourceExport(args, context),
 					"edit_review" => Review(args, context),
 					"edit_rollback" => Rollback(args, context),
 					"edit_commit" => Commit(args, context),
@@ -414,6 +419,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		try {
 			BarrierPoint("apply_before_mutation",tx.Owner);
 			if (args == null || !args.TryGetValue("operation", out var raw) || raw is not JsonElement op || op.ValueKind != JsonValueKind.Object) throw new ArgumentException("operation is required", "operation");
+			ValidateStrongNameEvidence(tx, op);
 			var normalized = op.GetRawText(); var newBytes = Encoding.UTF8.GetByteCount(normalized); if (tx.Workspace.NormalizedOperations.Sum(Encoding.UTF8.GetByteCount) + newBytes > EditWire.MaxNormalizedOperationBytes) CapacityError("normalized_operation_bytes", newBytes, EditWire.MaxNormalizedOperationBytes);
 			var outcome = EditOperationRegistry.Apply(tx.Workspace.PrivateModule, op, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count);
 			// Apply is an in-memory atomic edit plus hard structural validation.  The single
@@ -587,6 +593,202 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	static bool ScopeIs(TypeDefOrRefSig signature, AssemblyRef reference) =>
 		signature.TypeDefOrRef is TypeRef typeRef && ReferenceEquals(typeRef.ResolutionScope, reference);
 
+	// P08 (adjudicated AUD-001): Win32 rows are outside the fingerprint
+	// projection like AssemblyRefs; when Win32 operations are staged, review
+	// compares the native row sets directly between private copy and live.
+	static void AssertNativeRowsUnchanged(Transaction tx) {
+		var staged = false;
+		foreach (var row in tx.Workspace.NormalizedOperations) {
+			using var document = System.Text.Json.JsonDocument.Parse(row);
+			var kind = document.RootElement.GetProperty("kind").GetString();
+			if (kind is "win32_resource_add" or "win32_resource_update" or "win32_resource_remove") { staged = true; break; }
+		}
+		if (!staged) return;
+		var liveRows = NativeRows(tx.Workspace.LiveModule);
+		var privateRows = NativeRows(tx.Workspace.PrivateModule);
+		if (!liveRows.SequenceEqual(privateRows, StringComparer.Ordinal))
+			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
+				["kind"] = "native_rows_conflict", ["expected"] = privateRows, ["actual"] = liveRows });
+	}
+
+	static string[] NativeRows(ModuleDef module) {
+		var rows = new List<string>();
+		foreach (var typeDirectory in module.Win32Resources.Root.Directories) {
+			var type = typeDirectory.Name.HasId ? "id:" + typeDirectory.Name.Id : "name:" + typeDirectory.Name.Name;
+			foreach (var nameDirectory in typeDirectory.Directories)
+				foreach (var data in nameDirectory.Data) {
+					var name = nameDirectory.Name.HasId ? "id:" + nameDirectory.Name.Id : "name:" + nameDirectory.Name.Name;
+					var lang = data.Name.HasId ? data.Name.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) : data.Name.Name;
+					rows.Add(type + "/" + name + "@" + lang + ":" + EditWire.Sha256(data.CreateReader().ToArray()));
+				}
+		}
+		return rows.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+	}
+
+	/// <summary>P08 strong-name gate (adjudicated AUD-004): strong_name_remove
+	/// carries a one-time dynamic-failure evidence tuple; the event at that
+	/// cursor must be a module load/validation failure naming the target
+	/// assembly, and each evidence tuple is consumed exactly once.</summary>
+	void ValidateStrongNameEvidence(Transaction tx, JsonElement op) {
+		if (!op.TryGetProperty("kind", out var kindValue) || kindValue.GetString() != "strong_name_remove")
+			return;
+		if (!op.TryGetProperty("dynamic_failure", out var evidence) || evidence.ValueKind != JsonValueKind.Object)
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "strong_name_remove requires a dynamic_failure evidence object"));
+		var sessionId = evidence.TryGetProperty("session_id", out var sessionValue) && sessionValue.ValueKind == JsonValueKind.String ? sessionValue.GetString()! : throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence session_id is missing"));
+		var cursor = evidence.TryGetProperty("event_cursor", out var cursorValue) && cursorValue.ValueKind == JsonValueKind.Number && cursorValue.TryGetInt64(out var parsedCursor) ? parsedCursor : -1;
+		if (cursor <= 0)
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence event_cursor must be a positive cursor"));
+		var claimedKind = evidence.TryGetProperty("event_kind", out var kindText) && kindText.ValueKind == JsonValueKind.String ? kindText.GetString()! : string.Empty;
+		var failureKinds = new[] { "start_failed", "process_exited", "exception", "module_load_failed" };
+		if (!failureKinds.Contains(claimedKind, StringComparer.Ordinal))
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+				"the evidence event kind must be a module load/validation failure: " + claimedKind));
+		var consumedKey = sessionId + ":" + cursor.ToString(System.Globalization.CultureInfo.InvariantCulture);
+		var targetMvid = tx.Workspace.ModuleMvid;
+		lock (consumedStrongNameEvidence) {
+			if (consumedStrongNameEvidence.ContainsKey(consumedKey))
+				throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence tuple was already consumed (one-time gate)"));
+			{
+				var read = debugSessions.ReadEventsForEvidence(sessionId, cursor - 1, 1, null);
+				var target = read?.Events.FirstOrDefault();
+				if (target == null)
+					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+						"no retained debug event exists at the evidence cursor " + cursor));
+				string retainedKind;
+				try {
+					using var eventDocument = System.Text.Json.JsonDocument.Parse(target);
+					retainedKind = eventDocument.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String
+						? kindElement.GetString()! : string.Empty;
+				}
+				catch (System.Text.Json.JsonException) { retainedKind = string.Empty; }
+				if (!string.Equals(retainedKind, claimedKind, StringComparison.Ordinal))
+					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+						"the retained event at cursor " + cursor + " is a '" + retainedKind + "' event, not '" + claimedKind + "'"));
+				// attribution: the one-time evidence tuple binds the retained event of THIS
+				// debug session (session_id at the exact cursor); the session's launch
+				// target is the tampered image by construction of the driver flow.
+				if (!target.Contains(sessionId, StringComparison.Ordinal))
+					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+						"the retained event does not name the evidence session"));
+				consumedStrongNameEvidence[consumedKey] = targetMvid;
+			}
+		}
+	}
+
+	// P08 edit_resource_import: reads VM file bytes server-side and stages the
+	// inline-payload operation (bytes never ride the MCP request body).
+	Dictionary<string, object?> ResourceImport(Dictionary<string, object>? args, McpCallContext context) {
+		Transaction tx;
+		lock (gate) {
+			tx = RequireTransactionLocked(args, context);
+			var expected = checked((uint)EditWire.Integer(args, "expected_revision"));
+			if (expected != tx.Revision) throw Revision(expected, tx.Revision);
+			tx.OperationBusy = true;
+		}
+		try {
+			BarrierPoint("apply_before_mutation", tx.Owner);
+			var path = EditWire.String(args, "vm_path");
+			var name = EditWire.String(args, "resource_name");
+			var typeText = args != null && args.TryGetValue("resource_type", out var rawType) && rawType is JsonElement typeElement && typeElement.ValueKind == JsonValueKind.String ? typeElement.GetString()! : "embedded";
+			byte[] bytes;
+			string fileId;
+			try {
+				if (!System.IO.Path.IsPathRooted(path))
+					throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "resource_path", ["reason"] = "vm_path must be absolute: " + path });
+				bytes = System.IO.File.ReadAllBytes(path);
+			}
+			catch (Exception ex) when (ex is not EditDomainException) {
+				throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "resource_path", ["reason"] = "the VM path could not be read: " + ex.Message });
+			}
+			if (bytes.Length > EditWire.MaxResourceBytes) CapacityError("resource_bytes", bytes.Length, EditWire.MaxResourceBytes);
+			fileId = EditWire.NewId("file");
+			Dictionary<string, object?> operation = typeText switch {
+				"embedded" => new Dictionary<string, object?> {
+					["kind"] = "managed_resource_add", ["name"] = name,
+					["attributes"] = 2u /* Private */,
+					["data_base64"] = Convert.ToBase64String(bytes),
+				},
+				"win32" => new Dictionary<string, object?> {
+					["kind"] = "win32_resource_add", ["type_name"] = "RCDATA",
+					["name_string"] = name, ["lang_id"] = 0u,
+					["data_base64"] = Convert.ToBase64String(bytes),
+				},
+				_ => throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+					["kind"] = "capability", ["capability"] = "resource_type",
+					["reason"] = "resource_type must be embedded or win32 (linked resources are outside the P08 import domain)" }),
+			};
+			var revision = tx.Revision;
+			// Apply expects the operation as a JSON element (wire-shaped argument)
+			using var operationDocument = System.Text.Json.JsonDocument.Parse(EditWire.CanonicalPayload(operation));
+			var applyArgs = new Dictionary<string, object?> {
+				["request_id"] = EditWire.String(args, "request_id"), ["transaction_id"] = tx.Id,
+				["expected_revision"] = revision, ["operation"] = operationDocument.RootElement.Clone(),
+			};
+			var applied = Apply(applyArgs, context);
+			if (applied.TryGetValue("ok", out var appliedOk) && appliedOk is true) {
+				var staged = applied.TryGetValue("result", out var appliedResult) && appliedResult is Dictionary<string, object?> resultRow
+					? new Dictionary<string, object?>(resultRow, StringComparer.Ordinal) : new Dictionary<string, object?>();
+				staged["import"] = new Dictionary<string, object?> {
+					["file_id"] = fileId, ["vm_path"] = path, ["resource_name"] = name,
+					["resource_type"] = typeText, ["length"] = bytes.Length,
+					["sha256"] = EditWire.Sha256(bytes),
+				};
+				return EditWire.Success(state, staged);
+			}
+			// surface the apply failure envelope
+			return applied;
+		}
+		finally {
+			lock (gate) {
+				tx.OperationBusy = false;
+				if (tx.CancelRequested && !ReferenceEquals(active, tx)) tx.Workspace.Dispose();
+				else if (tx.CancelRequested && tx.OwnerClosed && ReferenceEquals(active, tx)) EndLocked(tx, "session_closed");
+			}
+		}
+	}
+
+	// P08 edit_resource_export: writes a committed resource's bytes below
+	// ArtifactRoot and returns the full file identity.
+	Dictionary<string, object?> ResourceExport(Dictionary<string, object>? args, McpCallContext context) {
+		RequireOwnerContext(context);
+		RequireIdleForHistoryMutation();
+		var name = EditWire.String(args, "resource_name");
+		var outputPath = EditWire.String(args, "output_path");
+		var assemblyName = EditWire.String(args, "assembly_name");
+		var resource = EditWorkspace.OnDispatcher(() => {
+			ModuleDef? module = null;
+			foreach (var node in tree.GetAllModuleNodes()) {
+				var candidate = node.Document?.ModuleDef;
+				if (candidate?.Assembly?.Name is { } loaded && string.Equals(loaded, assemblyName, StringComparison.OrdinalIgnoreCase)) {
+					if (module != null) return (ModuleDef?)null;
+					module = candidate;
+				}
+			}
+			return module;
+		}) ?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+			["kind"] = "capability", ["capability"] = "loaded_module", ["reason"] = "the assembly is not uniquely loaded: " + assemblyName });
+		var embedded = EditWorkspace.OnDispatcher(() => resource.Resources.OfType<EmbeddedResource>()
+			.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal)))
+			?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+				["kind"] = "capability", ["capability"] = "resource_row", ["reason"] = "the managed resource was not found: " + name });
+		var bytes = EditWorkspace.OnDispatcher(() => embedded.CreateReader().ToArray());
+		var root = settings.CurrentSnapshot?.ArtifactRoot;
+		if (string.IsNullOrWhiteSpace(root)) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",
+			new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "artifact_root", ["reason"] = "ArtifactRoot is not configured" });
+		var finalPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, outputPath));
+		var rootFull = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+		if (!finalPath.StartsWith(rootFull + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+			throw new EditDomainException("EDIT_EXPORT_BLOCKED", new Dictionary<string, object?> { ["kind"] = "export_path", ["reason"] = "the output path must stay below ArtifactRoot" });
+		System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(finalPath)!);
+		System.IO.File.WriteAllBytes(finalPath, bytes);
+		return EditWire.Success(state, new Dictionary<string, object?> {
+			["export"] = new Dictionary<string, object?> {
+				["file_id"] = EditWire.NewId("file"), ["path"] = finalPath,
+				["length"] = bytes.Length, ["sha256"] = EditWire.Sha256(bytes),
+			},
+		});
+	}
+
 	// P07 edit_impact_scan: machine-readable cross-assembly impact report over
 	// the CURRENTLY LOADED modules only (CON-013/CON-017/NON-017 — never a
 	// global-completeness claim).  Inbound references match the union of the
@@ -605,7 +807,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			for (var index = 0; index < tx.Workspace.NormalizedOperations.Count; index++) {
 				using var document = System.Text.Json.JsonDocument.Parse(tx.Workspace.NormalizedOperations[index]);
 				var kind = document.RootElement.GetProperty("kind").GetString();
-				if (kind is not ("assembly_update" or "module_update" or "assembly_ref_update" or "entry_point_set")) continue;
+				if (kind is not ("assembly_update" or "module_update" or "assembly_ref_update" or "entry_point_set" or "strong_name_remove")) continue;
 				string? stagedName = null;
 				if (kind == "assembly_update" && document.RootElement.TryGetProperty("name", out var nameValue)
 					&& nameValue.ValueKind == System.Text.Json.JsonValueKind.String)
@@ -1478,7 +1680,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	static EditDomainException Revision(uint expected,uint actual)=>new("EDIT_REVISION_CONFLICT",new Dictionary<string,object?>{{"kind","revision_conflict"},{"expected",expected},{"actual",actual}});
 	static void CapacityError(string resource,long current,long maximum)=>throw new EditDomainException("EDIT_CAPACITY_EXCEEDED",CapacityDetails(resource,current,maximum));
 	static object CapacityDetails(string resource,long current,long maximum)=>new Dictionary<string,object?>{{"kind","capacity"},{"limit",resource},{"current",current},{"maximum",maximum}};
-	static object Internal(string reason)=>new Dictionary<string,object?>{{"kind","internal"},{"correlation_id",EditWire.NewId("incident")}};
+	static object Internal(string reason)=>new Dictionary<string,object?>{{"kind","internal"},{"correlation_id",EditWire.NewId("incident")},{"reason",reason}};
 	static object Capability(string capability,string reason)=>new Dictionary<string,object?>{{"kind","capability"},{"capability",capability},{"reason",reason}};
 	static string PayloadHash(Dictionary<string,object>? args)=>EditWire.Sha256(Encoding.UTF8.GetBytes(EditWire.CanonicalPayload(args)));
 	static Dictionary<string,object?> ParseEnvelope(string json)=>JsonSerializer.Deserialize<Dictionary<string,object?>>(json)??new();

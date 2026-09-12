@@ -1,0 +1,25 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-016",
+ "acc_id": "ACC-016",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\StrongHost\\StrongHost.exe + InboundStrong.exe",
+ "driver": "p03_vm_acc016.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P08 plugin; strong-name fixtures (snk-signed exe + inbound strong reference) built on the VM",
+ "actions": [
+  "default edit (module_update) commits and the exported image keeps its public key token (identity preserved)",
+  "the edited (now invalidly signed) image fails to run under the debugger — the failure event (start_failed/process_exited/exception) naming the target is captured",
+  "strong_name_remove without valid evidence rejects (ghost session/cursor)",
+  "strong_name_remove with the captured evidence tuple stages, edit_impact_scan reports the inbound strong reference risk, commit echoes the confirmations",
+  "replaying the consumed evidence in a new transaction rejects (one-time gate — the honest capability boundary)"
+ ],
+ "expected": "per OUT-008/RACC-016: default preserves identity, branch only after dynamic failure, inbound impact reported, evidence one-time; x64/x86 both green",
+ "review": {
+  "owner": "P08",
+  "covered_acc": [
+   "ACC-016"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-016"
+ }
+}

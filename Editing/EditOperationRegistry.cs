@@ -32,9 +32,9 @@ internal static partial class EditOperationRegistry {
 	static readonly Dictionary<string, OpCode> OpCodesByName = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
 		.Where(f => f.FieldType == typeof(OpCode)).Select(f => (OpCode)f.GetValue(null)!)
 		.ToDictionary(o => o.Name, StringComparer.OrdinalIgnoreCase);
-	static readonly Dictionary<string, uint> AttributeMasks = new(StringComparer.Ordinal) {
+	static readonly Dictionary<string, uint> AttributeMasks = new Dictionary<string, uint>(StringComparer.Ordinal) {
 		["type"] = 16219583, ["method"] = 65535, ["method_impl"] = 6143, ["field"] = 47095,
-		["property"] = 5632, ["event"] = 1536, ["parameter"] = 12319, ["generic"] = 63,
+		["property"] = 5632, ["event"] = 1536, ["parameter"] = 12319, ["generic"] = 63, ["resource"] = 3,
 	};
 
 	public static EditOperationOutcome Apply(ModuleDef module, JsonElement operation,
@@ -74,6 +74,13 @@ internal static partial class EditOperationRegistry {
 			"module_update" => ModuleUpdate(module, operation),
 			"assembly_ref_update" => AssemblyRefUpdate(module, operation, objects),
 			"entry_point_set" => EntryPointSet(module, operation, objects),
+			"managed_resource_add" => ManagedResourceAdd(module, operation),
+			"managed_resource_update" => ManagedResourceUpdate(module, operation),
+			"managed_resource_remove" => ManagedResourceRemove(module, operation),
+			"win32_resource_add" => Win32ResourceAdd(module, operation),
+			"win32_resource_update" => Win32ResourceUpdate(module, operation),
+			"win32_resource_remove" => Win32ResourceRemove(module, operation),
+			"strong_name_remove" => StrongNameRemove(module, operation),
 			_ => throw new EditDomainException("EDIT_VALIDATION_FAILED"),
 		};
 	}
@@ -363,6 +370,282 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		return false;
 	}
 	static EditOperationOutcome GenericRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);IList<GenericParam> col;MethodDef? method=null;if(gp.Owner is TypeDef t)col=t.GenericParameters;else if(gp.Owner is MethodDef m){method=m;col=m.GenericParameters;}else throw Validation("target","Generic parameter has no owner");if(gp.Number!=col.Count-1)Invalid("target","Only tail generic parameter removal is supported");if(IsGenericUsed(module,gp)||HasAttachment(module,gp))Invalid("target","Generic parameter is used or attached");var oldArity=method?.MethodSig.GenParamCount??0;var oldCallingConvention=method?.MethodSig.CallingConvention??0;var riskOwner=(IMDTokenProvider?)gp.Owner??gp;col.Remove(gp);if(method!=null){method.MethodSig.GenParamCount=(uint)col.Count;if(col.Count==0)method.MethodSig.CallingConvention&=~CallingConvention.Generic;}RemoveMapValue(map,gp);return Outcome("generic_parameter_remove",null,gp,gp.Name,null,()=>{col.Add(gp);if(method!=null){method.MethodSig.GenParamCount=oldArity;method.MethodSig.CallingConvention=oldCallingConvention;}},new[]{Risk("signature_change",riskOwner)});}
+
+	// P08 IMP-001/002/004: managed and Win32 resources, icon groups, and the
+	// gated strong-name removal.  Payload bytes are always inline in the
+	// operation (data_base64) — checkpoints and replay never depend on files.
+	static EditOperationOutcome ManagedResourceAdd(ModuleDef module, JsonElement op) {
+		var name = RequiredString(op, "name");
+		var attributes = (dnlib.DotNet.ManifestResourceAttributes)OptionalAttributes(op, "attributes", "resource", 3);
+		var bytes = DecodePayload(op);
+		if (module.Resources.Any(r => string.Equals(r.Name, name, StringComparison.Ordinal)))
+			Invalid("name", "a managed resource with this name already exists: " + name);
+		var resource = new EmbeddedResource(name, bytes, attributes);
+		module.Resources.Add(resource);
+		var id = "res:" + name;
+		return Outcome("managed_resource_add", null, resource, null, name,
+			() => module.Resources.Remove(resource), ResourceRisks(name));
+	}
+
+	static EditOperationOutcome ManagedResourceUpdate(ModuleDef module, JsonElement op) {
+		var resource = ManagedResource(module, op.GetProperty("target").GetProperty("name").GetString()!);
+		var existing = (EmbeddedResource)resource;
+		var before = existing.CreateReader().ToArray();
+		byte[] after = Array.Empty<byte>();
+		if (op.TryGetProperty("data_base64", out var blobValue)) {
+			after = DecodePayload(op);
+		}
+		else if (op.TryGetProperty("entry", out var entryValue) && entryValue.ValueKind == JsonValueKind.Object) {
+			var entryName = RequiredString(entryValue, "name");
+			var kind = RequiredString(entryValue, "value_kind");
+			if (!EditResourceCodec.EditableKinds.Contains(kind, StringComparer.Ordinal))
+				Invalid("entry.value_kind", "the entry kind is outside the standard edit domain (use data_base64): " + kind);
+			var parsed = EditResourceCodec.Parse(before);
+			var target = parsed.Entries.FirstOrDefault(e => string.Equals(e.Name, entryName, StringComparison.Ordinal));
+			if (target == null) Invalid("entry.name", "the resource entry was not found: " + entryName);
+			if (EditResourceCodec.KindOf(target.TypeCode) == "custom")
+				Invalid("entry.name", "the resource entry carries a payload outside the entry edit domain (use data_base64): " + entryName);
+			// entry edits keep the stored kind (a byte-array row — which may hold a
+			// serialized custom object payload — never becomes a scalar in place)
+			if (!string.Equals(EditResourceCodec.KindOf(target.TypeCode), kind, StringComparison.Ordinal))
+				Invalid("entry.value_kind", "the entry kind must match the stored kind '" + EditResourceCodec.KindOf(target.TypeCode) + "' (whole-blob data_base64 for shape changes): " + entryName);
+			var encoded = EditResourceCodec.EncodeEntry(entryName, kind, entryValue.GetProperty("value"));
+			if (!EditResourceCodec.IsStandardKind(encoded.TypeCode))
+				Invalid("entry.value_kind", "the encoded entry kind is outside the standard domain");
+			var edited = new Dictionary<string, EditResourceCodec.ResourceEntry> { [entryName] = encoded };
+			after = EditResourceCodec.Rebuild(parsed, edited);
+		}
+		else Invalid("operation", "managed_resource_update needs entry or data_base64");
+		var replacement = new EmbeddedResource(existing.Name, after, existing.Attributes);
+		var index = module.Resources.IndexOf(existing);
+		module.Resources[index] = replacement;
+		return Outcome("managed_resource_update", null, replacement, null, replacement.Name.String,
+			() => module.Resources[index] = existing, ResourceRisks(replacement.Name.String));
+	}
+
+	static EditOperationOutcome ManagedResourceRemove(ModuleDef module, JsonElement op) {
+		RequireRemoveMode(op);
+		var name = op.GetProperty("target").GetProperty("name").GetString()!;
+		var resource = ManagedResource(module, name);
+		var index = module.Resources.IndexOf(resource);
+		var embedded = resource as EmbeddedResource;
+		var bytes = embedded?.CreateReader().ToArray();
+		module.Resources.RemoveAt(index);
+		return Outcome("managed_resource_remove", null, resource, name, null,
+			() => module.Resources.Insert(index, resource), ResourceRisks(name));
+	}
+
+	static dnlib.DotNet.Resource ManagedResource(ModuleDef module, string name) =>
+		module.Resources.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
+		?? throw Validation("target.name", "the managed resource was not found: " + name);
+
+	static byte[] DecodePayload(JsonElement op) {
+		var text = RequiredString(op, "data_base64");
+		if (text.Length > 12 * 1024 * 1024) Invalid("data_base64", "the resource payload exceeds the base64 budget");
+		byte[] bytes;
+		try { bytes = Convert.FromBase64String(text); }
+		catch (FormatException) { Invalid("data_base64", "the resource payload is not valid base64"); throw; }
+		if (bytes.Length > EditWire.MaxResourceBytes) Capacity("resource_bytes");
+		return bytes;
+	}
+
+	static IReadOnlyList<Dictionary<string, object?>> ResourceRisks(string name) =>
+		new[] { Risk("resource_change", new ResourceRiskTarget(name)) };
+
+	sealed class ResourceRiskTarget : IMDTokenProvider {
+		readonly string name;
+		public ResourceRiskTarget(string name) => this.name = name;
+		public MDToken MDToken { get; set; }
+		public uint Rid { get; set; }
+		public override string ToString() => name;
+	}
+
+	static dnlib.IO.DataReaderFactory Factory(byte[] bytes) =>
+		dnlib.IO.ByteArrayDataReaderFactory.Create(bytes, null);
+
+	// P08 IMP-002: Win32 rows address (type, name, language) through the
+	// Win32Resources Root directory tree (type -> name -> language -> data).
+	// RT_ICON removal validates the icon-group references first (an icon group
+	// must never dangle — ACC-007 failure condition).
+	static EditOperationOutcome Win32ResourceAdd(ModuleDef module, JsonElement op) {
+		var type = Win32Name(op, "type_id", "type_name", "type");
+		var rowName = Win32Name(op, "name_id", "name_string", "name");
+		var langId = (uint)(op.TryGetProperty("lang_id", out var langValue) ? langValue.GetUInt32() : 0);
+		var bytes = DecodePayload(op);
+		var existing = FindWin32Data(module, type, rowName, langId);
+		if (existing != null)
+			Invalid("name", "a Win32 resource row with this identity already exists");
+		var typeDirectory = DirectoryFor(module, type, create: true);
+		var nameDirectory = typeDirectory.FindDirectory(rowName);
+		if (nameDirectory == null) {
+			nameDirectory = new dnlib.W32Resources.ResourceDirectoryUser(rowName);
+			typeDirectory.Directories.Add(nameDirectory);
+		}
+		var data = new dnlib.W32Resources.ResourceData(new dnlib.W32Resources.ResourceName((int)langId),
+			Factory(bytes), 0, (uint)bytes.Length);
+		nameDirectory.Data.Add(data);
+		if (IsIconType(type)) ValidateIconGroups(module);
+		return Outcome("win32_resource_add", null, module, null, Win32Identity(type, rowName, langId),
+			() => { nameDirectory.Data.Remove(data); PruneEmpty(nameDirectory, typeDirectory, module); },
+			ResourceRisks(Win32Identity(type, rowName, langId)));
+	}
+
+	static EditOperationOutcome Win32ResourceUpdate(ModuleDef module, JsonElement op) {
+		var type = Win32Name(op, "type_id", "type_name", "type");
+		var rowName = Win32Name(op, "name_id", "name_string", "name");
+		var langId = (uint)(op.TryGetProperty("lang_id", out var langValue) ? langValue.GetUInt32() : 0);
+		var data = FindWin32Data(module, type, rowName, langId) ?? throw Validation("target", "the Win32 resource row was not found");
+		var before = data.CreateReader().ToArray();
+		var after = DecodePayload(op);
+		var nameDirectory = typeDirectoryOf(module, type, rowName);
+		var slot = nameDirectory.Data.IndexOf(data);
+		var replacement = new dnlib.W32Resources.ResourceData(new dnlib.W32Resources.ResourceName((int)langId),
+			Factory(after), 0, (uint)after.Length);
+		nameDirectory.Data[slot] = replacement;
+		try {
+			if (IsIconType(type)) ValidateIconGroups(module);
+		}
+		catch {
+			nameDirectory.Data[slot] = data;
+			throw;
+		}
+		return Outcome("win32_resource_update", null, module, null, Win32Identity(type, rowName, langId),
+			() => nameDirectory.Data[slot] = data,
+			ResourceRisks(Win32Identity(type, rowName, langId)));
+	}
+
+	static EditOperationOutcome Win32ResourceRemove(ModuleDef module, JsonElement op) {
+		RequireRemoveMode(op);
+		var type = Win32Name(op, "type_id", "type_name", "type");
+		var rowName = Win32Name(op, "name_id", "name_string", "name");
+		var langId = (uint)(op.TryGetProperty("lang_id", out var langValue) ? langValue.GetUInt32() : 0);
+		var typeDirectory = DirectoryFor(module, type, create: false) ?? throw Validation("target", "the Win32 type directory was not found");
+		var nameDirectory = typeDirectory.FindDirectory(rowName) ?? throw Validation("target", "the Win32 resource row was not found");
+		var langName = new dnlib.W32Resources.ResourceName((int)langId);
+		var data = nameDirectory.Data.FirstOrDefault(d => d.Name == langName) ?? throw Validation("target", "the Win32 resource row was not found");
+		nameDirectory.Data.Remove(data);
+		try {
+			if (IsIconType(type)) ValidateIconGroups(module);
+		}
+		catch {
+			nameDirectory.Data.Add(data);
+			throw;
+		}
+		PruneEmpty(nameDirectory, typeDirectory, module);
+		var capture = data.CreateReader().ToArray();
+		var removed = new dnlib.W32Resources.ResourceData(langName,
+			Factory(capture), 0, (uint)capture.Length);
+		PruneEmpty(nameDirectory, typeDirectory, module);
+		return Outcome("win32_resource_remove", null, module, null, null,
+			() => {
+				var restoreType = DirectoryFor(module, type, create: true);
+				var restoreName = restoreType.FindDirectory(rowName);
+				if (restoreName == null) {
+					restoreName = new dnlib.W32Resources.ResourceDirectoryUser(rowName);
+					restoreType.Directories.Add(restoreName);
+				}
+				restoreName.Data.Add(removed);
+			},
+			ResourceRisks(Win32Identity(type, rowName, langId)));
+	}
+
+	static void PruneEmpty(dnlib.W32Resources.ResourceDirectory nameDirectory, dnlib.W32Resources.ResourceDirectory typeDirectory, ModuleDef module) {
+		if (nameDirectory.Data.Count == 0 && nameDirectory.Directories.Count == 0) {
+			typeDirectory.Directories.Remove(nameDirectory);
+			if (typeDirectory.Data.Count == 0 && typeDirectory.Directories.Count == 0)
+				module.Win32Resources.Root.Directories.Remove(typeDirectory);
+		}
+	}
+
+	static bool IsIconType(dnlib.W32Resources.ResourceName type) =>
+		type.HasId && type.Id is 3 or 14;
+
+	static dnlib.W32Resources.ResourceData? FindWin32Data(ModuleDef module,
+			dnlib.W32Resources.ResourceName type, dnlib.W32Resources.ResourceName name, uint langId) {
+		var typeDirectory = DirectoryFor(module, type, create: false);
+		if (typeDirectory == null) return null;
+		var nameDirectory = typeDirectory.FindDirectory(name);
+		if (nameDirectory == null) return null;
+		var langName = new dnlib.W32Resources.ResourceName((int)langId);
+		return nameDirectory.Data.FirstOrDefault(d => d.Name == langName);
+	}
+
+	static dnlib.W32Resources.ResourceDirectory typeDirectoryOf(ModuleDef module,
+			dnlib.W32Resources.ResourceName type, dnlib.W32Resources.ResourceName name) {
+		var typeDirectory = DirectoryFor(module, type, create: false)
+			?? throw Validation("target", "the Win32 type directory was not found");
+		return typeDirectory.FindDirectory(name) ?? throw Validation("target", "the Win32 resource row was not found");
+	}
+
+	static dnlib.W32Resources.ResourceDirectory? DirectoryFor(ModuleDef module,
+			dnlib.W32Resources.ResourceName type, bool create) {
+		var existing = module.Win32Resources.Root.FindDirectory(type);
+		if (existing != null || !create) return existing;
+		var created = new dnlib.W32Resources.ResourceDirectoryUser(type);
+		module.Win32Resources.Root.Directories.Add(created);
+		return created;
+	}
+
+	static dnlib.W32Resources.ResourceName Win32Name(JsonElement op, string idField, string nameField, string label) {
+		if (op.TryGetProperty(idField, out var idValue) && idValue.ValueKind == JsonValueKind.Number)
+			return new dnlib.W32Resources.ResourceName((int)idValue.GetUInt32());
+		if (op.TryGetProperty(nameField, out var nameValue) && nameValue.ValueKind == JsonValueKind.String && nameValue.GetString()!.Length != 0)
+			return new dnlib.W32Resources.ResourceName(nameValue.GetString()!);
+		throw Validation(idField, label + " requires " + idField + " or " + nameField);
+	}
+
+	static string Win32Identity(dnlib.W32Resources.ResourceName type, dnlib.W32Resources.ResourceName name, uint langId) =>
+		(type.HasId ? "id:" + type.Id.ToString(CultureInfo.InvariantCulture) : "name:" + type.Name)
+		+ "/" + (name.HasId ? "id:" + name.Id.ToString(CultureInfo.InvariantCulture) : "name:" + name.Name)
+		+ "@" + langId.ToString(CultureInfo.InvariantCulture);
+
+	/// <summary>RT_GROUP_ICON directories must reference existing RT_ICON rows;
+	/// an edit that would dangle an icon reference rejects.</summary>
+	static void ValidateIconGroups(ModuleDef module) {
+		var iconType = module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(3));
+		// the icon ID lives on the NAME directory (type/name/lang tree); the data
+		// row's own name is the language id
+		var iconIds = new HashSet<int>();
+		foreach (var nameDirectory in iconType?.Directories ?? Enumerable.Empty<dnlib.W32Resources.ResourceDirectory>())
+			if (nameDirectory.Name.HasId && nameDirectory.Data.Count != 0) iconIds.Add(nameDirectory.Name.Id);
+		var groupType = module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(14));
+		if (groupType == null) return;
+		foreach (var group in groupType.Directories.SelectMany(directory => directory.Data)) {
+			var blob = group.CreateReader().ToArray();
+			if (blob.Length < 6) Invalid("icon_group", "an RT_GROUP_ICON directory is malformed");
+			var count = BitConverter.ToUInt16(blob, 4);
+			for (var index = 0; index < count; index++) {
+				var entryOffset = 6 + index * 14;
+				if (entryOffset + 14 > blob.Length) Invalid("icon_group", "an RT_GROUP_ICON directory is truncated");
+				var iconId = BitConverter.ToUInt16(blob, entryOffset + 12);
+				if (!iconIds.Contains(iconId))
+					Invalid("icon_group", "the edit would dangle icon id " + iconId
+						+ " referenced by group " + (group.Name.HasId ? group.Name.Id.ToString(CultureInfo.InvariantCulture) : group.Name.Name));
+			}
+		}
+	}
+
+	// P08 IMP-004: gated strong-name removal.  The evidence gate itself lives in
+	// the coordinator (it owns the debug-event buffer); the operation assumes the
+	// gate already ran and removes the public key.
+	static EditOperationOutcome StrongNameRemove(ModuleDef module, JsonElement op) {
+		var assembly = module.Assembly ?? throw Validation("strong_name_remove", "module has no assembly row");
+		if (op.TryGetProperty("dynamic_failure", out var evidence)) {
+			if (!evidence.TryGetProperty("session_id", out _))
+				Invalid("dynamic_failure", "the dynamic failure evidence must carry session_id and event_cursor");
+			if (!evidence.TryGetProperty("event_cursor", out var cursorValue) || !cursorValue.TryGetInt64(out var cursor) || cursor <= 0)
+				Invalid("dynamic_failure", "the evidence event_cursor must be a positive cursor");
+		}
+		else Invalid("dynamic_failure", "strong_name_remove requires dynamic failure evidence");
+		var oldKey = assembly.PublicKey;
+		var oldAttributes = assembly.Attributes;
+		assembly.PublicKey = null;
+		// strip the public-key signature flag; keep everything else
+		assembly.Attributes = oldAttributes & ~dnlib.DotNet.AssemblyAttributes.PublicKey;
+		return Outcome("strong_name_remove", null, assembly, oldKey == null ? null : "key:" + EditWire.Sha256(oldKey.Data), null,
+			() => { assembly.PublicKey = oldKey; assembly.Attributes = oldAttributes; },
+			new[] { Risk("strong_name_change", assembly) });
+	}
 
 	// P07 IMP-001: assembly/module identity, AssemblyRef and entry point rows.
 	// Replay determinism rides the checkpoint image (byte-level); the conflict

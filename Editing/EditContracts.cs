@@ -40,6 +40,9 @@ internal static class EditWire {
 		"generic_parameter_add", "generic_parameter_update", "generic_parameter_remove", "method_body_replace",
 		"attribute_add", "attribute_remove", "security_add", "security_remove",
 		"assembly_update", "module_update", "assembly_ref_update", "entry_point_set",
+		"managed_resource_add", "managed_resource_update", "managed_resource_remove",
+		"win32_resource_add", "win32_resource_update", "win32_resource_remove",
+		"strong_name_remove",
 	};
 
 	public static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {

@@ -250,6 +250,67 @@ internal static partial class EditOperationRegistry {
 				["entry_point"] = entry == null ? null : "0x" + entry.MDToken.Raw.ToString("x8", System.Globalization.CultureInfo.InvariantCulture),
 			} };
 		}
+		case "managed_resource_add": {
+			return new() { ["managed_resource_remove_state"] = new Dictionary<string, object?> {
+				["name"] = RequiredString(forward, "name"),
+			} };
+		}
+		case "managed_resource_update": {
+			var resource = before.Resources.FirstOrDefault(r => string.Equals(r.Name, forward.GetProperty("target").GetProperty("name").GetString(), StringComparison.Ordinal)) as EmbeddedResource
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var bytes = resource.CreateReader().ToArray();
+			return new() { ["managed_resource_update_state"] = new Dictionary<string, object?> {
+				["name"] = resource.Name.String,
+				["data_base64"] = Convert.ToBase64String(bytes),
+			} };
+		}
+		case "managed_resource_remove": {
+			var removeName = forward.GetProperty("target").GetProperty("name").GetString()!;
+			var row = before.Resources.FirstOrDefault(r => string.Equals(r.Name, removeName, StringComparison.Ordinal)) as EmbeddedResource
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["managed_resource_restore_state"] = new Dictionary<string, object?> {
+				["name"] = row.Name.String,
+				["attributes"] = (uint)row.Attributes,
+				["index"] = before.Resources.IndexOf(row),
+				["data_base64"] = Convert.ToBase64String(row.CreateReader().ToArray()),
+			} };
+		}
+		case "win32_resource_add": {
+			// the row does not exist yet: the inverse only carries the identity
+			var addType = Win32Name(forward, "type_id", "type_name", "type");
+			var addRowName = Win32Name(forward, "name_id", "name_string", "name");
+			var addLang = forward.TryGetProperty("lang_id", out var addLangValue) ? addLangValue.GetUInt32() : 0u;
+			return new() { ["win32_resource_remove_state"] = new Dictionary<string, object?> {
+				["type_id"] = addType.HasId ? (object)addType.Id : null,
+				["type_name"] = addType.HasName ? addType.Name : null,
+				["name_id"] = addRowName.HasId ? (object)addRowName.Id : null,
+				["name_string"] = addRowName.HasName ? addRowName.Name : null,
+				["lang_id"] = addLang,
+			} };
+		}
+		case "win32_resource_update":
+		case "win32_resource_remove": {
+			var type = Win32Name(forward, "type_id", "type_name", "type");
+			var rowName = Win32Name(forward, "name_id", "name_string", "name");
+			var langId = forward.TryGetProperty("lang_id", out var langValue) ? langValue.GetUInt32() : 0u;
+			var row = FindWin32Data(before, type, rowName, langId) ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var bytes = row.CreateReader().ToArray();
+			return new() { ["win32_resource_restore_state"] = new Dictionary<string, object?> {
+				["type_id"] = type.HasId ? (object)type.Id : null,
+				["type_name"] = type.HasName ? type.Name : null,
+				["name_id"] = rowName.HasId ? (object)rowName.Id : null,
+				["name_string"] = rowName.HasName ? rowName.Name : null,
+				["lang_id"] = langId,
+				["data_base64"] = Convert.ToBase64String(bytes),
+			} };
+		}
+		case "strong_name_remove": {
+			var assembly = before.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["strong_name_restore_state"] = new Dictionary<string, object?> {
+				["public_key_base64"] = assembly.PublicKey?.Data == null ? null : Convert.ToBase64String(assembly.PublicKey.Data),
+				["attributes"] = (uint)assembly.Attributes,
+			} };
+		}
 		case "method_body_replace": {
 			var value = Ref<MethodDef>(before, forward.GetProperty("target"), objects);
 			if (value.Body == null) return new() { ["absent_body"] = InverseReference(value, objects) };
@@ -427,6 +488,77 @@ internal static partial class EditOperationRegistry {
 			module.ManagedEntryPoint = tokenText == null ? null
 				: ResolveToken(module, ParseToken(tokenText)) as MethodDef ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			return new EditOperationOutcome { Kind = "entry_point_set", Target = module.Name.String, Undo = () => module.ManagedEntryPoint = old };
+		}
+		if (inverse.TryGetProperty("managed_resource_remove_state", out var managedRemove)) {
+			var name = RequiredString(managedRemove, "name");
+			var row = module.Resources.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var slot = module.Resources.IndexOf(row);
+			module.Resources.RemoveAt(slot);
+			return new EditOperationOutcome { Kind = "managed_resource_remove", Target = name,
+				Undo = () => module.Resources.Insert(slot, row) };
+		}
+		if (inverse.TryGetProperty("managed_resource_update_state", out var managedUpdate)) {
+			var name = RequiredString(managedUpdate, "name");
+			var row = module.Resources.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal)) as EmbeddedResource
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var restored = new EmbeddedResource(row.Name, Convert.FromBase64String(RequiredString(managedUpdate, "data_base64")), row.Attributes);
+			var slot = module.Resources.IndexOf(row);
+			module.Resources[slot] = restored;
+			return new EditOperationOutcome { Kind = "managed_resource_update", Target = name,
+				Undo = () => module.Resources[slot] = row };
+		}
+		if (inverse.TryGetProperty("managed_resource_restore_state", out var managedRestore)) {
+			var row = new EmbeddedResource(RequiredString(managedRestore, "name"),
+				Convert.FromBase64String(RequiredString(managedRestore, "data_base64")),
+				(dnlib.DotNet.ManifestResourceAttributes)managedRestore.GetProperty("attributes").GetUInt32());
+			var slot = managedRestore.GetProperty("index").GetInt32();
+			if (slot < 0 || slot > module.Resources.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			module.Resources.Insert(slot, row);
+			return new EditOperationOutcome { Kind = "managed_resource_add", Target = row.Name.String,
+				Undo = () => module.Resources.Remove(row) };
+		}
+		if (inverse.TryGetProperty("win32_resource_remove_state", out var win32Remove)) {
+			var type = Win32Name(win32Remove, "type_id", "type_name", "type");
+			var rowName = Win32Name(win32Remove, "name_id", "name_string", "name");
+			var langId = win32Remove.GetProperty("lang_id").GetUInt32();
+			var row = FindWin32Data(module, type, rowName, langId) ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var nameDirectory = module.Win32Resources.Root.FindDirectory(type)!.FindDirectory(rowName)!;
+			nameDirectory.Data.Remove(row);
+			return new EditOperationOutcome { Kind = "win32_resource_remove",
+				Undo = () => nameDirectory.Data.Add(row) };
+		}
+		if (inverse.TryGetProperty("win32_resource_restore_state", out var win32Restore)) {
+			var type = Win32Name(win32Restore, "type_id", "type_name", "type");
+			var rowName = Win32Name(win32Restore, "name_id", "name_string", "name");
+			var langId = win32Restore.GetProperty("lang_id").GetUInt32();
+			var payload = Convert.FromBase64String(RequiredString(win32Restore, "data_base64"));
+			var row = new dnlib.W32Resources.ResourceData(new dnlib.W32Resources.ResourceName((int)langId),
+				dnlib.IO.ByteArrayDataReaderFactory.Create(payload, null), 0, (uint)payload.Length);
+			var typeDirectory = module.Win32Resources.Root.FindDirectory(type);
+			if (typeDirectory == null) {
+				typeDirectory = new dnlib.W32Resources.ResourceDirectoryUser(type);
+				module.Win32Resources.Root.Directories.Add(typeDirectory);
+			}
+			var nameDirectory = typeDirectory.FindDirectory(rowName);
+			if (nameDirectory == null) {
+				nameDirectory = new dnlib.W32Resources.ResourceDirectoryUser(rowName);
+				typeDirectory.Directories.Add(nameDirectory);
+			}
+			nameDirectory.Data.Add(row);
+			return new EditOperationOutcome { Kind = "win32_resource_add",
+				Undo = () => nameDirectory.Data.Remove(row) };
+		}
+		if (inverse.TryGetProperty("strong_name_restore_state", out var strongName)) {
+			var assembly = module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var previousKey = assembly.PublicKey;
+			var previousAttributes = assembly.Attributes;
+			var keyText = strongName.GetProperty("public_key_base64").ValueKind == JsonValueKind.Null
+				? null : strongName.GetProperty("public_key_base64").GetString();
+			assembly.PublicKey = keyText == null ? null : new dnlib.DotNet.PublicKey(Convert.FromBase64String(keyText));
+			assembly.Attributes = (dnlib.DotNet.AssemblyAttributes)strongName.GetProperty("attributes").GetUInt32();
+			return new EditOperationOutcome { Kind = "strong_name_remove",
+				Undo = () => { assembly.PublicKey = previousKey; assembly.Attributes = previousAttributes; } };
 		}
 		if (inverse.TryGetProperty("field_state", out var fieldState))
 			return RestoreFieldState(module, fieldState, objects);

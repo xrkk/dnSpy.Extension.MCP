@@ -227,6 +227,71 @@
         "file_level_readback",
         "exact_inverse"
       ]
+    },
+    {
+      "id": "ACC-007",
+      "actions": [
+        "managed_resource_crud",
+        "standard_entry_edits",
+        "custom_object_metadata_only",
+        "icon_group_maintenance",
+        "save_reload_readback",
+        "malicious_sentinel"
+      ],
+      "expect": [
+        "reload_values_match",
+        "no_instantiation",
+        "icon_groups_valid",
+        "resource_hash_evidence"
+      ]
+    },
+    {
+      "id": "ACC-008",
+      "actions": [
+        "small_inline_resource",
+        "oversize_inline_rejected",
+        "vm_path_import",
+        "vm_path_export"
+      ],
+      "expect": [
+        "inline_limits_unchanged",
+        "file_identity_len_sha",
+        "reload_consistent"
+      ]
+    },
+    {
+      "id": "ACC-016",
+      "actions": [
+        "default_preserves_identity",
+        "dynamic_failure_evidence",
+        "remove_branch_after_failure",
+        "inbound_strong_ref_report",
+        "strict_sample_honest_limit"
+      ],
+      "expect": [
+        "signed_metadata_unchanged_by_default",
+        "evidence_one_time",
+        "branch_tree",
+        "impact_report",
+        "capability_honest"
+      ]
+    },
+    {
+      "id": "ACC-033",
+      "actions": [
+        "resource_add_reload",
+        "entry_edits",
+        "whole_blob_replace",
+        "icon_group",
+        "strong_name_gate",
+        "deterministic_writer",
+        "sentinel"
+      ],
+      "expect": [
+        "pass_resource_matrix",
+        "file_level_readback",
+        "never_instantiate"
+      ]
     }
   ]
 }

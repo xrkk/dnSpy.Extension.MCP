@@ -47,6 +47,9 @@ CASE_MODULES = {
     "EDIT-ACC-005": "p03_vm_acc005full",
     "EDIT-ACC-006": "p03_vm_acc006",
     "EDIT-ACC-015": "p03_vm_acc015",
+    "EDIT-ACC-007": "p03_vm_acc007",
+    "EDIT-ACC-008": "p03_vm_acc008",
+    "EDIT-ACC-016": "p03_vm_acc016",
 }
 
 # Headless harness probes: run the registered P03StoreHarness mode and keep
@@ -55,6 +58,7 @@ HARNESS_CASES = {
     "EDIT-ACC-029": "--capacity-resolution",
     "EDIT-ACC-031": "--import-matrix",
     "EDIT-ACC-032": "--identity-matrix",
+    "EDIT-ACC-033": "--resource-matrix",
 }
 HARNESS_DIR = Path(r"C:\Tools\dnspy-mcp-edit-tests\p03-harness-20260912-r1")
 HARNESS_FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"

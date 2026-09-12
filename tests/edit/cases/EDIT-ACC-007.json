@@ -1,0 +1,26 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-007",
+ "acc_id": "ACC-007",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ResourceHost\\ResourceHost.dll",
+ "driver": "p03_vm_acc007.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P08 plugin; ResourceHost fixture (standard .resources + BinaryFormatter custom object + icon group) built on the VM",
+ "actions": [
+  "standard .resources entries (string/i4/r8/bool/bytes) edited through managed_resource_update entry mode",
+  "custom serialized object: entry edit rejected (metadata only); whole-blob replacement through managed_resource_add",
+  "icon group: referenced RT_ICON removal rejects; group-first removal succeeds",
+  "review+commit+export; the reloaded image reopens in dnSpy",
+  "edit_resource_export returns path/length/SHA-256 identity for both resources",
+  "the CON-019 sentinel file never appears (nothing instantiated)"
+ ],
+ "expected": "per OUT-008/CON-019: standard values correct, custom objects never instantiated, icon groups valid, reload consistent; x64/x86 both green",
+ "review": {
+  "owner": "P08",
+  "covered_acc": [
+   "ACC-007"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-007"
+ }
+}

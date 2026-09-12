@@ -1,0 +1,28 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-033",
+ "acc_id": "ACC-007",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net10.0-windows harness",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll",
+ "driver": "P03StoreHarness --resource-matrix",
+ "precondition": "headless harness with the P08 plugin build; DNMCP_TEST=1",
+ "actions": [
+  "a standard .resources blob (string/bool/numerics/byte-array) added through managed_resource_add survives write+reload byte-identically",
+  "surgical entry edits (string, i4, byte array) rebuild the blob with only the edited entry re-encoded and read back after reload",
+  "whole-blob replacement (the only custom-object edit face) round-trips",
+  "icon group: RT_GROUP_ICON + RT_ICON rows survive reload; removing a referenced icon rejects; group-first removal succeeds",
+  "the strong-name gate rejects an evidence tuple with no retained debug event",
+  "invalid payloads (bad base64, unknown entry kind, missing rows) reject with zero image change",
+  "the ResourceWriter output is deterministic in-process and the x64/x86 logs are byte-identical (cross-process determinism)",
+  "the CON-019 sentinel marker is never written — nothing is instantiated"
+ ],
+ "expected": "PASS resource-matrix line with every clause True; exit 0",
+ "review": {
+  "owner": "P08",
+  "covered_acc": [
+   "ACC-007"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-033"
+ }
+}

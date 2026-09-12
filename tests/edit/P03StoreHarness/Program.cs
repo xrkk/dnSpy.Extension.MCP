@@ -53,6 +53,7 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--portable-pdb-graph-cdi") { PortablePdbGraphCdiProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--import-matrix") { ImportMatrixProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--identity-matrix") { IdentityMatrixProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--resource-matrix") { ResourceMatrixProbe.Run(args[0]); return 0; }
 			if (args.Length != 1 || !File.Exists(args[0])) throw new ArgumentException("usage: P03StoreHarness <managed-fixture>");
 			Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
 			TestLegacyRename(args[0]);
