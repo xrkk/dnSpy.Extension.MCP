@@ -1,16 +1,15 @@
 {
   "workflow_id": "dnspy-edit-master-01a050b5",
-  "overall_state": "final_report_delivered",
+  "overall_state": "verification_remediation_delivered",
   "started_at": "2026-09-03T23:32:42+08:00",
-  "updated_at": "2026-09-12T18:52:48+08:00",
+  "updated_at": "2026-09-13T03:44:08+08:00",
   "current_child": null,
-  "child_stage": "FINAL_REPORT_DELIVERED",
+  "child_stage": "REMEDIATION_CHK001_010_DELIVERED",
   "phase_state": "executing",
   "last_verified_checkpoint": {
-    "name": "FINAL_REPORT",
-    "commit": "44dac70",
-    "evidence": "总纲验收记录 -27 + 修复记录 + 最终汇报 -28；ACC-023 x86 修复后双架构通过",
-    "recorded_at": "2026-09-12T18:52:48+08:00"
+    "name": "REMEDIATION_CHK001_010",
+    "commit": "5bbff88",
+    "evidence": "整改记录 -29 + 收尾 -30 + 重建最终清单；定向 7/7 PASS（chk-remediation-20260912-223127）；13 案例双架构全 pass；P01/P02 VM 套件 PASS；python 33 OK；resources 14/14；注册表 78；Release v6.6.0 一致；P02 监听器套件 FAIL(环境) 如实留痕；屏障超时与 open→begin 水合两项历史缺陷修复"
   },
   "children": {
     "P01": {
