@@ -8,7 +8,7 @@
   "phase_state": "executing",
   "last_verified_checkpoint": {
     "name": "P06_CHILD_DONE",
-    "commit": null,
+    "commit": "2df8590",
     "evidence": "p06-import-20260912-r1-x64/x86 EDIT-ACC-005+EDIT-ACC-031 all pass",
     "recorded_at": "2026-09-12T09:52:39+08:00"
   },
