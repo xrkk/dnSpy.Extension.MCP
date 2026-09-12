@@ -109,13 +109,15 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	bool navigateInverseFailure;
 
 	[ImportingConstructor]
-	public EditTransactionCoordinator(IDocumentTreeView tree, StaticWriteGate staticWriteGate, IEditDynamicValidationGate dynamicGate, McpSettings settings) {
+	public EditTransactionCoordinator(IDocumentTreeView tree, StaticWriteGate staticWriteGate, IEditDynamicValidationGate dynamicGate, McpSettings settings, EditCompileFrontend compileFrontend) {
 		this.tree = tree; this.staticWriteGate = staticWriteGate; this.dynamicGate = dynamicGate; this.settings = settings;
+		this.compileFrontend = compileFrontend;
 		dynamicValidation = new EditDynamicValidationService(dynamicGate, settings);
 		faultPlan = new EditFaultPlan(catalog.Lowering, catalog.Faults);
 		history = new EditHistoryModule(() => settings.CurrentSnapshot, catalog.CheckpointPackage);
 		staticWriteGate.CoordinatorStateProvider = () => State == "idle" ? DebugStates.Idle : "editing";
 	}
+	readonly EditCompileFrontend compileFrontend;
 
 	public string State { get { lock (gate) { ExpireLocked(); return state; } } }
 	public JsonElement FaultGolden => catalog.Faults;
@@ -160,6 +162,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					"edit_begin" => Begin(args, context),
 					"edit_status" => Status(context),
 					"edit_apply" => Apply(args, context),
+					"edit_import" => Import(args, context),
 					"edit_review" => Review(args, context),
 					"edit_rollback" => Rollback(args, context),
 					"edit_commit" => Commit(args, context),
@@ -445,8 +448,115 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();else if(tx.CancelRequested&&tx.OwnerClosed&&ReferenceEquals(active,tx))EndLocked(tx,"session_closed");}}
 	}
 
-	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {
-		Transaction tx;uint expected;var requestId=EditWire.String(args,"request_id");var payload=PayloadHash(args);lock(gate){tx = RequireTransactionLocked(args, context);if(tx.ReviewCache.TryReplay(requestId,payload,out var replay,out var stale)){if(stale!=null)throw new EditDomainException("EDIT_REVIEW_STALE");return ParseEnvelope(replay);}expected = checked((uint)EditWire.Integer(args, "expected_revision")); if (expected != tx.Revision) throw Revision(expected, tx.Revision);tx.ReviewCache.EnsureCanReplace();tx.OperationBusy=true;}
+	// P06 edit_import: compile the registered artifact members into frozen
+	// operations on the active transaction's private copy.  The compile pass is
+	// pure — every import rejection (missing artifact, ambiguous target,
+	// unmapped reference) fires before any private-module mutation.  Staging
+	// then follows the edit_apply semantics per operation; any staging failure
+	// rolls the transaction back to its pre-import revision exactly.
+	Dictionary<string, object?> Import(Dictionary<string, object>? args, McpCallContext context) {
+		Transaction tx; uint expected;
+		lock (gate) {
+			tx = RequireTransactionLocked(args, context);
+			expected = checked((uint)EditWire.Integer(args, "expected_revision"));
+			if (expected != tx.Revision) throw Revision(expected, tx.Revision);
+			if (tx.Workspace.NormalizedOperations.Count >= EditWire.MaxOperations) CapacityError("operations", tx.Workspace.NormalizedOperations.Count, EditWire.MaxOperations);
+			tx.OperationBusy = true;
+		}
+		var oldPrivate = tx.PrivateFingerprint;
+		var oldRisks = tx.Workspace.Risks.Select(x => new Dictionary<string, object?>(x, StringComparer.Ordinal)).ToList();
+		var stagedCount = 0;
+		try {
+			BarrierPoint("apply_before_mutation", tx.Owner);
+			var compileId = EditWire.String(args, "compile_id");
+			if (args == null || !args.TryGetValue("targets", out var rawTargets) || rawTargets is not JsonElement targets || targets.ValueKind != JsonValueKind.Array)
+				throw new ArgumentException("targets is required", "targets");
+			var artifact = compileFrontend.Lookup(compileId)
+				?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+					["kind"] = "capability", ["capability"] = "compile_artifact", ["reason"] = "compile_id is not registered in this process: " + compileId });
+			var creation = new ModuleCreationOptions { TryToLoadPdbFromDisk = false };
+			if (artifact.Pdb.Length != 0) creation.PdbFileOrData = artifact.Pdb;
+			using var artifactModule = ModuleDefMD.Load(artifact.Assembly, creation);
+			using var importer = new EditCSharpImporter(artifactModule, tx.Workspace.PrivateModule, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count);
+			var plan = importer.Compile(targets);  // pure: any rejection lands here, before private writes
+			var newDiffs = new List<Dictionary<string, object?>>();
+			var createdIds = new List<string>();
+			foreach (var row in plan) {
+				if (tx.Workspace.NormalizedOperations.Count + stagedCount >= EditWire.MaxOperations) CapacityError("operations", tx.Workspace.NormalizedOperations.Count + stagedCount, EditWire.MaxOperations);
+				var normalized = EditWire.CanonicalPayload(row.Operation);
+				var newBytes = Encoding.UTF8.GetByteCount(normalized);
+				if (tx.Workspace.NormalizedOperations.Sum(Encoding.UTF8.GetByteCount) + newBytes > EditWire.MaxNormalizedOperationBytes)
+					CapacityError("normalized_operation_bytes", newBytes, EditWire.MaxNormalizedOperationBytes);
+				using var document = JsonDocument.Parse(normalized);
+				var outcome = EditOperationRegistry.Apply(tx.Workspace.PrivateModule, document.RootElement, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count + stagedCount);
+				EditStructuralValidator.Validate(tx.Workspace.PrivateModule);
+				var diff = new Dictionary<string, object?> {
+					["operation_index"] = tx.Workspace.NormalizedOperations.Count + stagedCount, ["kind"] = outcome.Kind,
+					["target"] = outcome.Target, ["path"] = "metadata/" + outcome.Kind,
+					["before"] = outcome.Before, ["after"] = outcome.After,
+					["risk_ids"] = outcome.Risks.Select(x => x["risk_id"]).ToArray(),
+				};
+				newDiffs.Add(diff);
+				createdIds.AddRange(outcome.CreatedObjectIds);
+				foreach (var risk in outcome.Risks)
+					if (!tx.Workspace.Risks.Any(r => Equals(r["risk_id"], risk["risk_id"]))) tx.Workspace.Risks.Add(risk);
+				tx.PrivateUndo.Add(outcome.Undo);
+				stagedCount++;
+			}
+			var newPrivate = tx.Workspace.PrivateFingerprint();
+			var prospectiveDiffBytes = EditWire.Utf8Bytes(tx.Workspace.Diffs.Concat(newDiffs).ToArray());
+			if (prospectiveDiffBytes > EditWire.MaxDiffBytes) throw new EditDomainException("EDIT_CAPACITY_EXCEEDED", CapacityDetails("diff_bytes", prospectiveDiffBytes, EditWire.MaxDiffBytes));
+			if (tx.Workspace.ObjectIds.Count > EditWire.MaxObjectIds) CapacityError("object_ids", tx.Workspace.ObjectIds.Count, EditWire.MaxObjectIds);
+			lock (gate) {
+				if (tx.CancelRequested || !ReferenceEquals(active, tx)) { tx.Workspace.RestoreCommittedState(); throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND"); }
+				foreach (var row in plan) tx.Workspace.NormalizedOperations.Add(EditWire.CanonicalPayload(row.Operation));
+				foreach (var diff in newDiffs) tx.Workspace.Diffs.Add(diff);
+				tx.Revision = checked((uint)(tx.Revision + stagedCount));
+				tx.LastActivity = Now;
+				tx.PrivateFingerprint = newPrivate;
+				tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; state = "editing";
+				var envelope = EditWire.Success("editing", new Dictionary<string, object?> {
+					["transaction"] = TransactionResult(tx, tx.LastActivity, tx.Revision, null),
+					["import"] = new Dictionary<string, object?> {
+						["compile_id"] = compileId,
+						["target_count"] = plan.Count,
+						["rows"] = plan.Select(row => new Dictionary<string, object?> {
+							["kind"] = row.Kind, ["artifact_member"] = row.ArtifactMember, ["target"] = row.Target }).ToArray(),
+						["created_object_ids"] = createdIds.ToArray(),
+					},
+					["operation_count"] = stagedCount,
+					["fingerprints"] = Fingerprints(tx),
+					["diffs"] = newDiffs.ToArray(),
+					["risks"] = tx.Workspace.Risks.ToArray(),
+					["review_cleared"] = true,
+					["capacity"] = CapacityAfterApply(tx),
+				});
+				return envelope;
+			}
+		}
+		catch {
+			// Roll the transaction back to its pre-import state: drop the staged
+			// undo prefix, rebuild the private graph and object map from the
+			// committed operations, and restore the risk snapshot.
+			if (stagedCount != 0) {
+				tx.PrivateUndo.RemoveRange(tx.PrivateUndo.Count - stagedCount, stagedCount);
+				if (tx.Workspace.PrivateFingerprint() != oldPrivate) tx.Workspace.RestoreCommittedState();
+				tx.PrivateFingerprint = tx.Workspace.PrivateFingerprint();
+				tx.Workspace.Risks.Clear();
+				foreach (var risk in oldRisks) tx.Workspace.Risks.Add(risk);
+			}
+			throw;
+		}
+		finally {
+			lock (gate) {
+				tx.OperationBusy = false;
+				if (tx.CancelRequested && !ReferenceEquals(active, tx)) tx.Workspace.Dispose();
+				else if (tx.CancelRequested && tx.OwnerClosed && ReferenceEquals(active, tx)) EndLocked(tx, "session_closed");
+			}
+		}
+	}
+
+	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {		Transaction tx;uint expected;var requestId=EditWire.String(args,"request_id");var payload=PayloadHash(args);lock(gate){tx = RequireTransactionLocked(args, context);if(tx.ReviewCache.TryReplay(requestId,payload,out var replay,out var stale)){if(stale!=null)throw new EditDomainException("EDIT_REVIEW_STALE");return ParseEnvelope(replay);}expected = checked((uint)EditWire.Integer(args, "expected_revision")); if (expected != tx.Revision) throw Revision(expected, tx.Revision);tx.ReviewCache.EnsureCanReplace();tx.OperationBusy=true;}
 		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
 		var dynamic = dynamicValidation.Run(tx.Workspace, args);
 		lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");

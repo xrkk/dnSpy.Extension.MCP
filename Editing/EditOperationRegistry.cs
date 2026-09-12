@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text.Json;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using dnlib.DotNet.Pdb;
 using TypeAttributes = dnlib.DotNet.TypeAttributes;
 using MethodAttributes = dnlib.DotNet.MethodAttributes;
 using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
@@ -180,6 +181,7 @@ internal static partial class EditOperationRegistry {
 				method.ParamDefs.Add(new ParamDefUser(pn.GetString(), (ushort)(i + 1), (ParamAttributes)OptionalAttributes(p, "attributes", "parameter", 0)));
 		}
 		if (op.TryGetProperty("body", out var body)) method.Body = BuildBody(module, method, body, map);
+		ApplyMethodDebugInfo(module, op, method, map);
 		if (op.TryGetProperty("overrides", out var addOverrides)) ApplyOverrides(module, method, addOverrides);
 		Dictionary<string, object?>? pinvokeAddRisk = null;
 		if (op.TryGetProperty("pinvoke", out var addPInvoke)) { ApplyPInvoke(module, method, addPInvoke); pinvokeAddRisk = Risk("external_code_entry", method); }
@@ -358,7 +360,23 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	}
 	static EditOperationOutcome GenericRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);IList<GenericParam> col;MethodDef? method=null;if(gp.Owner is TypeDef t)col=t.GenericParameters;else if(gp.Owner is MethodDef m){method=m;col=m.GenericParameters;}else throw Validation("target","Generic parameter has no owner");if(gp.Number!=col.Count-1)Invalid("target","Only tail generic parameter removal is supported");if(IsGenericUsed(module,gp)||HasAttachment(module,gp))Invalid("target","Generic parameter is used or attached");var oldArity=method?.MethodSig.GenParamCount??0;var oldCallingConvention=method?.MethodSig.CallingConvention??0;var riskOwner=(IMDTokenProvider?)gp.Owner??gp;col.Remove(gp);if(method!=null){method.MethodSig.GenParamCount=(uint)col.Count;if(col.Count==0)method.MethodSig.CallingConvention&=~CallingConvention.Generic;}RemoveMapValue(map,gp);return Outcome("generic_parameter_remove",null,gp,gp.Name,null,()=>{col.Add(gp);if(method!=null){method.MethodSig.GenParamCount=oldArity;method.MethodSig.CallingConvention=oldCallingConvention;}},new[]{Risk("signature_change",riskOwner)});}
 
-	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>m.Body=old,risks);}
+	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var oldDebug=m.CustomDebugInfos.ToArray();ApplyMethodDebugInfo(module,op,m,map);var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>{m.Body=old;m.CustomDebugInfos.Clear();foreach(var row in oldDebug)m.CustomDebugInfos.Add(row);},risks);}
+
+	// P06: optional method custom debug info rows (reference grammar: tokens of
+	// module rows or object IDs of operations in the same sequence).  Absent =
+	// the frozen P02 behavior is unchanged.
+	static void ApplyMethodDebugInfo(ModuleDef module,JsonElement op,MethodDef method,Dictionary<string,IMDTokenProvider> map){
+		if(!op.TryGetProperty("custom_debug_infos",out var rowsElement))return;
+		EditPdbTransferCodec.CdiRow[]? rows;
+		try{rows=JsonSerializer.Deserialize<EditPdbTransferCodec.CdiRow[]>(rowsElement.GetRawText(),EditWire.JsonOptions);}
+		catch(JsonException ex){throw Validation("custom_debug_infos",ex.Message);}
+		EditPdbTransferCodec.ApplyMethodDebugInfo(module,method,rows??Array.Empty<EditPdbTransferCodec.CdiRow>(),text=>ResolveOperationReference(module,map,text));
+	}
+
+	static IMDTokenProvider ResolveOperationReference(ModuleDef module,Dictionary<string,IMDTokenProvider> map,string text){
+		if(text.StartsWith("0x",StringComparison.OrdinalIgnoreCase))return ResolveToken(module,ParseToken(text));
+		return map.TryGetValue(text,out var found)?found:throw Validation("custom_debug_infos","Unknown token or object ID: "+text);
+	}
 
 	static CilBody BuildBody(ModuleDef module,MethodDef method,JsonElement body,Dictionary<string,IMDTokenProvider> map){
 		var insRows=body.GetProperty("instructions").EnumerateArray().ToList();var locals=body.GetProperty("locals").EnumerateArray().ToList();var ehs=body.GetProperty("exception_handlers").EnumerateArray().ToList();if(insRows.Count>EditWire.MaxBodyInstructions||locals.Count>EditWire.MaxBodyLocals||ehs.Count>EditWire.MaxBodyExceptionHandlers)Capacity("method_body");
@@ -369,6 +387,27 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		foreach(var row in insRows){var name=RequiredString(row,"opcode");if(!OpCodesByName.TryGetValue(name,out var code))Invalid("body.instructions.opcode","Unknown opcode: "+name);result.Instructions.Add(new Instruction(code));}
 		for(int i=0;i<insRows.Count;i++){var row=insRows[i];if(row.TryGetProperty("operand",out var operand)&&operand.ValueKind!=JsonValueKind.Null)result.Instructions[i].Operand=CanonicalOperand(result.Instructions[i],ParseOperand(module,method,result,operand,map));ValidateOperand(result.Instructions[i]);}
 		foreach(var row in ehs){var kind=RequiredString(row,"kind");var eh=new ExceptionHandler(kind switch{"catch"=>ExceptionHandlerType.Catch,"finally"=>ExceptionHandlerType.Finally,"fault"=>ExceptionHandlerType.Fault,"filter"=>ExceptionHandlerType.Filter,_=>throw Validation("exception_handler","Unknown handler kind")}){TryStart=IndexOrEnd(result,row,"try_start"),TryEnd=IndexOrEnd(result,row,"try_end"),HandlerStart=IndexOrEnd(result,row,"handler_start"),HandlerEnd=IndexOrEnd(result,row,"handler_end"),FilterStart=NullableIndex(result,row,"filter_start")};if(row.GetProperty("catch_type").ValueKind!=JsonValueKind.Null)eh.CatchType=parser.Parse(row.GetProperty("catch_type").GetString()!).ToTypeDefOrRef();result.ExceptionHandlers.Add(eh);}
+		// P06: optional symbol payload — sequence points and the root PDB scope
+		// travel with the body so private copy, live module and checkpoint replay
+		// materialize identical symbol state.  Absent fields keep the frozen P02
+		// behavior (a replaced body carries no symbol rows of its own).
+		if(body.TryGetProperty("sequence_points",out var pointsElement)){
+			EditPdbTransferCodec.PointRow[] points;
+			try{points=JsonSerializer.Deserialize<EditPdbTransferCodec.PointRow[]>(pointsElement.GetRawText(),EditWire.JsonOptions)??Array.Empty<EditPdbTransferCodec.PointRow>();}
+			catch(JsonException ex){throw Validation("body.sequence_points",ex.Message);}
+			EditPdbTransferCodec.ApplyPoints(module,result,points);
+		}
+		if(body.TryGetProperty("scope",out var scopeElement)){
+			EditPdbTransferCodec.ScopeRow? scope;
+			var imports=new Dictionary<string,EditPdbTransferCodec.ImportScopeRow>(StringComparer.Ordinal);
+			try{
+				scope=JsonSerializer.Deserialize<EditPdbTransferCodec.ScopeRow>(scopeElement.GetRawText(),EditWire.JsonOptions);
+				if(body.TryGetProperty("import_scopes",out var importsElement))
+					imports=EditPdbTransferCodec.FromWireRows(JsonSerializer.Deserialize<EditPdbTransferCodec.ImportScopeWireRow[]>(importsElement.GetRawText(),EditWire.JsonOptions));
+			}
+			catch(JsonException ex){throw Validation("body.scope",ex.Message);}
+			result.PdbMethod=new PdbMethod{Scope=EditPdbTransferCodec.RestoreScope(scope,result,module,imports)};
+		}
 		return result;
 	}
 

@@ -19,7 +19,7 @@ CATALOG = ROOT / "Editing/EditSchemaCatalog.cs"
 PROJECT = ROOT / "dnSpy.Extension.MCP.csproj"
 
 PRODUCT = [
-    "edit_begin", "edit_status", "edit_apply", "edit_review", "edit_rollback",
+    "edit_begin", "edit_status", "edit_apply", "edit_import", "edit_review", "edit_rollback",
     "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_restore",
     "edit_export", "edit_recover", "edit_accept_live",
 ]
@@ -36,7 +36,7 @@ OPERATIONS = [
     "generic_parameter_update", "generic_parameter_remove", "method_body_replace",
     "attribute_add", "attribute_remove", "security_add", "security_remove",
 ]
-ACCS = ["ACC-011", "ACC-012", "ACC-013", "ACC-014", "ACC-019", "ACC-020", "ACC-024", "ACC-025", "ACC-029"]
+ACCS = ["ACC-011", "ACC-012", "ACC-013", "ACC-014", "ACC-019", "ACC-020", "ACC-024", "ACC-025", "ACC-029", "ACC-031"]
 BARRIERS = [
     "begin_after_copy", "apply_before_mutation", "review_before_validation",
     "commit_after_guard_before_temp", "commit_after_temp_validate",
@@ -77,7 +77,7 @@ def main() -> int:
     project = PROJECT.read_text(encoding="utf-8")
 
     check(list(schemas) == PRODUCT[:5] + TEST[:6] + PRODUCT[5:] + TEST[6:] or set(schemas) == set(PRODUCT + TEST), "schemas:tool-set", failures)
-    check(len(schemas) == 21, "schemas:tool-count", failures)
+    check(len(schemas) == 22, "schemas:tool-count", failures)
     check(all("$ref" not in node for node in walk(schemas) if isinstance(node, dict)), "schemas:no-ref", failures)
     check(all(isinstance(schemas[name].get("inputSchema"), dict) and isinstance(schemas[name].get("outputSchema"), dict) for name in schemas), "schemas:object-roots", failures)
     for name in PRODUCT:
@@ -108,7 +108,7 @@ def main() -> int:
 
     check(acceptance.get("schema_version") == "dnspy.edit.p03.acceptance.v1", "acceptance:version", failures)
     check(acceptance.get("architectures") == ["x86", "x64"], "acceptance:architectures", failures)
-    check([row.get("id") for row in acceptance.get("cases", [])] == ACCS, "acceptance:nine-cases", failures)
+    check([row.get("id") for row in acceptance.get("cases", [])] == ACCS, "acceptance:cases", failures)
     check(listed(provider, "ProductTools") == PRODUCT, "provider:product-tools", failures)
     check(listed(provider, "TestTools") == TEST, "provider:test-tools", failures)
     for logical in ("p03-tool-schemas.json", "checkpoint-package.schema.json", "p03-acceptance.json"):

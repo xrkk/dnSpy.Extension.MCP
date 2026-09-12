@@ -44,15 +44,16 @@ CASE_MODULES = {
     "EDIT-ACC-020": "p03_vm_acc020",
     "EDIT-ACC-024": "p03_vm_acc024c",
     "EDIT-ACC-004": "p03_vm_acc004",
-    "EDIT-ACC-005": "p03_vm_acc005",
+    "EDIT-ACC-005": "p03_vm_acc005full",
 }
 
 # Headless harness probes: run the registered P03StoreHarness mode and keep
 # its output as the driver log (no MCP loopback involved).
 HARNESS_CASES = {
     "EDIT-ACC-029": "--capacity-resolution",
+    "EDIT-ACC-031": "--import-matrix",
 }
-HARNESS_DIR = Path(r"C:\Tools\dnspy-mcp-edit-tests\p03-harness-20260911-r1")
+HARNESS_DIR = Path(r"C:\Tools\dnspy-mcp-edit-tests\p03-harness-20260912-r1")
 HARNESS_FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"
 DOTNET_BY_ARCH = {
     "x64": Path(r"C:\Tools\dotnet10-x64\dotnet.exe"),

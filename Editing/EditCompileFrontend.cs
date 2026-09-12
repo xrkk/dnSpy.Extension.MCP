@@ -22,6 +22,7 @@ namespace dnSpy.Extension.MCP.Editing;
 /// payloads stay in memory and are registered for the P06 importer; nothing is
 /// imported into any module here (OUT-005 boundary, S02 boundary 5).</summary>
 [Export(typeof(IMcpToolProvider))]
+[Export(typeof(EditCompileFrontend))]
 internal sealed class EditCompileFrontend : IMcpToolProvider, IDisposable {
 	const int MaxRegistrations = 8;
 	const int MaxDocuments = 32;

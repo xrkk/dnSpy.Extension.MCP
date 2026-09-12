@@ -51,8 +51,18 @@ internal sealed class EditTypeSigParser {
 			var i = ReadUInt(); if (i >= ownerTypeArity) Invalid("Type generic parameter index is outside owner arity");
 			return new GenericVar((ushort)i);
 		}
+		bool? forcedValue = null;
+		if (Take("valuetype:")) forcedValue = true;
+		else if (Take("class:")) forcedValue = false;
 		var start = pos;
-		while (pos < text.Length && !"<[]>*&,".Contains(text[pos])) pos++;
+		while (pos < text.Length) {
+			var character = text[pos];
+			if ("[]*&,".Contains(character)) break;
+			// A '/' makes this a nested-type name; compiler-generated nested
+			// names (<M>d__N) carry '<' as part of the name, not as generics.
+			if (character == '<' && !text.Substring(start, pos - start).Contains('/')) break;
+			pos++;
+		}
 		if (pos == start) Invalid("Expected a type name");
 		var name = text.Substring(start, pos - start);
 		var primitive = Primitive(name);
@@ -76,7 +86,13 @@ internal sealed class EditTypeSigParser {
 			ClassOrValueTypeSig owner = type.ResolveTypeDef()?.IsValueType == true ? new ValueTypeSig(type) : new ClassSig(type);
 			return new GenericInstSig(owner, args.ToArray());
 		}
-		return primitive ?? ToSig(Resolve(name));
+		if (primitive != null) return primitive;
+		var resolved = Resolve(name);
+		// A forced prefix pins the class/value element kind instead of relying
+		// on the module resolver, which varies between module contexts.
+		if (forcedValue == true) return new ValueTypeSig(resolved);
+		if (forcedValue == false) return new ClassSig(resolved);
+		return ToSig(resolved);
 	}
 
 	TypeSig ParsePrimaryWithSuffixUntilComma() {
@@ -98,17 +114,21 @@ internal sealed class EditTypeSigParser {
 		var existing = module.GetTypeRefs().Where(t => string.Equals(t.FullName, fullName, StringComparison.Ordinal)).ToList();
 		if (existing.Count == 1) return existing[0];
 		if (existing.Count > 1) Invalid("TypeSig resolves ambiguously: " + fullName);
+		if (fullName.Contains('/')) {
+			var parentName = fullName.Substring(0, fullName.LastIndexOf('/'));
+			var nestedName = fullName.Substring(fullName.LastIndexOf('/') + 1);
+			var parent = Resolve(parentName);
+			if (parent is TypeDef parentType) {
+				var nested = parentType.NestedTypes.FirstOrDefault(n => string.Equals(n.Name.String, nestedName, StringComparison.Ordinal));
+				if (nested != null) return nested;
+			}
+			if (parent is TypeRef parentRef)
+				return new TypeRefUser(module, string.Empty, nestedName, parentRef);
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("type_sig", "Nested external type scope could not be represented"));
+		}
 		var lastDot = fullName.LastIndexOf('.');
 		var ns = lastDot < 0 ? string.Empty : fullName.Substring(0, lastDot);
 		var name = lastDot < 0 ? fullName : fullName.Substring(lastDot + 1);
-			if (fullName.Contains('/')) {
-				var parentName = fullName.Substring(0, fullName.LastIndexOf('/'));
-				var nestedName = fullName.Substring(fullName.LastIndexOf('/') + 1);
-				var parent = Resolve(parentName);
-				if (parent is TypeRef parentRef)
-					return new TypeRefUser(module, string.Empty, nestedName, parentRef);
-				throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("type_sig", "Nested external type scope could not be represented"));
-		}
 		var corlib = module.CorLibTypes.AssemblyRef;
 		if (ns == "System") return new TypeRefUser(module, ns, name, corlib);
 		var scope = module.GetAssemblyRefs().FirstOrDefault() ?? corlib;

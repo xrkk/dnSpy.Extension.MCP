@@ -1,0 +1,27 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-031",
+ "acc_id": "ACC-005",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net10.0-windows harness",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll",
+ "driver": "P03StoreHarness --import-matrix",
+ "precondition": "headless harness with the P06 plugin build; DNMCP_TEST=1; no dnSpy or loopback involved",
+ "actions": [
+  "stub compile artifact (in-memory module + Portable-PDB symbol rows) compiles into frozen operations through EditCSharpImporter",
+  "reference mapping: target-assembly member reference binds to the target definition token; an external member reference maps to the existing target row",
+  "symbol transfer: sequence points land with a shared document; scope + local name + constant rows land; hoisted + iterator custom debug info lands",
+  "generated-subtree sync: missing state machine field added, MoveNext body replaced",
+  "add path: generic method with constraint and property getter land through method_add/property_add",
+  "embedded write: reload keeps the embedded PDB kind, points, scope rows and custom debug info; the output directory holds only the module (no standalone pdb)",
+  "ambiguity rejection with zero side effects; unresolved-reference rejection is all-or-nothing across rows (fingerprint unchanged in both orders)"
+ ],
+ "expected": "PASS import-matrix line with every clause True; exit 0",
+ "review": {
+  "owner": "P06",
+  "covered_acc": [
+   "ACC-005"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-031"
+ }
+}
