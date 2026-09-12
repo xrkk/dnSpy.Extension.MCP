@@ -8,7 +8,7 @@ namespace dnSpy.Extension.MCP.Editing;
 
 [Export(typeof(IMcpToolProvider))]
 internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
-	static readonly string[] ProductTools = { "edit_begin", "edit_status", "edit_apply", "edit_import", "edit_review", "edit_rollback", "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_restore", "edit_export", "edit_recover", "edit_accept_live" };
+	static readonly string[] ProductTools = { "edit_begin", "edit_status", "edit_apply", "edit_import", "edit_impact_scan", "edit_review", "edit_rollback", "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_restore", "edit_export", "edit_recover", "edit_accept_live" };
 	static readonly string[] TestTools = { "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation", "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore", "edit_test_storage_fault", "edit_test_lineage_mutation" };
 	readonly EditTransactionCoordinator coordinator;
 	readonly EditSchemaCatalog schemas = new();
@@ -36,6 +36,7 @@ internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
 		"edit_status" => "Read process-wide edit state. The owning MCP session receives transaction fingerprints, capacity, review and risk details.",
 		"edit_apply" => "Apply one of the 26 structured metadata/body operations atomically to the transaction private copy.",
 		"edit_import" => "Import compiled C# members from a registered edit_compile artifact into the transaction private copy as frozen structured operations. The compile mapping is all-or-nothing: any unmapped reference or ambiguous target rejects the whole import with zero side effects (OUT-006).",
+		"edit_impact_scan" => "Scan the currently loaded modules for inbound AssemblyRef references affected by this transaction's staged identity operations. The report carries scope=loaded_modules with the actual module list — never a global-completeness claim (OUT-007).",
 		"edit_review" => "Validate and review the current private revision, returning canonical diffs, risks and roundtrip evidence.",
 		"edit_rollback" => "Discard the private transaction and release all in-memory edit state.",
 		"edit_commit" => "Commit an approved private edit to the live module and its persistent checkpoint as one recoverable operation.",

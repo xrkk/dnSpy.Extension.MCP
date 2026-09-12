@@ -1408,6 +1408,85 @@
         "parent",
         "action"
       ]
+    },
+    {
+      "kind": "assembly_update",
+      "required": [
+        "kind"
+      ],
+      "optional": [
+        "name",
+        "version",
+        "culture"
+      ],
+      "private": [
+        "resolve_assembly_row",
+        "capture_old_values"
+      ],
+      "live_forward": [
+        "write:assembly_name_version_culture"
+      ],
+      "live_reverse": [
+        "restore:captured_assembly_identity"
+      ]
+    },
+    {
+      "kind": "module_update",
+      "required": [
+        "kind",
+        "name"
+      ],
+      "optional": [],
+      "private": [
+        "capture_old_module_name"
+      ],
+      "live_forward": [
+        "write:module_name"
+      ],
+      "live_reverse": [
+        "restore:captured_module_name"
+      ]
+    },
+    {
+      "kind": "assembly_ref_update",
+      "required": [
+        "kind",
+        "target"
+      ],
+      "optional": [
+        "name",
+        "version",
+        "culture"
+      ],
+      "private": [
+        "resolve_assembly_ref_row",
+        "capture_old_values"
+      ],
+      "live_forward": [
+        "write:assembly_ref_identity_fields"
+      ],
+      "live_reverse": [
+        "restore:captured_assembly_ref_identity"
+      ]
+    },
+    {
+      "kind": "entry_point_set",
+      "required": [
+        "kind"
+      ],
+      "optional": [
+        "entry_point"
+      ],
+      "private": [
+        "resolve_entry_method_in_module",
+        "capture_old_entry"
+      ],
+      "live_forward": [
+        "write:managed_entry_point"
+      ],
+      "live_reverse": [
+        "restore:captured_entry_point"
+      ]
     }
   ]
 }

@@ -70,6 +70,10 @@ internal static partial class EditOperationRegistry {
 			"attribute_remove" => AttributeRemove(module, operation, objects),
 			"security_add" => SecurityAdd(module, operation, objects),
 			"security_remove" => SecurityRemove(module, operation, objects),
+			"assembly_update" => AssemblyUpdate(module, operation),
+			"module_update" => ModuleUpdate(module, operation),
+			"assembly_ref_update" => AssemblyRefUpdate(module, operation, objects),
+			"entry_point_set" => EntryPointSet(module, operation, objects),
 			_ => throw new EditDomainException("EDIT_VALIDATION_FAILED"),
 		};
 	}
@@ -359,6 +363,84 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		return false;
 	}
 	static EditOperationOutcome GenericRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);IList<GenericParam> col;MethodDef? method=null;if(gp.Owner is TypeDef t)col=t.GenericParameters;else if(gp.Owner is MethodDef m){method=m;col=m.GenericParameters;}else throw Validation("target","Generic parameter has no owner");if(gp.Number!=col.Count-1)Invalid("target","Only tail generic parameter removal is supported");if(IsGenericUsed(module,gp)||HasAttachment(module,gp))Invalid("target","Generic parameter is used or attached");var oldArity=method?.MethodSig.GenParamCount??0;var oldCallingConvention=method?.MethodSig.CallingConvention??0;var riskOwner=(IMDTokenProvider?)gp.Owner??gp;col.Remove(gp);if(method!=null){method.MethodSig.GenParamCount=(uint)col.Count;if(col.Count==0)method.MethodSig.CallingConvention&=~CallingConvention.Generic;}RemoveMapValue(map,gp);return Outcome("generic_parameter_remove",null,gp,gp.Name,null,()=>{col.Add(gp);if(method!=null){method.MethodSig.GenParamCount=oldArity;method.MethodSig.CallingConvention=oldCallingConvention;}},new[]{Risk("signature_change",riskOwner)});}
+
+	// P07 IMP-001: assembly/module identity, AssemblyRef and entry point rows.
+	// Replay determinism rides the checkpoint image (byte-level); the conflict
+	// fingerprint projection is deliberately unchanged so pre-P07 lineages keep
+	// their exact/validated classifications (adjudicated AUD-001/002).
+	static EditOperationOutcome AssemblyUpdate(ModuleDef module, JsonElement op) {
+		var assembly = module.Assembly ?? throw Validation("assembly_update", "module has no assembly row");
+		var oldName = assembly.Name; var oldVersion = assembly.Version; var oldCulture = assembly.Culture;
+		var hasName = op.TryGetProperty("name", out var nameValue);
+		var hasVersion = op.TryGetProperty("version", out var versionValue);
+		var hasCulture = op.TryGetProperty("culture", out var cultureValue);
+		if (!hasName && !hasVersion && !hasCulture) Invalid("assembly_update", "at least one of name, version, culture is required");
+		if (hasName) assembly.Name = new UTF8String(NonEmpty(nameValue, "name"));
+		if (hasVersion) assembly.Version = ParseVersionText(RequiredString(op, "version"));
+		if (hasCulture) assembly.Culture = cultureValue.ValueKind == JsonValueKind.Null || cultureValue.GetString()!.Length == 0
+			? UTF8String.Empty : new UTF8String(cultureValue.GetString()!);
+		return Outcome("assembly_update", null, assembly, null, assembly.FullName,
+			() => { assembly.Name = oldName; assembly.Version = oldVersion; assembly.Culture = oldCulture; },
+			new[] { Risk("assembly_identity_change", assembly) });
+	}
+
+	static EditOperationOutcome ModuleUpdate(ModuleDef module, JsonElement op) {
+		var oldName = module.Name;
+		module.Name = new UTF8String(RequiredString(op, "name"));
+		return Outcome("module_update", null, module, null, module.Name.String,
+			() => module.Name = oldName, new[] { Risk("module_identity_change", module) });
+	}
+
+	static EditOperationOutcome AssemblyRefUpdate(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		var reference = op.GetProperty("target").TryGetProperty("token", out var tokenValue)
+			? ResolveToken(module, ParseToken(tokenValue.GetString()!)) as AssemblyRef
+				?? throw Validation("target", "assembly_ref_update target must resolve to an AssemblyRef row")
+			: map.TryGetValue(RequiredString(op.GetProperty("target"), "object_id"), out var bound) && bound is AssemblyRef boundRef
+				? boundRef : throw Validation("target", "assembly_ref_update target must resolve to an AssemblyRef row");
+		var oldName = reference.Name; var oldVersion = reference.Version; var oldCulture = reference.Culture;
+		var hasName = op.TryGetProperty("name", out var nameValue);
+		var hasVersion = op.TryGetProperty("version", out var versionValue);
+		var hasCulture = op.TryGetProperty("culture", out var cultureValue);
+		if (!hasName && !hasVersion && !hasCulture) Invalid("assembly_ref_update", "at least one of name, version, culture is required");
+		if (hasName) reference.Name = new UTF8String(NonEmpty(nameValue, "name"));
+		if (hasVersion) reference.Version = ParseVersionText(RequiredString(op, "version"));
+		if (hasCulture) reference.Culture = cultureValue.ValueKind == JsonValueKind.Null || cultureValue.GetString()!.Length == 0
+			? UTF8String.Empty : new UTF8String(cultureValue.GetString()!);
+		return Outcome("assembly_ref_update", null, reference, null, reference.FullName,
+			() => { reference.Name = oldName; reference.Version = oldVersion; reference.Culture = oldCulture; },
+			new[] { Risk("assembly_ref_change", reference) });
+	}
+
+	static EditOperationOutcome EntryPointSet(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+		MethodDef? entry = null;
+		if (op.TryGetProperty("entry_point", out var entryValue) && entryValue.ValueKind == JsonValueKind.Object) {
+			if (entryValue.TryGetProperty("token", out var tokenValue)) {
+				entry = ResolveToken(module, ParseToken(tokenValue.GetString()!)) as MethodDef
+					?? throw Validation("entry_point", "entry_point must resolve to a MethodDef in this module");
+			}
+			else if (map.TryGetValue(RequiredString(entryValue, "object_id"), out var bound) && bound is MethodDef boundMethod)
+				entry = boundMethod;
+			else throw Validation("entry_point", "entry_point must resolve to a MethodDef in this module");
+			if (entry.DeclaringType == null || !ReferenceEquals(entry.Module, module))
+				throw Validation("entry_point", "entry_point must be a method of this module");
+		}
+		var old = module.ManagedEntryPoint;
+		module.ManagedEntryPoint = entry;
+		return Outcome("entry_point_set", null, module, old == null ? null : "entry", entry == null ? null : entry.FullName,
+			() => module.ManagedEntryPoint = old, new[] { Risk("entry_point_change", module) });
+	}
+
+	static Version ParseVersionText(string text) {
+		if (string.IsNullOrEmpty(text) || text.Length > 64) Invalid("version", "version must be Major[.Minor[.Build[.Revision]]]");
+		var parts = text.Split('.');
+		if (parts.Length > 4) Invalid("version", "version must have at most four components");
+		var numbers = new int[4];
+		for (var index = 0; index < parts.Length; index++) {
+			if (parts[index].Length == 0 || parts[index].Length > 9 || !int.TryParse(parts[index], out numbers[index]) || numbers[index] < 0)
+				Invalid("version", "version components must be non-negative integers");
+		}
+		return new Version(numbers[0], numbers[1], numbers[2], numbers[3]);
+	}
 
 	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var oldDebug=m.CustomDebugInfos.ToArray();ApplyMethodDebugInfo(module,op,m,map);var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>{m.Body=old;m.CustomDebugInfos.Clear();foreach(var row in oldDebug)m.CustomDebugInfos.Add(row);},risks);}
 

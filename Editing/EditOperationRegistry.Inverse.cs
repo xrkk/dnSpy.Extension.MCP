@@ -218,6 +218,38 @@ internal static partial class EditOperationRegistry {
 				}).ToArray(),
 			} };
 		}
+		case "assembly_update": {
+			var assembly = before.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["assembly_update_state"] = new Dictionary<string, object?> {
+				["name"] = assembly.Name?.String ?? string.Empty,
+				["version"] = assembly.Version?.ToString() ?? string.Empty,
+				["culture"] = assembly.Culture?.String ?? string.Empty,
+			} };
+		}
+		case "module_update": {
+			return new() { ["module_update_state"] = new Dictionary<string, object?> {
+				["name"] = before.Name.String,
+			} };
+		}
+		case "assembly_ref_update": {
+			var reference = forward.GetProperty("target").TryGetProperty("token", out var tokenValue)
+				? ResolveToken(before, ParseToken(tokenValue.GetString()!)) as AssemblyRef
+					?? throw new EditDomainException("EDIT_HISTORY_CONFLICT")
+				: objects.TryGetValue(RequiredString(forward.GetProperty("target"), "object_id"), out var bound) && bound is AssemblyRef boundRef
+					? boundRef : throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new() { ["assembly_ref_update_state"] = new Dictionary<string, object?> {
+				["target"] = InverseReference(reference, objects),
+				["name"] = reference.Name?.String ?? string.Empty,
+				["version"] = reference.Version?.ToString() ?? string.Empty,
+				["culture"] = reference.Culture?.String ?? string.Empty,
+			} };
+		}
+		case "entry_point_set": {
+			var entry = before.ManagedEntryPoint;
+			return new() { ["entry_point_set_state"] = new Dictionary<string, object?> {
+				["entry_point"] = entry == null ? null : "0x" + entry.MDToken.Raw.ToString("x8", System.Globalization.CultureInfo.InvariantCulture),
+			} };
+		}
 		case "method_body_replace": {
 			var value = Ref<MethodDef>(before, forward.GetProperty("target"), objects);
 			if (value.Body == null) return new() { ["absent_body"] = InverseReference(value, objects) };
@@ -365,6 +397,36 @@ internal static partial class EditOperationRegistry {
 			var previous = method.Body;
 			method.Body = null;
 			return new EditOperationOutcome { Kind = "method_body_replace", Undo = () => method.Body = previous };
+		}
+		if (inverse.TryGetProperty("assembly_update_state", out var assemblyState)) {
+			var assembly = module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var oldName = assembly.Name; var oldVersion = assembly.Version; var oldCulture = assembly.Culture;
+			assembly.Name = new UTF8String(RequiredString(assemblyState, "name"));
+			assembly.Version = Version.Parse(RequiredString(assemblyState, "version"));
+			assembly.Culture = new UTF8String(assemblyState.GetProperty("culture").GetString() ?? string.Empty);
+			return new EditOperationOutcome { Kind = "assembly_update", Target = assembly.FullName,
+				Undo = () => { assembly.Name = oldName; assembly.Version = oldVersion; assembly.Culture = oldCulture; } };
+		}
+		if (inverse.TryGetProperty("module_update_state", out var moduleState)) {
+			var oldName = module.Name;
+			module.Name = new UTF8String(RequiredString(moduleState, "name"));
+			return new EditOperationOutcome { Kind = "module_update", Target = module.Name.String, Undo = () => module.Name = oldName };
+		}
+		if (inverse.TryGetProperty("assembly_ref_update_state", out var refState)) {
+			var reference = Ref<AssemblyRef>(module, refState.GetProperty("target"), objects);
+			var oldName = reference.Name; var oldVersion = reference.Version; var oldCulture = reference.Culture;
+			reference.Name = new UTF8String(RequiredString(refState, "name"));
+			reference.Version = Version.Parse(RequiredString(refState, "version"));
+			reference.Culture = new UTF8String(refState.GetProperty("culture").GetString() ?? string.Empty);
+			return new EditOperationOutcome { Kind = "assembly_ref_update", Target = reference.FullName,
+				Undo = () => { reference.Name = oldName; reference.Version = oldVersion; reference.Culture = oldCulture; } };
+		}
+		if (inverse.TryGetProperty("entry_point_set_state", out var entryState)) {
+			var old = module.ManagedEntryPoint;
+			var tokenText = entryState.GetProperty("entry_point").ValueKind == JsonValueKind.Null ? null : entryState.GetProperty("entry_point").GetString();
+			module.ManagedEntryPoint = tokenText == null ? null
+				: ResolveToken(module, ParseToken(tokenText)) as MethodDef ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			return new EditOperationOutcome { Kind = "entry_point_set", Target = module.Name.String, Undo = () => module.ManagedEntryPoint = old };
 		}
 		if (inverse.TryGetProperty("field_state", out var fieldState))
 			return RestoreFieldState(module, fieldState, objects);

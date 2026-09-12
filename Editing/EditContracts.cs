@@ -39,6 +39,7 @@ internal static class EditWire {
 		"event_add", "event_update", "event_remove", "parameter_add", "parameter_update", "parameter_remove",
 		"generic_parameter_add", "generic_parameter_update", "generic_parameter_remove", "method_body_replace",
 		"attribute_add", "attribute_remove", "security_add", "security_remove",
+		"assembly_update", "module_update", "assembly_ref_update", "entry_point_set",
 	};
 
 	public static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {

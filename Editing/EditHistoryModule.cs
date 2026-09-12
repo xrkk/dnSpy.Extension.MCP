@@ -811,6 +811,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				"parameter_tail_restore", "generic_tail_restore", "generic_tail_remove", "legacy",
 				// P04 compiled-state shapes: attribute/security add-remove inverse states.
 				"attribute_remove_state", "attribute_add_state", "security_remove_state", "security_add_state",
+				"assembly_update_state", "module_update_state", "assembly_ref_update_state", "entry_point_set_state",
 			};
 			var hits = shapes.Count(shape => state.TryGetProperty(shape, out _));
 			var bodyShape = state.TryGetProperty("kind", out var stateKind)

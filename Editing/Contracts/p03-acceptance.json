@@ -184,6 +184,49 @@
         "embedded_only",
         "zero_side_effect_rejections"
       ]
+    },
+    {
+      "id": "ACC-006",
+      "actions": [
+        "identity_edit_each_field",
+        "save_reload_readback",
+        "entry_point_launch"
+      ],
+      "expect": [
+        "reload_metadata_matches",
+        "file_sha_changed",
+        "entry_event_hits_new_entry"
+      ]
+    },
+    {
+      "id": "ACC-015",
+      "actions": [
+        "loaded_module_scan",
+        "inbound_reference_report",
+        "risk_confirmation",
+        "structural_error_not_bypassable"
+      ],
+      "expect": [
+        "scope_loaded_modules",
+        "actual_module_list",
+        "risk_ids",
+        "confirmation_reported",
+        "no_global_claim"
+      ]
+    },
+    {
+      "id": "ACC-032",
+      "actions": [
+        "identity_field_roundtrips",
+        "inverse_exact_image",
+        "invalid_reject_zero_side_effect",
+        "combined_reload_readback"
+      ],
+      "expect": [
+        "pass_identity_matrix",
+        "file_level_readback",
+        "exact_inverse"
+      ]
     }
   ]
 }

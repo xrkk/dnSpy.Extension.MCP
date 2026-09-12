@@ -163,6 +163,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					"edit_status" => Status(context),
 					"edit_apply" => Apply(args, context),
 					"edit_import" => Import(args, context),
+					"edit_impact_scan" => ImpactScan(args, context),
 					"edit_review" => Review(args, context),
 					"edit_rollback" => Rollback(args, context),
 					"edit_commit" => Commit(args, context),
@@ -556,8 +557,133 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 	}
 
+	// P07 (adjudicated AUD-001/002): AssemblyRef rows and the entry point are
+	// outside the conflict fingerprint projection by design; when identity
+	// operations are staged, review compares those rows directly between the
+	// private copy and the live module so external drift still fails the gate.
+	static void AssertIdentityRowsUnchanged(Transaction tx) {
+		var staged = false;
+		foreach (var row in tx.Workspace.NormalizedOperations) {
+			using var document = System.Text.Json.JsonDocument.Parse(row);
+			var kind = document.RootElement.GetProperty("kind").GetString();
+			if (kind is "assembly_update" or "module_update" or "assembly_ref_update" or "entry_point_set") { staged = true; break; }
+		}
+		if (!staged) return;
+		var live = tx.Workspace.LiveModule;
+		var privateModule = tx.Workspace.PrivateModule;
+		string Row(AssemblyRef reference) => reference.Name + "|" + reference.Version + "|" + reference.Culture;
+		var liveRefs = live.GetAssemblyRefs().Select(reference => Row(reference) + "@" + reference.MDToken.Raw.ToString("x8")).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+		var privateRefs = privateModule.GetAssemblyRefs().Select(reference => Row(reference) + "@" + reference.MDToken.Raw.ToString("x8")).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+		if (!liveRefs.SequenceEqual(privateRefs, StringComparer.Ordinal))
+			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
+				["kind"] = "identity_rows_conflict", ["expected"] = privateRefs, ["actual"] = liveRefs });
+		var liveEntry = live.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? "";
+		var privateEntry = privateModule.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? "";
+		if (!string.Equals(liveEntry, privateEntry, StringComparison.Ordinal))
+			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
+				["kind"] = "entry_point_conflict", ["expected"] = privateEntry, ["actual"] = liveEntry });
+	}
+
+	static bool ScopeIs(TypeDefOrRefSig signature, AssemblyRef reference) =>
+		signature.TypeDefOrRef is TypeRef typeRef && ReferenceEquals(typeRef.ResolutionScope, reference);
+
+	// P07 edit_impact_scan: machine-readable cross-assembly impact report over
+	// the CURRENTLY LOADED modules only (CON-013/CON-017/NON-017 — never a
+	// global-completeness claim).  Inbound references match the union of the
+	// baseline assembly name and any staged new name (AUD-003).
+	Dictionary<string, object?> ImpactScan(Dictionary<string, object>? args, McpCallContext context) {
+		Transaction tx;
+		lock (gate) {
+			tx = RequireTransactionLocked(args, context);
+			var expected = checked((uint)EditWire.Integer(args, "expected_revision"));
+			if (expected != tx.Revision) throw Revision(expected, tx.Revision);
+			tx.OperationBusy = true;
+		}
+		try {
+			BarrierPoint("apply_before_mutation", tx.Owner);
+			var identityRows = new List<(int index, string kind, string? name)>();
+			for (var index = 0; index < tx.Workspace.NormalizedOperations.Count; index++) {
+				using var document = System.Text.Json.JsonDocument.Parse(tx.Workspace.NormalizedOperations[index]);
+				var kind = document.RootElement.GetProperty("kind").GetString();
+				if (kind is not ("assembly_update" or "module_update" or "assembly_ref_update" or "entry_point_set")) continue;
+				string? stagedName = null;
+				if (kind == "assembly_update" && document.RootElement.TryGetProperty("name", out var nameValue)
+					&& nameValue.ValueKind == System.Text.Json.JsonValueKind.String)
+					stagedName = nameValue.GetString();
+				identityRows.Add((index, kind!, stagedName));
+			}
+			var live = tx.Workspace.LiveModule;
+			var oldName = live.Assembly?.Name?.String ?? string.Empty;
+			var names = new HashSet<string>(StringComparer.Ordinal) { oldName };
+			foreach (var row in identityRows)
+				if (row.name is { Length: > 0 }) names.Add(row.name);
+			var liveMvid = live.Mvid?.ToString("D") ?? string.Empty;
+			var modules = new List<object>();
+			var inbound = new List<object>();
+			var riskIds = new List<string>();
+			var scanned = EditWorkspace.OnDispatcher(() => tree.GetAllModuleNodes()
+				.Select(node => node.Document?.ModuleDef).Where(m => m != null).Cast<ModuleDef>()
+				.Where(m => !string.Equals(m.Mvid?.ToString("D") ?? string.Empty, liveMvid, StringComparison.OrdinalIgnoreCase))
+				.Select(m => (module: m, hits: m.GetAssemblyRefs()
+					.Where(r => names.Contains(r.Name?.String ?? string.Empty))
+					.Select(r => (row: r, matched: r.Name?.String ?? string.Empty)).ToArray()))
+				.ToList());
+			foreach (var entry in scanned) {
+				modules.Add(new Dictionary<string, object?> {
+					["name"] = entry.module.Assembly?.Name?.String ?? entry.module.Name.String,
+					["inbound_reference_count"] = entry.hits.Length,
+				});
+				foreach (var hit in entry.hits) {
+					var riskId = "risk-cross_assembly_inbound-" + (entry.module.Assembly?.Name?.String ?? entry.module.Name.String).Replace('.', '_') + "-" + hit.row.MDToken.Rid.ToString(System.Globalization.CultureInfo.InvariantCulture);
+					var sites = entry.module.GetTypes()
+						.Where(type => type.Fields.Any(f => f.FieldType is TypeDefOrRefSig fieldRef && ScopeIs(fieldRef, hit.row))
+							|| type.Methods.Any(m => m.MethodSig.Params.Any(p => p is TypeDefOrRefSig paramRef && ScopeIs(paramRef, hit.row))))
+						.Take(50).Select(type => (object)type.FullName).ToArray();
+					inbound.Add(new Dictionary<string, object?> {
+						["module"] = entry.module.Assembly?.Name?.String ?? entry.module.Name.String,
+						["assembly_ref_token"] = "0x" + hit.row.MDToken.Raw.ToString("x8"),
+						["matched_name"] = hit.matched,
+						["sites"] = sites,
+						["risk_id"] = riskId,
+					});
+					riskIds.Add(riskId);
+				}
+			}
+			lock (gate) {
+				if (tx.CancelRequested || !ReferenceEquals(active, tx)) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+				foreach (var riskId in riskIds) {
+					if (tx.Workspace.Risks.Any(r => Equals(r["risk_id"], riskId))) continue;
+					tx.Workspace.Risks.Add(new Dictionary<string, object?> {
+						["risk_id"] = riskId, ["kind"] = "cross_assembly_inbound",
+						["object"] = "loaded_modules", ["description"] = "Another loaded module references this assembly by a staged identity name",
+						["confirmation_required"] = true,
+					});
+				}
+				if (riskIds.Count != 0) { tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; }
+				return EditWire.Success(state, new Dictionary<string, object?> {
+					["impact"] = new Dictionary<string, object?> {
+						["scope"] = "loaded_modules",
+						["modules"] = modules,
+						["inbound_references"] = inbound,
+						["risk_ids"] = riskIds.ToArray(),
+						["identity_operations"] = identityRows.Select(row => (object)new Dictionary<string, object?> {
+							["operation_index"] = row.index, ["kind"] = row.kind, ["staged_name"] = row.name }).ToArray(),
+					},
+					["transaction"] = TransactionResult(tx, tx.LastActivity, tx.Revision, tx.ReviewRevision),
+				});
+			}
+		}
+		finally {
+			lock (gate) {
+				tx.OperationBusy = false;
+				if (tx.CancelRequested && !ReferenceEquals(active, tx)) tx.Workspace.Dispose();
+				else if (tx.CancelRequested && tx.OwnerClosed && ReferenceEquals(active, tx)) EndLocked(tx, "session_closed");
+			}
+		}
+	}
+
 	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {		Transaction tx;uint expected;var requestId=EditWire.String(args,"request_id");var payload=PayloadHash(args);lock(gate){tx = RequireTransactionLocked(args, context);if(tx.ReviewCache.TryReplay(requestId,payload,out var replay,out var stale)){if(stale!=null)throw new EditDomainException("EDIT_REVIEW_STALE");return ParseEnvelope(replay);}expected = checked((uint)EditWire.Integer(args, "expected_revision")); if (expected != tx.Revision) throw Revision(expected, tx.Revision);tx.ReviewCache.EnsureCanReplace();tx.OperationBusy=true;}
-		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
+		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);AssertIdentityRowsUnchanged(tx);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
 		var dynamic = dynamicValidation.Run(tx.Workspace, args);
 		lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 		var reviewId=EditWire.NewId("review");var activity=tx.LastActivity;var privateFingerprint=tx.PrivateFingerprint;

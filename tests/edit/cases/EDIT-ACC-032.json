@@ -1,0 +1,24 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-032",
+ "acc_id": "ACC-006",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll",
+ "driver": "P03StoreHarness --identity-matrix",
+ "precondition": "headless harness with the P07 plugin build; DNMCP_TEST=1",
+ "actions": [
+  "assembly name/version/partial-version/culture, module name, assembly ref version, entry point set and clear: apply → compiled inverse restores the exact pre-state image → re-apply → write → reload → file-level readback",
+  "live undo restores the exact image",
+  "invalid payloads (missing fields, bad version grammar, empty names, wrong token kinds) reject with zero image change",
+  "combined identity sequence survives one write+reload with every field read back"
+ ],
+ "expected": "PASS identity-matrix line with every clause True; exit 0",
+ "review": {
+  "owner": "P07",
+  "covered_acc": [
+   "ACC-006"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-032"
+ }
+}

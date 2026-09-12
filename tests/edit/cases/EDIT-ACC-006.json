@@ -1,0 +1,28 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-006",
+ "acc_id": "ACC-006",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ImportHost\\ImportHost.exe (+x86 dir)",
+ "driver": "p03_vm_acc006.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P07 plugin; ImportHost fixture built on the VM; ArtifactRoot edit dirs cleaned and dnSpy freshly started",
+ "actions": [
+  "tools/list advertises the four identity operation kinds",
+  "edit_apply assembly_update (name+version+culture), module_update, entry_point_set (Main), assembly_ref_update each stage with identity risks",
+  "invalid version grammar rejects with zero private-fingerprint change",
+  "review + confirm + commit through the unified checkpoint chain",
+  "edit_export writes the edited image below ArtifactRoot",
+  "the exported image reloads in dnSpy",
+  "debug_launch (net48-exe, entry) pauses with the entry frame on the entry_point_set target — the entry actually runs",
+  "file-level field readback for every identity field is proven by the headless --identity-matrix (EDIT-ACC-032); run-id prefix p07-identity-"
+ ],
+ "expected": "per OUT-007: every identity field survives save+reload at file level, the entry point really runs on the applicable sample, x64/x86 both green",
+ "review": {
+  "owner": "P07",
+  "covered_acc": [
+   "ACC-006"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-006"
+ }
+}

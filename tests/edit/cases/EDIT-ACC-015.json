@@ -1,0 +1,26 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-015",
+ "acc_id": "ACC-015",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ImportHost\\ImportHost.exe + InboundRef.exe",
+ "driver": "p03_vm_acc015.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P07 plugin; ImportHost + InboundRef fixtures loaded",
+ "actions": [
+  "both modules loaded; rename transaction staged on ImportHost",
+  "edit_impact_scan reports scope=loaded_modules, the actual scanned module list (target excluded), the inbound reference with a cross_assembly_inbound risk id",
+  "no global-completeness wording anywhere in the report",
+  "wrong transaction id and stale revision are structural errors and reject",
+  "commit without the inbound risk confirmation is blocked; with confirmation the commit result echoes the confirmed ids",
+  "an identity-free scan still carries scope+list (empty report is explicit)"
+ ],
+ "expected": "per OUT-007/CON-013/NON-017: explicit loaded-module scope, actual list, inbound references, confirmation round-trip",
+ "review": {
+  "owner": "P07",
+  "covered_acc": [
+   "ACC-015"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-015"
+ }
+}
