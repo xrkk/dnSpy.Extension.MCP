@@ -34,7 +34,7 @@ internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
 	static string Description(string name) => name switch {
 		"edit_begin" => "Begin the process-wide structured edit transaction for one loaded pure-managed single-module assembly. All changes remain private until a later P03 commit workflow.",
 		"edit_status" => "Read process-wide edit state. The owning MCP session receives transaction fingerprints, capacity, review and risk details.",
-		"edit_apply" => "Apply one of the 26 structured metadata/body operations atomically to the transaction private copy.",
+		"edit_apply" => "Apply one of the 37 structured metadata/body operations atomically to the transaction private copy.",
 		"edit_import" => "Import compiled C# members from a registered edit_compile artifact into the transaction private copy as frozen structured operations. The compile mapping is all-or-nothing: any unmapped reference or ambiguous target rejects the whole import with zero side effects (OUT-006).",
 		"edit_impact_scan" => "Scan the currently loaded modules for inbound AssemblyRef references affected by this transaction's staged identity operations. The report carries scope=loaded_modules with the actual module list — never a global-completeness claim (OUT-007).",
 		"edit_resource_import" => "Read resource bytes from a VM file path server-side and stage the corresponding resource operation with an inline payload — large payloads never ride the MCP request body; limits stay unchanged (OUT-008).",
