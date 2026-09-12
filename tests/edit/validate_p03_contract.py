@@ -40,7 +40,7 @@ OPERATIONS = [
     "win32_resource_add", "win32_resource_update", "win32_resource_remove",
     "strong_name_remove",
 ]
-ACCS = ["ACC-011", "ACC-012", "ACC-013", "ACC-014", "ACC-019", "ACC-020", "ACC-024", "ACC-025", "ACC-029", "ACC-031", "ACC-006", "ACC-015", "ACC-032", "ACC-007", "ACC-008", "ACC-016", "ACC-033"]
+ACCS = ["ACC-011", "ACC-012", "ACC-013", "ACC-014", "ACC-019", "ACC-020", "ACC-024", "ACC-025", "ACC-029", "ACC-031", "ACC-006", "ACC-015", "ACC-032", "ACC-007", "ACC-008", "ACC-016", "ACC-033", "ACC-018", "ACC-021", "ACC-023"]
 BARRIERS = [
     "begin_after_copy", "apply_before_mutation", "review_before_validation",
     "commit_after_guard_before_temp", "commit_after_temp_validate",

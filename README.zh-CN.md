@@ -23,7 +23,7 @@ English: see [README.md](README.md).
 
 ## 功能
 
-### MCP 工具（共 59 个：静态 32 + 结构化编辑 5 + 动态 22）
+### MCP 工具（线上通告 78 个：静态/代码生成 32 + 动态调试 28 + 结构化编辑 18；另有 8 个 edit_test_* 工具有 schema 但不通告）
 
 #### 加载
 
@@ -70,15 +70,32 @@ English: see [README.md](README.md).
 6. **rename_symbol_by_token** — 统一的元数据重命名入口。用 `target_kind` 选择 `type` / `class` / `enum` / `interface` / `struct` / `delegate`、`method`、`field`、`enum_member`、`enum_members`、`property`、`event`、`parameter` 或 `generic_parameter`。单个符号传 `new_name`；批量枚举成员传完整的按值映射 `members`。适用时会同步当前模块引用并刷新已打开的反编译标签页
 7. **save_assembly** — 将模块写回磁盘（覆盖原文件时会自动生成带时间戳的备份，`NativeWrite` 保留本机 stub / Win32 资源 / 延迟加载导入，GAC 路径被拒绝）
 
-#### 事务式结构化编辑（5 个工具）
+#### 事务式结构化编辑（通告 18 个工具 + 8 个不通告的测试面）
 
+**事务生命周期**
 1. **edit_begin** — 为一个已加载的纯托管、单模块程序集取得进程级编辑租约，并创建内存私有副本
 2. **edit_status** — 查询事务状态、修订号、指纹、容量和风险事实，不改变事务
-3. **edit_apply** — 向私有副本应用 22 类强类型元数据/方法体操作；每次调用必须携带 `request_id` 与 `expected_revision`
+3. **edit_apply** — 向私有副本应用 37 类强类型元数据/方法体/资源操作；每次调用必须携带 `request_id` 与 `expected_revision`
 4. **edit_review** — 审查固定修订，执行写出/重载验证，返回规范 diff 和必需风险确认；可选地通过 dnSpy 调试器执行入口暂停验证
-5. **edit_rollback** — 丢弃私有副本并释放编辑租约，不改变 dnSpy 中的实时模块
+5. **edit_commit** — 将已审查的私有修订线性化到实时模块并持久化其检查点（此后可 undo/redo/restore）
+6. **edit_rollback** — 丢弃私有副本并释放编辑租约，不改变 dnSpy 中的实时模块
+7. **edit_history** / **edit_undo** / **edit_redo** / **edit_restore** / **edit_export** — 浏览持久检查点谱系、导航/导出精确检查点
+8. **edit_recover** / **edit_accept_live** — 解决部分提交恢复状态；显式接纳 UI 已偏离的模块为新基线
 
-22 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数的新增/更新/删除，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。P02 不发布提交或导出工具：审查后的改动仍只存在于私有副本，最后必须回滚。带检查点的提交/导出由后续 P03 闭环提供。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。
+**编译 → 导入（C# 方法/类型编辑）**
+9. **edit_compile** — 经 dnSpy 公开 Roslyn 编译器编译 C#；程序集 + Portable PDB 留在内存并登记给导入器（无 analyzer/generator/脚本面）
+10. **edit_import** — 以稳定身份匹配把编译产物成员导入事务私有副本为冻结结构化操作（结构化签名、生成子树整体处理、全或无拒绝）。符号行（序列点/作用域/自定义调试信息）随体移植，保存镜像保持**仅内嵌** Portable PDB
+11. **edit_impact_scan** — 跨程序集影响报告（scope=loaded_modules，绝不宣称全局完整）；入站引用转为需确认风险
+
+**身份与入口点**
+12. *（edit_apply 种类）* `assembly_update`、`module_update`、`assembly_ref_update`、`entry_point_set` — 名称/版本/区域性/AssemblyRef/入口点编辑；审查时对未入指纹的行在私有副本与实时模块间直接比对
+
+**资源与大载荷**
+13. **edit_resource_import** — 服务端从 VM 文件路径读取资源字节并暂存为内嵌载荷操作（大载荷不进 MCP 请求正文；内联上限不变）
+14. **edit_resource_export** — 把已提交资源写到 ArtifactRoot 下并返回完整文件身份（路径/长度/SHA-256）
+15. *（edit_apply 种类）* `managed_resource_add/update/remove`、`win32_resource_add/update/remove` — 标准 `.resources` 条目编辑（标量/字符串/字节数组；自定义序列化对象仅元数据+整体替换——绝不反序列化）、图标组结构校验；`strong_name_remove` — 证据门禁的强名称移除（需一次性调试事件证明）
+
+37 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数、程序集/模块身份、AssemblyRef、入口点、托管与 Win32 资源、强名称移除的新增/更新/删除，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。只读的**MCP Edit Explorer**窗口（View 菜单）展示事务、暂存操作、diff、风险与检查点谱系，仅对孤儿事务提供受保护的本地取消——UI 不提供任何提交/恢复入口。
 
 #### 代码生成
 
@@ -409,7 +426,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 ### 客户端配置
 
 需要让 ZCode、Codex 或其他第三方 AI 通过 Python stdio client 完成全功能验收时，可直接把
-[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、59 工具逐项清单、私有结构化编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion 验证。
+[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、78 工具逐项清单、私有结构化编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion 验证。
 
 #### Claude Code
 
@@ -455,7 +472,7 @@ claude mcp list
 
 ## 已验证的兼容性
 
-- MCP `2025-06-18`：59 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
+- MCP `2025-06-18`：78 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
 - 22 个 debug inputSchema 均为自包含扁平对象；outputSchema 描述完整的成功/失败 envelope，不依赖客户端无法解析的缺失 `$defs`。
 - `list_assemblies` 使用对象型 `structuredContent`：`{ "assemblies": [...] }`。
 - 引入结构化编辑前的 54 工具基线已在 Win10 VM x64 与 x86 实机完成 54/54 成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。

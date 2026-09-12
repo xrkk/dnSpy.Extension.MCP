@@ -123,6 +123,66 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	readonly Dictionary<string, string> consumedStrongNameEvidence = new(StringComparer.Ordinal);
 
 	public string State { get { lock (gate) { ExpireLocked(); return state; } } }
+
+	// P09 (ACC-018): immutable explorer snapshot for the read-only UI.  Built
+	// inside the coordinator lock; the UI thread only ever sees these rows and
+	// never calls back into locking methods (adjudicated AUD-005).
+	public sealed class ExplorerSnapshot {
+		public string State = string.Empty;
+		public string? TransactionId;
+		public uint Revision;
+		public string OwnerTransport = string.Empty;
+		public bool OwnerClosed;
+		public List<string> Operations = new();
+		public List<string> Diffs = new();
+		public List<string> Risks = new();
+		public List<string> Lineages = new();
+	}
+
+	public ExplorerSnapshot BuildExplorerSnapshot() {
+		var snapshot = new ExplorerSnapshot();
+		lock (gate) {
+			ExpireLocked();
+			snapshot.State = state;
+			if (active == null) return snapshot;
+			snapshot.TransactionId = active.Id;
+			snapshot.Revision = active.Revision;
+			snapshot.OwnerTransport = active.Transport.ToWireName();
+			snapshot.OwnerClosed = active.OwnerClosed;
+			foreach (var operation in active.Workspace.NormalizedOperations) {
+				using var document = System.Text.Json.JsonDocument.Parse(operation);
+				var kind = document.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String ? kindElement.GetString() : "?";
+				snapshot.Operations.Add(kind!);
+			}
+			foreach (var diff in active.Workspace.Diffs)
+				snapshot.Diffs.Add(string.Join("/", diff.TryGetValue("kind", out var diffKind) ? diffKind : "?", diff.TryGetValue("target", out var diffTarget) ? diffTarget : "?"));
+			foreach (var risk in active.Workspace.Risks)
+				snapshot.Risks.Add(string.Join("/", risk.TryGetValue("risk_id", out var riskId) ? riskId : "?", risk.TryGetValue("kind", out var riskKind) ? riskKind : "?", risk.TryGetValue("confirmation_required", out var riskRequired) ? riskRequired : false));
+		}
+		try {
+			foreach (var lineage in history.LoadAll())
+				snapshot.Lineages.Add(lineage.Manifest.LineageId + " head:" + lineage.Manifest.HeadCheckpointId + " (" + lineage.Manifest.Checkpoints.Count + " checkpoints)");
+		}
+		catch {
+			// a corrupt store is read-only noise for the explorer; the MCP tools
+			// keep their own honest error reporting
+		}
+		return snapshot;
+	}
+
+	/// <summary>ACC-018 guarded local cancel: only an orphaned transaction (its
+	/// owner session closed) may be rolled back from the UI.  An active owner
+	/// keeps its transaction — this entry reuses the rollback release path and
+	/// adds no second commit/recovery implementation.</summary>
+	public void CancelOrphanedTransactionFromUi() {
+		lock (gate) {
+			if (active == null || !active.OwnerClosed) return;
+			var tx = active;
+			tx.CancelRequested = true;
+			ReleaseBarrierLocked(tx.Owner);
+			EndLocked(tx, "ui_cancel");
+		}
+	}
 	public JsonElement FaultGolden => catalog.Faults;
 	public JsonElement MutationCorpus => catalog.Mutations;
 

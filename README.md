@@ -23,7 +23,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 
 ## Features
 
-### MCP Tools (59 total: 32 static + 5 structured-edit + 22 dynamic)
+### MCP Tools (78 advertised on the wire: 32 static/codegen + 28 dynamic-debugging + 18 structured-edit; the 8 edit_test_* tools are schema'd but unadvertised)
 
 #### Loading
 
@@ -70,21 +70,39 @@ From zero to "ask Claude about your assembly" in a few minutes:
 6. **rename_symbol_by_token** — unified metadata rename entry point. `target_kind` selects `type` / `class` / `enum` / `interface` / `struct` / `delegate`, `method`, `field`, `enum_member`, `enum_members`, `property`, `event`, `parameter`, or `generic_parameter`. Singular targets use `new_name`; `enum_members` uses the complete value-mapped `members` array. Matching same-module references and open decompiler tabs are refreshed where applicable
 7. **save_assembly** — write the module to disk (timestamped backup on overwrite, `NativeWrite` preserves native stubs / Win32 resources / delay-loaded imports, GAC refused)
 
-#### Transactional structured editing (5 tools)
+#### Transactional structured editing (18 advertised tools + 8 unadvertised test seams)
 
+**Transaction lifecycle**
 1. **edit_begin** — acquire the process-wide edit lease for one loaded, pure-managed, single-module assembly and create a private in-memory copy
 2. **edit_status** — inspect transaction state, revision, fingerprints, capacity and outstanding risk facts without changing the transaction
-3. **edit_apply** — apply one of 22 typed metadata/body operations to the private copy; every call carries `request_id` and `expected_revision`
+3. **edit_apply** — apply one of 37 typed metadata/body/resource operations to the private copy; every call carries `request_id` and `expected_revision`
 4. **edit_review** — validate the fixed revision, write/reload it, return canonical diffs and required risk confirmations, and optionally run an entry-pause validation through dnSpy's debugger
-5. **edit_rollback** — discard the private copy and release the edit lease without changing the live dnSpy module
+5. **edit_commit** — linearize the reviewed private revision to the live module and persist its checkpoint (undo/redo/restore become available)
+6. **edit_rollback** — discard the private copy and release the edit lease without changing the live dnSpy module
+7. **edit_history** / **edit_undo** / **edit_redo** / **edit_restore** / **edit_export** — browse the persistent checkpoint lineage and navigate/export exact checkpoints
+8. **edit_recover** / **edit_accept_live** — resolve partial-commit recovery states; explicitly accept a UI-diverged module as a new baseline
 
-The 22 operation kinds cover add/update/remove for types, methods, fields, properties, events,
-parameters and generic parameters, plus whole method-body replacement. References use metadata
+**Compile → import (C# method/type editing)**
+9. **edit_compile** — compile C# through dnSpy's public Roslyn compiler; the assembly + Portable PDB stay in memory and are registered for the importer (no analyzer/generator/script surface)
+10. **edit_import** — import compiled members into the transaction private copy as frozen structured operations with stable-identity matching (structured signatures, generated-subtree handling, all-or-nothing rejection). Symbol rows (sequence points, scopes, custom debug info) transfer with the body and the saved image keeps an **embedded-only** Portable PDB
+11. **edit_impact_scan** — cross-assembly impact report over the currently loaded modules (`scope=loaded_modules`, never a global-completeness claim); inbound references become confirmation-required risks
+
+**Identity & entry point**
+12. *(edit_apply kinds)* `assembly_update`, `module_update`, `assembly_ref_update`, `entry_point_set` — name/version/culture/AssemblyRef/entry-point edits; review compares the un-fingerprinted rows directly between private copy and live module
+
+**Resources & large payloads**
+13. **edit_resource_import** — read resource bytes from a VM file path server-side and stage them as an inline-payload operation (large payloads never ride the MCP request body; inline limits unchanged)
+14. **edit_resource_export** — write a committed resource below ArtifactRoot and return the full file identity (path/length/SHA-256)
+15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` — evidence-gated strong-name removal (one-time debug-event proof required)
+
+The 37 operation kinds cover add/update/remove for types, methods, fields, properties, events,
+parameters, generic parameters, assembly/module identity, AssemblyRef, entry point, managed and
+Win32 resources, strong-name removal, plus whole method-body replacement. References use metadata
 tokens or transaction-scoped object IDs; raw PE/heap/RVA/hex editing is intentionally rejected.
-P02 does not publish a commit or export operation: reviewed changes still remain private and must
-be rolled back. Checkpointed commit/export is delivered by the later P03 workflow. While a
-structured-edit transaction is active, legacy live write tools are rejected to prevent bypassing
-the transaction.
+While a structured-edit transaction is active, legacy live write tools are rejected to prevent
+bypassing the transaction. A read-only **MCP Edit Explorer** window (View menu) shows the
+transaction, staged operations, diffs, risks and checkpoint lineage, with a guarded local cancel
+for orphaned transactions only — the UI offers no commit/restore path.
 
 #### Codegen
 

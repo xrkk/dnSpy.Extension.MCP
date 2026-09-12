@@ -1,0 +1,25 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-023",
+ "acc_id": "ACC-023",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ResourceHost\\ResourceHost.dll",
+ "driver": "p03_vm_acc023.py",
+ "precondition": "DNMCP_TEST=1; loopback healthy; P08 sentinel fixture present",
+ "actions": [
+  "static type listing of the fixture holding a serialized activator object (marker file stays absent)",
+  "malformed and truncated .resources blobs rejected with zero side effects inside a transaction",
+  "malicious C# (BinaryFormatter activator) compiles — compilation is not execution; coordinator stays idle; marker absent",
+  "checkpoint browsing is read-only",
+  "gate-allowed dynamic run (debug_launch) as the positive control: real process events appear"
+ ],
+ "expected": "per RACC-023: no static path executes sample code; only the VM gate produces target processes",
+ "review": {
+  "owner": "P09",
+  "covered_acc": [
+   "ACC-023"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-023"
+ }
+}

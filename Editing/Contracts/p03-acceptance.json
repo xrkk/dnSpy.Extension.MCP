@@ -292,6 +292,49 @@
         "file_level_readback",
         "never_instantiate"
       ]
+    },
+    {
+      "id": "ACC-018",
+      "actions": [
+        "open_explorer",
+        "same_facts_as_mcp",
+        "guarded_cancel_orphan_only",
+        "no_commit_ui",
+        "foreign_commit_rejected",
+        "ui_cancel_rolls_back"
+      ],
+      "expect": [
+        "ui_mcp_consistent",
+        "caretaker_cancel",
+        "no_bypass"
+      ]
+    },
+    {
+      "id": "ACC-021",
+      "actions": [
+        "inline_schemas",
+        "draft_validation",
+        "positive_negative_matrix",
+        "error_triples"
+      ],
+      "expect": [
+        "schema_inline",
+        "stable_error_contract"
+      ]
+    },
+    {
+      "id": "ACC-023",
+      "actions": [
+        "static_zero_execution",
+        "malformed_resources_reject",
+        "malicious_compile_not_execute",
+        "checkpoint_browse_readonly",
+        "gate_positive_control"
+      ],
+      "expect": [
+        "sentinel_absent",
+        "vm_gate_only_execution"
+      ]
     }
   ]
 }

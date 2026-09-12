@@ -58,7 +58,7 @@
 1. 确认 initialize/server instructions 可用。
 2. 调用 `resources/list`，读取全部 14 个资源并逐 URI 记录非空证据。
 3. 调用 `resources/templates/list`，必须成功返回空 `resourceTemplates`，不能是 Unknown method。
-4. 获取实时 `tools/list`，必须恰好有 59 个工具：32 个旧静态、5 个 `edit_*` 结构化编辑、22 个 `debug_*`。
+4. 获取实时 `tools/list`，必须恰好有 78 个通告工具：32 个静态/代码生成、28 个 `debug_*`、18 个 `edit_*`（另有 8 个 `edit_test_*` 测试面不通告，需 DNMCP_TEST=1）。以 `tools/export_tool_registry.py` 导出快照为计数事实来源。
 5. 检查 22 个 debug inputSchema：字段必须直接可见且带类型，不得出现无法解析的 `#/$defs/...` 或 `unknown & unknown`。
 6. 检查 debug outputSchema：必须描述完整 envelope，至少包含 `schema_version`、`ok`、`debug_context`、`result`、`error`、`warnings`、`untrusted_sample_data`。
 7. 调用 `list_assemblies`，验证 `structuredContent` 顶层是对象 `{ assemblies: [...] }`，不是数组。源码类工具只要返回非空 text 即符合 MCP；`structuredContent` 对它们是可选项，不得误报缺陷。
@@ -79,7 +79,7 @@
 - 只有全部临时修改恢复后才调用 `save_assembly`，输出为 ArtifactRoot 根层一个全新文件名；不得覆盖源文件。
 - fixture 没有合适 Property 时，`get_type_property` 使用已加载的 `mscorlib / System.String / Length`。
 
-### B2. 5 个事务式结构化编辑工具
+### B2. 18 个事务式结构化编辑工具（通告面）
 
 在不启动调试器的情况下，对静态样本执行 `edit_begin`、`edit_status`、`edit_apply`、
 `edit_review`、`edit_rollback` 的真实成功路径：

@@ -48,6 +48,9 @@ CASE_MODULES = {
     "EDIT-ACC-006": "p03_vm_acc006",
     "EDIT-ACC-015": "p03_vm_acc015",
     "EDIT-ACC-007": "p03_vm_acc007",
+    "EDIT-ACC-018": "p03_vm_acc018",
+    "EDIT-ACC-021": "p03_vm_acc021",
+    "EDIT-ACC-023": "p03_vm_acc023",
     "EDIT-ACC-008": "p03_vm_acc008",
     "EDIT-ACC-016": "p03_vm_acc016",
 }

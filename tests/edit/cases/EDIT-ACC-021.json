@@ -1,0 +1,24 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-021",
+ "acc_id": "ACC-021",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll",
+ "driver": "p03_vm_acc021.py",
+ "precondition": "DNMCP_TEST=1; loopback healthy; VM Python has jsonschema",
+ "actions": [
+  "tools/list wire dump: every edit-family tool carries an inline inputSchema",
+  "an independent Draft 2020-12 checker validates each schema itself",
+  "sampled positive payloads validate and sampled negative payloads are schema-rejected",
+  "real error-class triggers (validation/busy/not_found/recovery) each return the stable code+state+recovery triple"
+ ],
+ "expected": "per RACC-021/REQ-019: schemas inline and matching runtime behavior, stable error contract",
+ "review": {
+  "owner": "P09",
+  "covered_acc": [
+   "ACC-021"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-021"
+ }
+}

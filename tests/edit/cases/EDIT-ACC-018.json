@@ -1,0 +1,27 @@
+{
+ "suite": "structured-edit-p03",
+ "case_id": "EDIT-ACC-018",
+ "acc_id": "ACC-018",
+ "target_architecture": "x64-and-x86",
+ "tfm": "net48",
+ "fixture": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\TestIL.dll",
+ "driver": "p03_vm_acc018.py",
+ "precondition": "DNMCP_TEST=1; dnSpy with deployed P09 plugin; loopback + Win10VM-dnSpy management both reachable",
+ "actions": [
+  "open the MCP Edit Explorer from the View menu (UIA)",
+  "begin a transaction and stage module_update; the explorer shows the same state/operation as edit_status (1s poll)",
+  "while the owner session is active the cancel button stays disabled with the owner transport shown",
+  "the window offers no commit/restore/export controls",
+  "closing the owner session orphans the transaction; the UI cancel becomes enabled (caretaker semantics)",
+  "a NEW MCP session cannot commit the foreign transaction (rejected)",
+  "UI cancel rolls the orphan back; edit_status is idle"
+ ],
+ "expected": "per RACC-018: UI shows the same facts, cancel only for orphaned transactions, no second commit/recovery path, gates not bypassable",
+ "review": {
+  "owner": "P09",
+  "covered_acc": [
+   "ACC-018"
+  ],
+  "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-018"
+ }
+}
