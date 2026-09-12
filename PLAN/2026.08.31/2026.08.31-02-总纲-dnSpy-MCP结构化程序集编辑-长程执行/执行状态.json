@@ -1,16 +1,16 @@
 {
   "workflow_id": "dnspy-edit-master-01a050b5",
-  "overall_state": "RUNNING",
+  "overall_state": "all_children_done",
   "started_at": "2026-09-03T23:32:42+08:00",
-  "updated_at": "2026-09-12T16:15:03+08:00",
-  "current_child": "P09",
-  "child_stage": "IMPLEMENT",
+  "updated_at": "2026-09-12T18:36:13+08:00",
+  "current_child": null,
+  "child_stage": "COMPLETE",
   "phase_state": "executing",
   "last_verified_checkpoint": {
-    "name": "P08_CHILD_DONE",
-    "commit": "53507ca",
-    "evidence": "p08-resource-20260912-r1 x64/x86 ACC-007+008+016+033 all pass",
-    "recorded_at": "2026-09-12T15:58:55+08:00"
+    "name": "ALL_CHILDREN_DONE",
+    "commit": "0d06f4a",
+    "evidence": "P01-P09 all CHILD_DONE; final regression 22/23 green + 1 partial",
+    "recorded_at": "2026-09-12T18:36:13+08:00"
   },
   "children": {
     "P01": {
@@ -189,8 +189,8 @@
       }
     },
     "P09": {
-      "status": "in_progress",
-      "stage": "IMPLEMENT",
+      "status": "done",
+      "stage": "CHILD_DONE",
       "plan": {
         "path": "PLAN/2026.09.14/2026.09.14-22-实施子方案-P09-UI浏览文档与最终自动验收.md",
         "version": "v1",
@@ -199,13 +199,22 @@
       },
       "audit": {
         "record": "PLAN/2026.09.14/2026.09.14-24-审核-P09-UI浏览文档与最终自动验收.md",
-        "blob": "3c1db7cf39ef05046e5a3ad017204577e310d0b5",
+        "handling": "PLAN/2026.09.14/2026.09.14-25-审核处理-P09-UI浏览文档与最终自动验收.md",
         "conclusion": "存在不同意见",
         "finding_count": 9,
-        "handling_record": "PLAN/2026.09.14/2026.09.14-25-审核处理-P09-UI浏览文档与最终自动验收.md",
-        "post_fix_gate": "10/10/0/0/0/0",
-        "re_audit_triggered": false,
-        "closed_at": "2026-09-12T16:15:03+08:00"
+        "closed": true
+      },
+      "implementation_record": "PLAN/2026.09.14/2026.09.14-26-实施记录-P09-UI浏览文档与最终自动验收.md",
+      "commit": "0d06f4a",
+      "evidence": {
+        "run_ids": [
+          "p09-final-20260912-r1-x64",
+          "p09-final-20260912-r1-x86",
+          "p09-final-20260912-r2-x64",
+          "p09-final-20260912-r2-x86"
+        ],
+        "result": "22/23 planned cases green + 1 partial (ACC-018 text-face assertions blocked by UIA tool limitation; all functional assertions pass)",
+        "release_check": "dnSpyEx v6.6.0 latest-stable == VM v6.6.0 (identity verified)"
       }
     }
   },
