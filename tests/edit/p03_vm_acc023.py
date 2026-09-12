@@ -16,6 +16,8 @@ import time
 import uuid
 from pathlib import Path
 
+ARCH = os.environ.get("EDIT_ACC005_ARCH", "x64")
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from dnspy_mcp import DnSpyClient  # noqa: E402
@@ -169,7 +171,8 @@ def main() -> int:
     # P1: gate-allowed dynamic run as the positive control — a real process
     # event is only produced by debug_launch (the VM execution gate)
     import hashlib
-    exe = r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe"
+    exe = (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if ARCH == "x64"
+           else r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost-x86\ImportHost.exe")
     sha = ""
     try:
         sha = hashlib.sha256(Path(exe).read_bytes()).hexdigest()
@@ -177,7 +180,7 @@ def main() -> int:
         sha = ""
     launch = call(client, "debug_launch", {
         "request_id": rid(), "target_path": exe, "expected_sha256": sha,
-        "launch_mode": "net48-exe", "architecture": "x64", "break_kind": "entry"})
+        "launch_mode": "net48-exe", "architecture": ARCH, "break_kind": "entry"})
     if not launch.get("ok"):
         print("LAUNCH-DETAIL " + json.dumps(launch)[:400], flush=True)
     session_id = str(payload(launch).get("session_id", ""))
