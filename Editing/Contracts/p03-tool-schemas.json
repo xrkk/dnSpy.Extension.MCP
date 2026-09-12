@@ -10853,7 +10853,8 @@
             "fp-channel-methodbodyil:mutate",
             "fp-channel-managedresource:mutate",
             "fp-channel-embeddedpdb:mutate",
-            "fp-canonical-global-order:reorder"
+            "fp-canonical-global-order:reorder",
+            "live-conflict:mutate-entrypoint"
           ]
         },
         "transaction_id": {
@@ -13656,7 +13657,8 @@
                 "finalize",
                 "cleanup",
                 "navigate_forward",
-                "navigate_inverse"
+                "navigate_inverse",
+                "live_apply"
               ]
             }
           }

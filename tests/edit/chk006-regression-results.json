@@ -1,0 +1,783 @@
+{
+ "run_prefix": "chk006-20260912-232932",
+ "release_check": {
+  "status": "checked",
+  "latest_tag": "v6.6.0",
+  "published": "2026-06-20T17:07:02Z",
+  "installed": "Response: {\"ProductVersion\":\"v6.6.0\",\"FileVersion\":\"6.6.0.0\"}\r\n\nStatus Code: 0",
+  "note": "VM runs dnSpy v6.6.0 .NET Framework; adjudicated policy: record identity now, re-verify only if the release train changes"
+ },
+ "registry_export": {
+  "tail": "Response: tools=78 mode=wire-only\r\nsnapshot: C:\\Tools\\dnspy-mcp-edit-tests\\p09-tool-registry-snapshot.json\r\n\nStatus Code: 0"
+ },
+ "resources": {
+  "listed": 14,
+  "uris": [
+   "bepinex://docs/plugin-structure",
+   "bepinex://docs/harmony-patching",
+   "bepinex://docs/configuration",
+   "bepinex://docs/common-scenarios",
+   "bepinex://docs/il2cpp-guide",
+   "bepinex://docs/mono-vs-il2cpp",
+   "dnspy://docs/index",
+   "dnspy://docs/overview",
+   "dnspy://docs/static-analysis",
+   "dnspy://docs/il-editing",
+   "dnspy://docs/dynamic-debugging",
+   "dnspy://docs/security",
+   "dnspy://docs/python-client",
+   "dnspy://docs/tool-workflows"
+  ],
+  "read_ok": 0,
+  "read_fail": [
+   "bepinex://docs/plugin-structure",
+   "bepinex://docs/harmony-patching",
+   "bepinex://docs/configuration",
+   "bepinex://docs/common-scenarios",
+   "bepinex://docs/il2cpp-guide",
+   "bepinex://docs/mono-vs-il2cpp",
+   "dnspy://docs/index",
+   "dnspy://docs/overview",
+   "dnspy://docs/static-analysis",
+   "dnspy://docs/il-editing",
+   "dnspy://docs/dynamic-debugging",
+   "dnspy://docs/security",
+   "dnspy://docs/python-client",
+   "dnspy://docs/tool-workflows"
+  ]
+ },
+ "edit_results": [
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-004",
+   "acc_id": "ACC-004",
+   "status": "pass",
+   "driver": "p03_vm_acc004.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 23,
+   "fail_lines": 0,
+   "duration_s": 5.9,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-004\\case.json",
+     "sha256": "e76257547228f0fefefdecbe9a8eb6bc5df8d4a170bbcbf0c930bcfe27aedd62"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-004\\driver.log",
+     "sha256": "7dee9586e5d14cea62e3e8a916b724b5657c52a9049aa535092b457cff7a7f5f"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-004\\actions.jsonl",
+     "sha256": "839733d1b3122a6a618c2c704c3c9257d7781fe7adb8b597d350b2f5b2f4f181",
+     "calls": 65
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-005",
+   "acc_id": "ACC-005",
+   "status": "pass",
+   "driver": "p03_vm_acc005full.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 26,
+   "fail_lines": 0,
+   "duration_s": 8.0,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-005\\case.json",
+     "sha256": "44bbf8dd2040699c0c650bc553242d8d9099c6be0b71d8e1c8dcbf12d7c727b0"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-005\\driver.log",
+     "sha256": "a529b0ba71d6ac2c2ca1859908b023932729183ffb8c8e4a20e3ff287122de23"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-005\\actions.jsonl",
+     "sha256": "341704cf5c838b8a740c1765e7ca922395cc8f18da04e48556818a1d7c9698dd",
+     "calls": 35
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-031",
+   "acc_id": "ACC-031",
+   "status": "pass",
+   "driver": "P03StoreHarness --import-matrix",
+   "architecture": "x64",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 1.3,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-031\\case.json",
+     "sha256": "1e62ea7ff54cfab4c429b24a05c5202bac52e5e0df8b238b51c6dd1ee6b5d779"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-031\\driver.log",
+     "sha256": "b97434f5f479232a56c07633ffd54111baa88a046a06a73c4dcfc110b031d3fa"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-031\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-006",
+   "acc_id": "ACC-006",
+   "status": "pass",
+   "driver": "p03_vm_acc006.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 17,
+   "fail_lines": 0,
+   "duration_s": 6.8,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-006\\case.json",
+     "sha256": "51f97f7c8beef25310d5d64bf12a269b521ea18eba4d333a6e90afab136f9285"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-006\\driver.log",
+     "sha256": "6bdf02b358891b35c80356e71d2128e4642e16d79458f6a4be9085a03054b12b"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-006\\actions.jsonl",
+     "sha256": "12f7e046a568868a5cfe35a5b48405baeaee2ba93ae3be7bf4659043b39f4613",
+     "calls": 26
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-015",
+   "acc_id": "ACC-015",
+   "status": "pass",
+   "driver": "p03_vm_acc015.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 16,
+   "fail_lines": 0,
+   "duration_s": 2.1,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-015\\case.json",
+     "sha256": "81f6c3c7e938b4ef200a039a24d0fecdba12326736f754202f9df9889cf1f522"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-015\\driver.log",
+     "sha256": "d0cfc15eedffc76077fab9f911d45369bb7acd7767b0a5eee04576bb362d71ff"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-015\\actions.jsonl",
+     "sha256": "8df272de187f2e6f72b8d3ac6181d3a1506506828e7d609ddd9ad4c30d686004",
+     "calls": 14
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-032",
+   "acc_id": "ACC-032",
+   "status": "pass",
+   "driver": "P03StoreHarness --identity-matrix",
+   "architecture": "x64",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 0.8,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-032\\case.json",
+     "sha256": "1504a088aab5299b2b38fcd08f578fd1569ac96a8f329cd1e2c604659474e5d8"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-032\\driver.log",
+     "sha256": "a5d01cdd2da05243635c2662e966e17172182155fe6932ad6609ae34021af604"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-032\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-007",
+   "acc_id": "ACC-007",
+   "status": "pass",
+   "driver": "p03_vm_acc007.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 19,
+   "fail_lines": 0,
+   "duration_s": 1.6,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-007\\case.json",
+     "sha256": "ce023b85ab3a9c49a9869e9f0a78ff86a1e7d129dd28f66723abb6dc647f8d8b"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-007\\driver.log",
+     "sha256": "ec788fd1a1fb4c2761774d6f2b74ed0d733a40846542f64167a3e86b85ff2d49"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-007\\actions.jsonl",
+     "sha256": "76c064da65a0bf8cd3a0abde2eb4316e2f0f6603d57157eb7eb19d3d171078ff",
+     "calls": 18
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-008",
+   "acc_id": "ACC-008",
+   "status": "pass",
+   "driver": "p03_vm_acc008.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 9,
+   "fail_lines": 0,
+   "duration_s": 3.1,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-008\\case.json",
+     "sha256": "e01925e93b557569eb22ae1bbfa402e7e435fa73b1d4a654f027ea9399e06c6f"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-008\\driver.log",
+     "sha256": "26024f6a03d937f1bd41b31fa0571945818ceac5f7f22cbf1fedb4ae89c6293c"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-008\\actions.jsonl",
+     "sha256": "d733ec02e095b6ed531accb74a2590c782686e1da115825ad014ae2d95886677",
+     "calls": 8
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-016",
+   "acc_id": "ACC-016",
+   "status": "pass",
+   "driver": "p03_vm_acc016.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 11,
+   "fail_lines": 0,
+   "duration_s": 5.2,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-016\\case.json",
+     "sha256": "d8fa24b7169ff02b56eacee42398b6c5529a3d31e8b27d42d00041252b85464a"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-016\\driver.log",
+     "sha256": "34ee86d691770f662f4ae9cda32cea0e77bdad29ab10feb8d3f4b624621dc712"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-016\\actions.jsonl",
+     "sha256": "6a18f0fad3ab82947bfc1e6d17bd82d2d96173d59197f3fd58f47c41e9ff1746",
+     "calls": 18
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-033",
+   "acc_id": "ACC-033",
+   "status": "pass",
+   "driver": "P03StoreHarness --resource-matrix",
+   "architecture": "x64",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 0.8,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-033\\case.json",
+     "sha256": "7268acb5f586eff06369d07029a8aee8c416429646a6f4037ee28ce6d1614840"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-033\\driver.log",
+     "sha256": "3707c1d403a87aa09011fb7fd07ce1cbff97df745dd42c545c7da5bb04b9311b"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-033\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "case": "EDIT-ACC-018",
+   "arch": "x64",
+   "status": "no-summary"
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-021",
+   "acc_id": "ACC-021",
+   "status": "pass",
+   "driver": "p03_vm_acc021.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 9,
+   "fail_lines": 0,
+   "duration_s": 2.8,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-021\\case.json",
+     "sha256": "e147078e94abad4af36041a3b161bfb526d0574a2095c18b894bca1a40dc46dc"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-021\\driver.log",
+     "sha256": "2acf4f3e86ce9e4e9f9ea97ee4d8f679840d831a5ca1b67e0fb3602b3802621a"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-021\\actions.jsonl",
+     "sha256": "0b47ea4a35a7ec72996e12fdb9935154a4c9ea6fad5e5e3d69e15fdd0cbc3d1c",
+     "calls": 8
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-023",
+   "acc_id": "ACC-023",
+   "status": "pass",
+   "driver": "p03_vm_acc023.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 14,
+   "fail_lines": 0,
+   "duration_s": 4.4,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-023\\case.json",
+     "sha256": "74593f91b7b13917104288ada83a0463e66700068b728d1a03c47644951df3ff"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-023\\driver.log",
+     "sha256": "96d0bb1b5ce6f2e3bf43ef21cd8593a3af016d0238ee7da1588daec3b29a7fac"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x64\\EDIT-ACC-023\\actions.jsonl",
+     "sha256": "fc1fcfed0347e3858ff42f711c3756c6423c70bb04a72bdfe562052440c64151",
+     "calls": 16
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-004",
+   "acc_id": "ACC-004",
+   "status": "pass",
+   "driver": "p03_vm_acc004.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 23,
+   "fail_lines": 0,
+   "duration_s": 6.1,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-004\\case.json",
+     "sha256": "e76257547228f0fefefdecbe9a8eb6bc5df8d4a170bbcbf0c930bcfe27aedd62"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-004\\driver.log",
+     "sha256": "7dee9586e5d14cea62e3e8a916b724b5657c52a9049aa535092b457cff7a7f5f"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-004\\actions.jsonl",
+     "sha256": "1140d7fefdf0ce7033999cdaa7a8f45162530f4f1d55151e9f1a1e584c30c265",
+     "calls": 65
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-005",
+   "acc_id": "ACC-005",
+   "status": "pass",
+   "driver": "p03_vm_acc005full.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 26,
+   "fail_lines": 0,
+   "duration_s": 8.7,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-005\\case.json",
+     "sha256": "44bbf8dd2040699c0c650bc553242d8d9099c6be0b71d8e1c8dcbf12d7c727b0"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-005\\driver.log",
+     "sha256": "a529b0ba71d6ac2c2ca1859908b023932729183ffb8c8e4a20e3ff287122de23"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-005\\actions.jsonl",
+     "sha256": "9ca6b83e233f0a2a2fe6cdf2fa32c8d6abb9d30ecc26012b42baa5f794aabe4f",
+     "calls": 35
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-031",
+   "acc_id": "ACC-031",
+   "status": "pass",
+   "driver": "P03StoreHarness --import-matrix",
+   "architecture": "x86",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 2.5,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-031\\case.json",
+     "sha256": "1e62ea7ff54cfab4c429b24a05c5202bac52e5e0df8b238b51c6dd1ee6b5d779"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-031\\driver.log",
+     "sha256": "b97434f5f479232a56c07633ffd54111baa88a046a06a73c4dcfc110b031d3fa"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-031\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-006",
+   "acc_id": "ACC-006",
+   "status": "pass",
+   "driver": "p03_vm_acc006.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 17,
+   "fail_lines": 0,
+   "duration_s": 6.2,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-006\\case.json",
+     "sha256": "51f97f7c8beef25310d5d64bf12a269b521ea18eba4d333a6e90afab136f9285"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-006\\driver.log",
+     "sha256": "6bdf02b358891b35c80356e71d2128e4642e16d79458f6a4be9085a03054b12b"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-006\\actions.jsonl",
+     "sha256": "8ec6106f050e4b251739944c40f351d16a68534724bc40a95eac4bd016bad05c",
+     "calls": 26
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-015",
+   "acc_id": "ACC-015",
+   "status": "pass",
+   "driver": "p03_vm_acc015.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 16,
+   "fail_lines": 0,
+   "duration_s": 1.5,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-015\\case.json",
+     "sha256": "81f6c3c7e938b4ef200a039a24d0fecdba12326736f754202f9df9889cf1f522"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-015\\driver.log",
+     "sha256": "d0cfc15eedffc76077fab9f911d45369bb7acd7767b0a5eee04576bb362d71ff"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-015\\actions.jsonl",
+     "sha256": "4e3240032843e2d9fc898f7c9141de28d4b469fb950203bdf5fe2db44d1d19ab",
+     "calls": 14
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-032",
+   "acc_id": "ACC-032",
+   "status": "pass",
+   "driver": "P03StoreHarness --identity-matrix",
+   "architecture": "x86",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 1.1,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-032\\case.json",
+     "sha256": "1504a088aab5299b2b38fcd08f578fd1569ac96a8f329cd1e2c604659474e5d8"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-032\\driver.log",
+     "sha256": "a5d01cdd2da05243635c2662e966e17172182155fe6932ad6609ae34021af604"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-032\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-007",
+   "acc_id": "ACC-007",
+   "status": "pass",
+   "driver": "p03_vm_acc007.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 19,
+   "fail_lines": 0,
+   "duration_s": 1.3,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-007\\case.json",
+     "sha256": "ce023b85ab3a9c49a9869e9f0a78ff86a1e7d129dd28f66723abb6dc647f8d8b"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-007\\driver.log",
+     "sha256": "ec788fd1a1fb4c2761774d6f2b74ed0d733a40846542f64167a3e86b85ff2d49"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-007\\actions.jsonl",
+     "sha256": "d9a46adbbb150603f5bbd67caf1da9fc1f9413228c50ce7c608ab2389ba52df2",
+     "calls": 18
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-008",
+   "acc_id": "ACC-008",
+   "status": "pass",
+   "driver": "p03_vm_acc008.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 9,
+   "fail_lines": 0,
+   "duration_s": 3.2,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-008\\case.json",
+     "sha256": "e01925e93b557569eb22ae1bbfa402e7e435fa73b1d4a654f027ea9399e06c6f"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-008\\driver.log",
+     "sha256": "26024f6a03d937f1bd41b31fa0571945818ceac5f7f22cbf1fedb4ae89c6293c"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-008\\actions.jsonl",
+     "sha256": "38c5e473f3688e9659e7726528acc417ae9287e0bce8d92c1d9461c0c2a39b45",
+     "calls": 8
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-016",
+   "acc_id": "ACC-016",
+   "status": "pass",
+   "driver": "p03_vm_acc016.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 11,
+   "fail_lines": 0,
+   "duration_s": 2.6,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-016\\case.json",
+     "sha256": "d8fa24b7169ff02b56eacee42398b6c5529a3d31e8b27d42d00041252b85464a"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-016\\driver.log",
+     "sha256": "f4d634c10df6f228ba59976fa0a61a5189a0c64190db6544841f6d90180c82d0"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-016\\actions.jsonl",
+     "sha256": "1f8627cf4d04f758e43f98c550914a5fbf1cf5072b6d2ebd70caef8a96e61b01",
+     "calls": 18
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-033",
+   "acc_id": "ACC-033",
+   "status": "pass",
+   "driver": "P03StoreHarness --resource-matrix",
+   "architecture": "x86",
+   "driver_exit_code": 0,
+   "pass_lines": 1,
+   "fail_lines": 0,
+   "duration_s": 0.8,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-033\\case.json",
+     "sha256": "7268acb5f586eff06369d07029a8aee8c416429646a6f4037ee28ce6d1614840"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-033\\driver.log",
+     "sha256": "3707c1d403a87aa09011fb7fd07ce1cbff97df745dd42c545c7da5bb04b9311b"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-033\\actions.jsonl",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "calls": 0,
+     "note": "headless harness probe; no MCP transcript"
+    }
+   },
+   "cleanup": "headless harness uses an isolated temp store; no dnSpy or ArtifactRoot side effects",
+   "reason": ""
+  },
+  {
+   "case": "EDIT-ACC-018",
+   "arch": "x86",
+   "status": "skipped-ui"
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-021",
+   "acc_id": "ACC-021",
+   "status": "pass",
+   "driver": "p03_vm_acc021.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 9,
+   "fail_lines": 0,
+   "duration_s": 1.3,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-021\\case.json",
+     "sha256": "e147078e94abad4af36041a3b161bfb526d0574a2095c18b894bca1a40dc46dc"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-021\\driver.log",
+     "sha256": "2acf4f3e86ce9e4e9f9ea97ee4d8f679840d831a5ca1b67e0fb3602b3802621a"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-021\\actions.jsonl",
+     "sha256": "4afcaf1d4eafb112b1f0e596659fe71bb0c901d980585b9e49c0c4f3240fec16",
+     "calls": 8
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  },
+  {
+   "suite": "structured-edit-p03",
+   "case_id": "EDIT-ACC-023",
+   "acc_id": "ACC-023",
+   "status": "pass",
+   "driver": "p03_vm_acc023.py",
+   "driver_exit_code": 0,
+   "driver_error": "",
+   "pass_lines": 14,
+   "fail_lines": 0,
+   "duration_s": 2.7,
+   "artifacts": {
+    "case_json": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-023\\case.json",
+     "sha256": "74593f91b7b13917104288ada83a0463e66700068b728d1a03c47644951df3ff"
+    },
+    "driver_log": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-023\\driver.log",
+     "sha256": "96d0bb1b5ce6f2e3bf43ef21cd8593a3af016d0238ee7da1588daec3b29a7fac"
+    },
+    "actions": {
+     "path": "C:\\Users\\xxx\\Desktop\\dnspy-mcp-artifacts\\edit-tests\\chk006-20260912-232932-x86\\EDIT-ACC-023\\actions.jsonl",
+     "sha256": "aef0134c89c42bc9cbd7aa79dac542eb22a05cb88053b1fb529927876b0466f4",
+     "calls": 16
+    }
+   },
+   "cleanup": "runner closed 1/1 MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+   "reason": ""
+  }
+ ],
+ "p01_suite": {
+  "returncode": 1,
+  "ok": false,
+  "tail": " \"summary\": {}\n      }\n    },\n    \"x86\": {\n      \"EDIT-ACC-017\": {\n        \"exit_code\": 2,\n        \"summary_path\": \"C:\\\\dnspy-mcp-artifacts\\\\edit-tests\\\\20260913-003432-ec3a581e\\\\summary.json\",\n        \"summary\": {}\n      },\n      \"EDIT-ACC-027\": {\n        \"exit_code\": 2,\n        \"summary_path\": \"C:\\\\dnspy-mcp-artifacts\\\\edit-tests\\\\20260913-003731-b07b5fb4\\\\summary.json\",\n        \"summary\": {}\n      },\n      \"EDIT-ACC-030\": {\n        \"exit_code\": 2,\n        \"summary_path\": \"C:\\\\dnspy-mcp-artifacts\\\\edit-tests\\\\20260913-003737-0d352f75\\\\summary.json\",\n        \"summary\": {}\n      }\n    }\n  }\n}\n"
+ },
+ "p02_vm_suite": {
+  "returncode": 1,
+  "ok": false,
+  "tail": " failed: {'type': 'AssertionError', 'message': '', 'traceback': 'Traceback (most recent call last):\\n  File \"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\edit\\\\p02_vm_driver.py\", line 1807, in main\\n    report[\"cases\"][\"barrier_concurrency\"] = run_barrier_concurrency(client, args.assembly)\\n                                             ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\\n  File \"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\edit\\\\p02_vm_driver.py\", line 871, in run_barrier_concurrency\\n    assert expired[\"state\"] == \"idle\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\\nAssertionError\\n'}\n"
+ },
+ "p02_listener_suite": {
+  "returncode": 2,
+  "ok": false,
+  "tail": "usage: run_p02_listener_tests.py [-h] --output OUTPUT\n                                 [--ui-signal-dir UI_SIGNAL_DIR]\nrun_p02_listener_tests.py: error: the following arguments are required: --output\n"
+ },
+ "python_suite": {
+  "returncode": 1,
+  "ok": false,
+  "tail": ""
+ }
+}

@@ -1,0 +1,115 @@
+{
+ "run_id": "chk-remediation-20260912-223127",
+ "results": {
+  "chk003-drift": {
+   "case": "chk003-drift",
+   "status": "PASS",
+   "passes": [
+    "D1 transaction began",
+    "D2 entry swap invisible to semantic fingerprint",
+    "D3 review rejects entry-point drift",
+    "D4 external mutation restored",
+    "D5 review ok after restore",
+    "D6 commit ok"
+   ],
+   "failures": []
+  },
+  "chk004-identity": {
+   "case": "chk004-identity",
+   "status": "PASS",
+   "passes": [
+    "I1 AltEntry listed",
+    "I2 transaction began",
+    "I3 apply entry_point_set",
+    "I3 apply assembly_update",
+    "I3 apply assembly_ref_update",
+    "I4 review accepts changed identity",
+    "I5 commit ok",
+    "I6 commit reports inverse plan",
+    "I7 export ok",
+    "I8 debug launch",
+    "I9 entry pause on AltEntry"
+   ],
+   "failures": []
+  },
+  "chk005-resource": {
+   "case": "chk005-resource",
+   "status": "PASS",
+   "passes": [
+    "R1 transaction began",
+    "R2 named string entry updated",
+    "R3 review ok",
+    "R4 commit ok",
+    "R5 export ok",
+    "R6 export path recorded"
+   ],
+   "failures": []
+  },
+  "chk005-readback": {
+   "case": "chk005-readback",
+   "status": "PASS",
+   "data": {
+    "keys": [
+     "",
+     "customBlob",
+     "greeting",
+     "streamRes"
+    ],
+    "greeting": "remediated",
+    "empty_name_value": "empty-name-entry",
+    "stream_is_stream": true,
+    "stream_is_bytearray": false,
+    "custom_type_name": "ChkRemediation.Ghost, ChkRemediation",
+    "custom_bytes": "1,2,254,255",
+    "empty_type_name": "ResourceTypeCode.String"
+   }
+  },
+  "chk007-risks": {
+   "case": "chk007-risks",
+   "status": "PASS",
+   "passes": [
+    "K1 transaction began",
+    "K2 rename staged",
+    "K3 impact scan reports inbound",
+    "K4 review lists required confirmation",
+    "K5 commit echoes full risk facts"
+   ],
+   "failures": []
+  },
+  "chk008-inverse": {
+   "case": "chk008-inverse",
+   "status": "PASS",
+   "passes": [
+    "V1 transaction began",
+    "V2 apply module_update",
+    "V2 apply assembly_update",
+    "V3 review ok",
+    "V4 live_apply fault armed",
+    "V5 commit fails at live_apply",
+    "V6 clean idle after full recovery",
+    "V6 live restored to pre-transaction baseline",
+    "V7 rollback of the probe transaction",
+    "V8 fresh commit succeeds after recovery",
+    "V9 inverse plan binding reported"
+   ],
+   "failures": []
+  },
+  "chk001-ui": {
+   "case": "chk001-ui",
+   "status": "PASS",
+   "passes": [
+    "U2 explorer window opened",
+    "U3 idle explorer shows lineage section",
+    "W1 transaction began",
+    "W1 operation staged",
+    "W2 UI shows same state as MCP",
+    "W3 cancel enabled while owner active",
+    "W4 no commit/restore/export UI entry",
+    "W5 owner-online cancel rolled the transaction back",
+    "W6 checkpoint committed",
+    "W7 idle UI browses checkpoint history"
+   ],
+   "failures": []
+  }
+ }
+}

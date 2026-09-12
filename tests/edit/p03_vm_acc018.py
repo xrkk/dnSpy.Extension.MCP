@@ -116,9 +116,12 @@ def main() -> int:
     check("W2 UI shows same state as MCP", same_state, window_text[:300])
     check("W2 UI lists staged operation", shows_operation, window_text[:400])
 
-    # W3: while the owner session is ACTIVE the cancel must be disabled
-    cancel_disabled = any(marker in window_text for marker in ("UI cancel disabled", "active MCP session", "Cancel orphaned"))
-    check("W3 UI cancel shows guarded state", cancel_disabled, window_text[:500])
+    # W3 (remediated REQ-016 / CHK-001): while the owner session is ACTIVE and
+    # no operation/commit is executing, local cancel of the CURRENT transaction
+    # must be offered (rollback-only; the coordinator gates busy states).
+    cancel_enabled = any(marker in window_text for marker in ("can be canceled locally", "Cancel current transaction"))
+    cancel_disabled_markers = [m for m in ("UI cancel disabled",) if m in window_text]
+    check("W3 UI cancel offered for current transaction", cancel_enabled and not cancel_disabled_markers, window_text[:500])
 
     # W4: no commit/restore/export controls on the window
     forbidden = [w for w in ("edit_commit", "edit_restore", "edit_export",
@@ -133,12 +136,12 @@ def main() -> int:
     window_text = ui_tree_text()
     while time.time() < deadline:
         window_text = ui_tree_text()
-        if "Cancel orphaned transaction" in window_text:
-            cancel_line = next((l for l in window_text.splitlines() if "Cancel orphaned transaction" in l), None)
+        if "Cancel current transaction" in window_text:
+            cancel_line = next((l for l in window_text.splitlines() if "Cancel current transaction" in l), None)
             if cancel_line and "disabled" not in cancel_line.lower():
                 orphaned = True
                 break
-        # after owner close the guard text changes to the caretaker message
+        # after owner close the line switches to the caretaker message
         if "Owner session is gone" in window_text:
             orphaned = True
             break
@@ -156,7 +159,7 @@ def main() -> int:
 
     # W7: UI cancel rolls the orphan back
     if orphaned:
-        cancel_line = next((l for l in window_text.splitlines() if "Cancel orphaned transaction" in l), None)
+        cancel_line = next((l for l in window_text.splitlines() if "Cancel current transaction" in l), None)
         if cancel_line:
             loc = re.search(r"\((\d+),(\d+)\)", cancel_line)
             if loc:

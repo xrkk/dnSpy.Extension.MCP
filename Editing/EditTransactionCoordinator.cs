@@ -119,6 +119,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 	readonly EditCompileFrontend compileFrontend;
 	readonly Debugger.DebugSessionService debugSessions;
+	// CHK-007: last scanned inbound references keyed by risk_id for commit echo
+	readonly Dictionary<string, object?> LastInboundReferences = new(StringComparer.Ordinal);
 	// P08 one-time strong-name failure evidence: (session_id, event_cursor) -> consumed module mvid
 	readonly Dictionary<string, string> consumedStrongNameEvidence = new(StringComparer.Ordinal);
 
@@ -127,16 +129,29 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	// P09 (ACC-018): immutable explorer snapshot for the read-only UI.  Built
 	// inside the coordinator lock; the UI thread only ever sees these rows and
 	// never calls back into locking methods (adjudicated AUD-005).
+	public sealed class ExplorerCheckpointRow {
+		public string LineageId = string.Empty;
+		public string CheckpointId = string.Empty;
+		public string ParentCheckpointId = string.Empty;
+		public string Kind = string.Empty;
+		public string ImageShaPrefix = string.Empty;
+		public string SemanticPrefix = string.Empty;
+	}
+
 	public sealed class ExplorerSnapshot {
 		public string State = string.Empty;
 		public string? TransactionId;
 		public uint Revision;
 		public string OwnerTransport = string.Empty;
 		public bool OwnerClosed;
+		public bool OperationBusy;
+		public bool CommitStarted;
+		public bool CanCancel;
 		public List<string> Operations = new();
 		public List<string> Diffs = new();
 		public List<string> Risks = new();
 		public List<string> Lineages = new();
+		public List<ExplorerCheckpointRow> Checkpoints = new();
 	}
 
 	public ExplorerSnapshot BuildExplorerSnapshot() {
@@ -144,24 +159,50 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		lock (gate) {
 			ExpireLocked();
 			snapshot.State = state;
-			if (active == null) return snapshot;
-			snapshot.TransactionId = active.Id;
-			snapshot.Revision = active.Revision;
-			snapshot.OwnerTransport = active.Transport.ToWireName();
-			snapshot.OwnerClosed = active.OwnerClosed;
-			foreach (var operation in active.Workspace.NormalizedOperations) {
-				using var document = System.Text.Json.JsonDocument.Parse(operation);
-				var kind = document.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String ? kindElement.GetString() : "?";
-				snapshot.Operations.Add(kind!);
+			if (active == null) {
+				// CHK-002: the explorer must show checkpoint history even when idle —
+				// the lineage browsing is a primary read-only purpose of the window
 			}
-			foreach (var diff in active.Workspace.Diffs)
-				snapshot.Diffs.Add(string.Join("/", diff.TryGetValue("kind", out var diffKind) ? diffKind : "?", diff.TryGetValue("target", out var diffTarget) ? diffTarget : "?"));
-			foreach (var risk in active.Workspace.Risks)
-				snapshot.Risks.Add(string.Join("/", risk.TryGetValue("risk_id", out var riskId) ? riskId : "?", risk.TryGetValue("kind", out var riskKind) ? riskKind : "?", risk.TryGetValue("confirmation_required", out var riskRequired) ? riskRequired : false));
+			else {
+				snapshot.TransactionId = active.Id;
+				snapshot.Revision = active.Revision;
+				snapshot.OwnerTransport = active.Transport.ToWireName();
+				snapshot.OwnerClosed = active.OwnerClosed;
+				snapshot.OperationBusy = active.OperationBusy;
+				snapshot.CommitStarted = active.CommitStarted;
+				// CHK-001 / REQ-016: the current transaction is locally cancelable
+				// whenever it is active and no operation or commit is executing —
+				// the owner being still connected does not block local cancel.
+				snapshot.CanCancel = !active.OperationBusy && !active.CommitStarted;
+				foreach (var operation in active.Workspace.NormalizedOperations) {
+					using var document = System.Text.Json.JsonDocument.Parse(operation);
+					var kind = document.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String ? kindElement.GetString() : "?";
+					snapshot.Operations.Add(kind!);
+				}
+				foreach (var diff in active.Workspace.Diffs)
+					snapshot.Diffs.Add(string.Join("/", diff.TryGetValue("kind", out var diffKind) ? diffKind : "?", diff.TryGetValue("target", out var diffTarget) ? diffTarget : "?"));
+				foreach (var risk in active.Workspace.Risks)
+					snapshot.Risks.Add(string.Join("/", risk.TryGetValue("risk_id", out var riskId) ? riskId : "?", risk.TryGetValue("kind", out var riskKind) ? riskKind : "?", risk.TryGetValue("confirmation_required", out var riskRequired) ? riskRequired : false));
+			}
 		}
 		try {
-			foreach (var lineage in history.LoadAll())
-				snapshot.Lineages.Add(lineage.Manifest.LineageId + " head:" + lineage.Manifest.HeadCheckpointId + " (" + lineage.Manifest.Checkpoints.Count + " checkpoints)");
+			foreach (var lineage in history.LoadAll()) {
+				var builder = new System.Text.StringBuilder();
+				builder.Append(lineage.Manifest.LineageId).Append(" head:").Append(lineage.Manifest.HeadCheckpointId);
+				snapshot.Lineages.Add(builder.ToString());
+				// CHK-002: expose every checkpoint row (parent, kind, image and
+				// semantic prefixes) so the explorer tree can show the branching
+				// history even when no transaction is active.
+				foreach (var checkpoint in lineage.Manifest.Checkpoints)
+					snapshot.Checkpoints.Add(new ExplorerCheckpointRow {
+						LineageId = lineage.Manifest.LineageId,
+						CheckpointId = checkpoint.CheckpointId,
+						ParentCheckpointId = checkpoint.ParentCheckpointId ?? string.Empty,
+						Kind = checkpoint.Kind,
+						ImageShaPrefix = checkpoint.ResultImageSha256.Substring(0, Math.Min(12, checkpoint.ResultImageSha256.Length)),
+						SemanticPrefix = checkpoint.ResultSemanticFingerprint.Substring(0, Math.Min(12, checkpoint.ResultSemanticFingerprint.Length)),
+					});
+			}
 		}
 		catch {
 			// a corrupt store is read-only noise for the explorer; the MCP tools
@@ -170,17 +211,22 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		return snapshot;
 	}
 
-	/// <summary>ACC-018 guarded local cancel: only an orphaned transaction (its
-	/// owner session closed) may be rolled back from the UI.  An active owner
-	/// keeps its transaction — this entry reuses the rollback release path and
-	/// adds no second commit/recovery implementation.</summary>
-	public void CancelOrphanedTransactionFromUi() {
+	/// <summary>REQ-016 / CHK-001: local cancel of the CURRENT transaction from
+	/// the dnSpy UI.  Cancelable whenever the transaction is active and neither
+	/// an edit operation nor a commit is executing; the owner session may still
+	/// be connected (its next edit call then reports EDIT_TRANSACTION_NOT_FOUND).
+	/// Orphaned transactions (owner closed) remain cancelable unconditionally.
+	/// This entry reuses the rollback release path — there is no second
+	/// commit/recovery implementation.</summary>
+	public string CancelTransactionFromUi() {
 		lock (gate) {
-			if (active == null || !active.OwnerClosed) return;
 			var tx = active;
+			if (tx == null) return "no_transaction";
+			if (!tx.OwnerClosed && (tx.OperationBusy || tx.CommitStarted)) return "busy";
 			tx.CancelRequested = true;
 			ReleaseBarrierLocked(tx.Owner);
 			EndLocked(tx, "ui_cancel");
+			return "canceled";
 		}
 	}
 	public JsonElement FaultGolden => catalog.Faults;
@@ -628,26 +674,31 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	// operations are staged, review compares those rows directly between the
 	// private copy and the live module so external drift still fails the gate.
 	static void AssertIdentityRowsUnchanged(Transaction tx) {
-		var staged = false;
-		foreach (var row in tx.Workspace.NormalizedOperations) {
-			using var document = System.Text.Json.JsonDocument.Parse(row);
-			var kind = document.RootElement.GetProperty("kind").GetString();
-			if (kind is "assembly_update" or "module_update" or "assembly_ref_update" or "entry_point_set") { staged = true; break; }
-		}
-		if (!staged) return;
+		// CHK-004 fix: compare against the BASELINE image (the state when the
+		// transaction began), not the post-edit private copy.  Identity EDITS are
+		// the intended change; the guard detects EXTERNAL drift of the live module
+		// relative to what the transaction started from.
+		// The baseline is captured at Begin(): the workspace's BaselineBytes
+		// round-trips the module at that moment.  Reload the identity rows from
+		// it for the comparison.
+		var baseline = EditWorkspace.OnDispatcher(() => {
+			using var rebuilt = ModuleDefMD.Load(tx.Workspace.BaselineBytes);
+			string RefRow(AssemblyRef reference) => reference.Name + "|" + reference.Version + "|" + reference.Culture;
+			return (
+				refs: rebuilt.GetAssemblyRefs().Select(r => RefRow(r)).OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+				entry: rebuilt.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? ""
+			);
+		});
 		var live = tx.Workspace.LiveModule;
-		var privateModule = tx.Workspace.PrivateModule;
-		string Row(AssemblyRef reference) => reference.Name + "|" + reference.Version + "|" + reference.Culture;
-		var liveRefs = live.GetAssemblyRefs().Select(reference => Row(reference) + "@" + reference.MDToken.Raw.ToString("x8")).OrderBy(x => x, StringComparer.Ordinal).ToArray();
-		var privateRefs = privateModule.GetAssemblyRefs().Select(reference => Row(reference) + "@" + reference.MDToken.Raw.ToString("x8")).OrderBy(x => x, StringComparer.Ordinal).ToArray();
-		if (!liveRefs.SequenceEqual(privateRefs, StringComparer.Ordinal))
+		string LiveRow(AssemblyRef reference) => reference.Name + "|" + reference.Version + "|" + reference.Culture;
+		var liveRefs = EditWorkspace.OnDispatcher(() => live.GetAssemblyRefs().Select(r => LiveRow(r)).OrderBy(x => x, StringComparer.Ordinal).ToArray());
+		if (!liveRefs.SequenceEqual(baseline.refs, StringComparer.Ordinal))
 			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
-				["kind"] = "identity_rows_conflict", ["expected"] = privateRefs, ["actual"] = liveRefs });
-		var liveEntry = live.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? "";
-		var privateEntry = privateModule.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? "";
-		if (!string.Equals(liveEntry, privateEntry, StringComparison.Ordinal))
+				["kind"] = "identity_rows_conflict", ["expected"] = baseline.refs, ["actual"] = liveRefs });
+		var liveEntry = EditWorkspace.OnDispatcher(() => live.ManagedEntryPoint?.MDToken.Raw.ToString("x8") ?? "");
+		if (!string.Equals(liveEntry, baseline.entry, StringComparison.Ordinal))
 			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
-				["kind"] = "entry_point_conflict", ["expected"] = privateEntry, ["actual"] = liveEntry });
+				["kind"] = "entry_point_conflict", ["expected"] = baseline.entry, ["actual"] = liveEntry });
 	}
 
 	static bool ScopeIs(TypeDefOrRefSig signature, AssemblyRef reference) =>
@@ -657,18 +708,15 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	// projection like AssemblyRefs; when Win32 operations are staged, review
 	// compares the native row sets directly between private copy and live.
 	static void AssertNativeRowsUnchanged(Transaction tx) {
-		var staged = false;
-		foreach (var row in tx.Workspace.NormalizedOperations) {
-			using var document = System.Text.Json.JsonDocument.Parse(row);
-			var kind = document.RootElement.GetProperty("kind").GetString();
-			if (kind is "win32_resource_add" or "win32_resource_update" or "win32_resource_remove") { staged = true; break; }
-		}
-		if (!staged) return;
-		var liveRows = NativeRows(tx.Workspace.LiveModule);
-		var privateRows = NativeRows(tx.Workspace.PrivateModule);
-		if (!liveRows.SequenceEqual(privateRows, StringComparer.Ordinal))
+		// Same baseline-comparison pattern as AssertIdentityRowsUnchanged (CHK-004)
+		var baselineRows = EditWorkspace.OnDispatcher(() => {
+			using var rebuilt = ModuleDefMD.Load(tx.Workspace.BaselineBytes);
+			return NativeRows(rebuilt);
+		});
+		var liveRows = EditWorkspace.OnDispatcher(() => NativeRows(tx.Workspace.LiveModule));
+		if (!liveRows.SequenceEqual(baselineRows, StringComparer.Ordinal))
 			throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT", new Dictionary<string, object?> {
-				["kind"] = "native_rows_conflict", ["expected"] = privateRows, ["actual"] = liveRows });
+				["kind"] = "native_rows_conflict", ["expected"] = baselineRows, ["actual"] = liveRows });
 	}
 
 	static string[] NativeRows(ModuleDef module) {
@@ -901,14 +949,16 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						.Where(type => type.Fields.Any(f => f.FieldType is TypeDefOrRefSig fieldRef && ScopeIs(fieldRef, hit.row))
 							|| type.Methods.Any(m => m.MethodSig.Params.Any(p => p is TypeDefOrRefSig paramRef && ScopeIs(paramRef, hit.row))))
 						.Take(50).Select(type => (object)type.FullName).ToArray();
-					inbound.Add(new Dictionary<string, object?> {
+					var inboundRow = new Dictionary<string, object?> {
 						["module"] = entry.module.Assembly?.Name?.String ?? entry.module.Name.String,
 						["assembly_ref_token"] = "0x" + hit.row.MDToken.Raw.ToString("x8"),
 						["matched_name"] = hit.matched,
 						["sites"] = sites,
 						["risk_id"] = riskId,
-					});
+					};
+					inbound.Add(inboundRow);
 					riskIds.Add(riskId);
+					LastInboundReferences[riskId] = inboundRow;
 				}
 			}
 			lock (gate) {
@@ -945,7 +995,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 
 	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {		Transaction tx;uint expected;var requestId=EditWire.String(args,"request_id");var payload=PayloadHash(args);lock(gate){tx = RequireTransactionLocked(args, context);if(tx.ReviewCache.TryReplay(requestId,payload,out var replay,out var stale)){if(stale!=null)throw new EditDomainException("EDIT_REVIEW_STALE");return ParseEnvelope(replay);}expected = checked((uint)EditWire.Integer(args, "expected_revision")); if (expected != tx.Revision) throw Revision(expected, tx.Revision);tx.ReviewCache.EnsureCanReplace();tx.OperationBusy=true;}
-		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);AssertIdentityRowsUnchanged(tx);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
+		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);EnsureExternalUnchanged(tx,tx.Workspace.CurrentExternalGuard());AssertIdentityRowsUnchanged(tx);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
 		var dynamic = dynamicValidation.Run(tx.Workspace, args);
 		lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 		var reviewId=EditWire.NewId("review");var activity=tx.LastActivity;var privateFingerprint=tx.PrivateFingerprint;
@@ -988,6 +1038,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var postLive = string.Empty;
 		try {
 			var currentLive = tx.Workspace.CurrentLiveFingerprint(); EnsureLiveUnchanged(tx, currentLive);
+			EnsureExternalUnchanged(tx, tx.Workspace.CurrentExternalGuard());
 			if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
 			lock (gate) state = "committing";
 			BarrierPoint("commit_after_guard_before_temp", tx.Owner);
@@ -996,12 +1047,22 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			prepared = history.PrepareCommit(tx.Workspace, tx.HistoryBinding, tx.Workspace.NormalizedOperations,
 				tx.ReviewId!, tx.Revision, confirmed, tx.CommitOperationKind);
 			StorageFault("readback");
+			// CHK-008 / CON-005: PrepareCommit already compiled and validated a
+			// persisted inverse for every operation against a replay graph
+			// equivalent to live.  Materialize that complete inverse plan here so
+			// it exists and is executable before the first live mutation; if an
+			// operation handler throws after mutating live but before its Outcome
+			// reaches this frame, recovery still owns a pre-generated undo for it.
+			var inversePlan = prepared.Lineage.Operations[prepared.PostHeadCheckpointId].Operations
+				.Select(op => JsonSerializer.Serialize(op.Inverse.TryGetValue("state", out var state)
+					? state : throw new EditDomainException("EDIT_CHECKPOINT_INVALID"), EditWire.JsonOptions))
+				.ToArray();
 			BarrierPoint("commit_after_temp_validate", tx.Owner);
 			ThrowIfCanceledBeforeLinearization(tx);
 			BarrierPoint("commit_dispatcher_queued", tx.Owner);
 			ThrowIfCanceledBeforeLinearization(tx);
 			preLive = currentLive;
-			postLive = ApplyTransactionToLive(tx, inverses);
+			postLive = ApplyTransactionToLive(tx, inverses, inversePlan);
 			BarrierPoint("commit_after_live_complete", tx.Owner);
 			StorageFault("finalize");
 			history.Finalize(prepared, tx.Workspace.LiveModule);
@@ -1010,7 +1071,23 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				["checkpoint"] = CheckpointResult(prepared.Lineage, prepared.PostHeadCheckpointId),
 				["history"] = LineageResult(prepared.Lineage),
 				["fingerprints"] = new Dictionary<string, object?> { ["before"] = preLive, ["after"] = postLive, ["private"] = tx.PrivateFingerprint },
-				["confirmed_risks"] = confirmed.Select(x => new Dictionary<string, object?> { ["risk_id"] = x }).ToArray(),
+				// CHK-008: report the pre-generated live recovery plan binding.
+				["live_recovery"] = new Dictionary<string, object?> {
+					["inverse_plan"] = "pregenerated_compiled_state",
+					["inverse_plan_operations"] = inversePlan.Length,
+					["inverse_plan_bound_checkpoint_id"] = prepared.PostHeadCheckpointId,
+					["inverse_plan_complete_before_live_write"] = true,
+				},
+				// CHK-007: echo the full confirmed risk facts (not just IDs)
+				["confirmed_risks"] = confirmed.Select(id => {
+					var risk = tx.Workspace.Risks.FirstOrDefault(r => Equals(r["risk_id"], id))
+						?? new Dictionary<string, object?> { ["risk_id"] = id, ["kind"] = "unknown", ["description"] = "risk fact not found at commit" };
+					var row = new Dictionary<string, object?>(risk, StringComparer.Ordinal);
+					if (string.Equals(risk.TryGetValue("kind", out var riskKind) ? riskKind as string : null, "cross_assembly_inbound", StringComparison.Ordinal)
+						&& LastInboundReferences.TryGetValue(id, out var inboundRow))
+						row["affected_references"] = inboundRow;
+					return (object)row;
+				}).ToArray(),
 			});
 			lock (gate) { tx.OperationBusy = false; active = null; state = "idle"; }
 			tx.Workspace.Dispose();
@@ -1238,7 +1315,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		if (action == "arm") { var id = EditWire.String(args, "fault_id"); if (!known.Contains(id, StringComparer.Ordinal)) throw new ArgumentException("unknown fault_id", "fault_id"); armedFault = id; }
 		else if (action == "reset") { armedFault = null; if (state == "live_state_unknown" && active != null) {
 			var tx=active;tx.Workspace.OnLive(() => { foreach(var undo in emergencyLiveUndo)undo();return 0; });
-			var restored=tx.Workspace.CurrentLiveFingerprint();if(restored!=tx.Workspace.BaselineLiveFingerprint)throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN",Internal("emergency cleanup did not restore the live fingerprint"));
+			var restored=tx.Workspace.CurrentLiveFingerprint();if(restored!=tx.Workspace.BaselineLiveFingerprint||tx.Workspace.CurrentExternalGuard()!=tx.Workspace.BaselineExternalGuard)throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN",Internal("emergency cleanup did not restore the live fingerprint"));
 			emergencyLiveUndo.Clear();EndLocked(tx, "emergency_cleanup"); emergencyCleanup = true;
 		} }
 		else if (action != "read") throw new ArgumentException("action must be read, reset, or arm", "action");
@@ -1250,7 +1327,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var before=string.Empty;var applyStarted=false;var inverses = new List<(string Kind,Action Undo)>();var undone = new HashSet<int>();var restored=string.Empty;var actualTrace=new List<object>();
 		try {
 		if (tx.ReviewId == null || tx.ReviewRevision != tx.Revision || EditWire.String(args, "review_id") != tx.ReviewId) throw new EditDomainException("EDIT_REVIEW_STALE");
-		var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive); var gateResult = dynamicGate.EvaluateEditDynamicValidation(); if (gateResult.State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+		var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);EnsureExternalUnchanged(tx,tx.Workspace.CurrentExternalGuard()); var gateResult = dynamicGate.EvaluateEditDynamicValidation(); if (gateResult.State != DebugStates.Idle) throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
 		var confirmed = StringArray(args, "confirmed_risk_ids"); var required = tx.Workspace.Risks.Where(r => Equals(r["confirmation_required"], true)).Select(r => (string)r["risk_id"]!).ToArray(); var missing = required.Except(confirmed, StringComparer.Ordinal).ToArray(); if (missing.Length != 0) throw new EditDomainException("EDIT_RISK_CONFIRMATION_REQUIRED", new Dictionary<string, object?> { ["kind"] = "risk_confirmation", ["missing_risk_ids"] = missing });
 		state = "applying"; applyStarted=true; before = currentLive; var liveMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal); var callbacks = new List<double>(); string after = before; restored = before;
 			lastArmedFault=armedFault;lastMutationTrace=Array.Empty<object>();var armedRow=faultPlan.ArmedObject(armedFault);lastCoveredFaults=armedRow==null?Array.Empty<object>():new[]{armedRow};
@@ -1337,7 +1414,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	Dictionary<string, object?> TestExternalMutation(Dictionary<string, object>? args, McpCallContext context) {
 		RequireTest(); Transaction tx;lock(gate){tx = RequireTransactionLocked(args, context);tx.OperationBusy=true;} var caseId = EditWire.String(args, "case_id");
 		try{
-		if(caseId is "live-conflict:mutate" or "live-conflict:restore")return TestPersistentExternalMutation(tx,caseId);
+		if(caseId is "live-conflict:mutate" or "live-conflict:mutate-entrypoint" or "live-conflict:restore")return TestPersistentExternalMutation(tx,caseId);
 		var recipes = catalog.Mutations.GetProperty("cases").EnumerateArray().ToList(); var recipe = recipes.FirstOrDefault(x => x.GetProperty("case_id").GetString() == caseId); if (recipe.ValueKind == JsonValueKind.Undefined) throw new ArgumentException("unknown case_id", "case_id");
 		var before = tx.Workspace.CurrentLiveFingerprint(); string locatedBefore = before, locatedAfter = before, after = before, restored = before; string rawBefore = before, rawAfter = before; Action undo = () => { }; bool semantic = !caseId.Contains("canonical-global-order", StringComparison.Ordinal);
 		tx.Workspace.OnLive(() => { var module = tx.Workspace.LiveModule; if (caseId.Contains("modulemetadata")) { var old=module.Name; module.Name=old+".changed"; undo=()=>module.Name=old; }
@@ -1364,16 +1441,28 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 
 	Dictionary<string,object?> TestPersistentExternalMutation(Transaction tx,string caseId){
 		var before=tx.Workspace.CurrentLiveFingerprint();string after;bool restored;
-		if(caseId=="live-conflict:mutate"){
+		if(caseId=="live-conflict:mutate"||caseId=="live-conflict:mutate-entrypoint"){
 			if(testExternalUndo!=null)throw new ArgumentException("a persistent external mutation is already active","case_id");
-			tx.Workspace.OnLive(()=>{var module=tx.Workspace.LiveModule;var old=module.Name;module.Name=old+".external";testExternalUndo=()=>module.Name=old;return 0;});
+			tx.Workspace.OnLive(()=>{
+				var module=tx.Workspace.LiveModule;
+				if(caseId=="live-conflict:mutate-entrypoint"){
+					// CHK-003: entry point A->B is invisible to the frozen semantic
+					// fingerprint; the external guard must still flag the drift.
+					var candidates=module.GetTypes().SelectMany(t=>t.Methods).Where(m=>m.IsStatic&&m.IsPublic).ToList();
+					var current=module.ManagedEntryPoint as MethodDef;
+					var other=candidates.FirstOrDefault(m=>!ReferenceEquals(m,current))
+						?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",Capability("entry_point_fixture","No second public static method to swap the entry point to"));
+					var oldEntry=module.ManagedEntryPoint;module.ManagedEntryPoint=other;testExternalUndo=()=>module.ManagedEntryPoint=oldEntry;
+					return 0;
+				}
+				var old=module.Name;module.Name=old+".external";testExternalUndo=()=>module.Name=old;return 0;});
 			testExternalTransactionId=tx.Id;testExternalOriginalFingerprint=before;after=tx.Workspace.CurrentLiveFingerprint();restored=false;
 		}else{
 			if(testExternalUndo==null||testExternalTransactionId!=tx.Id)throw new ArgumentException("no matching persistent external mutation is active","case_id");
 			tx.Workspace.OnLive(()=>{testExternalUndo();return 0;});testExternalUndo=null;testExternalTransactionId=null;after=tx.Workspace.CurrentLiveFingerprint();restored=after==testExternalOriginalFingerprint;testExternalOriginalFingerprint=null;
 		}
 		var artifactRoot=settings.CurrentSnapshot?.ArtifactRoot;if(string.IsNullOrWhiteSpace(artifactRoot))throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",Capability("artifact_root","ArtifactRoot is not configured"));var artifactDirectory=Path.Combine(artifactRoot,"edit-tests","fingerprint");Directory.CreateDirectory(artifactDirectory);var artifactPath=Path.Combine(artifactDirectory,"dnspy-edit-"+caseId.Replace(':','-')+"-"+Guid.NewGuid().ToString("N")+".json");var artifactJson=JsonSerializer.Serialize(new{case_id=caseId,before,after,restored});File.WriteAllText(artifactPath,artifactJson);
-		return EditWire.Success(state,new Dictionary<string,object?>{{"case_id",caseId},{"recipe_id","live-conflict"},{"component","ModuleMetadata"},{"recipe_sha256",EditWire.Sha256(Encoding.UTF8.GetBytes("live-conflict-v1"))},{"evidence_artifact",new Dictionary<string,object?>{{"path",artifactPath},{"sha256",EditWire.Sha256(Encoding.UTF8.GetBytes(artifactJson))}}},{"located_slice_before",before},{"located_slice_after",after},{"raw_order_before",before},{"raw_order_after",after},{"canonical_readback_before",before},{"canonical_readback_after",after},{"before_fingerprint",before},{"after_fingerprint",after},{"restored_fingerprint",restored?after:before},{"changed",after!=before},{"semantic_change",true},{"restored",restored}});
+		return EditWire.Success(state,new Dictionary<string,object?>{{"case_id",caseId},{"recipe_id","live-conflict"},{"component","ModuleMetadata"},{"recipe_sha256",EditWire.Sha256(Encoding.UTF8.GetBytes("live-conflict-v1"))},{"evidence_artifact",new Dictionary<string,object?>{{"path",artifactPath},{"sha256",EditWire.Sha256(Encoding.UTF8.GetBytes(artifactJson))}}},{"located_slice_before",before},{"located_slice_after",after},{"raw_order_before",before},{"raw_order_after",after},{"canonical_readback_before",before},{"canonical_readback_after",after},{"before_fingerprint",before},{"after_fingerprint",after},{"restored_fingerprint",restored?after:before},{"guard_before",tx.Workspace.BaselineExternalGuard},{"guard_after",tx.Workspace.CurrentExternalGuard()},{"changed",tx.Workspace.CurrentExternalGuard()!=tx.Workspace.BaselineExternalGuard},{"semantic_change",caseId!="live-conflict:mutate-entrypoint"},{"restored",restored}});
 	}
 
 	Dictionary<string, object?> MigrateValidated(EditLoadedLineage lineage, EditReplayAssessment target,
@@ -1519,7 +1608,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 	}
 
-	string ApplyTransactionToLive(Transaction tx, List<Action> inverses) {
+	string ApplyTransactionToLive(Transaction tx, List<Action> inverses, IReadOnlyList<string> pregeneratedInverses) {
 		var first = true;
 		return tx.Workspace.OnLive(() => {
 			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
@@ -1527,7 +1616,11 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				lock (gate) if (tx.CancelRequested && !tx.LiveLinearized) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 				for (var i = 0; i < tx.Workspace.NormalizedOperations.Count; i++) {
 					using var document = JsonDocument.Parse(tx.Workspace.NormalizedOperations[i]);
-					var outcome = EditOperationRegistry.ApplyPersisted(tx.Workspace.LiveModule, document.RootElement, map, i); inverses.Add(outcome.Undo);
+					var outcome = EditOperationRegistry.ApplyPersisted(tx.Workspace.LiveModule, document.RootElement, map, i);
+					// CHK-008 repro hook: the operation has mutated live but its
+					// Outcome was discarded before the outer list captured the undo.
+					StorageFault("live_apply");
+					inverses.Add(outcome.Undo);
 					if (first) { first = false; lock (gate) tx.LiveLinearized = true; BarrierPoint("commit_after_live_first_mutation", tx.Owner); }
 				}
 				EditStructuralValidator.Validate(tx.Workspace.LiveModule);
@@ -1539,8 +1632,26 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			catch {
 				var inverseIndex = inverses.Count - 1;
 				try {
+					// CHK-008: the operation that threw (index inverseIndex + 1) may
+					// have mutated live inside its handler before failing.  Its
+					// pre-generated compiled inverse — materialized before the first
+					// live write — restores the pre-operation state.  A state-check
+					// rejection means the handler never reached a live mutation, so
+					// skipping it is the correct recovery.
+					if (inverseIndex + 1 < pregeneratedInverses.Count) {
+						try {
+							// Applying the compiled inverse returns the graph to the
+							// pre-operation state; its own undo (the forward redo) must
+							// NOT be executed — only the fully-applied prefix undos run.
+							using var failedOp = JsonDocument.Parse(pregeneratedInverses[inverseIndex + 1]);
+							EditOperationRegistry.ApplyCompiledInverse(
+								tx.Workspace.LiveModule, failedOp.RootElement, map, inverseIndex + 1);
+						}
+						catch (EditDomainException ex) when (ex.Code == "EDIT_HISTORY_CONFLICT") { }
+					}
 					for (; inverseIndex >= 0; inverseIndex--) inverses[inverseIndex]();
-					if (EditFingerprint.Compute(tx.Workspace.LiveModule) != tx.Workspace.BaselineLiveFingerprint)
+					if (tx.Workspace.CurrentExternalGuard() != tx.Workspace.BaselineExternalGuard
+						|| EditFingerprint.Compute(tx.Workspace.LiveModule) != tx.Workspace.BaselineLiveFingerprint)
 						throw new InvalidOperationException("commit inverse fingerprint mismatch");
 				}
 				catch {
@@ -1556,7 +1667,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 
 	Dictionary<string, object?> TestStorageFault(Dictionary<string, object>? args) {
 		RequireTest(); var action = EditWire.String(args, "action");
-		if (action == "arm") { var stage = EditWire.String(args, "stage"); if (stage is not ("prewrite" or "readback" or "finalize" or "cleanup" or "navigate_forward" or "navigate_inverse")) throw new ArgumentException("unknown storage stage", "stage"); armedStorageFault = stage; if (stage == "navigate_inverse") navigateInverseFailure = true; }
+		if (action == "arm") { var stage = EditWire.String(args, "stage"); if (stage is not ("prewrite" or "readback" or "finalize" or "cleanup" or "navigate_forward" or "navigate_inverse" or "live_apply")) throw new ArgumentException("unknown storage stage", "stage"); armedStorageFault = stage; if (stage == "navigate_inverse") navigateInverseFailure = true; }
 		else if (action == "reset") { armedStorageFault = null; navigateInverseFailure = false; }
 		else throw new ArgumentException("action must be arm or reset", "action");
 		return EditWire.Success(state, new Dictionary<string, object?> { ["action"] = action, ["stage"] = armedStorageFault, ["armed"] = armedStorageFault != null });
@@ -1731,12 +1842,29 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 		beginCache.RemovePrefix(closed.SessionId + ":"); commandCache.RemovePrefix(closed.SessionId + ":"); terminalCache.RemoveSession(closed.SessionId);
 	} }
-	void ExpireLocked() { if (active != null && !active.OperationBusy && Now - active.LastActivity >= EditWire.IdleTimeoutMs) EndLocked(active, "timeout"); }
+	void ExpireLocked() {
+		// P02 barrier contract: a transaction parked at a test barrier expires at
+		// the idle boundary even though its operation is busy (EndLocked releases
+		// the barrier; the parked call then reports NOT_FOUND).  P03 added the
+		// busy guard for mid-mutation safety — expiry must never kill an
+		// operation that is actively mutating.  Parked-at-barrier is not
+		// mutating, so it stays expirable (full-regression finding, 2026-09-13).
+		if (active == null) return;
+		var parkedAtBarrier = testBarrier != null && testBarrier.Entered;
+		if ((!active.OperationBusy || parkedAtBarrier) && Now - active.LastActivity >= EditWire.IdleTimeoutMs)
+			EndLocked(active, "timeout");
+	}
 	void EndLocked(Transaction tx, string reason) { if (!ReferenceEquals(active, tx)) return; tx.CancelRequested=true;ReleaseBarrierLocked(tx.Owner);tx.ApplyCache.Clear();tx.ReviewCache.Clear();active = null; state = "idle";if(!tx.OperationBusy)tx.Workspace.Dispose(); }
 
 	Transaction RequireTransactionLocked(Dictionary<string, object>? args, McpCallContext context) { RequireOwnerContext(context); if (active == null || EditWire.String(args,"transaction_id") != active.Id) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND"); if (active.Owner != context.AuthoritativeSessionId) throw new EditDomainException("EDIT_OWNER_MISMATCH"); return active; }
 	static void RequireOwnerContext(McpCallContext context) { if (!context.CanOwnEditTransaction) throw new EditDomainException("EDIT_OWNER_REQUIRED"); }
 	static void EnsureLiveUnchanged(Transaction tx,string actual) { if(actual!=tx.Workspace.BaselineLiveFingerprint)throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",new Dictionary<string,object?>{{"kind","fingerprint_conflict"},{"expected",tx.Workspace.BaselineLiveFingerprint},{"actual",actual}}); }
+	/// <summary>CHK-003 / CON-004: full-coverage external-drift guard.  Layers the
+	/// semantic fingerprint with entry point/AssemblyRef/Win32/CDI rows so a dnSpy
+	/// UI edit confined to those tables is still detected before review/commit.
+	/// Never feeds stored checkpoint values — those keep the frozen semantic
+	/// fingerprint.</summary>
+	static void EnsureExternalUnchanged(Transaction tx,string actual) { if(actual!=tx.Workspace.BaselineExternalGuard)throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",new Dictionary<string,object?>{{"kind","external_drift_conflict"},{"expected",tx.Workspace.BaselineExternalGuard},{"actual",actual}}); }
 	static EditDomainException Revision(uint expected,uint actual)=>new("EDIT_REVISION_CONFLICT",new Dictionary<string,object?>{{"kind","revision_conflict"},{"expected",expected},{"actual",actual}});
 	static void CapacityError(string resource,long current,long maximum)=>throw new EditDomainException("EDIT_CAPACITY_EXCEEDED",CapacityDetails(resource,current,maximum));
 	static object CapacityDetails(string resource,long current,long maximum)=>new Dictionary<string,object?>{{"kind","capacity"},{"limit",resource},{"current",current},{"maximum",maximum}};

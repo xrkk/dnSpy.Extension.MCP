@@ -11,7 +11,11 @@ GEN, SOURCE = ROOT / "generated", ROOT / "contract_source.py"
 DEPENDENCY = ROOT / "dependency" / "dnlib-4.5.0-facts.json"
 REPORT_NAME = "validation-report.json"
 TOOLS = {"edit_begin","edit_status","edit_apply","edit_review","edit_rollback","edit_test_clock","edit_test_barrier","edit_test_external_mutation","edit_test_live_mutation","edit_test_fault","edit_test_apply_and_restore"}
-OPS = ["type_add","type_update","type_remove","method_add","method_update","method_remove","field_add","field_update","field_remove","property_add","property_update","property_remove","event_add","event_update","event_remove","parameter_add","parameter_update","parameter_remove","generic_parameter_add","generic_parameter_update","generic_parameter_remove","method_body_replace"]
+P02_OPS = ["type_add","type_update","type_remove","method_add","method_update","method_remove","field_add","field_update","field_remove","property_add","property_update","property_remove","event_add","event_update","event_remove","parameter_add","parameter_update","parameter_remove","generic_parameter_add","generic_parameter_update","generic_parameter_remove","method_body_replace"]
+# CHK-009 migration: the P02 machine suite (first 22) is frozen; the P04/P07/P08
+# advanced kinds are single-sourced by contract_source.py and lower here in the
+# registered order.  Both sets are re-verifiable at every HEAD.
+OPS = P02_OPS + ["attribute_add","attribute_remove","security_add","security_remove","assembly_update","module_update","assembly_ref_update","entry_point_set","managed_resource_add","managed_resource_update","managed_resource_remove","win32_resource_add","win32_resource_update","win32_resource_remove","strong_name_remove"]
 ERRORS = {"EDIT_TRANSACTION_BUSY","EDIT_TRANSACTION_NOT_FOUND","EDIT_OWNER_REQUIRED","EDIT_OWNER_MISMATCH","EDIT_REVISION_CONFLICT","EDIT_LIVE_MODULE_CONFLICT","EDIT_REVIEW_STALE","EDIT_VALIDATION_FAILED","EDIT_RISK_CONFIRMATION_REQUIRED","EDIT_CAPABILITY_UNAVAILABLE","EDIT_CAPACITY_EXCEEDED","EDIT_DEBUG_NOT_IDLE","EDIT_LIVE_STATE_UNKNOWN","EDIT_CHECKPOINT_FAILED","EDIT_EXPORT_BLOCKED","EDIT_INTERNAL_ERROR","REQUEST_ID_REUSE"}
 OPERANDS = {"InlineNone","ShortInlineI","InlineI","InlineI8","ShortInlineR","InlineR","InlineString","InlineMethod","InlineField","InlineType","InlineTok","ShortInlineBrTarget","InlineBrTarget","InlineSwitch","ShortInlineVar","InlineVar","InlineSig","Phi"}
 ATTRS = {"TypeAttributes":(16219583,0),"MethodAttributes":(65535,128),"MethodImplAttributes":(6143,0),"FieldAttributes":(47095,0),"PropertyAttributes":(5632,0),"EventAttributes":(1536,0),"ParamAttributes":(12319,0),"GenericParamAttributes":(63,0)}
@@ -65,7 +69,10 @@ def expected_cases():
     return {
       "RACC-001":["private-live-isolation","single-active-transaction","same-request-replay","changed-request-reuse","external-live-conflict","session-owner-enforced"],
       "RACC-002":["delete-session","timeout-599999","timeout-600000","listener-restart","stdio-same-url","port-explicit-change","no-port-scan","no-payload-replay","waiter-lock-free","rollback-cancels-lease","close-generation-isolation","capacity-release"],
-      "RACC-003":[*[f"operation-{x}" for x in OPS],"typesig-vectors","attribute-mask-vectors","constant-full-domain","accessor-nullability","opcode-operand-table"],
+      # CHK-009 migration: the P02 acceptance-case registry stays P02-pure
+      # (machine-suite kinds); the advanced kinds are accepted by the later
+      # phase harness gates referenced from the P09 manifest.
+      "RACC-003":[*[f"operation-{x}" for x in P02_OPS],"typesig-vectors","attribute-mask-vectors","constant-full-domain","accessor-nullability","opcode-operand-table"],
       "RACC-009":["fault-suite","component-suite","review-wire-budget","review-lifecycle","cache-boundaries","reverse-failure"],
       "RACC-010":["review-stale","review-live-conflict","review-debug-not-idle","review-risk-confirmation","dynamic-not_requested","dynamic-not_applicable","dynamic-blocked","dynamic-passed","dynamic-failed"],
       "RACC-026":["unsupported-mixed-mode","unsupported-netmodule","unsupported-multi-file","raw-edit-fields"]}
@@ -184,7 +191,7 @@ def main(gendir=GEN):
         ck(all(x.get("additionalProperties") is False for x in walk(pair) if isinstance(x,dict) and x.get("type")=="object"),f"tool-contract:{tool}:closed")
         ck(consts(pair["outputSchema"],"code")==ERRORS,f"error-contract:{tool}")
     ops=lower["operations"];by={x["kind"]:x for x in ops}
-    ck([x["kind"] for x in ops]==OPS,"operation-set:order");ck(set(lower["operand_kinds"])==OPERANDS,"operation-set:operands")
+    ck([x["kind"] for x in ops]==OPS,"operation-set:order");ck([x["kind"] for x in ops[:len(P02_OPS)]]==P02_OPS,"operation-set:p02-prefix");ck(set(lower["operand_kinds"])==OPERANDS,"operation-set:operands")
     ck(lower["operand_kinds"]["ShortInlineI"]=={"kind":"i32","minimum":-128,"maximum":127},"operation-set:short-i")
     ck(lower["operand_kinds"]["ShortInlineVar"]["maximum"]==255 and lower["operand_kinds"]["InlineVar"]["maximum"]==65535,"operation-set:vars")
     ck(all(x["private"] and x["live_forward"] and x["live_reverse"] for x in ops),"operation-set:models")
@@ -216,16 +223,16 @@ def main(gendir=GEN):
     ck(sem["opcode_operand_table"]==dep["opcodes"],"opcode-table:exact")
     ck(sem["dependency"]=={"name":"dnlib","version":"4.5.0","assembly_version":dep["assembly_version"],"assembly_file_sha256":dep["assembly_file_sha256"]},"opcode-table:identity")
     projection=["fault_id","operation_index","step_index","operation_kind","direction","boundary","primitive_kind","target","step"];expected=[]
-    for oi,row in enumerate(ops):
+    for oi,row in enumerate(ops[:len(P02_OPS)]):
         for direction,steps in (("forward",row["live_forward"]),("reverse",row["live_reverse"])):
             for si,step in enumerate(steps):
                 primitive,target=step.split(":",1)
                 for boundary in ("before","after"):expected.append({"fault_id":f"fp-{oi}-{direction}-{si}-{primitive}-{boundary}","operation_index":oi,"step_index":si,"operation_kind":row["kind"],"direction":direction,"boundary":boundary,"primitive_kind":primitive,"target":target,"step":step})
-    ck(fault["projection"]==projection,"fault-contract:projection");ck(fault["faults"]==expected and len(expected)==240,"fault-contract:rows")
+    ck(fault["projection"]==projection,"fault-contract:projection");ck(fault["faults"]==expected and len(expected)==240,"fault-contract:rows");ck(all(x["operation_kind"] in P02_OPS for x in fault["faults"]),"fault-contract:machine-suite-scope")
     suite=fault["suite_contract"];ck(suite==EXPECTED_FAULT_SUITE,"fault-contract:machine-suite")
     nodes=[x["properties"]["execution_evidence"] for x in walk(schemas["edit_test_apply_and_restore"]["outputSchema"]) if isinstance(x,dict) and isinstance(x.get("properties"),dict) and "execution_evidence" in x["properties"]];ck(bool(nodes),"fault-contract:evidence")
     ev=nodes[0]["properties"];ck(set(ev)=={"armed_fault","fault_manifest","oracle_faults","actual_mutation_trace","covered_faults"},"fault-contract:fields")
-    max_trace=2*max(len(x["live_forward"])+len(x["live_reverse"]) for x in ops)
+    max_trace=2*max(len(x["live_forward"])+len(x["live_reverse"]) for x in ops[:len(P02_OPS)])
     ck(max_trace==24 and [ev[x]["maxItems"] for x in ("fault_manifest","oracle_faults","actual_mutation_trace","covered_faults")]==[240,240,max_trace,1] and
        all(ev[x].get("minItems")==240 and ev[x].get("uniqueItems") is True for x in ("fault_manifest","oracle_faults")) and ev["covered_faults"].get("uniqueItems") is True,
        "fault-contract:cardinality")

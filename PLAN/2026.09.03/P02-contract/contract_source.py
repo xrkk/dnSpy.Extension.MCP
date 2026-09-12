@@ -287,7 +287,57 @@ OPERATIONS = [
        delete_policy="hard_fail_if_used_or_attached;public_unreferenced_is_risk"),
     op("method_body_replace", ["target", "body"], [], ["construct_body", "validate", "swap_private_body"],
        ["set:body_reference"], ["restore:body_reference"]),
+    # CHK-009 / P04+P07+P08 single-source migration: the 15 advanced operation
+    # kinds previously appended to generated/operation-lowering.json by the
+    # later phase sub-plans are ported into this generator so regeneration is
+    # byte-faithful again.  The P02 machine fault suite and the P02 tool-schema
+    # branches stay frozen at the first 22 kinds (MACHINE_SUITE_OPERATION_COUNT);
+    # the advanced kinds are exercised by their own phase harnesses
+    # (P03StoreHarness advanced-metadata / identity / resource matrices).
+    op("attribute_add", ["target", "constructor"], ["fixed_arguments", "named_arguments"],
+       ["resolve_constructor", "validate_allow_multiple", "insert_attribute"], ["insert:custom_attribute_collection"], ["remove:custom_attribute_by_constructor_index"]),
+    op("attribute_remove", ["target", "match"], [],
+       ["resolve_constructor", "capture_row"], ["remove:custom_attribute_by_constructor_index"], ["restore:captured_attribute"],
+       delete_policy="hard_fail_if_row_not_found"),
+    op("security_add", ["parent", "action", "xml"], [],
+       ["xml_to_blob_spike_path", "insert_row"], ["insert:decl_security_collection"], ["remove:decl_security_by_action_index"]),
+    op("security_remove", ["parent", "action"], ["index"],
+       ["resolve_parent", "capture_row"], ["remove:decl_security_by_action_index"], ["restore:captured_decl_security_xml"],
+       delete_policy="hard_fail_if_row_not_found"),
+    op("assembly_update", [], ["name", "version", "culture"],
+       ["resolve_assembly_row", "capture_old_values"], ["write:assembly_name_version_culture"], ["restore:captured_assembly_identity"]),
+    op("module_update", ["name"], [],
+       ["capture_old_module_name"], ["write:module_name"], ["restore:captured_module_name"]),
+    op("assembly_ref_update", ["target"], ["name", "version", "culture"],
+       ["resolve_assembly_ref_row", "capture_old_values"], ["write:assembly_ref_identity_fields"], ["restore:captured_assembly_ref_identity"]),
+    op("entry_point_set", [], ["entry_point"],
+       ["resolve_entry_method_in_module", "capture_old_entry"], ["write:managed_entry_point"], ["restore:captured_entry_point"]),
+    op("managed_resource_add", ["name", "data_base64"], ["attributes"],
+       ["decode_base64", "capacity_check"], ["add:embedded_resource_row"], ["remove:captured_row"]),
+    op("managed_resource_update", ["target"], ["entry", "data_base64"],
+       ["parse_resources_blob", "surgical_entry_rebuild"], ["write:resource_bytes"], ["restore:captured_bytes"]),
+    op("managed_resource_remove", ["target", "remove_mode"], [],
+       ["resolve_resource_row", "capture_bytes"], ["remove:resource_row"], ["restore:captured_row"],
+       delete_policy="hard_fail_if_row_not_found"),
+    op("win32_resource_add", ["data_base64"], ["type_id", "type_name", "name_id", "name_string", "lang_id"],
+       ["decode_base64", "directory_tree_create"], ["add:win32_resource_row"], ["remove:row_and_prune"]),
+    op("win32_resource_update", ["data_base64"], ["type_id", "type_name", "name_id", "name_string", "lang_id"],
+       ["decode_base64", "icon_group_validate"], ["swap:win32_resource_row"], ["restore:captured_row"]),
+    op("win32_resource_remove", ["remove_mode"], ["type_id", "type_name", "name_id", "name_string", "lang_id"],
+       ["resolve_row", "icon_group_validate"], ["remove:win32_resource_row"], ["restore:captured_row"],
+       delete_policy="hard_fail_if_dangling_icon_group"),
+    op("strong_name_remove", ["dynamic_failure"], [],
+       ["validate_one_time_evidence", "capture_public_key"], ["clear:public_key_and_flag"], ["restore:captured_key_and_attributes"],
+       delete_policy="hard_fail_if_dynamic_evidence_not_consumed;removal_is_risk"),
 ]
+
+# The frozen P02 machine suite: the P02 tool schemas, acceptance-case map and
+# fault oracle matrix cover exactly the first 22 kinds; later kinds lower in
+# operation-lowering.json (the single registry table) but are gated by their
+# own phase harnesses (P03StoreHarness advanced-metadata / identity / resource
+# matrices) and the P03 wire schema.
+MACHINE_SUITE_OPERATION_COUNT = 22
+SCHEMA_OPERATIONS = OPERATIONS[:MACHINE_SUITE_OPERATION_COUNT]
 
 FINGERPRINT_CHANNELS = {
     "ModuleMetadata": {
@@ -408,7 +458,7 @@ ACCEPTANCE_CASES = {
     ],
     "RACC-003": [
         *[acceptance_case(f"operation-{kind}", f"apply/review/test-restore {kind}", "positive and structural negative both match golden",
-                          ["request_response", "private_reload", "live_restore"]) for kind in [row["kind"] for row in OPERATIONS]],
+                          ["request_response", "private_reload", "live_restore"]) for kind in [row["kind"] for row in SCHEMA_OPERATIONS]],
         acceptance_case("typesig-vectors", "run all TypeSig contexts/vectors", "all accept/reject/error outcomes match", ["vector_results"]),
         acceptance_case("attribute-mask-vectors", "run valid boundaries and each sparse invalid bit", "invalid bit is -32602", ["vector_results"]),
         acceptance_case("constant-full-domain", "run integer/finite-float/char/null boundaries including UInt64 max", "all legal values accepted and illegal rejected", ["vector_results"]),
@@ -570,7 +620,7 @@ def operation_schema(row: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-OPERATION_SCHEMA = {"oneOf": [operation_schema(row) for row in OPERATIONS]}
+OPERATION_SCHEMA = {"oneOf": [operation_schema(row) for row in SCHEMA_OPERATIONS]}
 
 
 def validation_error_schema() -> dict[str, Any]:
@@ -609,7 +659,7 @@ CAPACITY = obj({name: COUNTER for name in ["operations", "object_ids", "normaliz
 RISK_ID = s_string(48)
 RISK = obj({"risk_id": RISK_ID, "kind": {"enum": ["public_delete", "signature_change", "visibility_change", "body_change", "eh_change"]},
             "object": s_string(32), "description": s_string(96), "confirmation_required": {"type": "boolean"}})
-DIFF = obj({"operation_index": UINT32, "kind": {"enum": [row["kind"] for row in OPERATIONS]}, "target": s_string(32), "path": s_string(48),
+DIFF = obj({"operation_index": UINT32, "kind": {"enum": [row["kind"] for row in SCHEMA_OPERATIONS]}, "target": s_string(32), "path": s_string(48),
             "before": nullable(s_string(32)), "after": nullable(s_string(32)),
             "risk_ids": {"type": "array", "items": RISK_ID, "maxItems": 1}})
 VALIDATION = obj({"state": {"enum": ["passed", "failed"]}, "rule_count": UINT32, "errors": {"type": "array", "items": validation_error_schema(), "maxItems": 64}})
@@ -670,11 +720,11 @@ DYNAMIC_STATE_CONTRACT = {
     "failed": "failure phase present; pre-artifact or artifact cleaned/residual branch; debug idle; no review",
 }
 PRIMITIVE = obj({"fault_id": s_string(64, r"^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$"),
-                 "operation_index": UINT32, "step_index": UINT32, "operation_kind": {"enum": [r["kind"] for r in OPERATIONS]},
+                 "operation_index": UINT32, "step_index": UINT32, "operation_kind": {"enum": [r["kind"] for r in SCHEMA_OPERATIONS]},
                  "direction": {"enum": ["forward", "reverse"]}, "boundary": {"enum": ["before", "after"]},
                  "primitive_kind": s_string(16), "target": s_string(64), "step": s_string(96)})
-FAULT_COUNT = 2 * sum(len(row["live_forward"]) + len(row["live_reverse"]) for row in OPERATIONS)
-MAX_ACTUAL_TRACE_ROWS = 2 * max(len(row["live_forward"]) + len(row["live_reverse"]) for row in OPERATIONS)
+FAULT_COUNT = 2 * sum(len(row["live_forward"]) + len(row["live_reverse"]) for row in SCHEMA_OPERATIONS)
+MAX_ACTUAL_TRACE_ROWS = 2 * max(len(row["live_forward"]) + len(row["live_reverse"]) for row in SCHEMA_OPERATIONS)
 FAULT_ARRAY = {"type": "array", "items": PRIMITIVE, "minItems": FAULT_COUNT, "maxItems": FAULT_COUNT, "uniqueItems": True}
 EXECUTION_EVIDENCE = obj({"armed_fault": nullable(PRIMITIVE), "fault_manifest": FAULT_ARRAY,
                           "oracle_faults": copy.deepcopy(FAULT_ARRAY),
@@ -714,13 +764,13 @@ def error_envelope(*, validation_attempt: bool = False, execution_evidence: bool
 
 
 BEGIN_RESULT = obj({"transaction": TRANSACTION, "source": SOURCE, "fingerprints": FINGERPRINTS, "limits": LIMITS_SCHEMA, "capacity": CAPACITY,
-                    "capabilities": obj({"operation_kinds": {"type": "array", "items": {"enum": [r["kind"] for r in OPERATIONS]}, "minItems": 22, "maxItems": 22, "uniqueItems": True},
+                    "capabilities": obj({"operation_kinds": {"type": "array", "items": {"enum": [r["kind"] for r in SCHEMA_OPERATIONS]}, "minItems": 22, "maxItems": 22, "uniqueItems": True},
                                          "dynamic_validation": {"type": "boolean"}, "test_apply_restore": {"type": "boolean"}})})
 STATUS_RESULT = {"oneOf": [obj({"busy": {"const": False}, "state": {"const": "idle"}}),
                            obj({"busy": {"const": True}, "state": {"enum": STATES[1:]}, "owner_transport_kind": {"enum": ["legacy_sse", "streamable_http"]}}),
                            obj({"busy": {"const": True}, "state": {"enum": STATES[1:]}, "transaction": TRANSACTION, "fingerprints": FINGERPRINTS,
                                 "review": nullable(REVIEW_SUMMARY), "capacity": CAPACITY, "risks": {"type": "array", "items": RISK, "maxItems": 256}})]}
-APPLY_RESULT = obj({"transaction": TRANSACTION, "operation_index": UINT32, "kind": {"enum": [r["kind"] for r in OPERATIONS]},
+APPLY_RESULT = obj({"transaction": TRANSACTION, "operation_index": UINT32, "kind": {"enum": [r["kind"] for r in SCHEMA_OPERATIONS]},
                     "created_object_ids": {"type": "array", "items": ID, "maxItems": 321}, "fingerprints": FINGERPRINTS,
                     "diffs": {"type": "array", "items": DIFF, "maxItems": 256}, "risks": {"type": "array", "items": RISK, "maxItems": 256},
                     "review_cleared": {"const": True}, "capacity": CAPACITY})
@@ -937,7 +987,7 @@ def main(output_dir: Path = GENERATED) -> int:
     hashes["operation-lowering.json"] = write_json(output_dir, "operation-lowering.json", {
         "operations": OPERATIONS, "operand_kinds": OPERAND_KINDS, "operation_semantics": OPERATION_SEMANTICS})
     fault_rows = []
-    for op_index, row in enumerate(OPERATIONS):
+    for op_index, row in enumerate(SCHEMA_OPERATIONS):
         for direction, steps in (("forward", row["live_forward"]), ("reverse", row["live_reverse"])):
             for step_index, step in enumerate(steps):
                 parts = step.split(":")

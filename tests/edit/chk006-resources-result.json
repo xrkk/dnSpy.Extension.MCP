@@ -1,0 +1,21 @@
+{
+ "listed": 14,
+ "read_ok": 14,
+ "read_fail": [],
+ "uris": [
+  "bepinex://docs/plugin-structure",
+  "bepinex://docs/harmony-patching",
+  "bepinex://docs/configuration",
+  "bepinex://docs/common-scenarios",
+  "bepinex://docs/il2cpp-guide",
+  "bepinex://docs/mono-vs-il2cpp",
+  "dnspy://docs/index",
+  "dnspy://docs/overview",
+  "dnspy://docs/static-analysis",
+  "dnspy://docs/il-editing",
+  "dnspy://docs/dynamic-debugging",
+  "dnspy://docs/security",
+  "dnspy://docs/python-client",
+  "dnspy://docs/tool-workflows"
+ ]
+}

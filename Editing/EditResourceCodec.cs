@@ -24,7 +24,8 @@ internal static class EditResourceCodec {
 	public const int CodeNull = 0, CodeString = 1, CodeBoolean = 2, CodeChar = 3, CodeByte = 4,
 		CodeSByte = 5, CodeInt16 = 6, CodeUInt16 = 7, CodeInt32 = 8, CodeUInt32 = 9,
 		CodeInt64 = 10, CodeUInt64 = 11, CodeSingle = 12, CodeDouble = 13, CodeDecimal = 14,
-		CodeDateTime = 15, CodeTimeSpan = 16, CodeByteArray = 32, CodeStream = 33;
+		CodeDateTime = 15, CodeTimeSpan = 16, CodeByteArray = 32, CodeStream = 33,
+		CodeStartOfUserTypes = 64;
 
 	// The frozen P08 standard edit domain (adjudicated AUD-006): strings, bool,
 	// the nine numeric scalars and byte arrays (stream rows read/write as bytes).
@@ -47,7 +48,7 @@ internal static class EditResourceCodec {
 	public sealed class ParsedResource {
 		public byte[] Header = Array.Empty<byte>();   // magic..reader strings (verbatim)
 		public int SetVersion;
-		public int[] TypeCodes = Array.Empty<int>();
+		public byte[][] TypeNames = Array.Empty<byte[]>();  // verbatim 7-bit-prefixed ASCII user-type names
 		public uint[] Hashes = Array.Empty<uint>();       // hash-table order (verbatim)
 		public int[] NamePositions = Array.Empty<int>();  // hash-table order (verbatim)
 		public long NameSectionStart;
@@ -84,8 +85,16 @@ internal static class EditResourceCodec {
 		var numResources = stream.ReadInt32();
 		var numTypes = stream.ReadInt32();
 		if (numResources < 0 || numTypes < 0 || numResources > 1_000_000) throw Reject("the .resources counts are corrupt");
-		var typeCodes = new int[numTypes];
-		for (var index = 0; index < numTypes; index++) typeCodes[index] = stream.ReadInt32();
+		// CHK-005: the user-type table is a run of 7-bit-length-prefixed ASCII
+		// assembly-qualified type names (ResourceWriter.Generate), not int32
+		// codes.  Preserved verbatim; user-typed rows never enter the edit domain.
+		var typeNames = new byte[numTypes][];
+		for (var index = 0; index < numTypes; index++) {
+			var nameLength = (int)stream.ReadSevenBit();
+			if (nameLength < 0 || nameLength > blob.Length - stream.Position) throw Reject("a .resources type name is corrupt");
+			typeNames[index] = new byte[nameLength];
+			for (var b = 0; b < nameLength; b++) typeNames[index][b] = stream.ReadByte();
+		}
 		// the name hash array starts on an 8-byte boundary from the stream start
 		stream.Align(8);
 		var hashes = new uint[numResources];
@@ -94,37 +103,54 @@ internal static class EditResourceCodec {
 		for (var index = 0; index < numResources; index++) namePositions[index] = stream.ReadInt32();
 		var dataOffset = stream.ReadInt32();      // absolute stream position of the data section
 		var nameSectionStart = stream.Position;
-		// names are laid out in the data order (ascending position); each is a
-		// 7-bit BYTE count of UTF-16LE characters with no terminator
-		var layout = Enumerable.Range(0, numResources)
-			.Select(index => (index, position: namePositions[index]))
-			.OrderBy(row => row.position)
-			.ToArray();
-		var names = new string[numResources];
-		foreach (var row in layout) {
-			var target = nameSectionStart + row.position;
+		// CHK-005: the name section is a sequence of [7-bit BYTE count][UTF-16LE
+		// name][INT32 relative data offset] rows, in the writer's own row order;
+		// namePositions[i] is that row's byte offset and stays verbatim on
+		// rebuild because edits never rename or reorder rows.
+		var nameRows = new (int position, string name, int dataRelative)[numResources];
+		for (var index = 0; index < numResources; index++) {
+			var target = nameSectionStart + namePositions[index];
 			if (target < 0 || target >= blob.Length) throw Reject("a .resources name offset is corrupt");
-			names[row.index] = new SpanReader(blob, target).ReadNameString();
+			var nameReader = new SpanReader(blob, target);
+			var name = nameReader.ReadNameString();
+			var dataRelative = new SpanReader(blob, (int)nameReader.Position).ReadInt32();
+			if (dataRelative < 0 || dataOffset + dataRelative >= blob.Length) throw Reject("a .resources name data offset is corrupt");
+			nameRows[index] = (namePositions[index], name, dataRelative);
 		}
+		// entries follow the name-section file order (ascending row offset): the
+		// rebuild rewrites names in this same order so the verbatim
+		// namePositions table stays valid without renaming or reordering rows
+		Array.Sort(nameRows, (left, right) => left.position.CompareTo(right.position));
 		var parsed = new ParsedResource {
-			Header = header, SetVersion = setVersion, TypeCodes = typeCodes,
+			Header = header, SetVersion = setVersion, TypeNames = typeNames,
 			Hashes = hashes, NamePositions = namePositions, NameSectionStart = nameSectionStart,
 		};
-		var dataReader = new SpanReader(blob, dataOffset);
-		for (var step = 0; step < numResources; step++) {
-			var index = layout[step].index;      // walk data in the name layout order
+		var offsets = nameRows.Select(r => r.dataRelative).Distinct().OrderBy(x => x).ToArray();
+		foreach (var row in nameRows) {
+			// each entry is located by its own inline data offset; the data
+			// section itself is written in the writer's add order and must not
+			// be walked sequentially
+			var dataReader = new SpanReader(blob, dataOffset + row.dataRelative);
 			var typeCode = (int)dataReader.ReadSevenBit();
-			if (typeCode >= 0 && typeCode < numTypes)
-				throw Reject("a user-typed resource entry is outside the entry edit domain (use data_base64): " + names[index]);
-			var rawLength = ValueSize(blob, dataReader.Position, typeCode);
+			// CHK-005: a user-typed row (code >= 0x40) carries no length prefix
+			// (ResourceWriter.AddResourceData writes the payload verbatim; the
+			// reader bounds it by the next entry's data offset).  Preserved
+			// opaquely; the edit layer refuses value edits on it by name.
+			int rawLength;
+			if (typeCode >= CodeStartOfUserTypes) {
+				var following = offsets.FirstOrDefault(next => next > row.dataRelative);
+				var end = following > row.dataRelative ? dataOffset + following : blob.Length;
+				rawLength = end - (int)dataReader.Position;
+			}
+			else
+				rawLength = ValueSize(blob, dataReader.Position, typeCode);
 			if (rawLength < 0 || dataReader.Position + rawLength > blob.Length) throw Reject("a .resources value runs past the blob");
 			var raw = new byte[rawLength];
 			Buffer.BlockCopy(blob, dataReader.Position, raw, 0, rawLength);
 			parsed.Entries.Add(new ResourceEntry {
-				Name = names[index], TypeCode = typeCode, Kind = KindOf(typeCode), Raw = raw,
+				Name = row.name, TypeCode = typeCode, Kind = KindOf(typeCode), Raw = raw,
 				Decoded = IsStandardKind(typeCode) ? DecodeValue(typeCode, raw) : null,
 			});
-			dataReader.Skip(rawLength);
 		}
 		return parsed;
 	}
@@ -139,8 +165,11 @@ internal static class EditResourceCodec {
 		output.Write(parsed.Header, 0, parsed.Header.Length);
 		WriteInt32(output, parsed.SetVersion);
 		WriteInt32(output, entries.Count);
-		WriteInt32(output, parsed.TypeCodes.Length);
-		foreach (var code in parsed.TypeCodes) WriteInt32(output, code);
+		WriteInt32(output, parsed.TypeNames.Length);
+		foreach (var typeName in parsed.TypeNames) {
+			WriteSevenBit(output, typeName.Length);
+			output.Write(typeName, 0, typeName.Length);
+		}
 		Align(output, 8);
 		foreach (var hash in parsed.Hashes) WriteUInt32(output, hash);
 		foreach (var position in parsed.NamePositions) WriteInt32(output, position);
@@ -265,6 +294,9 @@ internal static class EditResourceCodec {
 			return 4 + byteCount;
 		}
 		default:
+			// user-typed rows (code >= 0x40) carry no length prefix and are
+			// bounded by the next entry's data offset in Parse; they never
+			// reach this sizing path
 			throw Reject("a resource value type is outside the P08 entry walk domain");
 		}
 	}
@@ -309,6 +341,7 @@ internal static class EditResourceCodec {
 		public void Seek(int target) => position = target;
 		public void Skip(int count) => position += count;
 		public int ReadInt32() { var value = BitConverter.ToInt32(blob, position); position += 4; return value; }
+		public byte ReadByte() => blob[position++];
 		public uint ReadUInt32() { var value = BitConverter.ToUInt32(blob, position); position += 4; return value; }
 		public uint ReadSevenBit() {
 			uint result = 0, shift = 0;
@@ -322,8 +355,8 @@ internal static class EditResourceCodec {
 		}
 		public string ReadNameString() {
 			var byteCount = (int)ReadSevenBit();
-			if (byteCount < 2 || (byteCount & 1) != 0 || position + byteCount > blob.Length) throw Reject("a .resources name is corrupt");
-			var text = Encoding.Unicode.GetString(blob, position, byteCount);
+			if ((byteCount & 1) != 0 || position + byteCount > blob.Length) throw Reject("a .resources name is corrupt");
+			var text = byteCount == 0 ? string.Empty : Encoding.Unicode.GetString(blob, position, byteCount);
 			position += byteCount;
 			return text;
 		}
@@ -336,12 +369,17 @@ internal static class EditResourceCodec {
 
 	/// <summary>Decode an edited entry from the operation payload; the raw bytes
 	/// are re-encoded for the target type code.</summary>
-	public static ResourceEntry EncodeEntry(string name, string kind, JsonElement value) {
+	public static ResourceEntry EncodeEntry(string name, string kind, JsonElement value) => EncodeEntry(name, kind, value, null);
+
+	/// <summary>Encode an edited entry; <paramref name="preservedTypeCode"/> carries the
+	/// stored code so byte-array edits keep their Stream/ByteArray distinction.</summary>
+	public static ResourceEntry EncodeEntry(string name, string kind, JsonElement value, int? preservedTypeCode) {
 		var typeCode = kind switch {
 			"string" => CodeString, "boolean" => CodeBoolean,
 			"u1" => CodeByte, "i1" => CodeSByte, "i2" => CodeInt16, "u2" => CodeUInt16,
 			"i4" => CodeInt32, "u4" => CodeUInt32, "i8" => CodeInt64, "u8" => CodeUInt64,
-			"r4" => CodeSingle, "r8" => CodeDouble, "bytes" => CodeByteArray,
+			"r4" => CodeSingle, "r8" => CodeDouble,
+			"bytes" => preservedTypeCode is CodeByteArray or CodeStream ? preservedTypeCode.Value : CodeByteArray,
 			_ => throw Reject("the resource value kind is outside the P08 edit domain: " + kind),
 		};
 		return new ResourceEntry { Name = name, TypeCode = typeCode, Kind = kind, Raw = EncodeValue(typeCode, value) };

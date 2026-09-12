@@ -102,7 +102,7 @@ tokens or transaction-scoped object IDs; raw PE/heap/RVA/hex editing is intentio
 While a structured-edit transaction is active, legacy live write tools are rejected to prevent
 bypassing the transaction. A read-only **MCP Edit Explorer** window (View menu) shows the
 transaction, staged operations, diffs, risks and checkpoint lineage, with a guarded local cancel
-for orphaned transactions only — the UI offers no commit/restore path.
+for the current transaction while its owner session may still be connected (disabled only while an operation or commit is executing); orphaned transactions remain unconditionally cancelable — the UI offers no commit/restore path.
 
 #### Codegen
 

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using dnlib.DotNet.Pdb;
 
 namespace dnSpy.Extension.MCP.Editing;
 
@@ -34,6 +35,61 @@ internal static class EditFingerprint {
 		var channels = Channels(module, normalizeWriterManagedBodyHeader);
 		return EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", channels.OrderBy(x => x, StringComparer.Ordinal))));
 	}
+
+	/// <summary>
+	/// CHK-003 / CON-004: the external-drift guard.  Layers every canonical
+	/// semantic channel with the identity/native rows that a dnSpy UI edit can
+	/// touch but the frozen five-channel projection intentionally does not
+	/// carry (managed entry point, AssemblyRef table, native Win32 resource
+	/// tree and custom debug information rows).  Used ONLY for live-module
+	/// drift comparisons against a baseline captured with the same function;
+	/// the semantic fingerprint (<see cref="Compute"/>) and every persisted
+	/// checkpoint value keep their frozen definition and historical values.
+	/// </summary>
+	public static string ComputeExternalGuard(ModuleDef module) {
+		var rows = new List<string>(Channels(module, normalizeWriterManagedBodyHeader: false));
+		rows.Add(module.ManagedEntryPoint is MethodDef entryMethod
+			? "entrypoint|" + entryMethod.FullName + "|" + entryMethod.MDToken.Raw.ToString(CultureInfo.InvariantCulture)
+			: "entrypoint|" + (module.ManagedEntryPoint?.ToString() ?? string.Empty));
+		foreach (var reference in module.GetAssemblyRefs().OrderBy(r => r.FullName, StringComparer.Ordinal))
+			rows.Add("asmref|" + reference.FullName + "|" + reference.MDToken.Raw.ToString(CultureInfo.InvariantCulture));
+		rows.Add(Win32ResourceRows(module));
+		rows.Add("module-cdi|" + CdiRows(module.CustomDebugInfos));
+		foreach (var type in module.GetTypes()) {
+			foreach (var cdi in type.CustomDebugInfos)
+				rows.Add("cdi|t|" + TypeKey(type) + "|" + cdi.GetType().Name);
+			foreach (var method in type.Methods)
+				foreach (var cdi in method.CustomDebugInfos)
+					rows.Add("cdi|m|" + MethodKey(method) + "|" + cdi.GetType().Name);
+			foreach (var field in type.Fields)
+				foreach (var cdi in field.CustomDebugInfos)
+					rows.Add("cdi|f|" + FieldKey(field) + "|" + cdi.GetType().Name);
+		}
+		return EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", rows.OrderBy(x => x, StringComparer.Ordinal))));
+	}
+
+	static string Win32ResourceRows(ModuleDef module) {
+		if (module.Win32Resources == null) return "win32|none";
+		var rows = new List<string>();
+		WalkWin32Directory(module.Win32Resources.Root, string.Empty, rows);
+		rows.Sort(StringComparer.Ordinal);
+		return "win32|" + EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", rows)));
+	}
+
+	static void WalkWin32Directory(dnlib.W32Resources.ResourceDirectory directory, string prefix, List<string> rows) {
+		foreach (var data in directory.Data) {
+			var blob = data.CreateReader().ToArray();
+			rows.Add(prefix + "|" + ResourceNameKey(data.Name) + "|" + EditWire.Sha256(blob));
+		}
+		foreach (var child in directory.Directories)
+			WalkWin32Directory(child, prefix + "/" + ResourceNameKey(child.Name), rows);
+	}
+
+	static string ResourceNameKey(dnlib.W32Resources.ResourceName name)
+		=> name == null ? "?" : name.Name ?? ("#" + name.Id.ToString(CultureInfo.InvariantCulture));
+
+	static string CdiRows(IList<PdbCustomDebugInfo> infos)
+		=> string.Join("|", infos.Select(x => x.GetType().Name).OrderBy(x => x, StringComparer.Ordinal));
 
 	/// <summary>
 	/// Test-only evidence seam for the canonical global-order invariant.  Both values are

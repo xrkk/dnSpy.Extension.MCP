@@ -22,6 +22,10 @@ internal sealed class EditWorkspace : IDisposable {
 	public string FilePath => LiveModule.Location ?? string.Empty;
 	public string FileSha256 { get; }
 	public string BaselineLiveFingerprint { get; }
+	/// <summary>CHK-003: baseline of the full external-drift guard (semantic
+	/// channels plus entry point/AssemblyRef/Win32/CDI rows), captured with the
+	/// same function as <see cref="CurrentExternalGuard"/>.</summary>
+	public string BaselineExternalGuard { get; }
 	public string BaselineSemanticFingerprint { get; }
 	public string ModuleMvid => (LiveModule.Mvid?.ToString("D") ?? string.Empty).ToLowerInvariant();
 	public byte[] BaselineBytes => (byte[])baselineCheckpointBytes.Clone();
@@ -40,16 +44,31 @@ internal sealed class EditWorkspace : IDisposable {
 		AssemblyName = assemblyName;
 		FileSha256 = fileSha256;
 		BaselineLiveFingerprint = baseline;
+		BaselineExternalGuard = EditFingerprint.ComputeExternalGuard(live);
 		BaselineSemanticFingerprint = EditFingerprint.ComputeRoundtrip(privateModule);
 		BaselineImageSha256 = EditWire.Sha256(baselineCheckpointBytes);
 	}
 
-	public static EditWorkspace Create(IDocumentTreeView tree, string assemblyName, string? requestedMvid) => OnDispatcher(() => {
-		var modules = tree.GetAllModuleNodes().Select(n => n.Document?.ModuleDef).Where(m => m != null)
-			.Cast<ModuleDef>().Where(m => string.Equals(m.Assembly?.Name, assemblyName, StringComparison.OrdinalIgnoreCase)).ToList();
-			if (requestedMvid != null) modules = modules.Where(m => string.Equals(m.Mvid?.ToString("D"), requestedMvid, StringComparison.OrdinalIgnoreCase)).ToList();
-		if (modules.Count != 1) throw Capability("target_ambiguous_or_not_found", "Exactly one loaded module must match assembly_name and module_mvid");
-		var live = modules[0];
+	public static EditWorkspace Create(IDocumentTreeView tree, string assemblyName, string? requestedMvid) {
+		// dnSpy hydrates a newly opened document's ModuleDef asynchronously, so
+		// an edit_begin racing open_files may briefly see zero candidates.  Each
+		// attempt enumerates on the dispatcher; the retry sleep runs on the
+		// caller thread so hydration can proceed on the UI thread.
+		ModuleDef? live = null;
+		for (var attempt = 0; live == null && attempt < 9; attempt++) {
+			if (attempt != 0) System.Threading.Thread.Sleep(250);
+			live = OnDispatcher(() => {
+				var modules = tree.GetAllModuleNodes().Select(n => n.Document?.ModuleDef).Where(m => m != null)
+					.Cast<ModuleDef>().Where(m => string.Equals(m.Assembly?.Name, assemblyName, StringComparison.OrdinalIgnoreCase)).ToList();
+				if (requestedMvid != null) modules = modules.Where(m => string.Equals(m.Mvid?.ToString("D"), requestedMvid, StringComparison.OrdinalIgnoreCase)).ToList();
+				return modules.Count == 1 ? modules[0] : null;
+			});
+		}
+		if (live == null) throw Capability("target_ambiguous_or_not_found", "Exactly one loaded module must match assembly_name and module_mvid");
+		return OnDispatcher(() => CreateFromLive(live, assemblyName));
+	}
+
+	static EditWorkspace CreateFromLive(ModuleDef live, string assemblyName) {
 		if (live.Assembly == null) throw Capability("netmodule", "NetModule targets are not supported");
 		if (live.Assembly.Modules.Count != 1) throw Capability("multi_file", "Multi-file assemblies are not supported");
 		if (live is ModuleDefMD md && !md.IsILOnly) throw Capability("mixed_mode", "Mixed-mode modules are not supported");
@@ -72,7 +91,7 @@ internal sealed class EditWorkspace : IDisposable {
 		var path = live.Location;
 		var fileSha = File.Exists(path) ? HashFile(path) : EditWire.Sha256(bytes);
 		return new EditWorkspace(live, privateModule, bytes, assemblyName, fileSha, baseline);
-	});
+	}
 
 	internal static EditWorkspace CreateForTesting(ModuleDef live) {
 		if (!string.Equals(Environment.GetEnvironmentVariable("DNMCP_TEST"), "1", StringComparison.Ordinal))
@@ -189,6 +208,11 @@ internal sealed class EditWorkspace : IDisposable {
 	}
 
 	public string CurrentLiveFingerprint() => OnDispatcher(() => EditFingerprint.Compute(LiveModule));
+	/// <summary>CHK-003 / CON-004: full-coverage live-drift guard — detects UI
+	/// edits to entry point, AssemblyRef, native Win32 resources and custom
+	/// debug information that the frozen semantic fingerprint does not carry.
+	/// Compare only against <see cref="BaselineExternalGuard"/>.</summary>
+	public string CurrentExternalGuard() => OnDispatcher(() => EditFingerprint.ComputeExternalGuard(LiveModule));
 	public string CurrentLiveSemanticFingerprint() => OnDispatcher(() => EditFingerprint.ComputeRoundtrip(LiveModule));
 	public string CurrentLiveImageSha256() => OnDispatcher(() => EditWire.Sha256(WriteCheckpointImage(LiveModule)));
 	public string PrivateFingerprint() => EditFingerprint.Compute(PrivateModule);

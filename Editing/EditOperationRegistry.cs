@@ -409,7 +409,7 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 			// serialized custom object payload — never becomes a scalar in place)
 			if (!string.Equals(EditResourceCodec.KindOf(target.TypeCode), kind, StringComparison.Ordinal))
 				Invalid("entry.value_kind", "the entry kind must match the stored kind '" + EditResourceCodec.KindOf(target.TypeCode) + "' (whole-blob data_base64 for shape changes): " + entryName);
-			var encoded = EditResourceCodec.EncodeEntry(entryName, kind, entryValue.GetProperty("value"));
+			var encoded = EditResourceCodec.EncodeEntry(entryName, kind, entryValue.GetProperty("value"), target.TypeCode);
 			if (!EditResourceCodec.IsStandardKind(encoded.TypeCode))
 				Invalid("entry.value_kind", "the encoded entry kind is outside the standard domain");
 			var edited = new Dictionary<string, EditResourceCodec.ResourceEntry> { [entryName] = encoded };

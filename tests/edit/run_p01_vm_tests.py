@@ -158,7 +158,8 @@ def deploy_tree(client: UiMcpClient, dll: Path) -> str:
 def start_dnspy(client: UiMcpClient, architecture: str) -> None:
     executable = r"C:\Tools\dnSpy\dnSpy.exe" if architecture == "x64" else r"C:\Tools\dnSpy\dnSpy-x86.exe"
     powershell(client, (
-        'Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | Stop-Process -Force; '
+        '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); '
+        'if($t.Count){$t|Stop-Process -Force; $t|Wait-Process -Timeout 20 -ErrorAction SilentlyContinue}; '
         "$env:DNMCP_TEST='1'; "
         f'Start-Process -FilePath "{executable}" -ArgumentList "--dont-load-files" -WorkingDirectory "C:\\Tools\\dnSpy"; '
         'for($i=0;$i -lt 60;$i++){ $p=Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | '

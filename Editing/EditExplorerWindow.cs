@@ -13,10 +13,10 @@ namespace dnSpy.Extension.MCP.Editing;
 /// <summary>
 /// P09 (ACC-018/RACC-018): a read-only dnSpy UI over the structured-edit
 /// coordinator — current transaction, staged operations, diffs, risks, the
-/// checkpoint lineage tree and checkpoint details.  The only action is a
-/// guarded local cancel for an orphaned transaction (owner session gone);
-/// there is deliberately no commit/restore/export UI, so nothing can bypass
-/// the MCP gates.  All data arrives as immutable coordinator snapshots
+/// checkpoint lineage tree and checkpoint details.  The only action is a local
+/// cancel of the current transaction (REQ-016): rollback while no operation or
+/// commit is executing, orphaned or not; there is deliberately no
+/// commit/restore/export UI, so nothing can bypass the MCP gates.  All data arrives as immutable coordinator snapshots
 /// (<see cref="EditTransactionCoordinator.BuildExplorerSnapshot"/>); this
 /// window never calls back into locking coordinator methods.
 /// </summary>
@@ -43,6 +43,7 @@ internal sealed class EditExplorerWindow : Window {
 	readonly TextBlock cancelLine;
 	readonly TreeView tree;
 	readonly Button cancelButton;
+	string? lastCancelResult;
 
 	public EditExplorerWindow(EditTransactionCoordinator coordinator) {
 		this.coordinator = coordinator;
@@ -58,7 +59,7 @@ internal sealed class EditExplorerWindow : Window {
 		System.Windows.Automation.AutomationProperties.SetAutomationId(cancelLine, "McpEditCancelLine");
 		tree = new TreeView { Margin = new Thickness(8, 8, 8, 8) };
 		System.Windows.Automation.AutomationProperties.SetAutomationId(tree, "McpEditTree");
-		cancelButton = new Button { Content = "Cancel orphaned transaction (rollback)", Margin = new Thickness(8, 0, 8, 8), Padding = new Thickness(12, 4, 12, 4) };
+		cancelButton = new Button { Content = "Cancel current transaction (rollback)", Margin = new Thickness(8, 0, 8, 8), Padding = new Thickness(12, 4, 12, 4) };
 		System.Windows.Automation.AutomationProperties.SetAutomationId(cancelButton, "McpEditCancelButton");
 		cancelButton.Click += OnCancelClicked;
 		var panel = new DockPanel();
@@ -92,14 +93,20 @@ internal sealed class EditExplorerWindow : Window {
 		var snapshot = coordinator.BuildExplorerSnapshot();
 		stateLine.Text = "Coordinator state: " + snapshot.State + (snapshot.TransactionId == null ? ""
 			: " | transaction " + snapshot.TransactionId + " rev " + snapshot.Revision + " (" + snapshot.OwnerTransport + " session)");
-		// guarded cancel (adjudicated AUD-004): only an orphaned transaction
-		// (owner session closed) may be rolled back from the UI; an active
-		// owner keeps its transaction — the UI is a caretaker, not an override.
-		var cancellable = snapshot.TransactionId != null && snapshot.OwnerClosed;
+		// REQ-016 / CHK-001: local cancel of the CURRENT transaction is offered
+		// whenever it is active and no operation/commit is executing; the owner
+		// session being still connected no longer disables the button.  While an
+		// operation or commit is in flight the button stays disabled (the
+		// coordinator would reject the cancel with "busy").
+		var cancellable = snapshot.TransactionId != null && snapshot.CanCancel;
 		cancelButton.IsEnabled = cancellable;
 		cancelLine.Text = snapshot.TransactionId == null ? "No active transaction."
-			: cancellable ? "Owner session is gone — this transaction can be rolled back locally."
-			: "Transaction owned by an active MCP session (" + snapshot.OwnerTransport + ") — UI cancel disabled.";
+			: cancellable ? (snapshot.OwnerClosed ? "Owner session is gone — this transaction can be rolled back locally."
+				: "Current transaction (" + snapshot.OwnerTransport + " session) can be canceled locally — rollback only, no bypass.")
+			: snapshot.CommitStarted ? "Commit is executing — local cancel unavailable."
+			: "An edit operation is executing — local cancel unavailable.";
+		if (lastCancelResult != null)
+			cancelLine.Text = "last cancel result: " + lastCancelResult + " — " + cancelLine.Text;
 		tree.Items.Clear();
 		if (snapshot.TransactionId != null) {
 			var transactionNode = new TreeViewItem { Header = "Transaction " + snapshot.TransactionId, IsExpanded = true };
@@ -120,14 +127,27 @@ internal sealed class EditExplorerWindow : Window {
 		}
 		var lineageNode = new TreeViewItem { Header = "checkpoint lineages (" + snapshot.Lineages.Count + ")", IsExpanded = true };
 		foreach (var lineage in snapshot.Lineages) {
+			var lineageId = lineage.Split(' ')[0];
 			var lineageItem = new TreeViewItem { Header = lineage, IsExpanded = true };
+			// CHK-002: one child node per checkpoint with parent/kind/image/semantic
+			// rows — the branching history is browsable even when idle.
+			foreach (var checkpoint in snapshot.Checkpoints) {
+				if (checkpoint.LineageId != lineageId) continue;
+				lineageItem.Items.Add(new TreeViewItem { Header = "checkpoint " + checkpoint.CheckpointId
+					+ " parent " + (checkpoint.ParentCheckpointId == string.Empty ? "root" : checkpoint.ParentCheckpointId)
+					+ " kind " + checkpoint.Kind
+					+ " image " + checkpoint.ImageShaPrefix
+					+ " semantic " + checkpoint.SemanticPrefix });
+			}
 			lineageNode.Items.Add(lineageItem);
 		}
 		tree.Items.Add(lineageNode);
 	}
 
 	void OnCancelClicked(object sender, RoutedEventArgs e) {
-		coordinator.CancelOrphanedTransactionFromUi();
+		// REQ-016 / CHK-001: cancel the current transaction; the coordinator
+		// reports whether it actually rolled back, was busy, or was already gone.
+		lastCancelResult = coordinator.CancelTransactionFromUi();
 		Refresh();
 	}
 }
