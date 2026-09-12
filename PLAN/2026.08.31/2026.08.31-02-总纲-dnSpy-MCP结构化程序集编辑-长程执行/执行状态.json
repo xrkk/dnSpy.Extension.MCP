@@ -1,16 +1,16 @@
 {
   "workflow_id": "dnspy-edit-master-01a050b5",
-  "overall_state": "all_children_done",
+  "overall_state": "final_report_delivered",
   "started_at": "2026-09-03T23:32:42+08:00",
-  "updated_at": "2026-09-12T18:36:13+08:00",
+  "updated_at": "2026-09-12T18:52:48+08:00",
   "current_child": null,
-  "child_stage": "COMPLETE",
+  "child_stage": "FINAL_REPORT_DELIVERED",
   "phase_state": "executing",
   "last_verified_checkpoint": {
-    "name": "ALL_CHILDREN_DONE",
-    "commit": "0d06f4a",
-    "evidence": "P01-P09 all CHILD_DONE; final regression 22/23 green + 1 partial",
-    "recorded_at": "2026-09-12T18:36:13+08:00"
+    "name": "FINAL_REPORT",
+    "commit": "44dac70",
+    "evidence": "总纲验收记录 -27 + 修复记录 + 最终汇报 -28；ACC-023 x86 修复后双架构通过",
+    "recorded_at": "2026-09-12T18:52:48+08:00"
   },
   "children": {
     "P01": {
