@@ -38,6 +38,11 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 	readonly IVirtualizationExecutionGate executionGate;
 
 	readonly DebugSessionCoordinator coordinator = new();
+
+	/// <summary>P08 strong-name gate: reads the event at (session, cursor) for
+	/// evidence validation. Returns null when the session is unknown.</summary>
+	internal DebugEventBuffer.ReadResult? ReadEventsForEvidence(string sessionId, long afterCursor, int limit, IReadOnlyCollection<string>? kinds)
+		=> coordinator.ReadEvents(sessionId, afterCursor, limit, kinds);
 	readonly DualLaneQueue laneQueue = new();
 	readonly SemaphoreSlim waitSlots = new(8, 8);
 
