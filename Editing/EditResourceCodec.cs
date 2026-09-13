@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using dnlib.DotNet;
 
 namespace dnSpy.Extension.MCP.Editing;
 
@@ -20,6 +21,26 @@ namespace dnSpy.Extension.MCP.Editing;
 /// is positional and every byte is payload-driven).
 /// </summary>
 internal static class EditResourceCodec {
+	/// <summary>Read the selected resource without executing or deserializing it.
+	/// Path imports labelled linked have already been normalized to embedded bytes.</summary>
+	public static byte[] ReadExportBytes(ModuleDef module, string resourceType, string name,
+		int? typeId, string typeName, int? nameId, int language) {
+		if (resourceType is "embedded" or "linked") {
+			var matches = module.Resources.OfType<EmbeddedResource>().Where(r => r.Name == name).ToArray();
+			if (matches.Length == 1) return matches[0].CreateReader().ToArray();
+		}
+		else if (resourceType == "win32") {
+			var type = typeId.HasValue ? new dnlib.W32Resources.ResourceName(typeId.Value) : new dnlib.W32Resources.ResourceName(typeName);
+			var row = nameId.HasValue ? new dnlib.W32Resources.ResourceName(nameId.Value) : new dnlib.W32Resources.ResourceName(name);
+			var types = module.Win32Resources?.Root.Directories.Where(x => x.Name.Equals(type)).ToArray();
+			var names = types?.Length == 1 ? types[0].Directories.Where(x => x.Name.Equals(row)).ToArray() : null;
+			var data = names?.Length == 1 ? names[0].Data.Where(x => x.Name.Equals(new dnlib.W32Resources.ResourceName(language))).ToArray() : null;
+			if (data?.Length == 1) return data[0].CreateReader().ToArray();
+		}
+		throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+			["kind"] = "capability", ["capability"] = "resource_row", ["reason"] = "resource identity is absent, ambiguous, or unsupported" });
+	}
+
 	// ResourceTypeCode enum (negative type codes inline; >= 0 indexes the types array)
 	public const int CodeNull = 0, CodeString = 1, CodeBoolean = 2, CodeChar = 3, CodeByte = 4,
 		CodeSByte = 5, CodeInt16 = 6, CodeUInt16 = 7, CodeInt32 = 8, CodeUInt32 = 9,

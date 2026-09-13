@@ -59,3 +59,9 @@ type_add/update/remove · method_add/update/remove · field_add/update/remove ·
 ## 6. Resources
 
 The MCP resources face exposes 14 concrete resources (assembly list, type index, edit status, debug events, …); `resources/templates/list` is intentionally empty. The tools/list and resources faces are the two machine-readable registries.
+
+### Resource path import and export
+
+`edit_resource_import` reads only ordinary, non-reparse files below `AllowedSampleRoot`, checking the size before allocation. Returned `file_id`, length and SHA-256 describe the same opened Windows file handle. `resource_type` accepts `embedded`, `linked`, or `win32`; linked imports normalize to embedded bytes and retain no external file dependency.
+
+`edit_resource_export` defaults to `embedded`. For Win32 bytes, specify `resource_type=win32`, `type_id` or `type_name` (default `RCDATA`), `name_id` or `resource_name`, and `lang_id` (default 0). The type selectors are mutually exclusive; `name_id` takes precedence over `resource_name`. Exports reuse the checkpoint store's atomic output and actual file identity, remain below `ArtifactRoot`, and cannot overwrite the source sample.

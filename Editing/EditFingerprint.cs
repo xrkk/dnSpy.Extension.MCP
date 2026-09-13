@@ -61,9 +61,9 @@ internal static class EditFingerprint {
 		// assembly/module-level custom attributes are outside the semantic
 		// projection's assembly row (FullName only) — render them into the guard
 		foreach (var attribute in module.Assembly?.CustomAttributes ?? Enumerable.Empty<CustomAttribute>())
-			rows.Add("asmattr|" + attribute.TypeFullName + "|" + attribute.Constructor?.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture));
+			rows.Add("asmattr|" + ExternalAttributeRow(attribute));
 		foreach (var attribute in module.CustomAttributes)
-			rows.Add("modattr|" + attribute.TypeFullName + "|" + attribute.Constructor?.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture));
+			rows.Add("modattr|" + ExternalAttributeRow(attribute));
 		// CHK-012: ClassLayout packing/size rows (P04 layout edits; the type row
 		// carries only attributes).
 		foreach (var type in module.GetTypes())
@@ -103,22 +103,42 @@ internal static class EditFingerprint {
 		return EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", rows.OrderBy(x => x, StringComparer.Ordinal))));
 	}
 
-	static string DeclSecurityRows(IList<dnlib.DotNet.DeclSecurity> rows) {
-		if (rows == null || rows.Count == 0) return "none";
-		var parts = new List<string>();
-		foreach (var row in rows) {
-			// DeclSecurity carries Action + typed SecurityAttributes (no raw XML
-			// buffer in dnlib); render each attribute through the reflective
-			// value formatter so any argument change alters the guard.
-			var attributes = new List<string>();
-			foreach (var attribute in row.SecurityAttributes)
-				attributes.Add(ReflectValue(attribute, 0));
-			parts.Add(((int)row.Action).ToString(CultureInfo.InvariantCulture) + ":"
-				+ string.Join(",", attributes));
-		}
-		parts.Sort(StringComparer.Ordinal);
-		return string.Join(";", parts);
+	// This non-persistent guard must include argument values, including arrays
+	// and boxed arguments. Type/constructor identity alone misses UI edits.
+	static string ExternalAttributeRow(CustomAttribute attribute) => JsonSerializer.Serialize(new {
+		constructor = attribute.Constructor?.FullName,
+		arguments = attribute.ConstructorArguments.Select(ExternalAttributeArgument).ToArray(),
+		named = attribute.NamedArguments.Select(ExternalNamedArgument).ToArray(),
+	}, EditWire.JsonOptions);
+
+	static object ExternalNamedArgument(CANamedArgument argument) => new {
+		field = argument.IsField, name = argument.Name?.String,
+		type = Sig(argument.Type), argument = ExternalAttributeArgument(argument.Argument),
+	};
+
+	static object ExternalAttributeArgument(CAArgument argument) => new {
+		type = Sig(argument.Type), value = ExternalAttributeValue(argument.Value),
+	};
+
+	static object? ExternalAttributeValue(object? value) {
+		if (value == null) return null;
+		if (value is CAArgument argument) return ExternalAttributeArgument(argument);
+		if (value is IList<CAArgument> array) return array.Select(ExternalAttributeArgument).ToArray();
+		if (value is TypeSig type) return new { type = Sig(type) };
+		if (value is UTF8String text) return new { utf8 = Convert.ToBase64String(text.Data) };
+		if (value is string || value is bool || value is char || value.GetType().IsPrimitive)
+			return new { kind = value.GetType().FullName, text = Convert.ToString(value, CultureInfo.InvariantCulture) };
+		throw new InvalidOperationException("Unsupported custom attribute argument in live guard: " + value.GetType().FullName);
 	}
+
+	static string DeclSecurityRows(IList<dnlib.DotNet.DeclSecurity> rows) =>
+		JsonSerializer.Serialize(rows.Select(row => new {
+			action = (int)row.Action,
+			attributes = row.SecurityAttributes.Select(attribute => new {
+				type = attribute.AttributeType?.FullName,
+				arguments = attribute.NamedArguments.Select(ExternalNamedArgument).ToArray(),
+			}).ToArray(),
+		}).ToArray(), EditWire.JsonOptions);
 
 	/// <summary>CHK-012: stable content rendering of one custom-debug-info row.
 	/// Reflects every public instance property (name-ordered); tokens, byte

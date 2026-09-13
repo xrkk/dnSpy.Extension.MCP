@@ -879,21 +879,20 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			BarrierPoint("apply_before_mutation", tx.Owner);
 			var path = EditWire.String(args, "vm_path");
 			var name = EditWire.String(args, "resource_name");
-			var typeText = args != null && args.TryGetValue("resource_type", out var rawType) && rawType is JsonElement typeElement && typeElement.ValueKind == JsonValueKind.String ? typeElement.GetString()! : "embedded";
+			var typeText = OptionalArgument(args, "resource_type") ?? "embedded";
 			byte[] bytes;
-			string fileId;
+			EditSourceFileObservation inputIdentity;
 			try {
-				if (!System.IO.Path.IsPathRooted(path))
-					throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "resource_path", ["reason"] = "vm_path must be absolute: " + path });
-				bytes = System.IO.File.ReadAllBytes(path);
+				(bytes, inputIdentity) = EditSourceFileIdentity.ReadAllowedResource(path,
+					settings.CurrentSnapshot?.AllowedSampleRoot, EditWire.MaxResourceBytes);
 			}
 			catch (Exception ex) when (ex is not EditDomainException) {
-				throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "resource_path", ["reason"] = "the VM path could not be read: " + ex.Message });
+				throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+					["kind"] = "capability", ["capability"] = "resource_path", ["reason"] = ex.Message });
 			}
-			if (bytes.Length > EditWire.MaxResourceBytes) CapacityError("resource_bytes", bytes.Length, EditWire.MaxResourceBytes);
-			fileId = EditWire.NewId("file");
+
 			Dictionary<string, object?> operation = typeText switch {
-				"embedded" => new Dictionary<string, object?> {
+				"embedded" or "linked" => new Dictionary<string, object?> {
 					["kind"] = "managed_resource_add", ["name"] = name,
 					["attributes"] = 2u /* Private */,
 					["data_base64"] = Convert.ToBase64String(bytes),
@@ -905,8 +904,15 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				},
 				_ => throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
 					["kind"] = "capability", ["capability"] = "resource_type",
-					["reason"] = "resource_type must be embedded or win32 (linked resources are outside the P08 import domain)" }),
+					["reason"] = "resource_type must be embedded, linked or win32" }),
 			};
+			if (typeText == "win32") {
+				if (args != null && args.ContainsKey("type_id")) { operation.Remove("type_name"); operation["type_id"] = EditWire.Integer(args, "type_id"); }
+				else operation["type_name"] = OptionalArgument(args, "type_name") ?? "RCDATA";
+				if (args != null && args.ContainsKey("name_id")) { operation.Remove("name_string"); operation["name_id"] = EditWire.Integer(args, "name_id"); }
+				operation["lang_id"] = EditWire.Integer(args, "lang_id", required: false, minimum: 0);
+			}
+
 			var revision = tx.Revision;
 			// Apply expects the operation as a JSON element (wire-shaped argument)
 			using var operationDocument = System.Text.Json.JsonDocument.Parse(EditWire.CanonicalPayload(operation));
@@ -919,7 +925,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				var staged = applied.TryGetValue("result", out var appliedResult) && appliedResult is Dictionary<string, object?> resultRow
 					? new Dictionary<string, object?>(resultRow, StringComparer.Ordinal) : new Dictionary<string, object?>();
 				staged["import"] = new Dictionary<string, object?> {
-					["file_id"] = fileId, ["vm_path"] = path, ["resource_name"] = name,
+					["file_id"] = inputIdentity.FileId, ["vm_path"] = inputIdentity.FinalPath, ["resource_name"] = name,
 					["resource_type"] = typeText, ["length"] = bytes.Length,
 					["sha256"] = EditWire.Sha256(bytes),
 				};
@@ -957,26 +963,16 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			return module;
 		}) ?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
 			["kind"] = "capability", ["capability"] = "loaded_module", ["reason"] = "the assembly is not uniquely loaded: " + assemblyName });
-		var embedded = EditWorkspace.OnDispatcher(() => resource.Resources.OfType<EmbeddedResource>()
-			.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal)))
-			?? throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
-				["kind"] = "capability", ["capability"] = "resource_row", ["reason"] = "the managed resource was not found: " + name });
-		var bytes = EditWorkspace.OnDispatcher(() => embedded.CreateReader().ToArray());
-		var root = settings.CurrentSnapshot?.ArtifactRoot;
-		if (string.IsNullOrWhiteSpace(root)) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",
-			new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "artifact_root", ["reason"] = "ArtifactRoot is not configured" });
-		var finalPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, outputPath));
-		var rootFull = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar);
-		if (!finalPath.StartsWith(rootFull + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-			throw new EditDomainException("EDIT_EXPORT_BLOCKED", new Dictionary<string, object?> { ["kind"] = "export_path", ["reason"] = "the output path must stay below ArtifactRoot" });
-		System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(finalPath)!);
-		System.IO.File.WriteAllBytes(finalPath, bytes);
-		return EditWire.Success(state, new Dictionary<string, object?> {
-			["export"] = new Dictionary<string, object?> {
-				["file_id"] = EditWire.NewId("file"), ["path"] = finalPath,
-				["length"] = bytes.Length, ["sha256"] = EditWire.Sha256(bytes),
-			},
-		});
+		var typeText = OptionalArgument(args, "resource_type") ?? "embedded";
+		var typeId = args != null && args.ContainsKey("type_id") ? (int?)checked((int)EditWire.Integer(args, "type_id")) : null;
+		var nameId = args != null && args.ContainsKey("name_id") ? (int?)checked((int)EditWire.Integer(args, "name_id")) : null;
+		var typeName = OptionalArgument(args, "type_name") ?? "RCDATA";
+		var language = checked((int)EditWire.Integer(args, "lang_id", required: false, minimum: 0));
+		var data = EditWorkspace.OnDispatcher(() => (
+			Bytes: EditResourceCodec.ReadExportBytes(resource, typeText, name, typeId, typeName, nameId, language),
+			SourcePath: resource.Location));
+		var output = history.ExportResource(data.Bytes, outputPath, data.SourcePath);
+		return EditWire.Success(state, new Dictionary<string, object?> { ["export"] = OutputResult(output) });
 	}
 
 	// P07 edit_impact_scan: machine-readable cross-assembly impact report over
@@ -1740,27 +1736,29 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var first = true;
 		return tx.Workspace.OnLive(() => {
 			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+			// A rejected preflight has not written live. Never run an inverse
+			// for it: that could overwrite the external edit that caused rejection.
+			lock (gate) if (tx.CancelRequested && !tx.LiveLinearized) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+			// CHK-013 / P02 §4 item 4: the SECOND gate, inside the same
+			// dispatcher critical section that writes live.  The commit-entry
+			// checks can pause at barriers before this section runs; a UI
+			// edit or a debugger launch in that window must still be caught
+			// HERE, before the first live mutation (zero writes on failure).
+			{
+				var liveNow = EditFingerprint.Compute(tx.Workspace.LiveModule);
+				if (!string.Equals(liveNow, tx.Workspace.BaselineLiveFingerprint, StringComparison.Ordinal))
+					throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",
+						new Dictionary<string, object?> { { "kind", "fingerprint_conflict" }, { "stage", "live_apply_second_gate" },
+							{ "expected", tx.Workspace.BaselineLiveFingerprint }, { "actual", liveNow } });
+				var guardNow = EditFingerprint.ComputeExternalGuard(tx.Workspace.LiveModule);
+				if (!string.Equals(guardNow, tx.Workspace.BaselineExternalGuard, StringComparison.Ordinal))
+					throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",
+						new Dictionary<string, object?> { { "kind", "external_drift_conflict" }, { "stage", "live_apply_second_gate" },
+							{ "expected", tx.Workspace.BaselineExternalGuard }, { "actual", guardNow } });
+				if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
+					throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
+			}
 			try {
-				lock (gate) if (tx.CancelRequested && !tx.LiveLinearized) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
-				// CHK-013 / P02 §4 item 4: the SECOND gate, inside the same
-				// dispatcher critical section that writes live.  The commit-entry
-				// checks can pause at barriers before this section runs; a UI
-				// edit or a debugger launch in that window must still be caught
-				// HERE, before the first live mutation (zero writes on failure).
-				{
-					var liveNow = EditFingerprint.Compute(tx.Workspace.LiveModule);
-					if (!string.Equals(liveNow, tx.Workspace.BaselineLiveFingerprint, StringComparison.Ordinal))
-						throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",
-							new Dictionary<string, object?> { { "kind", "fingerprint_conflict" }, { "stage", "live_apply_second_gate" },
-								{ "expected", tx.Workspace.BaselineLiveFingerprint }, { "actual", liveNow } });
-					var guardNow = EditFingerprint.ComputeExternalGuard(tx.Workspace.LiveModule);
-					if (!string.Equals(guardNow, tx.Workspace.BaselineExternalGuard, StringComparison.Ordinal))
-						throw new EditDomainException("EDIT_LIVE_MODULE_CONFLICT",
-							new Dictionary<string, object?> { { "kind", "external_drift_conflict" }, { "stage", "live_apply_second_gate" },
-								{ "expected", tx.Workspace.BaselineExternalGuard }, { "actual", guardNow } });
-					if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
-						throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
-				}
 				for (var i = 0; i < tx.Workspace.NormalizedOperations.Count; i++) {
 					using var document = JsonDocument.Parse(tx.Workspace.NormalizedOperations[i]);
 					var outcome = EditOperationRegistry.ApplyPersisted(tx.Workspace.LiveModule, document.RootElement, map, i);
@@ -1800,6 +1798,9 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					if (tx.Workspace.CurrentExternalGuard() != tx.Workspace.BaselineExternalGuard
 						|| EditFingerprint.Compute(tx.Workspace.LiveModule) != tx.Workspace.BaselineLiveFingerprint)
 						throw new InvalidOperationException("commit inverse fingerprint mismatch");
+					// Full recovery returns to an uncommitted transaction. Its next
+					// attempt must regain cancellation, expiry and close semantics.
+					lock (gate) tx.LiveLinearized = false;
 				}
 				catch {
 					emergencyLiveUndo.Clear();
@@ -2000,17 +2001,15 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		beginCache.RemovePrefix(closed.SessionId + ":"); commandCache.RemovePrefix(closed.SessionId + ":"); terminalCache.RemoveSession(closed.SessionId);
 	} }
 	void ExpireLocked() {
-		// P02 barrier contract: a transaction parked at a test barrier expires at
-		// the idle boundary even though its operation is busy (EndLocked releases
-		// the barrier; the parked call then reports NOT_FOUND).  P03 added the
-		// busy guard for mid-mutation safety — expiry must never kill an
-		// operation that is actively mutating.  Parked-at-barrier is not
-		// mutating, so it stays expirable (full-regression finding, 2026-09-13).
-		if (active == null) return;
+		// Before linearization a parked operation may expire and release its
+		// waiter. After the first live write, commit/recovery owns the state;
+		// even a test barrier must not expose idle or admit another transaction.
+		if (active == null || active.LiveLinearized) return;
 		var parkedAtBarrier = testBarrier != null && testBarrier.Entered;
 		if ((!active.OperationBusy || parkedAtBarrier) && Now - active.LastActivity >= EditWire.IdleTimeoutMs)
 			EndLocked(active, "timeout");
 	}
+
 	void EndLocked(Transaction tx, string reason) { if (!ReferenceEquals(active, tx)) return; tx.CancelRequested=true;ReleaseBarrierLocked(tx.Owner);tx.ApplyCache.Clear();tx.ReviewCache.Clear();active = null; state = "idle";if(!tx.OperationBusy)tx.Workspace.Dispose(); }
 
 	Transaction RequireTransactionLocked(Dictionary<string, object>? args, McpCallContext context) { RequireOwnerContext(context); if (active == null || EditWire.String(args,"transaction_id") != active.Id) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND"); if (active.Owner != context.AuthoritativeSessionId) throw new EditDomainException("EDIT_OWNER_MISMATCH"); return active; }

@@ -15389,9 +15389,37 @@
           "type": "string",
           "enum": [
             "embedded",
+            "linked",
             "win32"
-          ]
+          ],
+          "description": "linked path imports are normalized to embedded bytes; win32 uses the native type/name/language identity."
+        },
+        "type_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "type_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "name_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "lang_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
         }
+      },
+      "not": {
+        "required": [
+          "type_id",
+          "type_name"
+        ]
       }
     },
     "outputSchema": {
@@ -15995,7 +16023,42 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "linked",
+            "win32"
+          ],
+          "description": "linked path imports are normalized to embedded bytes; win32 uses the native type/name/language identity."
+        },
+        "type_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "type_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "name_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "lang_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
         }
+      },
+      "not": {
+        "required": [
+          "type_id",
+          "type_name"
+        ]
       }
     },
     "outputSchema": {

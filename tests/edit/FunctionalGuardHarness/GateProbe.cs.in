@@ -1,0 +1,66 @@
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using dnlib.DotNet;
+using dnSpy.Extension.MCP.Editing;
+internal sealed class GateProbe {
+ readonly object gate=new();
+ string state="reviewed";
+ readonly List<Action> emergencyLiveUndo=new();
+ readonly DynamicGate dynamicGate=new();
+ sealed class DynamicGate {public string State="idle"; public DynamicGate EvaluateEditDynamicValidation()=>this;}
+ static class DebugStates {public const string Idle="idle";}
+ sealed class Transaction {
+  public bool CancelRequested,LiveLinearized;
+  public string Owner="probe",PrivateFingerprint="";
+  public Workspace Workspace=new();
+ }
+ sealed class Workspace {
+  public ModuleDef LiveModule=null!,PrivateModule=null!;
+  public string BaselineLiveFingerprint="",BaselineExternalGuard="";
+  public List<string> NormalizedOperations=new(){"{}"};
+  public Action BeforeDispatch=()=>{};
+  public T OnLive<T>(Func<T> action){BeforeDispatch();return action();}
+  public string CurrentExternalGuard()=>EditFingerprint.ComputeExternalGuard(LiveModule);
+ }
+ static class EditStructuralValidator {public static void Validate(ModuleDef module) {}}
+ sealed class Outcome {public Action Undo=()=>{};}
+ static class EditOperationRegistry {
+  public static int ForwardCalls,InverseCalls;
+  public static bool FailSecond;
+  public static Action Restore=()=>{},Apply=()=>{};
+  public static Outcome ApplyPersisted(ModuleDef module,JsonElement operation,Dictionary<string,IMDTokenProvider> map,int index){ForwardCalls++;var previous=module.ManagedEntryPoint;Apply();if(FailSecond && index==1)throw new EditDomainException("EDIT_VALIDATION_FAILED");return new(){Undo=()=>module.ManagedEntryPoint=previous};}
+  public static void ApplyCompiledInverse(ModuleDef module,JsonElement operation,Dictionary<string,IMDTokenProvider> map,int index){InverseCalls++;Restore();}
+ }
+ bool failAfterWrite;
+ void StorageFault(string stage){if(failAfterWrite && stage=="live_apply")throw new EditDomainException("EDIT_VALIDATION_FAILED");}
+ void BarrierPoint(string point,string owner){}
+@@METHOD@@
+ public static void Run(){
+  foreach(var scenario in new[]{"external-entry","debug-active","canceled","live-failure","prefix-failure","inverse-failure","success"}){
+   var probe=new GateProbe();var module=Program.MakeModule();var a=module.ManagedEntryPoint;var b=module.Types[1].Methods[1];
+   var tx=new Transaction();tx.Workspace.LiveModule=module;tx.Workspace.PrivateModule=module;
+   tx.Workspace.BaselineLiveFingerprint=EditFingerprint.Compute(module);tx.Workspace.BaselineExternalGuard=EditFingerprint.ComputeExternalGuard(module);
+   tx.PrivateFingerprint=tx.Workspace.BaselineLiveFingerprint;
+   tx.Workspace.BeforeDispatch=()=>{if(scenario=="external-entry")module.ManagedEntryPoint=b;else if(scenario=="debug-active")probe.dynamicGate.State="running";else if(scenario=="canceled")tx.CancelRequested=true;};
+   EditOperationRegistry.ForwardCalls=0;EditOperationRegistry.InverseCalls=0;EditOperationRegistry.FailSecond=scenario=="prefix-failure" || scenario=="inverse-failure";if(EditOperationRegistry.FailSecond)tx.Workspace.NormalizedOperations.Add("{}");
+   EditOperationRegistry.Restore=()=>{if(scenario=="inverse-failure")throw new InvalidOperationException("injected inverse failure");module.ManagedEntryPoint=EditOperationRegistry.FailSecond?b:a;};
+   EditOperationRegistry.Apply=()=>module.ManagedEntryPoint=b;probe.failAfterWrite=scenario=="live-failure";
+   string? error=null;try{probe.ApplyTransactionToLive(tx,new List<Action>(),EditOperationRegistry.FailSecond?new[]{"{}","{}"}:new[]{"{}"});}catch(EditDomainException ex){error=ex.Code;}
+   if(scenario=="inverse-failure"){
+    Program.Check(error=="EDIT_LIVE_STATE_UNKNOWN" && probe.state=="live_state_unknown" && tx.LiveLinearized,
+     "inverse failure retains unknown linearized state");continue;
+   }
+   if(scenario=="live-failure" || scenario=="prefix-failure" || scenario=="success"){
+    var failed=probe.failAfterWrite || EditOperationRegistry.FailSecond;
+    Program.Check(EditOperationRegistry.ForwardCalls==(EditOperationRegistry.FailSecond?2:1) && EditOperationRegistry.InverseCalls==(failed?1:0)
+     && error==(failed?"EDIT_VALIDATION_FAILED":null)
+     && ReferenceEquals(module.ManagedEntryPoint,failed?a:b) && tx.LiveLinearized==!failed,"live application/recovery: "+scenario);continue;
+   }
+   var expected=scenario=="external-entry"?"EDIT_LIVE_MODULE_CONFLICT":scenario=="debug-active"?"EDIT_DEBUG_NOT_IDLE":"EDIT_TRANSACTION_NOT_FOUND";
+   Program.Check(error==expected && EditOperationRegistry.ForwardCalls==0 && EditOperationRegistry.InverseCalls==0
+    && ReferenceEquals(module.ManagedEntryPoint,scenario=="external-entry"?b:a) && probe.state!="live_state_unknown",
+    "second gate zero writes: "+scenario+" (error="+error+", inverse="+EditOperationRegistry.InverseCalls+")");
+  }
+ }
+}

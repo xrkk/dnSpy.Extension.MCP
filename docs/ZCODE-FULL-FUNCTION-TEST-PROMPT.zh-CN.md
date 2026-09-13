@@ -134,3 +134,11 @@
 最终输出中文审计报告：逐项列出 14 个资源和 59 个工具的 PASS/FAIL/BLOCKED、关键真实证据、私有结构化编辑→审查→回滚、旧静态修改→验证→恢复、保存路径、环境门禁、动态状态时间线、断点/线程/栈/locals/memory/dump、两层 value expansion、幂等性和最终 idle。FAIL 与 BLOCKED 分开统计；明确声明是否覆盖原文件、是否留下测试进程、是否遗留活动编辑事务，以及本轮是 x64 还是 x86。
 
 通过标准：本轮 14/14 资源、59/59 工具 PASS，FAIL 0、BLOCKED 0，全部临时修改已恢复，原始样本未覆盖，结构化编辑与调试 coordinator 均为 idle。
+
+### 资源路径导入导出补充
+
+`edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。
+
+`edit_resource_export` 的默认类型为 `embedded`；Win32 行需指定 `resource_type=win32`，以 `type_id` 或 `type_name`（默认 `RCDATA`）、`name_id` 或 `resource_name`、`lang_id`（默认 0）定位。`type_id` 与 `type_name` 互斥，提供 `name_id` 时它优先于 `resource_name`。输出复用检查点存储的原子写入和真实文件身份，目标必须在 `ArtifactRoot` 下，不能覆盖源样本。
+
+新增回归：在 x64/x86 分别验证 linked 路径导入、Win32 数字/文本标识及语言导出；根外路径、目录、reparse、超限文件拒绝且 revision 不变；重复读取同一文件的 file_id 稳定且匹配句柄观测；已有输出在写入失败时旧 SHA 不变，且无残留临时文件。Windows 不可用的项必须标注阻断，不能用 Linux 逻辑探针代替。

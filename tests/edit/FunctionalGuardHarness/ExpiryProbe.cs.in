@@ -1,0 +1,18 @@
+using dnSpy.Extension.MCP.Editing;
+internal sealed class ExpiryProbe {
+ sealed class Transaction { public bool OperationBusy,LiveLinearized; public long LastActivity; }
+ sealed class Barrier { public bool Entered; }
+ Transaction? active;
+ Barrier? testBarrier;
+ long Now=600000;
+ int ended;
+ void EndLocked(Transaction transaction,string reason){ended++;active=null;}
+@@METHOD@@
+ public static void Run(){
+  foreach(var linearized in new[]{false,true}){
+   var probe=new ExpiryProbe{active=new Transaction{OperationBusy=true,LiveLinearized=linearized,LastActivity=0},testBarrier=new Barrier{Entered=true}};
+   probe.ExpireLocked();
+   Program.Check(probe.ended==(linearized?0:1),"barrier expiry preserves linearized commit="+linearized);
+  }
+ }
+}

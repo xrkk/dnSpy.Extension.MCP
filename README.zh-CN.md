@@ -565,3 +565,9 @@ git push origin v1.0.0
 - [dnSpyEx](https://github.com/dnSpyEx/dnSpy) — .NET 调试器与程序集编辑器
 - [Model Context Protocol](https://modelcontextprotocol.io/) — Anthropic 的 MCP 规范
 - [BepInEx](https://github.com/BepInEx/BepInEx) — Unity 游戏 modding 框架
+
+### 资源路径导入导出补充
+
+`edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。
+
+`edit_resource_export` 的默认类型为 `embedded`；Win32 行需指定 `resource_type=win32`，以 `type_id` 或 `type_name`（默认 `RCDATA`）、`name_id` 或 `resource_name`、`lang_id`（默认 0）定位。`type_id` 与 `type_name` 互斥，提供 `name_id` 时它优先于 `resource_name`。输出复用检查点存储的原子写入和真实文件身份，目标必须在 `ArtifactRoot` 下，不能覆盖源样本。
