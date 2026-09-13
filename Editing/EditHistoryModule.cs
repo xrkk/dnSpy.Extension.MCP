@@ -479,6 +479,13 @@ internal sealed class EditHistoryModule : IDisposable {
 		return ParsePackage(Store.ReadFinal(lineageId));
 	}
 
+	/// <summary>CHK-014: read-only directory probe used by the explorer for
+	/// best-effort checkpoint time facts; never mutates the store.</summary>
+	public string? LineageDirectory(string lineageId) {
+		try { return Store.LineageDirectoryUtcProbe(lineageId); }
+		catch { return null; }
+	}
+
 	public IReadOnlyList<EditLoadedLineage> LoadAll() {
 		var objects = Store.EnumerateCheckpointObjects();
 		var finals = objects.Where(x => x.IsTrustedFinal).ToArray();

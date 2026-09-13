@@ -4,7 +4,7 @@
     "old_context": {
       "test_mode": true,
       "transport_kind": "streamable_http",
-      "authoritative_session_id": "67c301c80e924b80b08c04ffc9d5bf18",
+      "authoritative_session_id": "adf662a08ba84ff9a3383418d10dd6ab",
       "protocol_version": "2025-03-26",
       "is_initialized_session": true,
       "can_own_edit_transaction": true,
@@ -13,115 +13,13 @@
         "events": [
           {
             "transport_kind": "streamable_http",
-            "session_id": "804829fda17a4f67ae9ba5df4d76e409",
+            "session_id": "54fec2b3837d4a269e7a79972fd02c41",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "93ca99aaa1504dc0a75658b48e5fede2",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "8f5040f2b3324576a9c371ae9212ee4c",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f6b7080251f2452bbcd9ded0854e6f64",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 2
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "edfd8213bf6d4291adac4468efcaed0d",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "041d10cdc2924f929e163186b874f2cb",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "728c8fb84c9c4dd2b82109ec078bc7ad",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "2a591e6e172846c3879e95efb88b9eaf",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b12360248bf94ee295d105eb1c5b2c11",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "858de30cdfe44b1da33942c34c133a5f",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "e42442e3449b4579b080d4007efeda02",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "c7f595b143aa482ea64654eace90df09",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "37771c6da05740de873a0cad87d7e105",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "0c97a4cdc9a74acb8e352d15e5962d51",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f1767f6a371649538e04847c4b2cbaba",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b5283a080c1c4be0a7bc1b7967078835",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "3dede614603a4c5eb8d9da4fea23fd9e",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "ad26a27943fb45b5bc7cdbea934b84a9",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "1a477120e6c64420837823d7743ae3c9",
+            "session_id": "0446f90b0fe14e938971f5c318ea682a",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           }
@@ -135,13 +33,13 @@
       "result": {
         "armed": true,
         "name": "apply_before_mutation",
-        "owner_session_id": "67c301c80e924b80b08c04ffc9d5bf18",
+        "owner_session_id": "adf662a08ba84ff9a3383418d10dd6ab",
         "entered": true,
         "released": false,
         "operation_waiters": 0,
-        "pending_request_key": "67c301c80e924b80b08c04ffc9d5bf18:edit_apply:listener-apply-36c7f844a98a41c1b739b189c19a0c57",
-        "active_generation": 9,
-        "active_transaction_id": "edit-2be9749d1651f75811ca311a81679d71"
+        "pending_request_key": "adf662a08ba84ff9a3383418d10dd6ab:edit_apply:listener-apply-360f988d34b040c59d6d88350f96fab0",
+        "active_generation": 1,
+        "active_transaction_id": "edit-52e69eee88d844a56a9db046c8094226"
       },
       "warnings": [],
       "untrusted_sample_data": true
@@ -149,12 +47,12 @@
     "in_flight_apply": {
       "kind": "transport_error",
       "type": "DnSpyConnectionError",
-      "message": "Cannot reach dnSpy MCP at http://192.168.204.149:15378/: [Errno 104] Connection reset by peer"
+      "message": "Cannot reach dnSpy MCP at http://192.168.204.240:15378/: [Errno 104] Connection reset by peer"
     },
     "new_context": {
       "test_mode": true,
       "transport_kind": "streamable_http",
-      "authoritative_session_id": "37f733838d5541e8bfdca483f69432a7",
+      "authoritative_session_id": "6906ed5530744b539213fc9dab4b15da",
       "protocol_version": "2025-03-26",
       "is_initialized_session": true,
       "can_own_edit_transaction": true,
@@ -163,127 +61,25 @@
         "events": [
           {
             "transport_kind": "streamable_http",
-            "session_id": "804829fda17a4f67ae9ba5df4d76e409",
+            "session_id": "54fec2b3837d4a269e7a79972fd02c41",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "93ca99aaa1504dc0a75658b48e5fede2",
+            "session_id": "0446f90b0fe14e938971f5c318ea682a",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "8f5040f2b3324576a9c371ae9212ee4c",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f6b7080251f2452bbcd9ded0854e6f64",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 2
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "edfd8213bf6d4291adac4468efcaed0d",
+            "session_id": "adf662a08ba84ff9a3383418d10dd6ab",
             "reason": "listener_stop",
             "active_session_count_after_removal": 1
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "041d10cdc2924f929e163186b874f2cb",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "728c8fb84c9c4dd2b82109ec078bc7ad",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "2a591e6e172846c3879e95efb88b9eaf",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b12360248bf94ee295d105eb1c5b2c11",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "858de30cdfe44b1da33942c34c133a5f",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "e42442e3449b4579b080d4007efeda02",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "c7f595b143aa482ea64654eace90df09",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "37771c6da05740de873a0cad87d7e105",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "0c97a4cdc9a74acb8e352d15e5962d51",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f1767f6a371649538e04847c4b2cbaba",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b5283a080c1c4be0a7bc1b7967078835",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "3dede614603a4c5eb8d9da4fea23fd9e",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "ad26a27943fb45b5bc7cdbea934b84a9",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "1a477120e6c64420837823d7743ae3c9",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "3cb668a9e1c24c15bd66d536ebef9c77",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "67c301c80e924b80b08c04ffc9d5bf18",
+            "session_id": "d4b7d6c9df8d4f30882d07c14eb504ca",
             "reason": "listener_stop",
             "active_session_count_after_removal": 0
           }
@@ -296,7 +92,30 @@
       "state": "idle",
       "result": {
         "busy": false,
-        "state": "idle"
+        "state": "idle",
+        "history": {
+          "lineage_count": 0,
+          "available": true
+        },
+        "recovery": null,
+        "capacity": {
+          "store_bytes": {
+            "current": 0,
+            "maximum": 8589934592
+          },
+          "store_children": {
+            "current": 0,
+            "maximum": 4096
+          },
+          "lineages": {
+            "current": 0,
+            "maximum": 128
+          },
+          "residuals": {
+            "current": 0,
+            "maximum": 4096
+          }
+        }
       },
       "warnings": [],
       "untrusted_sample_data": true
@@ -307,12 +126,12 @@
       "state": "editing",
       "result": {
         "transaction": {
-          "transaction_id": "edit-bf2ec41b8d0655c4aacd3b5b1bebb508",
+          "transaction_id": "edit-ad1c81ac41a9523389626bac9840d1b9",
           "work_revision": 0,
           "review_revision": null,
           "operation_count": 0,
-          "started_at_monotonic_ms": 972621,
-          "last_activity_monotonic_ms": 972621
+          "started_at_monotonic_ms": 398805,
+          "last_activity_monotonic_ms": 398805
         },
         "source": {
           "assembly_name": "TestIL",
@@ -320,12 +139,12 @@
           "mvid": "9607c6f5-0440-46fa-ab26-d1d7321d6b8e",
           "file_path": "C:\\Tools\\dnspy-mcp-edit-tests\\repo\\tests\\fixtures\\bin\\TestIL.dll",
           "file_sha256": "926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8",
-          "live_fingerprint": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338"
+          "live_fingerprint": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45"
         },
         "fingerprints": {
-          "baseline_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "current_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "private": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338"
+          "baseline_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "current_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "private": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45"
         },
         "limits": {
           "max_operations": 256,
@@ -377,6 +196,15 @@
             "maximum": 262144
           }
         },
+        "history": {
+          "family_id": "family-799828126b9cc592721986d4eef0a46b",
+          "lineage_id": null,
+          "base_checkpoint_id": null,
+          "new_family": true,
+          "match_basis": [
+            "new_source"
+          ]
+        },
         "capabilities": {
           "operation_kinds": [
             "type_add",
@@ -400,7 +228,22 @@
             "generic_parameter_add",
             "generic_parameter_update",
             "generic_parameter_remove",
-            "method_body_replace"
+            "method_body_replace",
+            "attribute_add",
+            "attribute_remove",
+            "security_add",
+            "security_remove",
+            "assembly_update",
+            "module_update",
+            "assembly_ref_update",
+            "entry_point_set",
+            "managed_resource_add",
+            "managed_resource_update",
+            "managed_resource_remove",
+            "win32_resource_add",
+            "win32_resource_update",
+            "win32_resource_remove",
+            "strong_name_remove"
           ],
           "dynamic_validation": true,
           "test_apply_restore": true
@@ -416,7 +259,7 @@
       "result": {
         "rolled_back": true,
         "end_reason": "client_rollback",
-        "original_live_fingerprint": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
+        "original_live_fingerprint": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
         "released": {
           "private_modules": 1,
           "validation_modules": 0,
@@ -429,12 +272,12 @@
     }
   },
   "explicit_port_change": {
-    "old_url": "http://192.168.204.149:15378/",
-    "new_url": "http://192.168.204.149:15379/",
+    "old_url": "http://192.168.204.240:15378/",
+    "new_url": "http://192.168.204.240:15379/",
     "old_unreachable": {
       "kind": "transport_error",
       "type": "DnSpyConnectionError",
-      "message": "Cannot reach dnSpy MCP at http://192.168.204.149:15378/: timed out"
+      "message": "Cannot reach dnSpy MCP at http://192.168.204.240:15378/: [Errno 111] Connection refused"
     },
     "old_apply": {
       "schema_version": "dnspy.edit.v1",
@@ -442,12 +285,12 @@
       "state": "editing",
       "result": {
         "transaction": {
-          "transaction_id": "edit-988810ec75bf99b94cee31073ccfb3f9",
+          "transaction_id": "edit-61c14b01d88c84443dc77d0412d11cca",
           "work_revision": 1,
           "review_revision": null,
           "operation_count": 1,
-          "started_at_monotonic_ms": 972628,
-          "last_activity_monotonic_ms": 972631
+          "started_at_monotonic_ms": 398822,
+          "last_activity_monotonic_ms": 398826
         },
         "operation_index": 0,
         "kind": "type_add",
@@ -455,9 +298,9 @@
           "obj-000-00"
         ],
         "fingerprints": {
-          "baseline_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "current_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "private": "c7a7da9e89fe9ad5034a21989b3f7aaef38dd80eae3ad93c95c07c395ceafd35"
+          "baseline_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "current_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "private": "f3e599f618e6c6fec61a380723be9f03bfe1749523e09365db7b8f1cfaf0e1ef"
         },
         "diffs": [
           {
@@ -513,7 +356,7 @@
     "new_context": {
       "test_mode": true,
       "transport_kind": "streamable_http",
-      "authoritative_session_id": "8d2de3435b08437dbe8fad28c8343962",
+      "authoritative_session_id": "aa1aa489a1f04f3cae58e73603491bad",
       "protocol_version": "2025-03-26",
       "is_initialized_session": true,
       "can_own_edit_transaction": true,
@@ -522,145 +365,31 @@
         "events": [
           {
             "transport_kind": "streamable_http",
-            "session_id": "804829fda17a4f67ae9ba5df4d76e409",
+            "session_id": "54fec2b3837d4a269e7a79972fd02c41",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "93ca99aaa1504dc0a75658b48e5fede2",
+            "session_id": "0446f90b0fe14e938971f5c318ea682a",
             "reason": "client_delete",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "8f5040f2b3324576a9c371ae9212ee4c",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f6b7080251f2452bbcd9ded0854e6f64",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 2
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "edfd8213bf6d4291adac4468efcaed0d",
+            "session_id": "adf662a08ba84ff9a3383418d10dd6ab",
             "reason": "listener_stop",
             "active_session_count_after_removal": 1
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "041d10cdc2924f929e163186b874f2cb",
+            "session_id": "d4b7d6c9df8d4f30882d07c14eb504ca",
             "reason": "listener_stop",
             "active_session_count_after_removal": 0
           },
           {
             "transport_kind": "streamable_http",
-            "session_id": "728c8fb84c9c4dd2b82109ec078bc7ad",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "2a591e6e172846c3879e95efb88b9eaf",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b12360248bf94ee295d105eb1c5b2c11",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "858de30cdfe44b1da33942c34c133a5f",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "e42442e3449b4579b080d4007efeda02",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "c7f595b143aa482ea64654eace90df09",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "37771c6da05740de873a0cad87d7e105",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "0c97a4cdc9a74acb8e352d15e5962d51",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "f1767f6a371649538e04847c4b2cbaba",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "b5283a080c1c4be0a7bc1b7967078835",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "3dede614603a4c5eb8d9da4fea23fd9e",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "ad26a27943fb45b5bc7cdbea934b84a9",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "1a477120e6c64420837823d7743ae3c9",
-            "reason": "client_delete",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "3cb668a9e1c24c15bd66d536ebef9c77",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "67c301c80e924b80b08c04ffc9d5bf18",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 0
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "37f733838d5541e8bfdca483f69432a7",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 2
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "640545ae6252493e98b7a44bc1cb1ed1",
-            "reason": "listener_stop",
-            "active_session_count_after_removal": 1
-          },
-          {
-            "transport_kind": "streamable_http",
-            "session_id": "ba67b6cd2f7d4eb2989f0bb9bf712d4b",
+            "session_id": "6906ed5530744b539213fc9dab4b15da",
             "reason": "listener_stop",
             "active_session_count_after_removal": 0
           }
@@ -673,7 +402,30 @@
       "state": "idle",
       "result": {
         "busy": false,
-        "state": "idle"
+        "state": "idle",
+        "history": {
+          "lineage_count": 0,
+          "available": true
+        },
+        "recovery": null,
+        "capacity": {
+          "store_bytes": {
+            "current": 0,
+            "maximum": 8589934592
+          },
+          "store_children": {
+            "current": 0,
+            "maximum": 4096
+          },
+          "lineages": {
+            "current": 0,
+            "maximum": 128
+          },
+          "residuals": {
+            "current": 0,
+            "maximum": 4096
+          }
+        }
       },
       "warnings": [],
       "untrusted_sample_data": true
@@ -689,12 +441,12 @@
       "state": "editing",
       "result": {
         "transaction": {
-          "transaction_id": "edit-b6ad4bde9c2e080af805e6f7cac82037",
+          "transaction_id": "edit-db6cc6b5cf4f142e938a21ceaaec3bd2",
           "work_revision": 0,
           "review_revision": null,
           "operation_count": 0,
-          "started_at_monotonic_ms": 1049339,
-          "last_activity_monotonic_ms": 1049339
+          "started_at_monotonic_ms": 433196,
+          "last_activity_monotonic_ms": 433196
         },
         "source": {
           "assembly_name": "TestIL",
@@ -702,12 +454,12 @@
           "mvid": "9607c6f5-0440-46fa-ab26-d1d7321d6b8e",
           "file_path": "C:\\Tools\\dnspy-mcp-edit-tests\\repo\\tests\\fixtures\\bin\\TestIL.dll",
           "file_sha256": "926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8",
-          "live_fingerprint": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338"
+          "live_fingerprint": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45"
         },
         "fingerprints": {
-          "baseline_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "current_live": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
-          "private": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338"
+          "baseline_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "current_live": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
+          "private": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45"
         },
         "limits": {
           "max_operations": 256,
@@ -759,6 +511,15 @@
             "maximum": 262144
           }
         },
+        "history": {
+          "family_id": "family-799828126b9cc592721986d4eef0a46b",
+          "lineage_id": null,
+          "base_checkpoint_id": null,
+          "new_family": true,
+          "match_basis": [
+            "new_source"
+          ]
+        },
         "capabilities": {
           "operation_kinds": [
             "type_add",
@@ -782,7 +543,22 @@
             "generic_parameter_add",
             "generic_parameter_update",
             "generic_parameter_remove",
-            "method_body_replace"
+            "method_body_replace",
+            "attribute_add",
+            "attribute_remove",
+            "security_add",
+            "security_remove",
+            "assembly_update",
+            "module_update",
+            "assembly_ref_update",
+            "entry_point_set",
+            "managed_resource_add",
+            "managed_resource_update",
+            "managed_resource_remove",
+            "win32_resource_add",
+            "win32_resource_update",
+            "win32_resource_remove",
+            "strong_name_remove"
           ],
           "dynamic_validation": true,
           "test_apply_restore": true
@@ -798,7 +574,7 @@
       "result": {
         "rolled_back": true,
         "end_reason": "client_rollback",
-        "original_live_fingerprint": "402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338",
+        "original_live_fingerprint": "8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45",
         "released": {
           "private_modules": 1,
           "validation_modules": 0,
@@ -812,7 +588,7 @@
     "requests_to_new": [
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 1,
@@ -829,7 +605,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "method": "notifications/initialized",
@@ -838,7 +614,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 2,
@@ -853,7 +629,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 3,
@@ -866,7 +642,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 4,
@@ -883,7 +659,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 5,
@@ -891,7 +667,7 @@
           "params": {
             "name": "edit_begin",
             "arguments": {
-              "request_id": "new-port-begin-dcaa3044b86b4297b14b3114e6ba1777",
+              "request_id": "new-port-begin-aad09363df6f4932b8b41da3ae73fb0c",
               "assembly_name": "TestIL"
             }
           }
@@ -899,7 +675,7 @@
       },
       {
         "direction": "request",
-        "url": "http://192.168.204.149:15379/",
+        "url": "http://192.168.204.240:15379/",
         "message": {
           "jsonrpc": "2.0",
           "id": 6,
@@ -907,8 +683,8 @@
           "params": {
             "name": "edit_rollback",
             "arguments": {
-              "request_id": "new-port-rollback-a4aec962152045bd9b134e20fc17c391",
-              "transaction_id": "edit-b6ad4bde9c2e080af805e6f7cac82037"
+              "request_id": "new-port-rollback-4e2fdbf162004e408ffb1ca00d6e9921",
+              "transaction_id": "edit-db6cc6b5cf4f142e938a21ceaaec3bd2"
             }
           }
         }
@@ -921,7 +697,30 @@
     "state": "idle",
     "result": {
       "busy": false,
-      "state": "idle"
+      "state": "idle",
+      "history": {
+        "lineage_count": 0,
+        "available": true
+      },
+      "recovery": null,
+      "capacity": {
+        "store_bytes": {
+          "current": 0,
+          "maximum": 8589934592
+        },
+        "store_children": {
+          "current": 0,
+          "maximum": 4096
+        },
+        "lineages": {
+          "current": 0,
+          "maximum": 128
+        },
+        "residuals": {
+          "current": 0,
+          "maximum": 4096
+        }
+      }
     },
     "warnings": [],
     "untrusted_sample_data": true
@@ -929,7 +728,7 @@
   "transcript": [
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -946,7 +745,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -966,7 +765,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
@@ -975,7 +774,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -990,7 +789,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -998,7 +797,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"67c301c80e924b80b08c04ffc9d5bf18\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"804829fda17a4f67ae9ba5df4d76e409\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"93ca99aaa1504dc0a75658b48e5fede2\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"8f5040f2b3324576a9c371ae9212ee4c\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f6b7080251f2452bbcd9ded0854e6f64\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":2},{\"transport_kind\":\"streamable_http\",\"session_id\":\"edfd8213bf6d4291adac4468efcaed0d\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"041d10cdc2924f929e163186b874f2cb\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"728c8fb84c9c4dd2b82109ec078bc7ad\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"2a591e6e172846c3879e95efb88b9eaf\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b12360248bf94ee295d105eb1c5b2c11\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"858de30cdfe44b1da33942c34c133a5f\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"e42442e3449b4579b080d4007efeda02\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"c7f595b143aa482ea64654eace90df09\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"37771c6da05740de873a0cad87d7e105\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0c97a4cdc9a74acb8e352d15e5962d51\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f1767f6a371649538e04847c4b2cbaba\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b5283a080c1c4be0a7bc1b7967078835\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"3dede614603a4c5eb8d9da4fea23fd9e\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"ad26a27943fb45b5bc7cdbea934b84a9\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"1a477120e6c64420837823d7743ae3c9\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
+              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"adf662a08ba84ff9a3383418d10dd6ab\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"54fec2b3837d4a269e7a79972fd02c41\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0446f90b0fe14e938971f5c318ea682a\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
             }
           ],
           "isError": false
@@ -1007,7 +806,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1015,7 +814,7 @@
         "params": {
           "name": "edit_begin",
           "arguments": {
-            "request_id": "listener-begin-6a8cd5708afb4322a3a98399016b6d61",
+            "request_id": "listener-begin-61cfa34327ef4c29bc0e58a35fa3dcc5",
             "assembly_name": "TestIL"
           }
         }
@@ -1023,7 +822,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1031,7 +830,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-2be9749d1651f75811ca311a81679d71\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":926684,\"last_activity_monotonic_ms\":926684},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"fingerprints\":{\"baseline_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"current_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"private\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-52e69eee88d844a56a9db046c8094226\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":365321,\"last_activity_monotonic_ms\":365321},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"fingerprints\":{\"baseline_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"current_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"private\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"history\":{\"family_id\":\"family-799828126b9cc592721986d4eef0a46b\",\"lineage_id\":null,\"base_checkpoint_id\":null,\"new_family\":true,\"match_basis\":[\"new_source\"]},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\",\"attribute_add\",\"attribute_remove\",\"security_add\",\"security_remove\",\"assembly_update\",\"module_update\",\"assembly_ref_update\",\"entry_point_set\",\"managed_resource_add\",\"managed_resource_update\",\"managed_resource_remove\",\"win32_resource_add\",\"win32_resource_update\",\"win32_resource_remove\",\"strong_name_remove\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1040,7 +839,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1057,7 +856,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1077,7 +876,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
@@ -1086,7 +885,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1101,7 +900,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1109,7 +908,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"37f733838d5541e8bfdca483f69432a7\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"804829fda17a4f67ae9ba5df4d76e409\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"93ca99aaa1504dc0a75658b48e5fede2\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"8f5040f2b3324576a9c371ae9212ee4c\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f6b7080251f2452bbcd9ded0854e6f64\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":2},{\"transport_kind\":\"streamable_http\",\"session_id\":\"edfd8213bf6d4291adac4468efcaed0d\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"041d10cdc2924f929e163186b874f2cb\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"728c8fb84c9c4dd2b82109ec078bc7ad\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"2a591e6e172846c3879e95efb88b9eaf\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b12360248bf94ee295d105eb1c5b2c11\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"858de30cdfe44b1da33942c34c133a5f\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"e42442e3449b4579b080d4007efeda02\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"c7f595b143aa482ea64654eace90df09\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"37771c6da05740de873a0cad87d7e105\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0c97a4cdc9a74acb8e352d15e5962d51\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f1767f6a371649538e04847c4b2cbaba\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b5283a080c1c4be0a7bc1b7967078835\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"3dede614603a4c5eb8d9da4fea23fd9e\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"ad26a27943fb45b5bc7cdbea934b84a9\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"1a477120e6c64420837823d7743ae3c9\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"3cb668a9e1c24c15bd66d536ebef9c77\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"67c301c80e924b80b08c04ffc9d5bf18\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
+              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"6906ed5530744b539213fc9dab4b15da\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"54fec2b3837d4a269e7a79972fd02c41\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0446f90b0fe14e938971f5c318ea682a\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"adf662a08ba84ff9a3383418d10dd6ab\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"d4b7d6c9df8d4f30882d07c14eb504ca\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
             }
           ],
           "isError": false
@@ -1118,7 +917,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1131,7 +930,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1139,7 +938,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\"},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\",\"history\":{\"lineage_count\":0,\"available\":true},\"recovery\":null,\"capacity\":{\"store_bytes\":{\"current\":0,\"maximum\":8589934592},\"store_children\":{\"current\":0,\"maximum\":4096},\"lineages\":{\"current\":0,\"maximum\":128},\"residuals\":{\"current\":0,\"maximum\":4096}}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1148,7 +947,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 4,
@@ -1156,7 +955,7 @@
         "params": {
           "name": "edit_begin",
           "arguments": {
-            "request_id": "same-url-begin-b7b576ebf58d4ac28e1694b69408e781",
+            "request_id": "same-url-begin-46d650b23358429a941d9a0800a59ac2",
             "assembly_name": "TestIL"
           }
         }
@@ -1164,7 +963,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 4,
@@ -1172,7 +971,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-bf2ec41b8d0655c4aacd3b5b1bebb508\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":972621,\"last_activity_monotonic_ms\":972621},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"fingerprints\":{\"baseline_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"current_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"private\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-ad1c81ac41a9523389626bac9840d1b9\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":398805,\"last_activity_monotonic_ms\":398805},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"fingerprints\":{\"baseline_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"current_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"private\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"history\":{\"family_id\":\"family-799828126b9cc592721986d4eef0a46b\",\"lineage_id\":null,\"base_checkpoint_id\":null,\"new_family\":true,\"match_basis\":[\"new_source\"]},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\",\"attribute_add\",\"attribute_remove\",\"security_add\",\"security_remove\",\"assembly_update\",\"module_update\",\"assembly_ref_update\",\"entry_point_set\",\"managed_resource_add\",\"managed_resource_update\",\"managed_resource_remove\",\"win32_resource_add\",\"win32_resource_update\",\"win32_resource_remove\",\"strong_name_remove\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1181,7 +980,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 5,
@@ -1189,15 +988,15 @@
         "params": {
           "name": "edit_rollback",
           "arguments": {
-            "request_id": "same-url-rollback-4f1eafa5b31441b2ad61c93fab51d628",
-            "transaction_id": "edit-bf2ec41b8d0655c4aacd3b5b1bebb508"
+            "request_id": "same-url-rollback-5c3989bd9b28447eb70f8676a7c4c192",
+            "transaction_id": "edit-ad1c81ac41a9523389626bac9840d1b9"
           }
         }
       }
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 5,
@@ -1205,7 +1004,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"rolled_back\":true,\"end_reason\":\"client_rollback\",\"original_live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"released\":{\"private_modules\":1,\"validation_modules\":0,\"apply_cache_entries\":0,\"review_slots\":0}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"rolled_back\":true,\"end_reason\":\"client_rollback\",\"original_live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"released\":{\"private_modules\":1,\"validation_modules\":0,\"apply_cache_entries\":0,\"review_slots\":0}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1214,7 +1013,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 6,
@@ -1222,7 +1021,7 @@
         "params": {
           "name": "edit_begin",
           "arguments": {
-            "request_id": "port-begin-602b73c442774f69b8da34b2709b02b6",
+            "request_id": "port-begin-e4ae1c6ccc8f4f3fbe08d44bf7118b18",
             "assembly_name": "TestIL"
           }
         }
@@ -1230,7 +1029,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 6,
@@ -1238,7 +1037,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-988810ec75bf99b94cee31073ccfb3f9\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":972628,\"last_activity_monotonic_ms\":972628},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"fingerprints\":{\"baseline_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"current_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"private\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-61c14b01d88c84443dc77d0412d11cca\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":398822,\"last_activity_monotonic_ms\":398822},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"fingerprints\":{\"baseline_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"current_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"private\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"history\":{\"family_id\":\"family-799828126b9cc592721986d4eef0a46b\",\"lineage_id\":null,\"base_checkpoint_id\":null,\"new_family\":true,\"match_basis\":[\"new_source\"]},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\",\"attribute_add\",\"attribute_remove\",\"security_add\",\"security_remove\",\"assembly_update\",\"module_update\",\"assembly_ref_update\",\"entry_point_set\",\"managed_resource_add\",\"managed_resource_update\",\"managed_resource_remove\",\"win32_resource_add\",\"win32_resource_update\",\"win32_resource_remove\",\"strong_name_remove\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1247,7 +1046,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 7,
@@ -1255,8 +1054,8 @@
         "params": {
           "name": "edit_apply",
           "arguments": {
-            "request_id": "old-port-mutation-cdd8b01648f8404e9687803e2b1a7530",
-            "transaction_id": "edit-988810ec75bf99b94cee31073ccfb3f9",
+            "request_id": "old-port-mutation-2545a6f5b2d24f73a6fa5992f836a498",
+            "transaction_id": "edit-61c14b01d88c84443dc77d0412d11cca",
             "expected_revision": 0,
             "operation": {
               "kind": "type_add",
@@ -1269,7 +1068,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 7,
@@ -1277,7 +1076,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-988810ec75bf99b94cee31073ccfb3f9\",\"work_revision\":1,\"review_revision\":null,\"operation_count\":1,\"started_at_monotonic_ms\":972628,\"last_activity_monotonic_ms\":972631},\"operation_index\":0,\"kind\":\"type_add\",\"created_object_ids\":[\"obj-000-00\"],\"fingerprints\":{\"baseline_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"current_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"private\":\"c7a7da9e89fe9ad5034a21989b3f7aaef38dd80eae3ad93c95c07c395ceafd35\"},\"diffs\":[{\"operation_index\":0,\"kind\":\"type_add\",\"target\":\"0x02000000\",\"path\":\"metadata/type_add\",\"before\":null,\"after\":\"P02Listener.MustNotReplay\",\"risk_ids\":[]}],\"risks\":[],\"review_cleared\":true,\"capacity\":{\"operations\":{\"current\":1,\"maximum\":256},\"object_ids\":{\"current\":1,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":68,\"maximum\":8388608},\"diff_bytes\":{\"current\":154,\"maximum\":524288},\"apply_cache_entries\":{\"current\":1,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-61c14b01d88c84443dc77d0412d11cca\",\"work_revision\":1,\"review_revision\":null,\"operation_count\":1,\"started_at_monotonic_ms\":398822,\"last_activity_monotonic_ms\":398826},\"operation_index\":0,\"kind\":\"type_add\",\"created_object_ids\":[\"obj-000-00\"],\"fingerprints\":{\"baseline_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"current_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"private\":\"f3e599f618e6c6fec61a380723be9f03bfe1749523e09365db7b8f1cfaf0e1ef\"},\"diffs\":[{\"operation_index\":0,\"kind\":\"type_add\",\"target\":\"0x02000000\",\"path\":\"metadata/type_add\",\"before\":null,\"after\":\"P02Listener.MustNotReplay\",\"risk_ids\":[]}],\"risks\":[],\"review_cleared\":true,\"capacity\":{\"operations\":{\"current\":1,\"maximum\":256},\"object_ids\":{\"current\":1,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":68,\"maximum\":8388608},\"diff_bytes\":{\"current\":154,\"maximum\":524288},\"apply_cache_entries\":{\"current\":1,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1286,7 +1085,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1303,7 +1102,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1323,7 +1122,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
@@ -1332,7 +1131,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1347,7 +1146,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1355,7 +1154,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"8d2de3435b08437dbe8fad28c8343962\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"804829fda17a4f67ae9ba5df4d76e409\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"93ca99aaa1504dc0a75658b48e5fede2\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"8f5040f2b3324576a9c371ae9212ee4c\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f6b7080251f2452bbcd9ded0854e6f64\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":2},{\"transport_kind\":\"streamable_http\",\"session_id\":\"edfd8213bf6d4291adac4468efcaed0d\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"041d10cdc2924f929e163186b874f2cb\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"728c8fb84c9c4dd2b82109ec078bc7ad\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"2a591e6e172846c3879e95efb88b9eaf\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b12360248bf94ee295d105eb1c5b2c11\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"858de30cdfe44b1da33942c34c133a5f\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"e42442e3449b4579b080d4007efeda02\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"c7f595b143aa482ea64654eace90df09\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"37771c6da05740de873a0cad87d7e105\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0c97a4cdc9a74acb8e352d15e5962d51\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"f1767f6a371649538e04847c4b2cbaba\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"b5283a080c1c4be0a7bc1b7967078835\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"3dede614603a4c5eb8d9da4fea23fd9e\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"ad26a27943fb45b5bc7cdbea934b84a9\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"1a477120e6c64420837823d7743ae3c9\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"3cb668a9e1c24c15bd66d536ebef9c77\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"67c301c80e924b80b08c04ffc9d5bf18\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"37f733838d5541e8bfdca483f69432a7\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":2},{\"transport_kind\":\"streamable_http\",\"session_id\":\"640545ae6252493e98b7a44bc1cb1ed1\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"ba67b6cd2f7d4eb2989f0bb9bf712d4b\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
+              "text": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":true,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"result\":{\"test_mode\":true,\"transport_kind\":\"streamable_http\",\"authoritative_session_id\":\"aa1aa489a1f04f3cae58e73603491bad\",\"protocol_version\":\"2025-03-26\",\"is_initialized_session\":true,\"can_own_edit_transaction\":true,\"lifecycle\":{\"isolated_observer_faults\":0,\"events\":[{\"transport_kind\":\"streamable_http\",\"session_id\":\"54fec2b3837d4a269e7a79972fd02c41\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"0446f90b0fe14e938971f5c318ea682a\",\"reason\":\"client_delete\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"adf662a08ba84ff9a3383418d10dd6ab\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":1},{\"transport_kind\":\"streamable_http\",\"session_id\":\"d4b7d6c9df8d4f30882d07c14eb504ca\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0},{\"transport_kind\":\"streamable_http\",\"session_id\":\"6906ed5530744b539213fc9dab4b15da\",\"reason\":\"listener_stop\",\"active_session_count_after_removal\":0}]}},\"warnings\":[],\"untrusted_sample_data\":false}"
             }
           ],
           "isError": false
@@ -1364,7 +1163,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1377,7 +1176,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 3,
@@ -1385,7 +1184,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\"},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\",\"history\":{\"lineage_count\":0,\"available\":true},\"recovery\":null,\"capacity\":{\"store_bytes\":{\"current\":0,\"maximum\":8589934592},\"store_children\":{\"current\":0,\"maximum\":4096},\"lineages\":{\"current\":0,\"maximum\":128},\"residuals\":{\"current\":0,\"maximum\":4096}}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1394,7 +1193,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 4,
@@ -1411,7 +1210,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 4,
@@ -1428,7 +1227,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 5,
@@ -1436,7 +1235,7 @@
         "params": {
           "name": "edit_begin",
           "arguments": {
-            "request_id": "new-port-begin-dcaa3044b86b4297b14b3114e6ba1777",
+            "request_id": "new-port-begin-aad09363df6f4932b8b41da3ae73fb0c",
             "assembly_name": "TestIL"
           }
         }
@@ -1444,7 +1243,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 5,
@@ -1452,7 +1251,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-b6ad4bde9c2e080af805e6f7cac82037\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":1049339,\"last_activity_monotonic_ms\":1049339},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"fingerprints\":{\"baseline_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"current_live\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"private\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"editing\",\"result\":{\"transaction\":{\"transaction_id\":\"edit-db6cc6b5cf4f142e938a21ceaaec3bd2\",\"work_revision\":0,\"review_revision\":null,\"operation_count\":0,\"started_at_monotonic_ms\":433196,\"last_activity_monotonic_ms\":433196},\"source\":{\"assembly_name\":\"TestIL\",\"module_name\":\"TestIL.dll\",\"mvid\":\"9607c6f5-0440-46fa-ab26-d1d7321d6b8e\",\"file_path\":\"C:\\\\Tools\\\\dnspy-mcp-edit-tests\\\\repo\\\\tests\\\\fixtures\\\\bin\\\\TestIL.dll\",\"file_sha256\":\"926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8\",\"live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"fingerprints\":{\"baseline_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"current_live\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"private\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\"},\"limits\":{\"max_operations\":256,\"max_object_ids\":4096,\"max_normalized_operation_bytes\":8388608,\"max_diff_bytes\":524288,\"max_body_instructions\":4096,\"max_body_locals\":1024,\"max_body_exception_handlers\":512,\"max_live_steps\":256,\"max_module_bytes\":16777216,\"max_metadata_rows\":100000,\"max_resource_bytes\":8388608,\"max_pdb_bytes\":8388608,\"max_il_instructions\":250000,\"max_dispatcher_ms\":1000},\"capacity\":{\"operations\":{\"current\":0,\"maximum\":256},\"object_ids\":{\"current\":0,\"maximum\":4096},\"normalized_operation_bytes\":{\"current\":0,\"maximum\":8388608},\"diff_bytes\":{\"current\":2,\"maximum\":524288},\"apply_cache_entries\":{\"current\":0,\"maximum\":1024},\"apply_cache_bytes\":{\"current\":0,\"maximum\":33554432},\"review_tombstone_entries\":{\"current\":0,\"maximum\":64},\"review_tombstone_bytes\":{\"current\":0,\"maximum\":262144}},\"history\":{\"family_id\":\"family-799828126b9cc592721986d4eef0a46b\",\"lineage_id\":null,\"base_checkpoint_id\":null,\"new_family\":true,\"match_basis\":[\"new_source\"]},\"capabilities\":{\"operation_kinds\":[\"type_add\",\"type_update\",\"type_remove\",\"method_add\",\"method_update\",\"method_remove\",\"field_add\",\"field_update\",\"field_remove\",\"property_add\",\"property_update\",\"property_remove\",\"event_add\",\"event_update\",\"event_remove\",\"parameter_add\",\"parameter_update\",\"parameter_remove\",\"generic_parameter_add\",\"generic_parameter_update\",\"generic_parameter_remove\",\"method_body_replace\",\"attribute_add\",\"attribute_remove\",\"security_add\",\"security_remove\",\"assembly_update\",\"module_update\",\"assembly_ref_update\",\"entry_point_set\",\"managed_resource_add\",\"managed_resource_update\",\"managed_resource_remove\",\"win32_resource_add\",\"win32_resource_update\",\"win32_resource_remove\",\"strong_name_remove\"],\"dynamic_validation\":true,\"test_apply_restore\":true}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1461,7 +1260,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 6,
@@ -1469,15 +1268,15 @@
         "params": {
           "name": "edit_rollback",
           "arguments": {
-            "request_id": "new-port-rollback-a4aec962152045bd9b134e20fc17c391",
-            "transaction_id": "edit-b6ad4bde9c2e080af805e6f7cac82037"
+            "request_id": "new-port-rollback-4e2fdbf162004e408ffb1ca00d6e9921",
+            "transaction_id": "edit-db6cc6b5cf4f142e938a21ceaaec3bd2"
           }
         }
       }
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15379/",
+      "url": "http://192.168.204.240:15379/",
       "message": {
         "jsonrpc": "2.0",
         "id": 6,
@@ -1485,7 +1284,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"rolled_back\":true,\"end_reason\":\"client_rollback\",\"original_live_fingerprint\":\"402fef46e0096aacccb06dfc59b0f9740e44b9da8ce2fc3ccf7b47f3cada0338\",\"released\":{\"private_modules\":1,\"validation_modules\":0,\"apply_cache_entries\":0,\"review_slots\":0}},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"rolled_back\":true,\"end_reason\":\"client_rollback\",\"original_live_fingerprint\":\"8311f33f666b1b507a551bdc73c0cb8c41d8c571f6f2bbcae379f1afd0219a45\",\"released\":{\"private_modules\":1,\"validation_modules\":0,\"apply_cache_entries\":0,\"review_slots\":0}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false
@@ -1494,7 +1293,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1511,7 +1310,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1531,7 +1330,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
@@ -1540,7 +1339,7 @@
     },
     {
       "direction": "request",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1553,7 +1352,7 @@
     },
     {
       "direction": "response",
-      "url": "http://192.168.204.149:15378/",
+      "url": "http://192.168.204.240:15378/",
       "message": {
         "jsonrpc": "2.0",
         "id": 2,
@@ -1561,7 +1360,7 @@
           "content": [
             {
               "type": "text",
-              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\"},\"warnings\":[],\"untrusted_sample_data\":true}"
+              "text": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":true,\"state\":\"idle\",\"result\":{\"busy\":false,\"state\":\"idle\",\"history\":{\"lineage_count\":0,\"available\":true},\"recovery\":null,\"capacity\":{\"store_bytes\":{\"current\":0,\"maximum\":8589934592},\"store_children\":{\"current\":0,\"maximum\":4096},\"lineages\":{\"current\":0,\"maximum\":128},\"residuals\":{\"current\":0,\"maximum\":4096}}},\"warnings\":[],\"untrusted_sample_data\":true}"
             }
           ],
           "isError": false

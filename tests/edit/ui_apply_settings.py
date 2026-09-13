@@ -161,6 +161,72 @@ def open_options(client: DnSpyClient) -> None:
     raise RuntimeError("dnSpy Options dialog did not appear after UI click")
 
 
+UIA_LOCATE_HOST_PORT = r'''
+$ErrorActionPreference='Stop'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$proc=Get-Process dnSpy -ErrorAction Stop | Select-Object -First 1
+$main=[System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+$opts=$null
+foreach($name in @('选项','Options')){
+  $opts=$main.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$name)))
+  if($null -ne $opts){ break }
+}
+if($null -eq $opts){ throw 'options dialog not open' }
+$edits=@($opts.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+  (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit))))
+$hostBox=$null; $portBox=$null
+foreach($e in $edits){
+  try { $v=[string]$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value } catch { continue }
+  if([string]::IsNullOrWhiteSpace($v)){ continue }
+  if($null -eq $portBox -and $v -match '^\d{2,6}$'){ $portBox=$e; continue }
+  if($null -eq $hostBox -and $v -match '^[A-Za-z0-9.\-]+$' -and $v -notmatch '^\d+$'){ $hostBox=$e }
+}
+if($null -eq $hostBox -or $null -eq $portBox){ throw ('host/port boxes not identified: edits=' + $edits.Count) }
+$hr=$hostBox.Current.BoundingRectangle
+$pr=$portBox.Current.BoundingRectangle
+'hostrect:' + [int]($hr.X + $hr.Width/2) + ',' + [int]($hr.Y + $hr.Height/2)
+'portrect:' + [int]($pr.X + $pr.Width/2) + ',' + [int]($pr.Y + $pr.Height/2)
+# the CIDR new-row editor: the first EMPTY edit below the port box; the
+# Host-Only acknowledgment checkbox by its 远程主机/Host-Only name
+$cidrBox=$null
+foreach($e in $edits){
+  try { $v=[string]$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value } catch { $v=' ' }
+  $r=$e.Current.BoundingRectangle
+  if([string]::IsNullOrWhiteSpace($v) -and $null -ne $pr -and $r.Y -gt ($pr.Y + 20) -and $r.Y -lt ($pr.Y + 120)){ $cidrBox=$e; break }
+}
+if($null -ne $cidrBox){
+  $cr=$cidrBox.Current.BoundingRectangle
+  'cidrrect:' + [int]($cr.X + $cr.Width/2) + ',' + [int]($cr.Y + $cr.Height/2)
+}
+$cidrPane=$null
+foreach($p in $opts.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+  (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Pane)))){
+  $r=$p.Current.BoundingRectangle
+  if($null -ne $pr -and $r.Y -gt ($pr.Y + 20) -and $r.Y -lt ($pr.Y + 130) -and $r.Width -gt 200){ $cidrPane=$p; break }
+}
+if($null -ne $cidrPane){
+  $cr2=$cidrPane.Current.BoundingRectangle
+  'cidrpane:' + [int]($cr2.X + $cr2.Width/2) + ',' + [int]($cr2.Y + $cr2.Height/2)
+}
+$ackBox=$opts.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+  (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::CheckBox)))
+$ack=$null
+foreach($c in $opts.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+  (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::CheckBox)))){
+  $n=[string]$c.Current.Name
+  if($n -match '远程主机|Host-Only'){ $ack=$c; break }
+}
+if($null -ne $ack){
+  $ar=$ack.Current.BoundingRectangle
+  $on=$false
+  try { $on=($ack.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) } catch {}
+  'ackrect:' + [int]($ar.X + 10) + ',' + [int]($ar.Y + $ar.Height/2) + ':on=' + $on
+}
+'''
+
+
+
 def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int | None = None) -> None:
     open_options(client)
     tree = snapshot(client, DESKTOP_REGION)
@@ -187,6 +253,52 @@ def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int 
         page_found = is_mcp_settings_page(tree)
     if not page_found:
         raise RuntimeError(f"MCP settings page was not found; observed={sorted(set(observed_pages))}")
+
+    # CHK-015 listener fix: UIA locates the host/port TextBox rectangles
+    # deterministically; the actual entry uses keyboard Type at those exact
+    # coordinates (UIA ValuePattern.SetValue does not commit the WPF binding,
+    # and the historical checkbox-relative offsets drifted with the layout).
+    import re as _re
+    if host or port is not None:
+        try:
+            located = client.call_tool_json("PowerShell", {"command": UIA_LOCATE_HOST_PORT, "timeout": 60})
+            located_text = located if isinstance(located, str) else str(located)
+            host_m = _re.search(r"hostrect:(\d+),(\d+)", located_text)
+            port_m = _re.search(r"portrect:(\d+),(\d+)", located_text)
+        except Exception:
+            host_m = port_m = None
+        cidr_m = _re.search(r"cidrrect:(\d+),(\d+)", located_text)
+        ack_m = _re.search(r"ackrect:(\d+),(\d+):on=(True|False)", located_text)
+        if host_m and host:
+            client.call_tool_json("Type", {"loc": [int(host_m.group(1)), int(host_m.group(2))],
+                                           "text": host, "clear": True})
+            time.sleep(0.3)
+            if port_m and port is not None:
+                client.call_tool_json("Type", {"loc": [int(port_m.group(1)), int(port_m.group(2))],
+                                               "text": str(port), "clear": True})
+                time.sleep(0.3)
+            # CHK-015: the settings validator enforces the loopback/remote
+            # combination matrix — a loopback Host requires EMPTY Cidrs and no
+            # ack; a non-loopback Host requires the ack (the trusted peer CIDR
+            # stays whatever the deployment seeded/persisted).
+            pane_m = _re.search(r"cidrpane:(\d+),(\d+)", located_text)
+            if host in ("localhost", "127.0.0.1", "::1"):
+                if pane_m:
+                    client.call_tool_json("Click", {"loc": [int(pane_m.group(1)), int(pane_m.group(2))]})
+                    time.sleep(0.2)
+                    client.call_tool_json("Shortcut", {"shortcut": "ctrl+a"})
+                    time.sleep(0.15)
+                    client.call_tool_json("Shortcut", {"shortcut": "delete"})
+                    time.sleep(0.2)
+                if ack_m and ack_m.group(3) == "True":
+                    client.call_tool_json("Click", {"loc": [int(ack_m.group(1)), int(ack_m.group(2))]})
+                    time.sleep(0.3)
+            else:
+                if ack_m and ack_m.group(3) == "False":
+                    client.call_tool_json("Click", {"loc": [int(ack_m.group(1)), int(ack_m.group(2))]})
+                    time.sleep(0.3)
+            host = ""          # already entered at the located rectangles
+            port = None
 
     host_location: list[int] | None = None
     if host or port is not None:

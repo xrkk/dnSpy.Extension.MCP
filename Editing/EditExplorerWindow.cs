@@ -43,6 +43,7 @@ internal sealed class EditExplorerWindow : Window {
 	readonly TextBlock cancelLine;
 	readonly TreeView tree;
 	readonly Button cancelButton;
+	readonly TextBlock detailLine;
 	string? lastCancelResult;
 
 	public EditExplorerWindow(EditTransactionCoordinator coordinator) {
@@ -59,6 +60,9 @@ internal sealed class EditExplorerWindow : Window {
 		System.Windows.Automation.AutomationProperties.SetAutomationId(cancelLine, "McpEditCancelLine");
 		tree = new TreeView { Margin = new Thickness(8, 8, 8, 8) };
 		System.Windows.Automation.AutomationProperties.SetAutomationId(tree, "McpEditTree");
+		detailLine = new TextBlock { TextWrapping = System.Windows.TextWrapping.Wrap, Margin = new Thickness(8, 4, 8, 0) };
+		System.Windows.Automation.AutomationProperties.SetAutomationId(detailLine, "McpEditDetailLine");
+		tree.SelectedItemChanged += (_, _) => ShowSelectedDetail();
 		cancelButton = new Button { Content = "Cancel current transaction (rollback)", Margin = new Thickness(8, 0, 8, 8), Padding = new Thickness(12, 4, 12, 4) };
 		System.Windows.Automation.AutomationProperties.SetAutomationId(cancelButton, "McpEditCancelButton");
 		cancelButton.Click += OnCancelClicked;
@@ -66,9 +70,11 @@ internal sealed class EditExplorerWindow : Window {
 		DockPanel.SetDock(stateLine, Dock.Top);
 		DockPanel.SetDock(cancelLine, Dock.Top);
 		DockPanel.SetDock(cancelButton, Dock.Bottom);
+		DockPanel.SetDock(detailLine, Dock.Bottom);
 		panel.Children.Add(stateLine);
 		panel.Children.Add(cancelLine);
 		panel.Children.Add(cancelButton);
+		panel.Children.Add(detailLine);
 		panel.Children.Add(tree);
 		Content = panel;
 		timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
@@ -123,6 +129,10 @@ internal sealed class EditExplorerWindow : Window {
 			foreach (var risk in snapshot.Risks)
 				risksNode.Items.Add(new TreeViewItem { Header = risk });
 			transactionNode.Items.Add(risksNode);
+			var validationNode = new TreeViewItem { Header = "validation (" + snapshot.Validation.Count + ")", IsExpanded = snapshot.Validation.Count != 0 };
+			foreach (var row in snapshot.Validation)
+				validationNode.Items.Add(new TreeViewItem { Header = row });
+			transactionNode.Items.Add(validationNode);
 			tree.Items.Add(transactionNode);
 		}
 		var lineageNode = new TreeViewItem { Header = "checkpoint lineages (" + snapshot.Lineages.Count + ")", IsExpanded = true };
@@ -133,15 +143,25 @@ internal sealed class EditExplorerWindow : Window {
 			// rows — the branching history is browsable even when idle.
 			foreach (var checkpoint in snapshot.Checkpoints) {
 				if (checkpoint.LineageId != lineageId) continue;
-				lineageItem.Items.Add(new TreeViewItem { Header = "checkpoint " + checkpoint.CheckpointId
+				var item = new TreeViewItem { Header = "checkpoint " + checkpoint.CheckpointId
 					+ " parent " + (checkpoint.ParentCheckpointId == string.Empty ? "root" : checkpoint.ParentCheckpointId)
 					+ " kind " + checkpoint.Kind
 					+ " image " + checkpoint.ImageShaPrefix
-					+ " semantic " + checkpoint.SemanticPrefix });
+					+ " semantic " + checkpoint.SemanticPrefix, Tag = checkpoint };
+				item.Items.Add(new TreeViewItem { Header = checkpoint.Detail });
+				lineageItem.Items.Add(item);
 			}
 			lineageNode.Items.Add(lineageItem);
 		}
 		tree.Items.Add(lineageNode);
+	}
+
+	void ShowSelectedDetail() {
+		// CHK-014: the selected checkpoint's complete facts (full hashes,
+		// sequence, review binding, validation summary, confirmed-risk set,
+		// best-effort time) are shown in the detail line.
+		if (tree.SelectedItem is TreeViewItem { Tag: EditTransactionCoordinator.ExplorerCheckpointRow row })
+			detailLine.Text = row.Detail;
 	}
 
 	void OnCancelClicked(object sender, RoutedEventArgs e) {

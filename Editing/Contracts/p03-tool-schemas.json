@@ -10854,7 +10854,9 @@
             "fp-channel-managedresource:mutate",
             "fp-channel-embeddedpdb:mutate",
             "fp-canonical-global-order:reorder",
-            "live-conflict:mutate-entrypoint"
+            "live-conflict:mutate-entrypoint",
+            "live-conflict:mutate-layout",
+            "live-conflict:mutate-cdi"
           ]
         },
         "transaction_id": {

@@ -15,6 +15,8 @@ namespace dnSpy.Extension.MCP.Editing;
 /// temporary files and atomic replacement cannot leak into the coordinator.
 /// </summary>
 internal interface IEditCheckpointStore : IDisposable {
+	/// <summary>CHK-014: read-only lineage directory for explorer time facts; null when absent.</summary>
+	string? LineageDirectoryUtcProbe(string lineageId);
 	string ArtifactRoot { get; }
 	IReadOnlyList<EditStoreObject> EnumerateCheckpointObjects();
 	bool FinalExists(string lineageId);
@@ -241,6 +243,11 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 		}
 	}
 
+	/// <summary>CHK-014: absolute lineage directory for read-only UI facts
+	/// (best-effort per-checkpoint file times).  Read-only; never mutates the store.</summary>
+	public string? LineageDirectoryUtcProbe(string lineageId) =>
+		EditHistoryIds.Is(lineageId, "lineage") && Directory.Exists(FinalPath(lineageId)) ? FinalPath(lineageId) : null;
+
 	string FinalPath(string lineageId) {
 		if (!EditHistoryIds.Is(lineageId, "lineage")) throw new ArgumentException("invalid lineage_id", "lineage_id");
 		return Path.Combine(checkpointRoot, lineageId + ".dnspy-mcp-checkpoints");
@@ -320,6 +327,9 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 
 /// <summary>Deterministic fault-capable adapter used by the store harness; never MEF-exported.</summary>
 internal sealed class InMemoryEditCheckpointStore : IEditCheckpointStore {
+	// CHK-014: in-memory store has no directory; the explorer omits time facts.
+	public string? LineageDirectoryUtcProbe(string lineageId) => null;
+
 	readonly Dictionary<string, (byte[] Bytes, string FileId)> finals = new(StringComparer.Ordinal);
 	readonly Dictionary<string, (byte[] Bytes, string FileId)> temps = new(StringComparer.Ordinal);
 	readonly Dictionary<string, (byte[] Bytes, string FileId)> outputs = new(StringComparer.OrdinalIgnoreCase);

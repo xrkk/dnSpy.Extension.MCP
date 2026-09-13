@@ -53,19 +53,113 @@ internal static class EditFingerprint {
 			: "entrypoint|" + (module.ManagedEntryPoint?.ToString() ?? string.Empty));
 		foreach (var reference in module.GetAssemblyRefs().OrderBy(r => r.FullName, StringComparer.Ordinal))
 			rows.Add("asmref|" + reference.FullName + "|" + reference.MDToken.Raw.ToString(CultureInfo.InvariantCulture));
+		// CHK-012: assembly flags and hash algorithm are editable metadata the
+		// semantic projection does not carry (the assembly row is FullName only).
+		rows.Add(module.Assembly == null ? "asmflags|none"
+			: "asmflags|" + ((uint)module.Assembly.Attributes).ToString(CultureInfo.InvariantCulture)
+				+ "|" + ((uint)module.Assembly.HashAlgorithm).ToString(CultureInfo.InvariantCulture));
+		// assembly/module-level custom attributes are outside the semantic
+		// projection's assembly row (FullName only) — render them into the guard
+		foreach (var attribute in module.Assembly?.CustomAttributes ?? Enumerable.Empty<CustomAttribute>())
+			rows.Add("asmattr|" + attribute.TypeFullName + "|" + attribute.Constructor?.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture));
+		foreach (var attribute in module.CustomAttributes)
+			rows.Add("modattr|" + attribute.TypeFullName + "|" + attribute.Constructor?.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture));
+		// CHK-012: ClassLayout packing/size rows (P04 layout edits; the type row
+		// carries only attributes).
+		foreach (var type in module.GetTypes())
+			if (type.ClassLayout != null)
+				rows.Add("classlayout|" + TypeKey(type) + "|" + type.ClassLayout.PackingSize.ToString(CultureInfo.InvariantCulture)
+					+ "|" + type.ClassLayout.ClassSize.ToString(CultureInfo.InvariantCulture));
+		// CHK-012: declared-security rows on module/assembly/types/methods
+		// (P04 security edits leave no row in the semantic projection).
+		if (module.Assembly != null)
+			rows.Add("declsec|assembly|" + DeclSecurityRows(module.Assembly.DeclSecurities));
+		foreach (var type in module.GetTypes()) {
+			rows.Add("declsec|t|" + TypeKey(type) + "|" + DeclSecurityRows(type.DeclSecurities));
+			foreach (var method in type.Methods)
+				rows.Add("declsec|m|" + MethodKey(method) + "|" + DeclSecurityRows(method.DeclSecurities));
+		}
 		rows.Add(Win32ResourceRows(module));
-		rows.Add("module-cdi|" + CdiRows(module.CustomDebugInfos));
+		// CHK-012: CDI CONTENT, not just row types — the previous type-name-only
+		// rows left same-kind different-value edits (e.g. a default-namespace
+		// change) invisible.  CdiContent reflects every public property.
+		rows.Add("module-cdi|" + CdiContentRows(module.CustomDebugInfos));
 		foreach (var type in module.GetTypes()) {
 			foreach (var cdi in type.CustomDebugInfos)
-				rows.Add("cdi|t|" + TypeKey(type) + "|" + cdi.GetType().Name);
+				rows.Add("cdi|t|" + TypeKey(type) + "|" + CdiContent(cdi));
 			foreach (var method in type.Methods)
 				foreach (var cdi in method.CustomDebugInfos)
-					rows.Add("cdi|m|" + MethodKey(method) + "|" + cdi.GetType().Name);
+					rows.Add("cdi|m|" + MethodKey(method) + "|" + CdiContent(cdi));
 			foreach (var field in type.Fields)
 				foreach (var cdi in field.CustomDebugInfos)
-					rows.Add("cdi|f|" + FieldKey(field) + "|" + cdi.GetType().Name);
+					rows.Add("cdi|f|" + FieldKey(field) + "|" + CdiContent(cdi));
+			foreach (var property in type.Properties)
+				foreach (var cdi in property.CustomDebugInfos)
+					rows.Add("cdi|p|" + property.Name + "|" + CdiContent(cdi));
+			foreach (var eventDef in type.Events)
+				foreach (var cdi in eventDef.CustomDebugInfos)
+					rows.Add("cdi|e|" + eventDef.Name + "|" + CdiContent(cdi));
 		}
 		return EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", rows.OrderBy(x => x, StringComparer.Ordinal))));
+	}
+
+	static string DeclSecurityRows(IList<dnlib.DotNet.DeclSecurity> rows) {
+		if (rows == null || rows.Count == 0) return "none";
+		var parts = new List<string>();
+		foreach (var row in rows) {
+			// DeclSecurity carries Action + typed SecurityAttributes (no raw XML
+			// buffer in dnlib); render each attribute through the reflective
+			// value formatter so any argument change alters the guard.
+			var attributes = new List<string>();
+			foreach (var attribute in row.SecurityAttributes)
+				attributes.Add(ReflectValue(attribute, 0));
+			parts.Add(((int)row.Action).ToString(CultureInfo.InvariantCulture) + ":"
+				+ string.Join(",", attributes));
+		}
+		parts.Sort(StringComparer.Ordinal);
+		return string.Join(";", parts);
+	}
+
+	/// <summary>CHK-012: stable content rendering of one custom-debug-info row.
+	/// Reflects every public instance property (name-ordered); tokens, byte
+	/// blobs and sequences are normalized so an unchanged graph always renders
+	/// identically while any value change alters the guard.</summary>
+	static string CdiContent(PdbCustomDebugInfo info) {
+		try {
+			var parts = new List<string> { info.Guid.ToString() };
+			foreach (var property in info.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+				.OrderBy(p => p.Name, StringComparer.Ordinal)) {
+				if (property.GetIndexParameters().Length != 0) continue;
+				object? value;
+				try { value = property.GetValue(info); }
+				catch (Exception) { continue; }
+				parts.Add(property.Name + "=" + ReflectValue(value, 0));
+			}
+			return string.Join("|", parts);
+		}
+		catch (Exception) {
+			return info.GetType().Name + "|unreflectable";
+		}
+	}
+
+	static string ReflectValue(object? value, int depth) {
+		if (value == null) return "null";
+		if (depth > 4) return "...";
+		switch (value) {
+		case byte[] bytes:
+			return "bytes:" + EditWire.Sha256(bytes);
+		case string text:
+			return text;
+		case Guid guid:
+			return guid.ToString("D");
+		case IMDTokenProvider provider:
+			return provider.GetType().Name + ":" + provider.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture);
+		case System.Collections.IEnumerable sequence:
+			return "[" + string.Join(",", sequence.Cast<object?>().Take(64).Select(item => ReflectValue(item, depth + 1))) + "]";
+		}
+		if (value.GetType().IsPrimitive || value is Enum || value is decimal)
+			return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+		return value.GetType().Name + ":" + value;
 	}
 
 	static string Win32ResourceRows(ModuleDef module) {
@@ -90,6 +184,8 @@ internal static class EditFingerprint {
 
 	static string CdiRows(IList<PdbCustomDebugInfo> infos)
 		=> string.Join("|", infos.Select(x => x.GetType().Name).OrderBy(x => x, StringComparer.Ordinal));
+	static string CdiContentRows(IList<PdbCustomDebugInfo> infos)
+		=> string.Join("|", infos.Select(CdiContent).OrderBy(x => x, StringComparer.Ordinal));
 
 	/// <summary>
 	/// Test-only evidence seam for the canonical global-order invariant.  Both values are
