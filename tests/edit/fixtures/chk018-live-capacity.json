@@ -1,0 +1,235 @@
+{
+  "source_head": "726395bb47c63eab6ed72e28834483e3b1c53a90",
+  "source_archive": "PLAN/2026.09.13/2026.09.13-12-Windows补验原始证据.zip",
+  "source_log": "live-x64-bounded-actions.jsonl",
+  "responses": [
+    {
+      "tool": "edit_begin",
+      "response": {
+        "schema_version": "dnspy.edit.v1",
+        "ok": true,
+        "state": "editing",
+        "result": {
+          "transaction": {
+            "transaction_id": "edit-bd810b3104e99c3b89baddd6fa2d4466",
+            "work_revision": 0,
+            "review_revision": null,
+            "operation_count": 0,
+            "started_at_monotonic_ms": 287218,
+            "last_activity_monotonic_ms": 287218
+          },
+          "source": {
+            "assembly_name": "ImportHost",
+            "module_name": "ImportHost.exe",
+            "mvid": "6b9bcc57-268b-45af-9881-7b204858a078",
+            "file_path": "C:\\Tools\\mcp-repo\\tests\\fixtures\\bin\\ImportHost\\ImportHost.exe",
+            "file_sha256": "ae625095d74feec9dad8692f5144ef9877f767c0a78ced85e6f1f6180bff8303",
+            "live_fingerprint": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470"
+          },
+          "fingerprints": {
+            "baseline_live": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470",
+            "current_live": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470",
+            "private": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470"
+          },
+          "limits": {
+            "max_operations": 256,
+            "max_object_ids": 4096,
+            "max_normalized_operation_bytes": 8388608,
+            "max_diff_bytes": 524288,
+            "max_body_instructions": 4096,
+            "max_body_locals": 1024,
+            "max_body_exception_handlers": 512,
+            "max_live_steps": 256,
+            "max_module_bytes": 16777216,
+            "max_metadata_rows": 100000,
+            "max_resource_bytes": 8388608,
+            "max_pdb_bytes": 8388608,
+            "max_il_instructions": 250000,
+            "max_dispatcher_ms": 1000
+          },
+          "capacity": {
+            "operations": {
+              "current": 0,
+              "maximum": 256
+            },
+            "object_ids": {
+              "current": 0,
+              "maximum": 4096
+            },
+            "normalized_operation_bytes": {
+              "current": 0,
+              "maximum": 8388608
+            },
+            "diff_bytes": {
+              "current": 2,
+              "maximum": 524288
+            },
+            "apply_cache_entries": {
+              "current": 0,
+              "maximum": 1024
+            },
+            "apply_cache_bytes": {
+              "current": 0,
+              "maximum": 33554432
+            },
+            "review_tombstone_entries": {
+              "current": 0,
+              "maximum": 64
+            },
+            "review_tombstone_bytes": {
+              "current": 0,
+              "maximum": 262144
+            }
+          },
+          "history": {
+            "family_id": "family-a4a5a5aa843103ae598480bc8e94c79d",
+            "lineage_id": null,
+            "base_checkpoint_id": null,
+            "new_family": true,
+            "match_basis": [
+              "new_source"
+            ]
+          },
+          "capabilities": {
+            "operation_kinds": [
+              "type_add",
+              "type_update",
+              "type_remove",
+              "method_add",
+              "method_update",
+              "method_remove",
+              "field_add",
+              "field_update",
+              "field_remove",
+              "property_add",
+              "property_update",
+              "property_remove",
+              "event_add",
+              "event_update",
+              "event_remove",
+              "parameter_add",
+              "parameter_update",
+              "parameter_remove",
+              "generic_parameter_add",
+              "generic_parameter_update",
+              "generic_parameter_remove",
+              "method_body_replace",
+              "attribute_add",
+              "attribute_remove",
+              "security_add",
+              "security_remove",
+              "assembly_update",
+              "module_update",
+              "assembly_ref_update",
+              "entry_point_set",
+              "managed_resource_add",
+              "managed_resource_update",
+              "managed_resource_remove",
+              "win32_resource_add",
+              "win32_resource_update",
+              "win32_resource_remove",
+              "strong_name_remove"
+            ],
+            "dynamic_validation": true,
+            "test_apply_restore": true
+          }
+        },
+        "warnings": [],
+        "untrusted_sample_data": true
+      }
+    },
+    {
+      "tool": "edit_resource_import",
+      "response": {
+        "schema_version": "dnspy.edit.v1",
+        "ok": true,
+        "state": "editing",
+        "result": {
+          "transaction": {
+            "transaction_id": "edit-bd810b3104e99c3b89baddd6fa2d4466",
+            "work_revision": 1,
+            "review_revision": null,
+            "operation_count": 1,
+            "started_at_monotonic_ms": 287218,
+            "last_activity_monotonic_ms": 287292
+          },
+          "operation_index": 0,
+          "kind": "managed_resource_add",
+          "created_object_ids": [],
+          "fingerprints": {
+            "baseline_live": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470",
+            "current_live": "c78c9a924b4c0f4098fffb926b7f94e777060c079d80924a86d9b260532c3470",
+            "private": "c412b3e77cfb15677a116289b321806dea09c816486e871d6b1f511066cdd4cb"
+          },
+          "diffs": [
+            {
+              "operation_index": 0,
+              "kind": "managed_resource_add",
+              "target": "0x28000000",
+              "path": "metadata/managed_resource_add",
+              "before": null,
+              "after": "vm-embedded",
+              "risk_ids": [
+                "risk-resource_change-ResourceRiskTarget"
+              ]
+            }
+          ],
+          "risks": [
+            {
+              "risk_id": "risk-resource_change-ResourceRiskTarget",
+              "kind": "resource_change",
+              "object": "ResourceRiskTarget",
+              "description": "Metadata change",
+              "confirmation_required": true
+            }
+          ],
+          "review_cleared": true,
+          "capacity": {
+            "operations": {
+              "current": 1,
+              "maximum": 256
+            },
+            "object_ids": {
+              "current": 0,
+              "maximum": 4096
+            },
+            "normalized_operation_bytes": {
+              "current": 1507418,
+              "maximum": 8388608
+            },
+            "diff_bytes": {
+              "current": 205,
+              "maximum": 524288
+            },
+            "apply_cache_entries": {
+              "current": 1,
+              "maximum": 1024
+            },
+            "apply_cache_bytes": {
+              "current": 0,
+              "maximum": 33554432
+            },
+            "review_tombstone_entries": {
+              "current": 0,
+              "maximum": 64
+            },
+            "review_tombstone_bytes": {
+              "current": 0,
+              "maximum": 262144
+            }
+          },
+          "import": {
+            "file_id": "00000000000000000003000000085530",
+            "vm_path": "C:\\Tools\\MefCheck\\vm-726395b-x64\\input.bin",
+            "resource_name": "vm-embedded",
+            "resource_type": "embedded",
+            "length": 1048576,
+            "sha256": "fbbab289f7f94b25736c58be46a994c441fd02552cc6022352e3d86d2fab7c83"
+          }
+        },
+        "warnings": [],
+        "untrusted_sample_data": true
+      }
+    }
+  ]
+}

@@ -6994,6 +6994,46 @@
                         "maximum"
                       ],
                       "type": "object"
+                    },
+                    "review_tombstone_entries": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
+                    },
+                    "review_tombstone_bytes": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -7002,7 +7042,9 @@
                     "normalized_operation_bytes",
                     "diff_bytes",
                     "apply_cache_entries",
-                    "apply_cache_bytes"
+                    "apply_cache_bytes",
+                    "review_tombstone_entries",
+                    "review_tombstone_bytes"
                   ],
                   "type": "object"
                 },
@@ -7701,6 +7743,46 @@
                         "maximum"
                       ],
                       "type": "object"
+                    },
+                    "review_tombstone_entries": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
+                    },
+                    "review_tombstone_bytes": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -7709,7 +7791,9 @@
                     "normalized_operation_bytes",
                     "diff_bytes",
                     "apply_cache_entries",
-                    "apply_cache_bytes"
+                    "apply_cache_bytes",
+                    "review_tombstone_entries",
+                    "review_tombstone_bytes"
                   ],
                   "type": "object"
                 },
@@ -14672,6 +14756,46 @@
                         "maximum"
                       ],
                       "type": "object"
+                    },
+                    "review_tombstone_entries": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
+                    },
+                    "review_tombstone_bytes": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -14680,7 +14804,9 @@
                     "normalized_operation_bytes",
                     "diff_bytes",
                     "apply_cache_entries",
-                    "apply_cache_bytes"
+                    "apply_cache_bytes",
+                    "review_tombstone_entries",
+                    "review_tombstone_bytes"
                   ],
                   "type": "object"
                 },
@@ -15466,6 +15592,46 @@
                         "maximum"
                       ],
                       "type": "object"
+                    },
+                    "review_tombstone_entries": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
+                    },
+                    "review_tombstone_bytes": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "current": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maximum": {
+                          "maximum": 9223372036854775807,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "current",
+                        "maximum"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -15474,7 +15640,9 @@
                     "normalized_operation_bytes",
                     "diff_bytes",
                     "apply_cache_entries",
-                    "apply_cache_bytes"
+                    "apply_cache_bytes",
+                    "review_tombstone_entries",
+                    "review_tombstone_bytes"
                   ],
                   "type": "object"
                 },

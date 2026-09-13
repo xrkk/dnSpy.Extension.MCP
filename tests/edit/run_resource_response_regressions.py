@@ -71,6 +71,7 @@ Console.WriteLine("OUTCOME:" + JsonSerializer.Serialize(new {
                 operation_count=1, started_at_monotonic_ms=0, last_activity_monotonic_ms=0), operation_index=0,
                 fingerprints=dict(baseline_live=sha, current_live=sha, private=sha), review_cleared=True,
                 capacity={name:dict(current=0, maximum=1) for name in ('operations','object_ids','normalized_operation_bytes','diff_bytes','apply_cache_entries','apply_cache_bytes')})
+            result['capacity'].update(review_tombstone_entries=dict(current=0, maximum=64), review_tombstone_bytes=dict(current=0, maximum=262144))
             result['import'] = dict(vm_path=r'C:\samples\payload.bin', resource_name='payload', resource_type=resource_type,
                 file_id='0'*32, length=4, sha256=sha)
             envelope = dict(schema_version='dnspy.edit.v1', ok=True, state='editing', result=result, warnings=[], untrusted_sample_data=True)
