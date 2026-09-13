@@ -1,15 +1,15 @@
 {
   "workflow_id": "dnspy-edit-master-01a050b5",
-  "overall_state": "verification_remediation_delivered",
+  "overall_state": "second_remediation_delivered_vm_blocked",
   "started_at": "2026-09-03T23:32:42+08:00",
-  "updated_at": "2026-09-13T03:44:08+08:00",
+  "updated_at": "2026-09-13T08:55:49+08:00",
   "current_child": null,
-  "child_stage": "REMEDIATION_CHK001_010_DELIVERED",
+  "child_stage": "REMEDIATION_CHK011_017_DELIVERED_VM_BLOCKED",
   "phase_state": "executing",
   "last_verified_checkpoint": {
-    "name": "REMEDIATION_CHK001_010",
-    "commit": "5bbff88",
-    "evidence": "整改记录 -29 + 收尾 -30 + 重建最终清单；定向 7/7 PASS（chk-remediation-20260912-223127）；13 案例双架构全 pass；P01/P02 VM 套件 PASS；python 33 OK；resources 14/14；注册表 78；Release v6.6.0 一致；P02 监听器套件 FAIL(环境) 如实留痕；屏障超时与 open→begin 水合两项历史缺陷修复"
+    "name": "REMEDIATION_CHK011_017",
+    "commit": "d5257b7",
+    "evidence": "PLAN-CHANGE 002-004 登记+审核（可进入追认）；CHK-012/013/014/017 代码完成（构建 0 error）；监听器套件根因修复后全套 PASS；P03 受影响族重跑被 VM 管理服务挂起阻断（TCP 通 HTTP 无响应，按受保护约束不自恢复，待用户恢复服务后完成重跑与新 HEAD 独立核验）"
   },
   "children": {
     "P01": {
