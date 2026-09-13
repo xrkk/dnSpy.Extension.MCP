@@ -7066,7 +7066,22 @@
                           "generic_parameter_add",
                           "generic_parameter_update",
                           "generic_parameter_remove",
-                          "method_body_replace"
+                          "method_body_replace",
+                          "attribute_add",
+                          "attribute_remove",
+                          "security_add",
+                          "security_remove",
+                          "assembly_update",
+                          "module_update",
+                          "assembly_ref_update",
+                          "entry_point_set",
+                          "managed_resource_add",
+                          "managed_resource_update",
+                          "managed_resource_remove",
+                          "win32_resource_add",
+                          "win32_resource_update",
+                          "win32_resource_remove",
+                          "strong_name_remove"
                         ]
                       },
                       "operation_index": {
@@ -7160,7 +7175,22 @@
                     "generic_parameter_add",
                     "generic_parameter_update",
                     "generic_parameter_remove",
-                    "method_body_replace"
+                    "method_body_replace",
+                    "attribute_add",
+                    "attribute_remove",
+                    "security_add",
+                    "security_remove",
+                    "assembly_update",
+                    "module_update",
+                    "assembly_ref_update",
+                    "entry_point_set",
+                    "managed_resource_add",
+                    "managed_resource_update",
+                    "managed_resource_remove",
+                    "win32_resource_add",
+                    "win32_resource_update",
+                    "win32_resource_remove",
+                    "strong_name_remove"
                   ]
                 },
                 "operation_index": {
@@ -7185,11 +7215,23 @@
                       },
                       "kind": {
                         "enum": [
-                          "public_delete",
-                          "signature_change",
-                          "visibility_change",
+                          "assembly_identity_change",
+                          "assembly_ref_change",
+                          "attribute_change",
                           "body_change",
-                          "eh_change"
+                          "cross_assembly_inbound",
+                          "data_section_change",
+                          "eh_change",
+                          "entry_point_change",
+                          "external_code_entry",
+                          "layout_change",
+                          "module_identity_change",
+                          "public_delete",
+                          "resource_change",
+                          "security_change",
+                          "signature_change",
+                          "strong_name_change",
+                          "visibility_change"
                         ]
                       },
                       "object": {
@@ -7503,7 +7545,22 @@
                           "generic_parameter_add",
                           "generic_parameter_update",
                           "generic_parameter_remove",
-                          "method_body_replace"
+                          "method_body_replace",
+                          "attribute_add",
+                          "attribute_remove",
+                          "security_add",
+                          "security_remove",
+                          "assembly_update",
+                          "module_update",
+                          "assembly_ref_update",
+                          "entry_point_set",
+                          "managed_resource_add",
+                          "managed_resource_update",
+                          "managed_resource_remove",
+                          "win32_resource_add",
+                          "win32_resource_update",
+                          "win32_resource_remove",
+                          "strong_name_remove"
                         ]
                       },
                       "maxItems": 22,
@@ -8154,7 +8211,22 @@
                           "generic_parameter_add",
                           "generic_parameter_update",
                           "generic_parameter_remove",
-                          "method_body_replace"
+                          "method_body_replace",
+                          "attribute_add",
+                          "attribute_remove",
+                          "security_add",
+                          "security_remove",
+                          "assembly_update",
+                          "module_update",
+                          "assembly_ref_update",
+                          "entry_point_set",
+                          "managed_resource_add",
+                          "managed_resource_update",
+                          "managed_resource_remove",
+                          "win32_resource_add",
+                          "win32_resource_update",
+                          "win32_resource_remove",
+                          "strong_name_remove"
                         ]
                       },
                       "operation_index": {
@@ -8662,11 +8734,23 @@
                       },
                       "kind": {
                         "enum": [
-                          "public_delete",
-                          "signature_change",
-                          "visibility_change",
+                          "assembly_identity_change",
+                          "assembly_ref_change",
+                          "attribute_change",
                           "body_change",
-                          "eh_change"
+                          "cross_assembly_inbound",
+                          "data_section_change",
+                          "eh_change",
+                          "entry_point_change",
+                          "external_code_entry",
+                          "layout_change",
+                          "module_identity_change",
+                          "public_delete",
+                          "resource_change",
+                          "security_change",
+                          "signature_change",
+                          "strong_name_change",
+                          "visibility_change"
                         ]
                       },
                       "object": {
@@ -14350,7 +14434,22 @@
                           "generic_parameter_add",
                           "generic_parameter_update",
                           "generic_parameter_remove",
-                          "method_body_replace"
+                          "method_body_replace",
+                          "attribute_add",
+                          "attribute_remove",
+                          "security_add",
+                          "security_remove",
+                          "assembly_update",
+                          "module_update",
+                          "assembly_ref_update",
+                          "entry_point_set",
+                          "managed_resource_add",
+                          "managed_resource_update",
+                          "managed_resource_remove",
+                          "win32_resource_add",
+                          "win32_resource_update",
+                          "win32_resource_remove",
+                          "strong_name_remove"
                         ]
                       },
                       "operation_index": {
@@ -14406,11 +14505,23 @@
                       },
                       "kind": {
                         "enum": [
-                          "public_delete",
-                          "signature_change",
-                          "visibility_change",
+                          "assembly_identity_change",
+                          "assembly_ref_change",
+                          "attribute_change",
                           "body_change",
-                          "eh_change"
+                          "cross_assembly_inbound",
+                          "data_section_change",
+                          "eh_change",
+                          "entry_point_change",
+                          "external_code_entry",
+                          "layout_change",
+                          "module_identity_change",
+                          "public_delete",
+                          "resource_change",
+                          "security_change",
+                          "signature_change",
+                          "strong_name_change",
+                          "visibility_change"
                         ]
                       },
                       "object": {
@@ -15427,7 +15538,22 @@
                           "generic_parameter_add",
                           "generic_parameter_update",
                           "generic_parameter_remove",
-                          "method_body_replace"
+                          "method_body_replace",
+                          "attribute_add",
+                          "attribute_remove",
+                          "security_add",
+                          "security_remove",
+                          "assembly_update",
+                          "module_update",
+                          "assembly_ref_update",
+                          "entry_point_set",
+                          "managed_resource_add",
+                          "managed_resource_update",
+                          "managed_resource_remove",
+                          "win32_resource_add",
+                          "win32_resource_update",
+                          "win32_resource_remove",
+                          "strong_name_remove"
                         ]
                       },
                       "operation_index": {
@@ -15521,7 +15647,22 @@
                     "generic_parameter_add",
                     "generic_parameter_update",
                     "generic_parameter_remove",
-                    "method_body_replace"
+                    "method_body_replace",
+                    "attribute_add",
+                    "attribute_remove",
+                    "security_add",
+                    "security_remove",
+                    "assembly_update",
+                    "module_update",
+                    "assembly_ref_update",
+                    "entry_point_set",
+                    "managed_resource_add",
+                    "managed_resource_update",
+                    "managed_resource_remove",
+                    "win32_resource_add",
+                    "win32_resource_update",
+                    "win32_resource_remove",
+                    "strong_name_remove"
                   ]
                 },
                 "operation_index": {
@@ -15546,11 +15687,23 @@
                       },
                       "kind": {
                         "enum": [
-                          "public_delete",
-                          "signature_change",
-                          "visibility_change",
+                          "assembly_identity_change",
+                          "assembly_ref_change",
+                          "attribute_change",
                           "body_change",
-                          "eh_change"
+                          "cross_assembly_inbound",
+                          "data_section_change",
+                          "eh_change",
+                          "entry_point_change",
+                          "external_code_entry",
+                          "layout_change",
+                          "module_identity_change",
+                          "public_delete",
+                          "resource_change",
+                          "security_change",
+                          "signature_change",
+                          "strong_name_change",
+                          "visibility_change"
                         ]
                       },
                       "object": {
