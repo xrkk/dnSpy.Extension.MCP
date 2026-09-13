@@ -35,3 +35,12 @@ class ProductOutputEnums(unittest.TestCase):
                     risk_count += 1
         self.assertEqual(op_count, 7)
         self.assertEqual(risk_count, 4)
+
+    def test_product_array_cardinalities(self):
+        contract = json.loads((ROOT / 'Editing/Contracts/p03-tool-schemas.json').read_text())
+        capability = contract['edit_begin']['outputSchema']['oneOf'][0]['properties']['result']['properties']['capabilities']['properties']['operation_kinds']
+        self.assertEqual(capability['minItems'], len(capability['items']['enum']))
+        self.assertEqual(capability['maxItems'], len(capability['items']['enum']))
+        for tool in ('edit_apply', 'edit_review', 'edit_import', 'edit_resource_import'):
+            result = contract[tool]['outputSchema']['oneOf'][0]['properties']['result']['properties']
+            self.assertGreaterEqual(result['diffs']['items']['properties']['risk_ids']['maxItems'], 4, tool)

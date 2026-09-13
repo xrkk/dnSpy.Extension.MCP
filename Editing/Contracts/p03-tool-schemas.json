@@ -7100,7 +7100,7 @@
                           "minLength": 1,
                           "type": "string"
                         },
-                        "maxItems": 1,
+                        "maxItems": 17,
                         "type": "array"
                       },
                       "target": {
@@ -7563,8 +7563,8 @@
                           "strong_name_remove"
                         ]
                       },
-                      "maxItems": 22,
-                      "minItems": 22,
+                      "maxItems": 37,
+                      "minItems": 37,
                       "type": "array",
                       "uniqueItems": true
                     },
@@ -8245,7 +8245,7 @@
                           "minLength": 1,
                           "type": "string"
                         },
-                        "maxItems": 1,
+                        "maxItems": 17,
                         "type": "array"
                       },
                       "target": {
@@ -14468,7 +14468,7 @@
                           "minLength": 1,
                           "type": "string"
                         },
-                        "maxItems": 1,
+                        "maxItems": 17,
                         "type": "array"
                       },
                       "target": {
@@ -15572,7 +15572,7 @@
                           "minLength": 1,
                           "type": "string"
                         },
-                        "maxItems": 1,
+                        "maxItems": 17,
                         "type": "array"
                       },
                       "target": {
