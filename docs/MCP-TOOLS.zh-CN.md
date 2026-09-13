@@ -69,3 +69,5 @@ View 菜单的只读浏览窗口：当前事务、暂存操作、diff、风险�
 `edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。
 
 `edit_resource_export` 的默认类型为 `embedded`；Win32 行需指定 `resource_type=win32`，以 `type_id` 或 `type_name`（默认 `RCDATA`）、`name_id` 或 `resource_name`、`lang_id`（默认 0）定位。`type_id` 与 `type_name` 互斥，提供 `name_id` 时它优先于 `resource_name`。输出复用检查点存储的原子写入和真实文件身份，目标必须在 `ArtifactRoot` 下，不能覆盖源样本。
+
+响应契约区分单项应用、批量导入和影响扫描：`edit_import.result` 包含 `import` 与 `operation_count`；`edit_impact_scan.result` 包含 `transaction` 与 `impact`；资源工具返回各自的 `import`/`export` 文件身份；`edit_commit.result.live_recovery` 绑定预生成逆计划及检查点。这些字段均由各工具的 outputSchema 声明。

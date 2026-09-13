@@ -22,6 +22,23 @@ class ResourceContractTests(unittest.TestCase):
         self.validate('edit_resource_export', dict(request_id='r', assembly_name='sample', resource_name='payload',
             output_path='resources/payload.bin'))
 
+    def test_export_result_matches_actual_response_shape(self):
+        result = {'export': dict(path=r'C:\artifacts\payload.bin', file_id='0' * 32,
+            length=4, sha256='a' * 64)}
+        schema = CONTRACT['edit_resource_export']['outputSchema']['oneOf'][0]['properties']['result']
+        jsonschema.Draft202012Validator(schema).validate(result)
+
+    def test_import_identity_is_declared(self):
+        schema = CONTRACT['edit_resource_import']['outputSchema']['oneOf'][0]['properties']['result']
+        self.assertIn('import', schema['properties'])
+        self.assertIn('import', schema['required'])
+        identity = dict(vm_path=r'C:\samples\payload.bin', resource_name='payload',
+            resource_type='linked', file_id='0' * 32, length=4, sha256='a' * 64)
+        validator = jsonschema.Draft202012Validator(schema['properties']['import'])
+        validator.validate(identity)
+        with self.assertRaises(jsonschema.ValidationError):
+            validator.validate({**identity, 'file_id': 'file-random-id'})
+
     def test_ambiguous_type_identity_is_rejected(self):
         with self.assertRaises(jsonschema.ValidationError):
             self.validate('edit_resource_export', dict(request_id='r', assembly_name='sample', resource_name='payload',
