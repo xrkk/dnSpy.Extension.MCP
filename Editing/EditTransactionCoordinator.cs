@@ -1324,8 +1324,12 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				throw new EditDomainException("EDIT_CHECKPOINT_CLEANUP_FAILED", RecoveryResult(current));
 			}
 			partial = null; lock (gate) state = "idle"; var restored = CurrentLiveFingerprint(current);
+			// CHK-017 evidence run: for a FIRST-checkpoint partial the lineage
+			// package only exists in the staged temp just deleted — use the
+			// in-memory lineage captured in the partial (as retry_checkpoint
+			// does) instead of re-loading the store.
 			var envelope = EditWire.Success("idle", new Dictionary<string, object?> { ["resolved"] = true, ["action"] = action,
-				["restored_fingerprint"] = restored, ["history"] = LineageResult(history.Load(current.Prepared.Lineage.Manifest.LineageId)) });
+				["restored_fingerprint"] = restored, ["history"] = LineageResult(current.Prepared.Lineage) });
 			RememberResolvedRecovery(resolvedKey, envelope); current.Workspace?.Dispose(); return envelope;
 		}
 		if (action != "cleanup_temp" || current.Kind != "aborted_temp_cleanup") throw new EditDomainException("EDIT_HISTORY_CONFLICT");

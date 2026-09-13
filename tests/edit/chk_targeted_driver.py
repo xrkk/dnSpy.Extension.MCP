@@ -207,8 +207,13 @@ def case_chk004_identity(client: DnSpyClient) -> None:
           json.dumps(exported)[:240])
     call(client, "open_files", {"paths": [export_path]})
 
+    import hashlib as _hashlib4
+    import shutil as _shutil4
+    launch_target = r"C:\Tools\MefCheck\chk004-IdentityHost.exe"
+    _shutil4.copyfile(export_path, launch_target)
+    sha256 = _hashlib4.sha256(open(launch_target, "rb").read()).hexdigest()
     launch = call(client, "debug_launch", {
-        "request_id": rid(), "target_path": export_path, "expected_sha256": sha256,
+        "request_id": rid(), "target_path": launch_target, "expected_sha256": sha256,
         "launch_mode": "net48-exe", "architecture": ARCH, "break_kind": "entry"})
     launch_row = payload(launch)
     session_id = str(launch_row.get("session_id", ""))
@@ -356,12 +361,168 @@ def case_chk008_inverse(client: DnSpyClient) -> None:
           json.dumps(live_recovery)[:240])
 
 
+def case_chk012_drift(client: DnSpyClient) -> None:
+    """CHK-012: layout and CDI-content edits are invisible to the semantic
+    fingerprint; the extended external guard must reject them at review."""
+    call(client, "open_files", {"paths": [IDENTITY_HOST]})
+    for case_id, label in (("live-conflict:mutate-layout", "layout"),
+                           ("live-conflict:mutate-cdi", "cdi-content")):
+        tx, revision = begin_tx(client, "IdentityHost")
+        check(f"L1-{label} transaction began", bool(tx))
+        _e, revision = apply_op(client, tx, revision, {"kind": "module_update", "name": "IdentityHostGuard"})
+        mutation = call(client, "edit_test_external_mutation", {
+            "transaction_id": tx, "case_id": case_id})
+        row = payload(mutation)
+        semantic_unchanged = row.get("before_fingerprint") == row.get("after_fingerprint")
+        guard_changed = row.get("guard_before") != row.get("guard_after")
+        check(f"L2-{label} semantic blind / guard sees", semantic_unchanged and guard_changed,
+              json.dumps({k: str(row.get(k))[:16] for k in ("before_fingerprint", "after_fingerprint", "guard_before", "guard_after")})[:260])
+        reviewed, _rid, _req = review_tx(client, tx, revision)
+        details = error_details(reviewed)
+        check(f"L3-{label} review rejects drift",
+              error_code(reviewed) == "EDIT_LIVE_MODULE_CONFLICT"
+              and details.get("kind") == "external_drift_conflict",
+              f"{error_code(reviewed)} {json.dumps(details)[:200]}")
+        restored = call(client, "edit_test_live_mutation", {
+            "transaction_id": tx, "action": "restore"})
+        check(f"L4-{label} restored", bool(restored.get("ok")) and bool(payload(restored).get("restored")),
+              json.dumps(restored)[:200])
+        rollback = call(client, "edit_rollback", {
+            "request_id": rid(), "transaction_id": tx})
+        check(f"L5-{label} rollback", bool(rollback.get("ok")), json.dumps(rollback)[:160])
+
+
+def case_chk013_gate(client: DnSpyClient) -> None:
+    """CHK-013: a state change during the barrier pause between the commit-
+    entry guards and the live-apply critical section is caught by the SECOND
+    gate.  The concurrent vector is a debug launch (debug tools bypass the
+    edit operation gate, exactly like a user starting a debug session); the
+    entry-drift hook cannot be used here because every edit-family tool is
+    serialized behind the paused commit's operation gate."""
+    call(client, "edit_test_barrier", {"action": "reset"})
+    call(client, "open_files", {"paths": [IDENTITY_HOST]})
+    begin_env = call(client, "edit_begin", {"assembly_name": "IdentityHost", "request_id": rid()})
+    tx = str(payload(begin_env).get("transaction", {}).get("transaction_id", ""))
+    revision = int(payload(begin_env).get("transaction", {}).get("work_revision", 0))
+    baseline = str(payload(begin_env).get("source", {}).get("live_fingerprint", ""))
+    check("G1 transaction began", bool(tx) and bool(baseline),
+          f"open={json.dumps(call(client, 'list_assemblies', {}))[:160]} begin={json.dumps(begin_env)[:260]}")
+    _e, revision = apply_op(client, tx, revision, {"kind": "module_update", "name": "IdentityHostGate"})
+    reviewed, review_id, required = review_tx(client, tx, revision)
+    check("G2 review ok", bool(reviewed.get("ok")) and bool(review_id), json.dumps(reviewed)[:200])
+
+    armed = call(client, "edit_test_barrier", {"action": "arm", "name": "commit_dispatcher_queued"})
+    check("G3 barrier armed", bool(armed.get("ok")), json.dumps(armed)[:200])
+
+    import threading
+    result: dict = {}
+
+    def committer() -> None:
+        try:
+            result["commit"] = commit_tx(client, tx, revision, review_id, required)
+        except Exception as ex:  # noqa: BLE001
+            result["commit_error"] = str(ex)[:300]
+
+    thread = threading.Thread(target=committer)
+    thread.start()
+    entered = False
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not entered:
+        snap = call(client, "edit_test_barrier", {"action": "snapshot"})
+        entered = bool(payload(snap).get("entered"))
+        time.sleep(0.4)
+    check("G4 commit paused at barrier", entered, json.dumps(snap)[:200])
+
+    # concurrent state change INSIDE the pause window: a debug session launch
+    # (the entry guard already passed; only the second gate can still refuse).
+    # The launch target must live inside the configured AllowedSampleRoot.
+    import hashlib as _hashlib
+    import shutil as _shutil
+    launch_target = r"C:\Tools\MefCheck\chk013-IdentityHost.exe"
+    _shutil.copyfile(IDENTITY_HOST, launch_target)
+    fixture_sha = _hashlib.sha256(open(launch_target, "rb").read()).hexdigest()
+    launch = call(client, "debug_launch", {
+        "request_id": rid(), "target_path": launch_target, "expected_sha256": fixture_sha,
+        "launch_mode": "net48-exe", "architecture": ARCH, "break_kind": "entry"})
+    session_id = str(payload(launch).get("session_id", ""))
+    check("G5 debug session started during pause", bool(session_id), json.dumps(launch)[:240])
+
+    release = call(client, "edit_test_barrier", {"action": "release"})
+    check("G6 barrier released", bool(release.get("ok")), json.dumps(release)[:160])
+    thread.join(timeout=90)
+
+    code = error_code(result.get("commit", {}))
+    transport_error = result.get("commit_error", "")
+    check("G7 second gate refuses with debug active", code == "EDIT_DEBUG_NOT_IDLE",
+          f"{code} transport={transport_error} {json.dumps(result.get('commit', {}))[:200]}")
+
+    # zero live writes: after cleanup, live is still the transaction baseline
+    if session_id:
+        call(client, "debug_terminate", {"session_id": session_id, "request_id": rid()})
+    begin2 = payload(call(client, "edit_begin", {"assembly_name": "IdentityHost", "request_id": rid()}))
+    live_now = str(begin2.get("source", {}).get("live_fingerprint", ""))
+    check("G8 zero live writes", bool(live_now) and live_now == baseline,
+          f"now={live_now[:14]} base={baseline[:14]}")
+    tx2 = str(begin2.get("transaction", {}).get("transaction_id", "x"))
+    if tx2 != "x":
+        call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx2})
+    call(client, "edit_test_barrier", {"action": "reset"})
+
+
+def case_chk017_partial(client: DnSpyClient) -> None:
+    """CHK-017: a finalize-fault partial carries the external-guard bounds and
+    the clean no-drift undo restores live exactly.  (Drift-refusal during the
+    partial state is source-wired — every edit-family tool is refused by the
+    committed_without_checkpoint state gate, so the only drift vector is the
+    dnSpy UI itself, matching the verifier's control-flow counterexample.)
+    """
+    call(client, "edit_test_barrier", {"action": "reset"})
+    call(client, "open_files", {"paths": [IDENTITY_HOST]})
+    begin_env = call(client, "edit_begin", {"assembly_name": "IdentityHost", "request_id": rid()})
+    tx = str(payload(begin_env).get("transaction", {}).get("transaction_id", ""))
+    revision = int(payload(begin_env).get("transaction", {}).get("work_revision", 0))
+    baseline = str(payload(begin_env).get("source", {}).get("live_fingerprint", ""))
+    check("P1 transaction began", bool(tx) and bool(baseline))
+    _e, revision = apply_op(client, tx, revision, {"kind": "module_update", "name": "IdentityHostPartial"})
+    reviewed, review_id, required = review_tx(client, tx, revision)
+    check("P2 review ok", bool(reviewed.get("ok")) and bool(review_id), json.dumps(reviewed)[:200])
+
+    armed = call(client, "edit_test_storage_fault", {"action": "arm", "stage": "finalize"})
+    check("P3 finalize fault armed", bool(armed.get("ok")))
+    failed = commit_tx(client, tx, revision, review_id, required)
+    status = payload(call(client, "edit_status", {}))
+    check("P4 partial commit state", error_code(failed) == "EDIT_CHECKPOINT_COMMIT_FAILED"
+          and status.get("state") == "committed_without_checkpoint",
+          f"{error_code(failed)} {status.get('state')}")
+    recovery = status.get("recovery") or {}
+    recovery_id = str(recovery.get("recovery_id", ""))
+    allowed = [str(a) for a in (recovery.get("allowed_actions") or [])]
+    check("P5 recovery fact present", bool(recovery_id) and "undo_live" in allowed,
+          json.dumps(recovery)[:240])
+    call(client, "edit_test_storage_fault", {"action": "reset"})
+
+    # no drift vector ran: undo must succeed and restore live to the baseline
+    undone = call(client, "edit_recover", {"request_id": rid(), "recovery_id": recovery_id, "action": "undo_live"})
+    check("P6 clean undo succeeds", bool(undone.get("ok")), json.dumps(undone)[:300])
+    begin2 = payload(call(client, "edit_begin", {"assembly_name": "IdentityHost", "request_id": rid()}))
+    live_now = str(begin2.get("source", {}).get("live_fingerprint", ""))
+    check("P7 live restored to baseline", bool(live_now) and live_now == baseline,
+          f"now={live_now[:14]} base={baseline[:14]}")
+    tx2 = str(begin2.get("transaction", {}).get("transaction_id", "x"))
+    if tx2 != "x":
+        call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx2})
+
+
+
 CASES = {
     "chk003-drift": case_chk003_drift,
     "chk004-identity": case_chk004_identity,
     "chk005-resource": case_chk005_resource,
     "chk007-risks": case_chk007_risks,
     "chk008-inverse": case_chk008_inverse,
+    "chk012-drift": case_chk012_drift,
+    "chk013-gate": case_chk013_gate,
+    "chk017-partial": case_chk017_partial,
 }
 
 

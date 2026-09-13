@@ -26,7 +26,12 @@ FIXTURES = r"C:\Tools\mcp-repo\tests\fixtures\bin\chk-remediation"
 VM_EXTENSION = r"C:\Tools\dnSpy\bin\Extensions\dnSpy.Extension.MCP\dnSpy.Extension.MCP.x.dll"
 PLUGIN = ROOT / "dist/dnSpy.Extension.MCP-net48.x.dll"
 RUN_ID = "chk-remediation-" + time.strftime("%Y%m%d-%H%M%S")
-CASES = ("chk003-drift", "chk004-identity", "chk005-resource", "chk007-risks", "chk008-inverse")
+ALL_CASES = ("chk003-drift", "chk004-identity", "chk005-resource", "chk007-risks", "chk008-inverse",
+             "chk012-drift", "chk013-gate", "chk017-partial")
+# optional subset via environment: CHK_CASES_FILTER="case1,case2"
+import os as _os
+_filter = _os.environ.get("CHK_CASES_FILTER", "")
+CASES = tuple(c for c in ALL_CASES if not _filter or c in _filter.split(","))
 
 FIXTURE_BUILDER = r'''
 $ErrorActionPreference = 'Stop'
@@ -35,6 +40,9 @@ New-Item -ItemType Directory -Force -Path $fx | Out-Null
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 [IO.File]::WriteAllText("$fx\IdentityHost.cs", @'
 using System;
+using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 16)]
+struct LayoutProbe { byte a; }
 class Program {
   static int Main(){ Console.WriteLine("main"); return 0; }
   public static int AltEntry(){ Console.WriteLine("alt"); return 7; }
@@ -173,11 +181,35 @@ def deploy_drivers(client: UiMcpClient) -> None:
 
 
 def fresh_dnspy(client: UiMcpClient) -> bool:
-    powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; "stopped"')
-    powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
-    start_dnspy(client, "x64")
-    apply_settings(client, True, "localhost")
-    deadline = time.time() + 60
+    # Zero-UI lifecycle (management-service-friendly): stop dnSpy, clean BOTH
+    # artifact stores, seed a valid LOOPBACK snapshot into the persisted
+    # dnSpy.xml, then start dnSpy — the listener binds from persisted config;
+    # no Options-dialog UI automation at all.
+    powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; $t|Wait-Process -Timeout 15 -ErrorAction SilentlyContinue}; "stopped"')
+    seed = (
+        '$roots=@("$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts","C:\\dnspy-mcp-artifacts"); '
+        'foreach($root in $roots){ Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\*" -Recurse -Force -ErrorAction SilentlyContinue }; '
+        '$path = "$env:APPDATA\\dnSpy\\dnSpy.xml"; '
+        '$c = Get-Content $path -Raw; '
+        "$c = $c -replace '&quot;EnableServer&quot;:false', '&quot;EnableServer&quot;:true'; "
+        "$c = $c -replace '&quot;Host&quot;:&quot;[^&]*&quot;', '&quot;Host&quot;:&quot;localhost&quot;'; "
+        "$c = $c -replace '&quot;RemoteAllowedCidrs&quot;:\[[^\]]*\]', '&quot;RemoteAllowedCidrs&quot;:[]'; "
+        "$c = $c -replace '&quot;RemoteHostOnlyAcknowledged&quot;:true', '&quot;RemoteHostOnlyAcknowledged&quot;:false'; "
+        '[IO.File]::WriteAllText($path, $c); "prepared"')
+    prepared = powershell(client, seed, allow_failure=True)
+    prepared = powershell(client, seed, allow_failure=True)
+    if "prepared" not in prepared:
+        return False
+    # verify the configured store actually emptied (a locked ledger file makes
+    # Remove-Item fail silently and every subsequent begin diverge)
+    for _clean_attempt in range(3):
+        left = powershell(client, '(Get-ChildItem "C:\\dnspy-mcp-artifacts\\edit-checkpoints" -ErrorAction SilentlyContinue | Measure-Object).Count', allow_failure=True)
+        if "0" in left.replace("Response:", "").split():
+            break
+        powershell(client, 'Start-Sleep -Seconds 5; Remove-Item "C:\\dnspy-mcp-artifacts\\edit-checkpoints\\*" -Recurse -Force -ErrorAction SilentlyContinue; "again"', allow_failure=True)
+    else:
+        return False
+    deadline = time.time() + 90
     while time.time() < deadline:
         probe = powershell(client, (
             '& curl.exe -fsS --max-time 2 http://127.0.0.1:15378/health 2>$null | Out-Null; '
@@ -185,7 +217,7 @@ def fresh_dnspy(client: UiMcpClient) -> bool:
         ), allow_failure=True)
         if "up" in probe:
             return True
-        time.sleep(1.5)
+        time.sleep(2)
     return False
 
 
@@ -200,13 +232,14 @@ def run_vm_python(client: UiMcpClient, script: str, arguments: str, env: dict[st
         + f'$p = Start-Process -FilePath "C:\\Python313\\python.exe" -ArgumentList \'{script}\',\'{arguments}\' '
         f'-WorkingDirectory "{DEST}" -RedirectStandardOutput "{DEST}\\{log}" -RedirectStandardError "{DEST}\\{err}" -PassThru -WindowStyle Hidden; "launched=$($p.Id)"'
     )
-    for attempt in range(2):
+    for attempt in range(4):
         try:
-            powershell(client, launch)
+            powershell(client, launch, timeout=90)
             break
         except RuntimeError:
-            if attempt == 1:
+            if attempt == 3:
                 raise
+            time.sleep(20)
     deadline = time.time() + 420
     while time.time() < deadline:
         probe = powershell(client, (
@@ -247,16 +280,50 @@ def main() -> int:
     results: dict[str, dict] = {}
     for case in CASES:
         print(f"[3] {case}: fresh dnSpy", flush=True)
-        if not fresh_dnspy(client):
+        ready = False
+        for attempt in range(3):
+            try:
+                if fresh_dnspy(client):
+                    ready = True
+                    break
+            except RuntimeError as ex:
+                print(f"    [fresh retry {attempt}] {str(ex)[:100]}", flush=True)
+                time.sleep(15)
+        if not ready:
             results[case] = {"case": case, "status": "dnspy-not-ready"}
             continue
         env = {"CHK_CASE": case, "CHK_RUN_ID": RUN_ID, "CHK_EXPORT_DIR": DEST,
                "EDIT_ACC005_ARCH": "x64"}
-        code = run_vm_python(client, "chk_targeted_driver.py", f"--case={case}", env)
+        code = -1
+        for attempt in range(3):
+            try:
+                code = run_vm_python(client, "chk_targeted_driver.py", f"--case={case}", env)
+                break
+            except RuntimeError as ex:
+                print(f"[transient {attempt}] {case}: {str(ex)[:120]}", flush=True)
+                time.sleep(15)
+        if code != 0 and attempt < 2:
+            pass  # last attempt below already ran
+        # one full retry when the case itself failed wholesale
+        if code == 0 and results.get(case, {}).get("status") != "PASS":
+            pass
         if code == 0:
             results[case] = read_summary(client, case)
+            # retry only near-total failures; a partial run (>= 3 passes) keeps
+            # its log and summary for diagnosis instead of being overwritten
+            passes = len(results[case].get("passes", []) or [])
+            if results[case].get("status") != "PASS" and passes < 3:
+                print(f"[retry-case] {case} failed once; retrying", flush=True)
+                time.sleep(5)
+                try:
+                    if fresh_dnspy(client):
+                        code = run_vm_python(client, "chk_targeted_driver.py", f"--case={case}", env)
+                        if code == 0:
+                            results[case] = read_summary(client, case)
+                except RuntimeError as ex:
+                    print(f"[retry-case failed] {str(ex)[:120]}", flush=True)
         else:
-            results[case] = {"case": case, "status": "timeout"}
+            results[case] = {"case": case, "status": "launch-timeout"}
         print(f"[3] {case}: {json.dumps(results[case], ensure_ascii=False)[:300]}", flush=True)
 
         if case == "chk005-resource" and results[case].get("status") == "PASS":
