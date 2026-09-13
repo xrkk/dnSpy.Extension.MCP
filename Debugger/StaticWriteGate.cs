@@ -50,7 +50,8 @@ public sealed class StaticWriteGate {
 	public string CurrentCoordinatorState => CoordinatorStateProvider?.Invoke() ?? DebugStates.Idle;
 
 	/// <summary>(coordinator state != idle) OR DbgManager.IsDebugging.</summary>
-	public bool IsBlocked => CurrentCoordinatorState != DebugStates.Idle
-		|| (isDebugging?.Invoke() ?? false)
+	public bool IsDebugging => (isDebugging?.Invoke() ?? false)
 		|| (TestUiDebuggingHook?.Invoke() ?? false);
+
+	public bool IsBlocked => CurrentCoordinatorState != DebugStates.Idle || IsDebugging;
 }

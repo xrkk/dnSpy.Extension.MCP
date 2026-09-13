@@ -803,14 +803,28 @@ function Run-ACC001 {
 
 # ---------------------------------------------------------------- case: ACC-002 ----
 function Invoke-ComboSequence {
-    param([string]$Label, [object]$Expect)   # Expect: tools_count, debug_enabled, continue_code
+    param([string]$Label, [object]$Expect)   # Expect: debug_enabled, continue_code
     foreach ($v in $script:Manifest.protocol_versions) {
         $tl = Get-ToolList $v
         $names = @($tl.tools | ForEach-Object { $_.name })
         $ev = @(Save-Json "tools-$Label-$($v -replace '[.-]','').json" ($tl.tools | Select-Object name))
+        # Current provider declarations are the registry contract. Compare exact names,
+        # retaining the frozen debug visibility rule without an obsolete global count.
+        $staticNames = @((Get-Content (Join-Path $script:Repo 'tests/snapshots/static-tools.baseline.json') -Raw | ConvertFrom-Json) | ForEach-Object { $_.name })
+        $editRegistry = Get-Content (Join-Path $script:Repo 'Editing/Contracts/p03-tool-schemas.json') -Raw | ConvertFrom-Json
+        $editNames = @($editRegistry.PSObject.Properties.Name | Where-Object { $_ -notlike 'edit_test_*' })
+        $compileSource = Get-Content (Join-Path $script:Repo 'Editing/EditCompileFrontend.cs') -Raw
+        $compileNames = @([regex]::Matches($compileSource, 'Name = "(edit_compile)"') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        $debugSource = Get-Content (Join-Path $script:Repo 'Debugger/DebugToolProvider.cs') -Raw
+        $sessionBlock = [regex]::Match($debugSource, 'AdvertisedSessionTools = \{([^}]+)\}', 'Singleline').Groups[1].Value
+        $sessionNames = @([regex]::Matches($sessionBlock, '"(debug_[a-z_]+)"') | ForEach-Object { $_.Groups[1].Value })
+        $expectedNames = @($staticNames) + @($editNames) + @($compileNames) + @('debug_capabilities', 'debug_test_spy', 'debug_test_flood', 'debug_test_start', 'debug_test_dump', 'debug_test_clock', 'debug_test_adapter')
+        if ($Expect.debug_enabled) { $expectedNames += $sessionNames }
+        $nameDifference = @(Compare-Object ($expectedNames | Sort-Object -Unique) ($names | Sort-Object -Unique))
+        $namesOk = ($staticNames.Count -gt 0) -and ($editNames.Count -gt 0) -and ($compileNames.Count -gt 0) -and ($sessionNames.Count -gt 0) -and ($nameDifference.Count -eq 0) -and ($names.Count -eq $expectedNames.Count)
         $capOk = ($names -contains 'debug_capabilities')
         $launchOk = ($names -contains 'debug_launch')
-        Assert-Cond "combo-$Label-$v-tools" "count=$($Expect.tools_count), capabilities advertised=true, launch advertised=$($Expect.debug_enabled)" "count=$($names.Count), cap=$capOk, launch=$launchOk" (($names.Count -eq $Expect.tools_count) -and $capOk -and ($launchOk -eq [bool]$Expect.debug_enabled)) $ev
+        Assert-Cond "combo-$Label-$v-tools" "registry names/count=$($expectedNames.Count), capabilities advertised=true, launch advertised=$($Expect.debug_enabled)" "count=$($names.Count), cap=$capOk, launch=$launchOk" ($namesOk -and $capOk -and ($launchOk -eq [bool]$Expect.debug_enabled)) $ev
 
         $cap = Invoke-Tool $v 'debug_capabilities' @{}
         $dev = if ($cap.domain) { $cap.domain.result.debug_enabled } else { $null }
@@ -847,15 +861,15 @@ function Run-ACC002 {
 
         $up = Restart-WithSnapshot $snapA
         Assert-Cond 'combo-A-restart' 'health 200 after (false,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'A' @{ tools_count = 44; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
+        if ($up) { Invoke-ComboSequence 'A' @{ debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
 
         $up = Restart-WithSnapshot $snapB
         Assert-Cond 'combo-B-restart' 'health 200 after (true,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'B' @{ tools_count = 44; debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
+        if ($up) { Invoke-ComboSequence 'B' @{ debug_enabled = $false; continue_code = 'DEBUG_DISABLED' } }
 
         $up = Restart-WithSnapshot $snapC
         Assert-Cond 'combo-C-restart' 'health 200 after (true,true) startup-idle restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
-        if ($up) { Invoke-ComboSequence 'C' @{ tools_count = 65; debug_enabled = $true; continue_code = 'INVALID_STATE' } }
+        if ($up) { Invoke-ComboSequence 'C' @{ debug_enabled = $true; continue_code = 'INVALID_STATE' } }
 
         # Deep capability field checks on combo C, one representative + all-version tool shape checks.
         $vLatest = $m.protocol_versions[2]
@@ -3835,11 +3849,11 @@ function Run-ACC036 {
     # [5] Two actual dnSpy OS processes use distinct --settings-file stores and listeners.
     # Killing B must leave A and its snapshot/listener untouched.
     $settingsA = [Environment]::ExpandEnvironmentVariables($m.env.settings_xml)
-    $settingsB = 'C:\Tools\dnspy-acc36-instance-b.xml'
+    $settingsB = Join-Path $script:OutDir ('instance-b-' + [guid]::NewGuid().ToString('N') + '.xml')
     Copy-Item $settingsA $settingsB -Force
     [xml]$bx = Get-Content $settingsB
     $bn = $bx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
-    $bRoot = 'C:\dnspy-mcp-artifacts-b'
+    $bRoot = Join-Path $m.env.artifact_root ('instance-b-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $bRoot | Out-Null
     $bJson = New-SnapshotJson $true $true 'localhost' 15379 $m.env.sample_root $bRoot
     $bn.SetAttribute('SettingsSnapshotJson', $bJson)

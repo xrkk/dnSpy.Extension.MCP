@@ -46,6 +46,12 @@ namespace dnSpy.Extension.MCP
 
         readonly Debugger.StaticWriteGate? writeGate;
 
+        // Legacy adapters bypass ExecuteTool, but must still reject process-wide debugging
+        // before checking edit ownership or arguments. Edit transaction/recovery states keep
+        // their coordinator-owned errors; final live writes retain their dispatcher guards.
+        internal CallToolResult? CheckLegacyDebugWriteGate(string toolName) => InvokeOnUiThread(() =>
+            writeGate?.IsDebugging == true ? CheckWriteGate(writeGate, toolName) : null);
+
         /// <summary>
         /// IMP-010: the six static write tools are blocked with INVALID_STATE and zero side
         /// effects when the MCP coordinator is not idle or any debugging is active in this

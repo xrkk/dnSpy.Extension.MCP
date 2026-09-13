@@ -17,6 +17,8 @@ internal sealed class LegacyEditAdapter {
 
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? arguments, McpCallContext context) {
 		try {
+			var blocked = tools.CheckLegacyDebugWriteGate(toolName);
+			if (blocked != null) return blocked;
 			if (toolName is "patch_method_il" or "force_return" or "nop_method")
 				return Mutation(toolName, arguments, context, workspace => tools.BuildLegacyMethodPlan(toolName, arguments, workspace));
 			if (toolName == "rename_symbol_by_token")
