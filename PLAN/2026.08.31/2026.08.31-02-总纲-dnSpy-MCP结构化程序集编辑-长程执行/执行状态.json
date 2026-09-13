@@ -1,15 +1,15 @@
 {
   "workflow_id": "dnspy-edit-master-01a050b5",
-  "overall_state": "second_remediation_vm_blocked_again",
+  "overall_state": "second_remediation_evidence_delivered",
   "started_at": "2026-09-03T23:32:42+08:00",
-  "updated_at": "2026-09-13T10:19:43+08:00",
+  "updated_at": "2026-09-13T12:40:41+08:00",
   "current_child": null,
-  "child_stage": "REMEDIATION_CHK011_017_DELIVERED_VM_BLOCKED",
+  "child_stage": "VM_EVIDENCE_8_9_CASES",
   "phase_state": "executing",
   "last_verified_checkpoint": {
-    "name": "REMEDIATION_CHK011_017",
-    "commit": "d5257b7",
-    "evidence": "PLAN-CHANGE 002-004 登记+审核（可进入追认）；CHK-012/013/014/017 代码完成（构建 0 error）；监听器套件根因修复后全套 PASS；P03 受影响族重跑被 VM 管理服务挂起阻断（TCP 通 HTTP 无响应，按受保护约束不自恢复，待用户恢复服务后完成重跑与新 HEAD 独立核验）"
+    "name": "REMEDIATION_CHK011_017_EVIDENCE",
+    "commit": "1634121",
+    "evidence": "定向 8 案例：7 全绿 + chk013-gate 7/8（G7 开放）；监听器套件 PASS；undo_live 首检查点缺陷修复；零 UI 生命周期与清理校验加固。待办：P03 受影响族双架构重跑、G7 单断言复跑、新 HEAD 独立核验。"
   },
   "children": {
     "P01": {
