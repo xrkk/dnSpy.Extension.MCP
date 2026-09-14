@@ -782,7 +782,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 		if (setter != null) operation["setter"] = new Dictionary<string, object?> { ["object_id"] = setter };
 		var index = NextIndex;
 		operation["__object_id"] = ObjectId(index);
-		Record(operation, "property_add", null, property.FullName, property.FullName);
+		Record(operation, "property_add", property, property.FullName, property.FullName);
 		EmitAttributeRows(ObjectRef(index), property.CustomAttributes, property.FullName);
 	}
 
@@ -802,7 +802,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 		if (evt.InvokeMethod != null) operation["raise_method"] = new Dictionary<string, object?> { ["object_id"] = AccessorRef(evt.InvokeMethod) };
 		var index = NextIndex;
 		operation["__object_id"] = ObjectId(index);
-		Record(operation, "event_add", null, evt.FullName, evt.FullName);
+		Record(operation, "event_add", evt, evt.FullName, evt.FullName);
 		EmitAttributeRows(ObjectRef(index), evt.CustomAttributes, evt.FullName);
 	}
 

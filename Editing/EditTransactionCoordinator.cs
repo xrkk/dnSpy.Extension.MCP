@@ -1639,7 +1639,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			StorageFault("navigate_inverse");
 			var actual = EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live));
 			var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
-			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED",
+				EditWorkspace.ValidationDetails("navigation_live_image", "checkpoint", "semantic_match=" + (actual == target.SemanticFingerprint) + "; image_match=" + (image == target.ImageSha256) + "; pdb=" + (live.PdbState != null) + "; documents=" + (live.PdbState?.Documents.Count() ?? 0)));
 			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
 			liveApplied = true; StorageFault("finalize"); history.Finalize(prepared, live); lock (gate) state = "idle";
 			return EditWire.Success("idle", new Dictionary<string, object?> { ["replay"] = ReplayResult(target),
@@ -1717,7 +1718,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			StorageFault("navigate_forward");
 			StorageFault("navigate_inverse");
 			var actual = EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live)); var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
-			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED",
+				EditWorkspace.ValidationDetails("navigation_live_image", "checkpoint", "semantic_match=" + (actual == target.SemanticFingerprint) + "; image_match=" + (image == target.ImageSha256) + "; pdb=" + (live.PdbState != null) + "; documents=" + (live.PdbState?.Documents.Count() ?? 0)));
 			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
 			liveApplied = true;
 			StorageFault("finalize"); history.Finalize(prepared, live); lock (gate) state = "idle";

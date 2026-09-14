@@ -23,6 +23,8 @@ internal static class T004ImportProbe {
 
 	static int Main(string[] args) {
 		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
+		if (args.Length == 1 && args[0] == "contracts") { ContractRegressions(); return failures == 0 ? 0 : 1; }
+		if (args.Length is 2 or 3 && args[0] == "package") { CheckPackageNavigation(args[1], args.Length == 3 ? args[2] : null); return failures == 0 ? 0 : 1; }
 		if (args.Length == 2 && args[0] == "dump") { Dump(args[1]); return 0; }
 		if (args.Length == 2 && args[0] == "repro") { Repro(args[1]); return 0; }
 		if (args.Length != 3 || args[0] != "run") throw new ArgumentException("usage: T004ImportProbe run <fixturesDir> <productDir> | dump <artifact>");
@@ -106,6 +108,7 @@ internal static class T004ImportProbe {
 	static Dictionary<string, IMDTokenProvider> lastMap = new();
 
 	static void Run(string fixturesDir, string productDir) {
+		ContractRegressions();
 		fixturesDir = Path.GetFullPath(fixturesDir);
 		var bin = Path.Combine(fixturesDir, "bin");
 		BuildFixture(Path.Combine(fixturesDir, "T004Target.csproj"), bin);
@@ -127,7 +130,9 @@ internal static class T004ImportProbe {
 
 		// A4: private apply -> commit -> persistent replay -> undo -> redo ->
 		// export, plus mid-sequence fault compensation
-		HistoryChain(plain, artifact);
+		HistoryChain(plain, artifact, false);
+		HistoryChain(plain, artifact, true);
+		FaultCompensation(plain, artifact);
 	}
 
 	static void BuildFixture(string project, string bin) {
@@ -181,8 +186,75 @@ internal static class T004ImportProbe {
 		using var artifact = Load(artifactPath);
 		using var importer = new EditCSharpImporter(artifact, target, new Dictionary<string, IMDTokenProvider>(), 0);
 		var plan = importer.Compile(Targets(rows));
+		using var schemas = ReadSchemas();
+		foreach (var row in plan) {
+			using var payload = JsonDocument.Parse(EditWire.CanonicalPayload(row.Operation));
+			var schema = OperationSchema(schemas, row.Kind);
+			EditJsonSchemaValidator.ValidateValue(schema, payload.RootElement, name + ":" + row.Kind);
+		}
 		Console.WriteLine("CASE " + name + " accepted rows=" + plan.Count + " kinds=" + string.Join(",", plan.Select(row => row.Kind).Distinct()));
 		return plan;
+	}
+
+	static JsonDocument ReadSchemas() => JsonDocument.Parse(typeof(EditWorkspace).Assembly
+		.GetManifestResourceStream("dnspy.edit.p03-tool-schemas.json")!);
+	static JsonElement OperationSchema(JsonDocument schemas, string kind) => schemas.RootElement
+		.GetProperty("edit_apply").GetProperty("inputSchema").GetProperty("properties")
+		.GetProperty("operation").GetProperty("oneOf").EnumerateArray()
+		.Single(x => x.GetProperty("properties").GetProperty("kind").GetProperty("const").GetString() == kind);
+
+	static void CheckPackageNavigation(string path, string? sourcePath) {
+		using var catalog = new EditSchemaCatalog();
+		var store = new InMemoryEditCheckpointStore();
+		var id = Path.GetFileNameWithoutExtension(path);
+		store.FinalizeTemp(store.CreateTemp(id, File.ReadAllBytes(path)), false);
+		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+		var lineage = history.Load(id);
+		var head = lineage.Manifest.HeadCheckpointId;
+		var root = lineage.Manifest.Checkpoints.Single(c => c.ParentCheckpointId == null).CheckpointId;
+		var assessment = history.Assess(id, head, "");
+		using var live = sourcePath == null ? ModuleDefMD.Load(lineage.BaselineBytes) : ModuleDefMD.Load(sourcePath);
+		if (lineage.Manifest.Checkpoints.Single(c => c.CheckpointId == head).ParentCheckpointId != root)
+			throw new ArgumentException("package probe requires one commit");
+		var objects = new Dictionary<string, IMDTokenProvider>();
+		var operations = lineage.Operations[head].Operations;
+		for (var i = 0; i < operations.Count; i++) {
+			using var forward = EditHistoryModule.ExpandedForward(lineage, operations[i]);
+			EditOperationRegistry.ApplyPersisted(live, forward.RootElement, objects, i);
+		}
+		Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == assessment.ImageSha256, "package replay image");
+		var undo = history.PlanNavigation(lineage, head, root);
+		undo.Apply(live);
+		var target = history.Assess(id, root, "");
+		Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == target.ImageSha256, "package undo image");
+		Console.WriteLine("PACKAGE navigation failures=" + failures);
+	}
+
+	static void ContractRegressions() {
+		foreach (var error in new Exception[] { new TypeLoadException("business failure"),
+			new FileNotFoundException("business failure", "WindowsBase") }) {
+			var calls = 0;
+			try { EditWorkspace.OnDispatcher<int>(() => { calls++; throw error; }); }
+			catch (Exception caught) { Check(ReferenceEquals(caught, error), "dispatcher preserves business exception"); }
+			Check(calls == 1, "dispatcher invokes failing action exactly once: " + error.GetType().Name);
+		}
+		using var schemas = ReadSchemas();
+		var owner = OperationSchema(schemas, "interface_add").GetProperty("properties").GetProperty("owner_type");
+		foreach (var json in new[] { "{\"token\":\"0x02000001\"}", "{\"object_id\":\"obj-001-00\"}" }) {
+			using var value = JsonDocument.Parse(json);
+			try { EditJsonSchemaValidator.ValidateValue(owner, value.RootElement, "owner"); Check(true, "single owner accepted " + json); }
+			catch (ArgumentException) { Check(false, "single owner rejected " + json); }
+		}
+		foreach (var json in new[] { "{}", "{\"token\":\"0x02000001\",\"object_id\":\"obj-001-00\"}", "{\"token\":\"bad\"}" }) {
+			using var value = JsonDocument.Parse(json);
+			try { EditJsonSchemaValidator.ValidateValue(owner, value.RootElement, "owner"); Check(false, "invalid owner accepted " + json); }
+			catch (ArgumentException) { Check(true, "invalid owner rejected " + json); }
+		}
+		var scope = JsonSerializer.Deserialize<EditPdbTransferCodec.ScopeRow>("{\"start_il\":3,\"end_il\":9,\"import_scope\":\"scope-1\"}", EditWire.JsonOptions)!;
+		Check(scope.StartIl == 3 && scope.EndIl == 9 && scope.ImportScope == "scope-1", "documented scope names deserialize");
+		var encoded = JsonSerializer.Serialize(scope, EditWire.JsonOptions);
+		Check(encoded.Contains("\"startIl\":3") && !encoded.Contains("start_il"), "historical scope serialization remains stable");
+		Console.WriteLine("CONTRACT checks complete failures=" + failures);
 	}
 
 	static string ExportAndVerifyAssembly(ModuleDef module, string name, Func<Assembly, string> verify) {
@@ -469,13 +541,15 @@ internal static class T004ImportProbe {
 
 	// ---------------------------------------------------------- history chain
 
-	static void HistoryChain(string plainPath, string artifactPath) {
+	static void HistoryChain(string plainPath, string artifactPath, bool loadPdb) {
 		using var catalog = new EditSchemaCatalog();
 		var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "t004-artifacts"));
 		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
-		using var live = Load(plainPath);
+		using var live = ModuleDefMD.Load(Path.GetFullPath(plainPath), new ModuleCreationOptions { TryToLoadPdbFromDisk = loadPdb });
+		var hadPdb = live.PdbState != null;
 		using var workspace = EditWorkspace.CreateForTesting(live);
 		var original = EditFingerprint.Compute(live);
+		var originalImage = EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live));
 
 		// compile against the private copy, then stage every operation on it
 		using (var artifact = Load(artifactPath)) {
@@ -524,6 +598,8 @@ internal static class T004ImportProbe {
 		undoPlan.Apply(live);
 		history.Finalize(undoWrite, live);
 		Check(EditFingerprint.Compute(live) == original, "undo restored the original fingerprint");
+		Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == originalImage, "undo restored checkpoint image without adding an empty PDB");
+		Check((live.PdbState != null) == hadPdb, "undo restored original PDB presence");
 
 		// redo forward, then export both the package and the live assembly
 		var redoWrite = history.PrepareHeadMove(lineage.Manifest.LineageId, root.CheckpointId, prepared.PostHeadCheckpointId, "redo");
@@ -553,49 +629,40 @@ internal static class T004ImportProbe {
 			return "value=" + value + " package=" + packagePath;
 		});
 
-		FaultCompensation(plainPath, artifactPath);
 	}
 
-	// A reference-synthesis failure mid-sequence must leave no residual rows:
-	// stage the compiled plan, inject a failing operation in the middle, roll
-	// every earlier undo back in reverse and compare fingerprints.
+	// Exercise every prefix: no silent early failure may stand in for the
+	// injected failure, and both module state and the transaction map restore.
 	static void FaultCompensation(string plainPath, string artifactPath) {
-		using var target = Load(plainPath);
-		var before = EditFingerprint.Compute(target);
 		List<EditCSharpImporter.PlanRow> plan;
+		using (var target = Load(plainPath))
 		using (var artifact = Load(artifactPath)) {
 			using var importer = new EditCSharpImporter(artifact, target, new Dictionary<string, IMDTokenProvider>(), 0);
 			plan = importer.Compile(Targets(("T004Plain.Simple::ZeroSurfaceIter(System.Int32)", "add"))).ToList();
 		}
-		var failing = JsonDocument.Parse("{\"kind\":\"reference_add\",\"reference\":{\"form\":\"matrix_ref\"}}").RootElement.Clone();
-		var objects = new Dictionary<string, IMDTokenProvider>();
-		var undos = new List<Action>();
-		var failed = false;
-		var spliced = 0;
-		for (var index = 0; index <= plan.Count; index++) {
-			JsonElement operation;
-			if (index == plan.Count / 2) {
-				operation = failing;
-				spliced = index;
-			}
-			else {
-				var offset = index < plan.Count / 2 ? index : index - 1;
-				operation = JsonDocument.Parse(EditWire.CanonicalPayload(plan[offset].Operation)).RootElement.Clone();
+		using var invalid = JsonDocument.Parse("{\"kind\":\"reference_add\",\"reference\":{\"form\":\"matrix_ref\"}}");
+		for (var boundary = 0; boundary <= plan.Count; boundary++) {
+			using var target = ModuleDefMD.Load(Path.GetFullPath(plainPath), new ModuleCreationOptions { TryToLoadPdbFromDisk = false });
+			var before = EditFingerprint.Compute(target);
+			var imageBefore = EditWire.Sha256(EditWorkspace.WriteCheckpointImage(target));
+			var guard = EditFingerprint.ComputeExternalGuard(target);
+			var objects = new Dictionary<string, IMDTokenProvider>();
+			var undos = new List<Action>();
+			for (var index = 0; index < boundary; index++) {
+				using var operation = JsonDocument.Parse(EditWire.CanonicalPayload(plan[index].Operation));
+				undos.Add(EditOperationRegistry.Apply(target, operation.RootElement, objects, index).Undo);
 			}
 			try {
-				var outcome = EditOperationRegistry.Apply(target, operation, objects, index);
-				undos.Add(outcome.Undo);
+				EditOperationRegistry.Apply(target, invalid.RootElement, objects, boundary);
+				Check(false, "injected invalid reference rejected at " + boundary);
 			}
-			catch (Exception ex) {
-				failed = true;
-				Console.WriteLine("CASE fault-compensation failure-at=" + spliced + " code="
-					+ (ex is EditDomainException domain ? domain.Code : ex.GetType().Name));
-				break;
-			}
+			catch (EditDomainException) { }
+			for (var index = undos.Count - 1; index >= 0; index--) undos[index]();
+			Check(EditFingerprint.Compute(target) == before, "prefix fingerprint restored at " + boundary);
+			Check(EditFingerprint.ComputeExternalGuard(target) == guard, "prefix metadata/CDI restored at " + boundary);
+			Check(objects.Count == 0, "prefix reference map empty at " + boundary);
+			Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(target)) == imageBefore, "prefix image restored at " + boundary);
 		}
-		Check(failed, "fault-compensation injected failure observed");
-		for (var index = undos.Count - 1; index >= 0; index--) undos[index]();
-		var restored = EditFingerprint.Compute(target);
-		Check(restored == before, "fault-compensation rollback restored the original fingerprint (no residual synthesized rows)");
+		Console.WriteLine("CASE fault-compensation all-boundaries=" + (plan.Count + 1));
 	}
 }

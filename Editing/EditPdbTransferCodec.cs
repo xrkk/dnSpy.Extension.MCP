@@ -48,6 +48,8 @@ internal static class EditPdbTransferCodec {
 		public string? Type { get; set; }
 		[JsonPropertyName("hashAlgorithm")]
 		public string? HashAlgorithm { get; set; }
+		[JsonPropertyName("hash_algorithm"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string? HashAlgorithmLegacyInput { get => null; set { if (value != null) HashAlgorithm = value; } }
 	}
 	public sealed class Location {
 		[JsonPropertyName("il")]
@@ -80,14 +82,20 @@ internal static class EditPdbTransferCodec {
 		public string Type { get; set; } = string.Empty;
 		[JsonPropertyName("valueKind")]
 		public string ValueKind { get; set; } = string.Empty;
+		[JsonPropertyName("value_kind"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string? ValueKindLegacyInput { get => null; set { if (value != null) ValueKind = value; } }
 		[JsonPropertyName("value")]
 		public JsonElement Value { get; set; }
 	}
 	public sealed class ScopeRow {
 		[JsonPropertyName("startIl")]
 		public int StartIl { get; set; }
+		[JsonPropertyName("start_il"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public int? StartIlLegacyInput { get => null; set { if (value != null) StartIl = value.Value; } }
 		[JsonPropertyName("endIl")]
 		public int EndIl { get; set; }
+		[JsonPropertyName("end_il"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public int? EndIlLegacyInput { get => null; set { if (value != null) EndIl = value.Value; } }
 		[JsonPropertyName("locals")]
 		public LocalRow[] Locals { get; set; } = Array.Empty<LocalRow>();
 		[JsonPropertyName("constants")]
@@ -96,6 +104,8 @@ internal static class EditPdbTransferCodec {
 		public string[] Namespaces { get; set; } = Array.Empty<string>();
 		[JsonPropertyName("importScope")]
 		public string? ImportScope { get; set; }
+		[JsonPropertyName("import_scope"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string? ImportScopeLegacyInput { get => null; set { if (value != null) ImportScope = value; } }
 		[JsonPropertyName("scopes")]
 		public ScopeRow[] Scopes { get; set; } = Array.Empty<ScopeRow>();
 	}
@@ -134,6 +144,8 @@ internal static class EditPdbTransferCodec {
 		public string? Namespace { get; set; }
 		[JsonPropertyName("assemblyName")]
 		public string? AssemblyName { get; set; }
+		[JsonPropertyName("assembly_name"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string? AssemblyNameLegacyInput { get => null; set { if (value != null) AssemblyName = value; } }
 		[JsonPropertyName("type")]
 		public string? Type { get; set; }
 	}

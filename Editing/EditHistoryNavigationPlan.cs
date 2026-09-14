@@ -18,9 +18,11 @@ internal sealed class EditHistoryNavigationPlan {
 	readonly IReadOnlyList<Step> steps;
 	readonly string beforeFingerprint;
 	readonly string afterFingerprint;
+	readonly bool targetHasPdb;
 
-	internal EditHistoryNavigationPlan(string format, IReadOnlyList<Step> steps, string beforeFingerprint, string afterFingerprint) {
+	internal EditHistoryNavigationPlan(string format, IReadOnlyList<Step> steps, string beforeFingerprint, string afterFingerprint, bool targetHasPdb) {
 		this.format = format; this.steps = steps; this.beforeFingerprint = beforeFingerprint; this.afterFingerprint = afterFingerprint;
+		this.targetHasPdb = targetHasPdb;
 	}
 
 	public Action Apply(ModuleDef live) {
@@ -40,8 +42,16 @@ internal sealed class EditHistoryNavigationPlan {
 					: EditOperationRegistry.ApplyPersisted(live, document.RootElement, map, step.Index);
 				inverses.Add(outcome.Undo);
 			}
+			// Target replay proves whether a PDB container existed. Do not rewrite
+			// old inverse rows or discard an originally present empty container.
+			if (!targetHasPdb && live.PdbState != null) {
+				var removed = live.PdbState;
+				EditOperationRegistry.RemoveEmptyPdbState(live);
+				inverses.Add(() => live.SetPdbState(removed));
+			}
 			EditStructuralValidator.Validate(live);
-			if (EditHistoryModule.SemanticDigest(format, live) != afterFingerprint) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			if (EditHistoryModule.SemanticDigest(format, live) != afterFingerprint)
+				throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("navigation_semantics", "module", "Compiled inverse operations did not restore the target semantic fingerprint"));
 		}
 		catch {
 			Restore(live, inverses, beforeLiveFingerprint);

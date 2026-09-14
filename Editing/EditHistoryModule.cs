@@ -710,10 +710,15 @@ internal sealed class EditHistoryModule : IDisposable {
 		}
 		var target = Replay(lineage, targetId, beforeFingerprint);
 		string afterFingerprint;
-		using (var targetModule = ModuleDefMD.Load(target.Bytes)) afterFingerprint = SemanticDigest(format, targetModule);
-		var plan = new EditHistoryNavigationPlan(format, steps, beforeFingerprint, afterFingerprint);
+		bool targetHasPdb;
+		using (var targetModule = ModuleDefMD.Load(target.Bytes)) {
+			afterFingerprint = SemanticDigest(format, targetModule);
+			targetHasPdb = targetModule.PdbState != null;
+		}
+		var plan = new EditHistoryNavigationPlan(format, steps, beforeFingerprint, afterFingerprint, targetHasPdb);
 		plan.Apply(replay);
-		if (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replay)) != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+		if (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replay)) != target.ImageSha256)
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("navigation_plan_image", "checkpoint", "The operation-level replay did not restore the target checkpoint image"));
 		return plan;
 	}
 
@@ -1050,7 +1055,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		return result;
 	}
 
-	static JsonDocument ExpandedForward(EditLoadedLineage lineage, EditSerializedOperation operation) {
+	internal static JsonDocument ExpandedForward(EditLoadedLineage lineage, EditSerializedOperation operation) {
 		var forward = new Dictionary<string, object?>(operation.Forward, StringComparer.Ordinal);
 		if (operation.Kind is "method_body_replace" or "method_add" && operation.PayloadSha256.Length != 0) {
 			if (operation.PayloadSha256.Length != 1 || !forward.TryGetValue("body", out var body))

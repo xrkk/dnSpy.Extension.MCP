@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>P03StoreHarness</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ProductDir Condition="'$(ProductDir)' == ''">$(MSBuildThisFileDirectory)../../../bin/Release/net48/</ProductDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="System.ValueTuple" Version="4.6.2" PrivateAssets="all" GeneratePathProperty="true" />
+    <Reference Include="System.ValueTuple"><HintPath>$(PkgSystem_ValueTuple)/lib/net47/System.ValueTuple.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="dnSpy.Extension.MCP.x"><HintPath>$(ProductDir)dnSpy.Extension.MCP.x.dll</HintPath></Reference>
+    <Reference Include="dnlib"><HintPath>$(ProductDir)dnlib.dll</HintPath></Reference>
+    <Reference Include="System.Text.Json"><HintPath>$(ProductDir)System.Text.Json.dll</HintPath></Reference>
+    <Reference Include="System.Memory"><HintPath>$(ProductDir)System.Memory.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="CopyProductDependencies" AfterTargets="Build">
+    <ItemGroup><Dep Include="$(ProductDir)*.dll" /></ItemGroup>
+    <Copy SourceFiles="@(Dep)" DestinationFolder="$(OutDir)" />
+  </Target>
+</Project>

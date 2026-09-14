@@ -43,7 +43,8 @@ internal static partial class EditOperationRegistry {
 		RejectUnknownRawFields(operation);
 		var kind = RequiredString(operation, "kind");
 		if (!EditWire.OperationKinds.Contains(kind, StringComparer.Ordinal)) Invalid("operation.kind", "Unknown operation kind");
-		return kind switch {
+		var pdbBefore = module.PdbState;
+		var outcome = kind switch {
 			"type_add" => TypeAdd(module, operation, objects, operationIndex),
 			"type_update" => TypeUpdate(module, operation, objects),
 			"type_remove" => TypeRemove(module, operation, objects),
@@ -85,6 +86,30 @@ internal static partial class EditOperationRegistry {
 			"reference_add" => ReferenceAdd(module, operation, objects, operationIndex),
 			_ => throw new EditDomainException("EDIT_VALIDATION_FAILED"),
 		};
+		if (pdbBefore != null || module.PdbState == null) return outcome;
+		return new EditOperationOutcome {
+			Kind = outcome.Kind, CreatedObjectIds = outcome.CreatedObjectIds, Target = outcome.Target,
+			Before = outcome.Before, After = outcome.After, Risks = outcome.Risks,
+			Undo = () => { outcome.Undo(); RemoveEmptyPdbState(module); },
+		};
+	}
+
+	// A newly allocated, now empty container is different from an originally
+	// present empty PDB: only callers holding evidence of prior absence use this.
+	internal static void RemoveEmptyPdbState(ModuleDef module) {
+		var state = module.PdbState;
+		if (state == null) return;
+		// Method bodies/CDI belong to their definitions, not to this container;
+		// earlier prefix operations may still own them during reverse traversal.
+		if (state.HasDocuments || state.UserEntryPoint != null)
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		// dnlib 4.5.0 exposes a getter and a one-time non-null setter only.
+		// Detach this proven-empty container without disposing the module or
+		// the container: navigation compensation may reattach the same object.
+		var field = typeof(ModuleDef).GetField("pdbState", BindingFlags.Instance | BindingFlags.NonPublic);
+		if (field == null || field.FieldType != typeof(PdbState) || !field.IsFamily)
+			throw new NotSupportedException("The pinned dnlib PDB-state layout is unavailable");
+		field.SetValue(module, null);
 	}
 
 	/// <summary>Replay a package-owned operation. The legacy composite is deliberately
@@ -1066,7 +1091,11 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 				// MethodDef writes an invalid row and reloads empty. Bind through a
 				// same-module MemberRef in that case (dnlib CustomAttribute contract).
 				if (!ReferenceEquals(constructor.Module, module))
-					return new MemberRefUser(module, constructor.Name, constructor.MethodSig, attributeTypeRef);
+					// The foreign MethodSig still contains foreign TypeDef rows (e.g.
+					// System.Type in corlib). Reusing it writes invalid local tokens.
+					// Bind the already validated declared parameters in this module.
+					return new MemberRefUser(module, constructor.Name,
+						MethodSig.CreateInstance(module.CorLibTypes.Void, parameterSigs), attributeTypeRef);
 				return constructor;
 			}
 			Invalid("constructor", "attribute constructor with the given parameter shape was not found");

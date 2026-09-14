@@ -123,7 +123,7 @@ internal sealed class EditWorkspace : IDisposable {
 		var bytes = WriteCore(module, flags);
 		using var materialized = ModuleDefMD.Load(bytes);
 		if (EditFingerprint.ComputeRoundtrip(materialized) != semantic)
-			throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", ValidationDetails("checkpoint_image_semantics", "module", "Image serialization changed module semantics: " + EditFingerprint.Difference(module, materialized)));
 		// dnlib creates random GUID names for deleted-row placeholders. Only
 		// placeholders newly emitted by this write are ours to name; even a sample
 		// type matching the dummy naming pattern remains untouched. Rewriting the
@@ -267,17 +267,9 @@ internal sealed class EditWorkspace : IDisposable {
 	}
 
 	public T OnLive<T>(Func<T> action) => OnDispatcher(action);
-	// The WPF touch lives in a NoInlining helper: JIT of this wrapper never
-	// loads WindowsBase, so a headless host without WPF (the Linux store-level
-	// verification probe) falls back to inline execution instead of failing
-	// assembly resolution.  Real dnSpy hosts dispatch unchanged.
+	// Dispatch is selected before invoking the delegate. A business exception
+	// must propagate unchanged, never cause a second invocation on this thread.
 	public static T OnDispatcher<T>(Func<T> action) {
-		try { return Dispatched(action); }
-		catch (System.IO.FileNotFoundException ex) when (ex.FileName?.StartsWith("WindowsBase", StringComparison.Ordinal) == true) { return action(); }
-		catch (TypeLoadException) { return action(); }
-	}
-	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-	static T Dispatched<T>(Func<T> action) {
 		var dispatcher = Application.Current?.Dispatcher;
 		if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.CheckAccess()) return action();
 		return dispatcher.Invoke(action);

@@ -1,15 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- Reuses the InternalsVisibleTo grant of the formal harness so the probe
          drives the same internal registry/importer/history surface. -->
     <AssemblyName>P03StoreHarness</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <NoWarn>$(NoWarn);CA1416;CS8600;CS8602;CS8604;CS8618;CS8625</NoWarn>
-    <!-- Default points at the T004 build tree; override with -p:ProductDir=. -->
-    <ProductDir>/tmp/dnspy-t004-r04-build/Extensions/dnSpy.Extension.MCP/bin/Release/net10.0-windows/</ProductDir>
+    <!-- Default resolves to the extension output; override with -p:ProductDir=. -->
+    <ProductDir Condition="'$(ProductDir)' == ''">$(MSBuildThisFileDirectory)../../../bin/Release/net10.0-windows/</ProductDir>
     <!-- Fixture sources are compiled by the real Roslyn SDK at probe runtime,
          never linked into the probe itself. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);Fixtures/**</DefaultItemExcludes>
@@ -18,13 +20,12 @@
     <Reference Include="dnSpy.Extension.MCP.x"><HintPath>$(ProductDir)dnSpy.Extension.MCP.x.dll</HintPath><Private>true</Private></Reference>
     <Reference Include="dnlib"><HintPath>$(ProductDir)dnlib.dll</HintPath><Private>true</Private></Reference>
   </ItemGroup>
-  <!-- The store-level history chain touches WPF's Application.Current once;
-       headless runs need WindowsBase loadable (Application.Current stays null
-       and the dispatcher helper runs inline). The dnSpy app build tree ships it. -->
+  <!-- Copy the product dependencies; the Windows Desktop framework above
+       supplies the real WPF dispatcher used by the history and contract tests. -->
   <Target Name="CopyDeps" AfterTargets="Build">
     <ItemGroup>
       <Dep Include="$(ProductDir)*.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(Dep);@(WpfDep)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Dep)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>
