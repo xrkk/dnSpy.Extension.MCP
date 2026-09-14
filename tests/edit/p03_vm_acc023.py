@@ -54,13 +54,19 @@ PASSES: list[str] = []
 SENTINEL = r"C:\Tools\dnspy-mcp-edit-tests\p09-sentinel.flag"
 
 
+ISOLATED_LAUNCH = None
+ORIGINAL_MALICIOUS_SOURCE = MALICIOUS_SOURCE
+LEGACY_SENTINEL = SENTINEL
+
+
 def configure_isolation(context) -> None:
-    global ARCH, URL, FIXTURE, SENTINEL, MALICIOUS_SOURCE
+    global ARCH, URL, FIXTURE, SENTINEL, MALICIOUS_SOURCE, ISOLATED_LAUNCH
     ARCH = context.architecture
     URL = context.mcp_url
     FIXTURE = context.fixture("ResourceHost/ResourceHost.dll")
     SENTINEL = context.work_file("p09-sentinel.flag")
-    MALICIOUS_SOURCE = MALICIOUS_SOURCE.replace(r"C:\\Tools\\dnspy-mcp-edit-tests\\p09-sentinel.flag", SENTINEL.replace("\\", "\\\\"))
+    ISOLATED_LAUNCH = context.fixture("ImportHost/ImportHost.exe" if ARCH == "x64" else "ImportHost-x86/ImportHost.exe")
+    MALICIOUS_SOURCE = ORIGINAL_MALICIOUS_SOURCE.replace(LEGACY_SENTINEL, SENTINEL.replace('"', '""'))
 
 
 def rid() -> str:
@@ -180,7 +186,7 @@ def main() -> int:
     # P1: gate-allowed dynamic run as the positive control — a real process
     # event is only produced by debug_launch (the VM execution gate)
     import hashlib
-    exe = (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if ARCH == "x64"
+    exe = ISOLATED_LAUNCH or (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if ARCH == "x64"
            else r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost-x86\ImportHost.exe")
     sha = ""
     try:

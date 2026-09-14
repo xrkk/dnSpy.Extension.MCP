@@ -96,6 +96,18 @@ def response_digest(value) -> dict:
     return out
 
 
+def validate_invocation(context, run_id, artifact_root, arch, case_id):
+    if (run_id != context.run_id or str(artifact_root) != str(Path(context.artifact_root))
+            or arch != context.architecture):
+        raise IsolationError("runner identity/output must match the validated context")
+    # Include the actual evidence leaf so existing links cannot redirect writes.
+    from p03_vm_isolation import _below
+    leaf = artifact_root / "edit-tests" / run_id / case_id
+    _below("evidence directory", str(leaf), context.isolation_root)
+    if leaf.exists():
+        raise IsolationError("evidence directory already exists; use a fresh run_id")
+
+
 def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64",
              isolation: IsolationContext | None = None,
              module_loader=importlib.import_module) -> tuple[str, dict]:
@@ -106,6 +118,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64",
         try:
             # Configuration is validated before a driver import or evidence write.
             isolation.validate(require_ui=case_id == "EDIT-ACC-018")
+            validate_invocation(isolation, run_id, artifact_root, arch, case_id)
         except IsolationError as ex:
             return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
     case_file = CASES_DIR / f"{case_id}.json"
@@ -216,6 +229,7 @@ def run_harness_case(case_id: str, run_id: str, artifact_root: Path, arch: str,
     if isolation is not None:
         try:
             isolation.validate()
+            validate_invocation(isolation, run_id, artifact_root, arch, case_id)
         except IsolationError as ex:
             return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
     case_file = CASES_DIR / f"{case_id}.json"
@@ -313,6 +327,7 @@ def main() -> int:
     parser.add_argument("--plan", action="store_true")
     args = parser.parse_args()
     run_id = args.run_id or f"p03-evidence-{time.strftime('%Y%m%d-%H%M%S')}"
+    args.run_id = run_id
     artifact_root = Path(args.artifact_root)
     try:
         isolation = build_isolation(args)
@@ -340,7 +355,7 @@ def main() -> int:
         print(f"{case} {status} pass={summary.get('pass_lines', 0)} fail={summary.get('fail_lines', 0)}", flush=True)
     if any(s == "fail" for s in statuses):
         return 1
-    if statuses and all(s == "blocked" for s in statuses):
+    if any(s == "blocked" for s in statuses):
         return 2
     return 0
 

@@ -45,7 +45,7 @@ python .\tests\edit\p03_vm_edit_acc_evidence.py --plan --case EDIT-ACC-004 --cas
 Actual evidence lands only under
 `<artifact-root>\edit-tests\<run-id>\<case>`, plus the selected checkpoint
 and work roots.  Exit `0` means every requested case passed, `1` means a case
-failed, and `2` means all requested cases were blocked by configuration.  A
+failed, and `2` means at least one requested case was blocked and none failed.  A
 plan's `PLAN` result is never an acceptance pass.
 
 After a dedicated host has been stopped by its owner, cleanup may remove only
@@ -60,3 +60,11 @@ probes.  P01, P02, debug/fixture runners, and the missing ACC-011/012 entrance
 remain outside this entrypoint.  T005 independent review and the recorded v1
 tension also remain pending; a P03 plan or local fake test is not their
 independent verification.
+
+Main-session follow-up: paths must be absolute, must not contain parent
+traversal, and existing links must resolve inside the selected root on the
+execution platform. Run IDs are single path components; existing case evidence
+is rejected. A mixed pass/blocked run returns 2, never success. ACC-023 binds
+both its sentinel source and architecture-specific dynamic fixture to the
+selected context. Local path tests do not prove that a remote dnSpy host has
+been configured with the matching ArtifactRoot; verify that before execution.

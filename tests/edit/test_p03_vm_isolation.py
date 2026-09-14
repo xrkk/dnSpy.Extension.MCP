@@ -65,6 +65,57 @@ class P03IsolationTests(unittest.TestCase):
         self.assertEqual([], loaded)
         self.assertFalse((self.root / "artifacts").exists())
 
+    def test_parent_traversal_and_run_id_escape_are_rejected(self):
+        for field, value in (("artifact_root", str(self.root / "artifacts" / ".." / ".." / "outside")),
+                             ("run_id", "../../outside"), ("isolation_root", "relative")):
+            context = self.context()
+            object.__setattr__(context, field, value)
+            with self.assertRaises(IsolationError):
+                context.validate()
+        self.assertFalse(self.root.exists())
+
+    def test_existing_link_cannot_redirect_evidence(self):
+        self.root.mkdir()
+        (self.root / "artifacts").symlink_to(self.root.parent, target_is_directory=True)
+        with self.assertRaisesRegex(IsolationError, "outside"):
+            self.context().validate()
+
+    def test_runner_cannot_override_validated_output_or_architecture(self):
+        loaded = []
+        status, _ = run_case("EDIT-ACC-004", "../../escape", self.root.parent,
+                             isolation=self.context(), module_loader=lambda name: loaded.append(name))
+        self.assertEqual("blocked", status)
+        self.assertEqual([], loaded)
+        self.assertFalse(self.root.exists())
+
+    def test_real_acc023_context_rebinds_source_and_dynamic_fixture(self):
+        import p03_vm_acc023 as driver
+        context = self.context()
+        for arch in ("x64", "x86"):
+            object.__setattr__(context, "architecture", arch)
+            driver.configure_isolation(context)
+            self.assertIn(context.work_file("p09-sentinel.flag"), driver.MALICIOUS_SOURCE)
+            self.assertNotIn(driver.LEGACY_SENTINEL, driver.MALICIOUS_SOURCE)
+            folder = "ImportHost" if arch == "x64" else "ImportHost-x86"
+            self.assertEqual(context.fixture(folder + "/ImportHost.exe"), driver.ISOLATED_LAUNCH)
+            self.assertEqual(arch, driver.ARCH)
+
+
+    def test_mixed_pass_and_blocked_cli_is_not_success(self):
+        from unittest.mock import patch
+        import p03_vm_edit_acc_evidence as runner
+        with patch("sys.argv", ["runner", "--case", "EDIT-ACC-004", "--case", "EDIT-ACC-005"]), \
+                patch.object(runner, "run_case", side_effect=[("pass", {}), ("blocked", {})]):
+            self.assertEqual(2, runner.main())
+
+    def test_windows_parent_traversal_is_rejected_on_linux(self):
+        context = self.context()
+        object.__setattr__(context, "isolation_root", r"D:\T006\run")
+        object.__setattr__(context, "artifact_root", r"D:\T006\run\..\outside")
+        with self.assertRaises(IsolationError):
+            context.validate()
+
+
     def test_fake_rpc_driver_receives_selected_context(self) -> None:
         observed = []
 
