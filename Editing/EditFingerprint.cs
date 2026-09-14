@@ -80,26 +80,14 @@ internal static class EditFingerprint {
 				rows.Add("declsec|m|" + MethodKey(method) + "|" + DeclSecurityRows(method.DeclSecurities));
 		}
 		rows.Add(Win32ResourceRows(module));
-		// CHK-012: CDI CONTENT, not just row types — the previous type-name-only
-		// rows left same-kind different-value edits (e.g. a default-namespace
-		// change) invisible.  CdiContent reflects every public property.
-		rows.Add("module-cdi|" + CdiContentRows(module.CustomDebugInfos));
-		foreach (var type in module.GetTypes()) {
-			foreach (var cdi in type.CustomDebugInfos)
-				rows.Add("cdi|t|" + TypeKey(type) + "|" + CdiContent(cdi));
-			foreach (var method in type.Methods)
-				foreach (var cdi in method.CustomDebugInfos)
-					rows.Add("cdi|m|" + MethodKey(method) + "|" + CdiContent(cdi));
-			foreach (var field in type.Fields)
-				foreach (var cdi in field.CustomDebugInfos)
-					rows.Add("cdi|f|" + FieldKey(field) + "|" + CdiContent(cdi));
-			foreach (var property in type.Properties)
-				foreach (var cdi in property.CustomDebugInfos)
-					rows.Add("cdi|p|" + property.Name + "|" + CdiContent(cdi));
-			foreach (var eventDef in type.Events)
-				foreach (var cdi in eventDef.CustomDebugInfos)
-					rows.Add("cdi|e|" + eventDef.Name + "|" + CdiContent(cdi));
-		}
+		// T002-R02 / CHK-021: complete CDI content rows.  The previous reflective
+		// rendering truncated sequences, skipped public fields, degraded struct and
+		// composite values to ToString and swallowed getter failures, so legal CDI
+		// changes could stay invisible.  EditCdiGuard encodes every bound dnlib CDI
+		// type explicitly with owner-bound references and full lists, and throws
+		// EDIT_CAPABILITY_UNAVAILABLE instead of fabricating a hash when the
+		// projection cannot be formed.  This transient guard is its only consumer.
+		rows.AddRange(EditCdiGuard.Rows(module));
 		return EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n", rows.OrderBy(x => x, StringComparer.Ordinal))));
 	}
 
@@ -140,48 +128,6 @@ internal static class EditFingerprint {
 			}).ToArray(),
 		}).ToArray(), EditWire.JsonOptions);
 
-	/// <summary>CHK-012: stable content rendering of one custom-debug-info row.
-	/// Reflects every public instance property (name-ordered); tokens, byte
-	/// blobs and sequences are normalized so an unchanged graph always renders
-	/// identically while any value change alters the guard.</summary>
-	static string CdiContent(PdbCustomDebugInfo info) {
-		try {
-			var parts = new List<string> { info.Guid.ToString() };
-			foreach (var property in info.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-				.OrderBy(p => p.Name, StringComparer.Ordinal)) {
-				if (property.GetIndexParameters().Length != 0) continue;
-				object? value;
-				try { value = property.GetValue(info); }
-				catch (Exception) { continue; }
-				parts.Add(property.Name + "=" + ReflectValue(value, 0));
-			}
-			return string.Join("|", parts);
-		}
-		catch (Exception) {
-			return info.GetType().Name + "|unreflectable";
-		}
-	}
-
-	static string ReflectValue(object? value, int depth) {
-		if (value == null) return "null";
-		if (depth > 4) return "...";
-		switch (value) {
-		case byte[] bytes:
-			return "bytes:" + EditWire.Sha256(bytes);
-		case string text:
-			return text;
-		case Guid guid:
-			return guid.ToString("D");
-		case IMDTokenProvider provider:
-			return provider.GetType().Name + ":" + provider.MDToken.Raw.ToString("x8", CultureInfo.InvariantCulture);
-		case System.Collections.IEnumerable sequence:
-			return "[" + string.Join(",", sequence.Cast<object?>().Take(64).Select(item => ReflectValue(item, depth + 1))) + "]";
-		}
-		if (value.GetType().IsPrimitive || value is Enum || value is decimal)
-			return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
-		return value.GetType().Name + ":" + value;
-	}
-
 	static string Win32ResourceRows(ModuleDef module) {
 		if (module.Win32Resources == null) return "win32|none";
 		var rows = new List<string>();
@@ -201,11 +147,6 @@ internal static class EditFingerprint {
 
 	static string ResourceNameKey(dnlib.W32Resources.ResourceName name)
 		=> name == null ? "?" : name.Name ?? ("#" + name.Id.ToString(CultureInfo.InvariantCulture));
-
-	static string CdiRows(IList<PdbCustomDebugInfo> infos)
-		=> string.Join("|", infos.Select(x => x.GetType().Name).OrderBy(x => x, StringComparer.Ordinal));
-	static string CdiContentRows(IList<PdbCustomDebugInfo> infos)
-		=> string.Join("|", infos.Select(CdiContent).OrderBy(x => x, StringComparer.Ordinal));
 
 	/// <summary>
 	/// Test-only evidence seam for the canonical global-order invariant.  Both values are
