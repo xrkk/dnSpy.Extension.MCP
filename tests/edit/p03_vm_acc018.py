@@ -87,10 +87,10 @@ def main():
   review=call(c,'edit_review',dict(request_id=rid(),transaction_id=tx,expected_revision=rev));rr=payload(review).get('review',{});check('review',review.get('ok'),review)
   v=waitui('reviewed',lambda v:any(rr.get('review_id','?') in x for x in v['items']))
   check('review id shown before commit',any(rr.get('review_id','?') in x for x in v['items']),v)
-  check('risks match MCP review',all(any(risk['risk_id'] in x for x in v['items']) for risk in payload(review).get('risks',[])),v)
-  check('diffs match MCP review',all(any(d['kind']+'/'+d['target'] in x for x in v['items']) for d in payload(review).get('diffs',[])),v);shot('reviewed')
+  check('risks match MCP review',bool(payload(review).get('risks')) and all(any(risk['risk_id'] in x for x in v['items']) for risk in payload(review).get('risks',[])),v)
+  check('diffs match MCP review',bool(payload(review).get('diffs')) and all(any(d['kind']+'/'+d['target'] in x for x in v['items']) for d in payload(review).get('diffs',[])),v);shot('reviewed')
   commit=call(c,'edit_commit' ,dict(request_id=rid(),transaction_id=tx,expected_revision=rev,review_id=rr.get('review_id',''),review_revision=rr.get('review_revision',rev),confirmed_risk_ids=rr.get('required_confirmation_ids',[])));check('real commit',commit.get('ok'),commit)
-  h=call(c,'edit_history',{});check('history MCP query',h.get('ok'),h);(out/'history.json').write_text(json.dumps(h,indent=2));v=waitui('history',lambda v:sum(s.startswith('checkpoint checkpoint-') and ' image ' in s for s in v['items'])>=2)
+  h=call(c,'edit_history',{});check('history MCP query',h.get('ok'),h);(out/'history.json').write_text(json.dumps(h,indent=2));v=waitui('history',lambda v:'idle' in v['state'] and bool(payload(h).get('lineages')) and all(any(l['lineage_id'] in row and l['head_checkpoint_id'] in row for row in v['items']) for l in payload(h)['lineages']) and sum(row.startswith('checkpoint checkpoint-') and ' image ' in row for row in v['items'])==sum(l['checkpoint_count'] for l in payload(h)['lineages']))
   assert_capacity(c,v,'history')
   rows=[s for s in v['items'] if s.startswith('checkpoint checkpoint-') and ' image ' in s];check('idle checkpoint parent-child rows',len(rows)>=2 and 'idle' in v['state'],v)
   packages={}

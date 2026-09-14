@@ -77,9 +77,6 @@ def main() -> int:
     results = []
     for arch in ("x64", "x86"):
         for case in CASES:
-            if case == "EDIT-ACC-018" and arch == "x86":
-                results.append({"case": case, "arch": arch, "status": "skipped-ui"})
-                continue
             if not fresh(client, arch):
                 results.append({"case": case, "arch": arch, "status": "dnspy-start-failed"})
                 continue
@@ -89,7 +86,7 @@ def main() -> int:
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
     client.close()
-    failed = [r for r in results if r.get("status") not in ("pass", "skipped-ui")]
+    failed = [r for r in results if r.get("status") != "pass"]
     print(json.dumps(results, ensure_ascii=False, default=str)[:2000], flush=True)
     print(f"retest: {len(results) - len(failed)}/{len(results)} pass", flush=True)
     return 0 if not failed else 1

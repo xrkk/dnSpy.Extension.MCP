@@ -240,9 +240,6 @@ def main() -> int:
             overall["registry_export"] = export_registry(client)
             print("    " + overall["registry_export"]["tail"][:200], flush=True)
         for case in REGRESSION_CASES:
-            if case == "EDIT-ACC-018" and arch == "x86":
-                results.append({"case": case, "arch": arch, "status": "skipped-ui"})
-                continue
             summary = run_case(client, case, arch, run_id)
             results.append(summary or {"case": case, "arch": arch, "status": "no-summary"})
             print(f"[{arch}] {case}: {(summary or {}).get('status')}", flush=True)
@@ -256,7 +253,7 @@ def main() -> int:
     overall["no_residue"] = {"dnspy_processes": "0", "edit_dirs": "cleaned"}
 
     overall["results"] = results
-    failed = [r for r in results if r.get("status") not in ("pass", "skipped-ui")]
+    failed = [r for r in results if r.get("status") != "pass"]
     print(json.dumps({k: v for k, v in overall.items() if k != "results"}, ensure_ascii=False)[:1200], flush=True)
     print(f"final regression: {len(results) - len(failed)}/{len(results)} pass", flush=True)
     manifest = ROOT / "docs/FINAL-TEST-MANIFEST.zh-CN.md"

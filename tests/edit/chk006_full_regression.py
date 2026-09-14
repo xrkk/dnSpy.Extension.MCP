@@ -110,9 +110,6 @@ def main() -> int:
             RESULTS["resources"] = resources_probe(client)
             print(f"    listed={RESULTS['resources']['listed']} read_ok={RESULTS['resources']['read_ok']}", flush=True)
         for case in p09.REGRESSION_CASES:
-            if case == "EDIT-ACC-018" and arch == "x86":
-                results.append({"case": case, "arch": arch, "status": "skipped-ui"})
-                continue
             summary = None
             for attempt in range(3):
                 try:
@@ -160,7 +157,7 @@ def main() -> int:
     output.write_text(json.dumps(RESULTS, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"[done] {output}", flush=True)
 
-    failed_cases = [r for r in results if r.get("status") not in ("pass", "skipped-ui")]
+    failed_cases = [r for r in results if r.get("status") != "pass"]
     suites_ok = all(RESULTS[k]["ok"] for k in ("p01_suite", "p02_vm_suite", "p02_listener_suite", "python_suite"))
     print(f"edit regression: {len(results) - len(failed_cases)}/{len(results)} pass; suites_ok={suites_ok}", flush=True)
     return 0 if not failed_cases and suites_ok else 1

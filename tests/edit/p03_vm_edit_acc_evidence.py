@@ -105,6 +105,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
 
     module = importlib.import_module(module_name)
     actions_path = evidence_dir / "actions.jsonl"
+    actions_path.touch(exist_ok=True)
     log_path = evidence_dir / "driver.log"
     original_call = module.call
     original_client_cls = module.DnSpyClient
@@ -129,6 +130,9 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
         return outcome
 
+    previous_ui_arch = os.environ.get("DNMCP_UI_ARCH")
+    if case_id == "EDIT-ACC-018":
+        os.environ["DNMCP_UI_ARCH"] = arch
     started = time.time()
     stdout = io.StringIO()
     exit_code: int | None = None
@@ -142,6 +146,11 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
         error_text = f"{type(ex).__name__}: {ex}"
         exit_code = 1
     finally:
+        if case_id == "EDIT-ACC-018":
+            if previous_ui_arch is None:
+                os.environ.pop("DNMCP_UI_ARCH", None)
+            else:
+                os.environ["DNMCP_UI_ARCH"] = previous_ui_arch
         module.call = original_call
         module.DnSpyClient = original_client_cls
         closed = 0
