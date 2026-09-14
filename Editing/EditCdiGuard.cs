@@ -58,6 +58,7 @@ internal sealed class EditCdiGuard {
 	static readonly Type? SteppingInformationType = typeof(PdbCustomDebugInfo).Assembly.GetType("dnlib.DotNet.Pdb.PdbAsyncMethodSteppingInformationCustomDebugInfo");
 	static readonly PropertyInfo? SteppingInformationCatchHandler = SteppingInformationType?.GetProperty("CatchHandler", BindingFlags.Public | BindingFlags.Instance);
 	static readonly PropertyInfo? SteppingInformationStepInfos = SteppingInformationType?.GetProperty("AsyncStepInfos", BindingFlags.Public | BindingFlags.Instance);
+	static HashSet<Type>? supportedCdiTypes;
 
 	EditCdiGuard(ModuleDef module) => this.module = module;
 
@@ -100,6 +101,11 @@ internal sealed class EditCdiGuard {
 	}
 
 	object EncodeCdiCore(PdbCustomDebugInfo info) {
+		// B2: exact bound-type gate.  A derived class of a known CDI type must
+		// not slip through the base dispatch with unencoded extra state; only the
+		// exact bound types (public concrete + the two exact internal shapes) are
+		// supported, and anything else fails before any hash is produced.
+		if (!SupportedCdiTypes.Contains(info.GetType())) throw Capability("unsupported CDI type: " + info.GetType().FullName);
 		if (ids.TryGetValue(info, out var existing)) return Ref(existing);
 		var id = nextId++;
 		ids[info] = id;
@@ -313,9 +319,9 @@ internal sealed class EditCdiGuard {
 		case MethodDef definition: return new Dictionary<string, object?> { ["kind"] = "method", ["path"] = MethodPath(definition) };
 		case MemberRef reference: return new Dictionary<string, object?> {
 			["kind"] = "member_ref",
-			["declaring"] = TypeDefOrRefRef(reference.DeclaringType),
+			["parent"] = MemberRefParentRef(reference.Class),
 			["name"] = reference.Name?.String,
-			["signature"] = MethodSignature(reference.MethodSig),
+			["signature"] = CallingConventionRef(reference.Signature),
 		};
 		case MethodSpec spec: return new Dictionary<string, object?> {
 			["kind"] = "method_spec",
@@ -330,12 +336,7 @@ internal sealed class EditCdiGuard {
 		switch (type) {
 		case null: return null;
 		case TypeDef definition: return new Dictionary<string, object?> { ["kind"] = "type_def", ["path"] = TypePath(definition) };
-		case TypeRef reference: return new Dictionary<string, object?> {
-			["kind"] = "type_ref",
-			["scope"] = reference.ResolutionScope?.FullName,
-			["namespace"] = reference.Namespace?.String,
-			["name"] = reference.Name?.String,
-		};
+		case TypeRef reference: return TypeRefRef(reference);
 		case TypeSpec spec: return new Dictionary<string, object?> { ["kind"] = "type_spec", ["signature"] = Sig(spec.TypeSig) };
 		default: throw Capability("unsupported type reference kind: " + type.GetType().FullName);
 		}
@@ -406,27 +407,153 @@ internal sealed class EditCdiGuard {
 		["length"] = bytes.LongLength,
 	};
 
-	static string MethodSignature(MethodSig? value) {
-		if (value == null) return string.Empty;
-		return "|" + (byte)value.CallingConvention + "|" + value.HasThis + "|" + value.ExplicitThis + "|" + value.GenParamCount +
-			"|" + Sig(value.RetType) + "(" + string.Join(",", value.Params.Select(Sig)) + ")" +
-			(value.ParamsAfterSentinel == null ? string.Empty : "...(" + string.Join(",", value.ParamsAfterSentinel.Select(Sig)) + ")");
+	// B1: complete structured signature identity.  Every element is encoded as a
+	// JSON object (no flat separator concatenation), so a scope-only change, a
+	// modifier identity, a nested TypeRef chain or punctuation inside a name
+	// cannot collide with another shape; unknown elements fail explicitly.
+	object? MethodSignature(MethodSig? value) {
+		if (value == null) return null;
+		return new Dictionary<string, object?> {
+			["kind"] = "method_sig",
+			["calling_convention"] = (byte)value.CallingConvention,
+			["has_this"] = value.HasThis,
+			["explicit_this"] = value.ExplicitThis,
+			["generic_parameter_count"] = value.GenParamCount,
+			["return_type"] = Sig(value.RetType),
+			["parameters"] = ArrayOf(value.Params, parameter => Sig(parameter)),
+			["sentinel_parameters"] = ArrayOf(value.ParamsAfterSentinel, parameter => Sig(parameter)),
+		};
 	}
 
-	static string Sig(TypeSig? value) {
-		if (value == null) return string.Empty;
-		if (value is GenericSig generic)
-			return (generic.IsMethodVar ? "!!" : "!") + generic.Number.ToString(CultureInfo.InvariantCulture);
-		if (value is GenericInstSig instance)
-			return "GenericInst(" + Sig(instance.GenericType) + "<" + string.Join(",", instance.GenericArguments.Select(Sig)) + ">)";
-		if (value is TypeDefOrRefSig type)
-			return value.ElementType + ":" + type.TypeDefOrRef?.FullName;
-		if (value is FnPtrSig function && function.Signature is MethodSig method)
-			return "FnPtr(" + MethodSignature(method) + ")";
-		if (value is ArraySig array)
-			return "Array(" + Sig(array.Next) + ";rank=" + array.Rank + ";sizes=" + string.Join(",", array.Sizes) +
-				";bounds=" + string.Join(",", array.LowerBounds) + ")";
-		return value.ElementType + "(" + Sig(value.Next) + ")";
+	object? CallingConventionRef(CallingConventionSig? signature) {
+		switch (signature) {
+		case null: return null;
+		case MethodSig method: return MethodSignature(method);
+		case FieldSig field: return new Dictionary<string, object?> {
+			["kind"] = "field_sig",
+			["type"] = Sig(field.Type),
+		};
+		default: throw Capability("unsupported member reference signature kind: " + signature.GetType().FullName);
+		}
+	}
+
+	object? MemberRefParentRef(IMemberRefParent? parent) {
+		switch (parent) {
+		case null: return null;
+		case TypeDef definition: return new Dictionary<string, object?> { ["kind"] = "type_def", ["path"] = TypePath(definition) };
+		case TypeRef reference: return TypeRefRef(reference);
+		case TypeSpec spec: return new Dictionary<string, object?> { ["kind"] = "type_spec", ["signature"] = Sig(spec.TypeSig) };
+		case ModuleRef moduleRef: return new Dictionary<string, object?> { ["kind"] = "module_ref", ["name"] = moduleRef.Name?.String };
+		case MethodDef method: return new Dictionary<string, object?> { ["kind"] = "method_def", ["path"] = MethodPath(method) };
+		default: throw Capability("unsupported member reference parent kind: " + parent.GetType().FullName);
+		}
+	}
+
+	object? TypeRefRef(TypeRef reference) => new Dictionary<string, object?> {
+		["kind"] = "type_ref",
+		["scope"] = ResolutionScopeRef(reference.ResolutionScope),
+		["namespace"] = reference.Namespace?.String,
+		["name"] = reference.Name?.String,
+	};
+
+	object? ResolutionScopeRef(IResolutionScope? scope) {
+		switch (scope) {
+		case null: return null;
+		case AssemblyRef assembly: return new Dictionary<string, object?> {
+			["kind"] = "assembly_ref",
+			["name"] = assembly.Name?.String,
+			["version"] = assembly.Version?.ToString(),
+			["culture"] = assembly.Culture?.String,
+			["public_key_or_token"] = Bytes(assembly.PublicKeyOrToken?.Data),
+			["attributes"] = (uint)assembly.Attributes,
+			["hash"] = Bytes(assembly.Hash),
+		};
+		case ModuleRef moduleRef: return new Dictionary<string, object?> { ["kind"] = "module_ref", ["name"] = moduleRef.Name?.String };
+		case TypeRef nested: return TypeRefRef(nested);
+		case ModuleDef definition: return new Dictionary<string, object?> {
+			["kind"] = "module_def", ["name"] = definition.Name?.String, ["mvid"] = definition.Mvid?.ToString("D"),
+		};
+		case AssemblyDef assemblyDefinition: return new Dictionary<string, object?> {
+			["kind"] = "assembly_def", ["full_name"] = assemblyDefinition.FullName,
+		};
+		default: throw Capability("unsupported resolution scope kind: " + scope.GetType().FullName);
+		}
+	}
+
+	object? Sig(TypeSig? value) {
+		switch (value) {
+		case null: return null;
+		case GenericSig generic: return new Dictionary<string, object?> {
+			["kind"] = generic.IsMethodVar ? "mvar" : "var", ["number"] = generic.Number,
+		};
+		case GenericInstSig instance: return new Dictionary<string, object?> {
+			["kind"] = "generic_inst", ["generic_type"] = Sig(instance.GenericType),
+			["arguments"] = ArrayOf(instance.GenericArguments, argument => Sig(argument)),
+		};
+		case TypeDefOrRefSig type: return new Dictionary<string, object?> {
+			["kind"] = "type_def_or_ref", ["element_type"] = type.ElementType.ToString(), ["type"] = TypeDefOrRefRef(type.TypeDefOrRef),
+		};
+		case FnPtrSig function: return new Dictionary<string, object?> {
+			["kind"] = "fnptr", ["signature"] = CallingConventionRef(function.Signature),
+		};
+		case ArraySig array: return new Dictionary<string, object?> {
+			["kind"] = "array", ["next"] = Sig(array.Next), ["rank"] = array.Rank,
+			["sizes"] = ArrayOf(array.Sizes, size => size), ["lower_bounds"] = ArrayOf(array.LowerBounds, bound => bound),
+		};
+		case SZArraySig szarray: return new Dictionary<string, object?> { ["kind"] = "szarray", ["next"] = Sig(szarray.Next) };
+		case PtrSig pointer: return new Dictionary<string, object?> { ["kind"] = "ptr", ["next"] = Sig(pointer.Next) };
+		case ByRefSig byref: return new Dictionary<string, object?> { ["kind"] = "byref", ["next"] = Sig(byref.Next) };
+		case PinnedSig pinned: return new Dictionary<string, object?> { ["kind"] = "pinned", ["next"] = Sig(pinned.Next) };
+		case CModReqdSig required: return new Dictionary<string, object?> {
+			["kind"] = "modreq", ["modifier"] = TypeDefOrRefRef(required.Modifier), ["next"] = Sig(required.Next),
+		};
+		case CModOptSig optional: return new Dictionary<string, object?> {
+			["kind"] = "modopt", ["modifier"] = TypeDefOrRefRef(optional.Modifier), ["next"] = Sig(optional.Next),
+		};
+		case SentinelSig: return new Dictionary<string, object?> { ["kind"] = "sentinel" };
+		case ModuleSig moduleSignature: return new Dictionary<string, object?> {
+			["kind"] = "module_sig", ["index"] = moduleSignature.Index, ["next"] = Sig(moduleSignature.Next),
+		};
+		default: throw Capability("unsupported signature element: " + value.GetType().FullName);
+		}
+	}
+
+	static HashSet<Type> SupportedCdiTypes => supportedCdiTypes ??= BuildSupportedCdiTypes();
+
+	static HashSet<Type> BuildSupportedCdiTypes() {
+		var types = new HashSet<Type> {
+			typeof(PdbAsyncMethodCustomDebugInfo),
+			typeof(PdbCompilationMetadataReferencesCustomDebugInfo),
+			typeof(PdbCompilationOptionsCustomDebugInfo),
+			typeof(PdbDefaultNamespaceCustomDebugInfo),
+			typeof(PdbDynamicLocalVariablesCustomDebugInfo),
+			typeof(PdbDynamicLocalsCustomDebugInfo),
+			typeof(PdbEditAndContinueLambdaMapCustomDebugInfo),
+			typeof(PdbEditAndContinueLocalSlotMapCustomDebugInfo),
+			typeof(PdbEditAndContinueStateMachineStateMapDebugInfo),
+			typeof(PdbEmbeddedSourceCustomDebugInfo),
+			typeof(PdbForwardMethodInfoCustomDebugInfo),
+			typeof(PdbForwardModuleInfoCustomDebugInfo),
+			typeof(PdbIteratorMethodCustomDebugInfo),
+			typeof(PdbSourceLinkCustomDebugInfo),
+			typeof(PdbSourceServerCustomDebugInfo),
+			typeof(PdbStateMachineHoistedLocalScopesCustomDebugInfo),
+			typeof(PdbStateMachineTypeNameCustomDebugInfo),
+			typeof(PdbTupleElementNamesCustomDebugInfo),
+			typeof(PdbTypeDefinitionDocumentsDebugInfo),
+			typeof(PdbUnknownCustomDebugInfo),
+			typeof(PdbUsingGroupsCustomDebugInfo),
+			typeof(PortablePdbTupleElementNamesCustomDebugInfo),
+			typeof(PrimaryConstructorInformationBlobDebugInfo),
+		};
+		var assembly = typeof(PdbCustomDebugInfo).Assembly;
+		foreach (var name in new[] {
+			"dnlib.DotNet.Pdb.PdbAsyncMethodSteppingInformationCustomDebugInfo",
+			"dnlib.DotNet.Pdb.PdbTypeDefinitionDocumentsDebugInfoMD",
+		}) {
+			types.Add(assembly.GetType(name) ?? throw Capability("bound dnlib is missing CDI type " + name));
+		}
+		return types;
 	}
 
 	static EditDomainException Capability(string reason) => new("EDIT_CAPABILITY_UNAVAILABLE",

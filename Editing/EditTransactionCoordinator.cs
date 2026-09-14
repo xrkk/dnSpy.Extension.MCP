@@ -1546,7 +1546,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 
 	Dictionary<string,object?> TestPersistentExternalMutation(Transaction tx,string caseId){
-		var before=tx.Workspace.CurrentLiveFingerprint();string after;bool restored;
+		var before=tx.Workspace.CurrentLiveFingerprint();string after;bool restored;var cdiShape="none";
 		if(caseId is "live-conflict:mutate" or "live-conflict:mutate-entrypoint" or "live-conflict:mutate-layout" or "live-conflict:mutate-cdi"){
 			if(testExternalUndo!=null)throw new ArgumentException("a persistent external mutation is already active","case_id");
 			tx.Workspace.OnLive(()=>{
@@ -1572,8 +1572,26 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					return 0;
 				}
 				if(caseId=="live-conflict:mutate-cdi"){
-					// CHK-012: same-kind different-value CDI content (the default
-					// namespace) is invisible to type-name-only CDI rows.
+					// T002-R03: prefer an EXISTING same-kind/same-row content change
+					// (65th dynamic-local flag, hoisted-scope End) so the real drift
+					// guard sees the complete CDI projection; adding a row is not the
+					// counterexample.  Fixtures without those shapes keep the original
+					// default-namespace fallback; no new case_id or schema is added.
+					var flags=module.CustomDebugInfos.OfType<dnlib.DotNet.Pdb.PdbDynamicLocalVariablesCustomDebugInfo>().FirstOrDefault(x=>x.Flags!=null&&x.Flags.Length>=65);
+					if(flags!=null){var oldFlag=flags.Flags[64];flags.Flags[64]=!oldFlag;testExternalUndo=()=>flags.Flags[64]=oldFlag;cdiShape="dynamic-flags-65";return 0;}
+					var hoisted=module.GetTypes().SelectMany(t=>t.Methods).SelectMany(m=>m.CustomDebugInfos).Concat(module.CustomDebugInfos).OfType<dnlib.DotNet.Pdb.PdbStateMachineHoistedLocalScopesCustomDebugInfo>().FirstOrDefault(x=>x.Scopes.Count>0);
+					if(hoisted!=null){
+						for(var scopeIndex=0;scopeIndex<hoisted.Scopes.Count;scopeIndex++){
+							var scope=hoisted.Scopes[scopeIndex];if(scope.End==null)continue;
+							var owner=module.GetTypes().SelectMany(t=>t.Methods).FirstOrDefault(m=>m.HasBody&&m.Body.Instructions.Any(i=>ReferenceEquals(i,scope.End)));
+							if(owner==null)continue;
+							var replacement=owner.Body.Instructions.FirstOrDefault(i=>!ReferenceEquals(i,scope.End));
+							if(replacement==null)continue;
+							var oldEnd=scope.End;scope.End=replacement;hoisted.Scopes[scopeIndex]=scope;var slot=scopeIndex;
+							testExternalUndo=()=>{var restore=hoisted.Scopes[slot];restore.End=oldEnd;hoisted.Scopes[slot]=restore;};
+							cdiShape="hoisted-end";return 0;
+						}
+					}
 					var existing=module.CustomDebugInfos.OfType<dnlib.DotNet.Pdb.PdbDefaultNamespaceCustomDebugInfo>().FirstOrDefault();
 					if(existing==null){
 						var created=new dnlib.DotNet.Pdb.PdbDefaultNamespaceCustomDebugInfo{Namespace="drift-namespace"};
@@ -1583,6 +1601,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						var oldNamespace=existing.Namespace;existing.Namespace=(string.IsNullOrEmpty(oldNamespace)?"drift-namespace":oldNamespace+"-changed");
 						testExternalUndo=()=>existing.Namespace=oldNamespace;
 					}
+					cdiShape="default-namespace";
 					return 0;
 				}
 				var old=module.Name;module.Name=old+".external";testExternalUndo=()=>module.Name=old;return 0;});
@@ -1591,7 +1610,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			if(testExternalUndo==null||testExternalTransactionId!=tx.Id)throw new ArgumentException("no matching persistent external mutation is active","case_id");
 			tx.Workspace.OnLive(()=>{testExternalUndo();return 0;});testExternalUndo=null;testExternalTransactionId=null;after=tx.Workspace.CurrentLiveFingerprint();restored=after==testExternalOriginalFingerprint;testExternalOriginalFingerprint=null;
 		}
-		var artifactRoot=settings.CurrentSnapshot?.ArtifactRoot;if(string.IsNullOrWhiteSpace(artifactRoot))throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",Capability("artifact_root","ArtifactRoot is not configured"));var artifactDirectory=Path.Combine(artifactRoot,"edit-tests","fingerprint");Directory.CreateDirectory(artifactDirectory);var artifactPath=Path.Combine(artifactDirectory,"dnspy-edit-"+caseId.Replace(':','-')+"-"+Guid.NewGuid().ToString("N")+".json");var artifactJson=JsonSerializer.Serialize(new{case_id=caseId,before,after,restored});File.WriteAllText(artifactPath,artifactJson);
+		var artifactRoot=settings.CurrentSnapshot?.ArtifactRoot;if(string.IsNullOrWhiteSpace(artifactRoot))throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",Capability("artifact_root","ArtifactRoot is not configured"));var artifactDirectory=Path.Combine(artifactRoot,"edit-tests","fingerprint");Directory.CreateDirectory(artifactDirectory);var artifactPath=Path.Combine(artifactDirectory,"dnspy-edit-"+caseId.Replace(':','-')+"-"+Guid.NewGuid().ToString("N")+".json");var artifactJson=JsonSerializer.Serialize(new{case_id=caseId,before,after,restored,cdi_shape=cdiShape});File.WriteAllText(artifactPath,artifactJson);
 		return EditWire.Success(state,new Dictionary<string,object?>{{"case_id",caseId},{"recipe_id","live-conflict"},{"component","ModuleMetadata"},{"recipe_sha256",EditWire.Sha256(Encoding.UTF8.GetBytes("live-conflict-v1"))},{"evidence_artifact",new Dictionary<string,object?>{{"path",artifactPath},{"sha256",EditWire.Sha256(Encoding.UTF8.GetBytes(artifactJson))}}},{"located_slice_before",before},{"located_slice_after",after},{"raw_order_before",before},{"raw_order_after",after},{"canonical_readback_before",before},{"canonical_readback_after",after},{"before_fingerprint",before},{"after_fingerprint",after},{"restored_fingerprint",restored?after:before},{"guard_before",tx.Workspace.BaselineExternalGuard},{"guard_after",tx.Workspace.CurrentExternalGuard()},{"changed",tx.Workspace.CurrentExternalGuard()!=tx.Workspace.BaselineExternalGuard},{"semantic_change",caseId is not ("live-conflict:mutate-entrypoint" or "live-conflict:mutate-layout" or "live-conflict:mutate-cdi")},{"restored",restored}});
 	}
 

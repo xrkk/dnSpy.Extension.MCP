@@ -23,6 +23,8 @@ internal static class CdiGuardProbe {
 		CounterexamplesAndShapes();
 		OwnerIdentity();
 		GraphShapes();
+		B1SignatureIdentity();
+		B2ExactTypeGate();
 		FailureModes();
 		SemanticUnchanged();
 		CrossCopy();
@@ -437,6 +439,176 @@ internal static class CdiGuardProbe {
 	sealed class UnknownCdi : PdbCustomDebugInfo {
 		public override Guid Guid => Guid.Parse("77777777-7777-7777-7777-777777777777");
 		public override PdbCustomDebugInfoKind Kind => (PdbCustomDebugInfoKind)9999;
+	}
+
+	sealed class UnknownSig : TypeSig {
+		public override TypeSig Next => null!;
+		public override ElementType ElementType => (ElementType)0x7F;
+	}
+
+	sealed class ExtraDocs : PdbTypeDefinitionDocumentsDebugInfo {
+		public int Extra;
+	}
+
+	// B1: structured signature identity.  A scope-only change on a referenced
+	// type, nested TypeRef outer scopes, modreq/modopt modifiers, names that
+	// would collide under flat concatenation, and MemberRef parents must all be
+	// observable; unknown signature shapes must fail instead of ToString.
+	static void B1SignatureIdentity() {
+		AssemblyRef? refA = null, refB = null;
+		TypeRef? scopeType = null;
+		Case("B1 parameter TypeRef scope A->B", t => {
+			refA = new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0"));
+			refB = new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0"));
+			scopeType = new TypeRefUser(t.Module, "N", "T", refA);
+			var owner = new TypeRefUser(t.Module, "N", "Owner", refA);
+			return new PdbForwardMethodInfoCustomDebugInfo {
+				Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void, new ClassSig(scopeType)), owner),
+			};
+		}, (t, cdi) => scopeType!.ResolutionScope = refB!);
+
+		TypeRef? outer = null;
+		Case("B1 nested TypeRef outer scope A->B", t => {
+			var a = new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0"));
+			var b = new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0"));
+			outer = new TypeRefUser(t.Module, "N", "Outer", a);
+			refB = b;
+			var inner = new TypeRefUser(t.Module, "N", "Inner", outer);
+			return new PdbForwardMethodInfoCustomDebugInfo {
+				Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void, new ClassSig(inner)), new TypeRefUser(t.Module, "N", "Owner", a)),
+			};
+		}, (t, cdi) => outer!.ResolutionScope = refB!);
+
+		TypeRef? modifierA = null, modifierB = null;
+		Case("B1 modreq modifier A->B", t => {
+			modifierA = new TypeRefUser(t.Module, "N", "ModA", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")));
+			modifierB = new TypeRefUser(t.Module, "N", "ModB", new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0")));
+			return ForwardWithParam(t, new CModReqdSig(modifierA, t.Module.CorLibTypes.Int32));
+		}, (t, cdi) => SetForwardParam(t, cdi, new CModReqdSig(modifierB!, t.Module.CorLibTypes.Int32)));
+		Case("B1 modopt modifier A->B", t => {
+			modifierA = new TypeRefUser(t.Module, "N", "ModA", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")));
+			modifierB = new TypeRefUser(t.Module, "N", "ModB", new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0")));
+			return ForwardWithParam(t, new CModOptSig(modifierA, t.Module.CorLibTypes.Int32));
+		}, (t, cdi) => SetForwardParam(t, cdi, new CModOptSig(modifierB!, t.Module.CorLibTypes.Int32)));
+
+		// Flat "namespace.name" rendering could not distinguish these two.
+		TypeRef? dottedName = null, splitName = null;
+		Case("B1 name/namespace separation", t => {
+			dottedName = new TypeRefUser(t.Module, string.Empty, "N.T");
+			splitName = new TypeRefUser(t.Module, "N", "T");
+			return ForwardWithParam(t, new ClassSig(dottedName));
+		}, (t, cdi) => SetForwardParam(t, cdi, new ClassSig(splitName!)));
+
+		Case("B1 punctuation in type name", t => {
+			var type = new TypeRefUser(t.Module, "N", "T,()|");
+			return ForwardWithParam(t, new ClassSig(type));
+		}, (t, cdi) => {
+			var type = (TypeRef)((ClassSig)((MemberRef)((PdbForwardMethodInfoCustomDebugInfo)cdi).Method!).MethodSig!.Params[0]).TypeDefOrRef!;
+			type.Name = "T,()|2";
+		});
+
+		MethodSig? fnptrSig = null;
+		Case("B1 fnptr inner parameter", t => {
+			fnptrSig = MethodSig.CreateStatic(t.Module.CorLibTypes.Int32, new ClassSig(new TypeRefUser(t.Module, "N", "P", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")))));
+			return ForwardWithParam(t, new FnPtrSig(fnptrSig));
+		}, (t, cdi) => fnptrSig!.Params[0] = new ClassSig(new TypeRefUser(t.Module, "N", "P", new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0")))));
+
+		ArraySig? arraySig = null;
+		Case("B1 array sizes", t => {
+			arraySig = new ArraySig(t.Module.CorLibTypes.Int32, 2, new uint[] { 2, 2 }, new int[] { 0, 0 });
+			return ForwardWithParam(t, arraySig);
+		}, (t, cdi) => arraySig!.Sizes[0] = 3);
+
+		GenericInstSig? genericSig = null;
+		Case("B1 generic instance argument scope", t => {
+			genericSig = new GenericInstSig(new ClassSig(new TypeRefUser(t.Module, "N", "G", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")))),
+				new TypeSig[] { new ClassSig(new TypeRefUser(t.Module, "N", "Arg", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")))) });
+			return ForwardWithParam(t, genericSig);
+		}, (t, cdi) => genericSig!.GenericArguments[0] = new ClassSig(new TypeRefUser(t.Module, "N", "Arg", new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0")))));
+
+		MethodSig? sentinelSig = null;
+		Case("B1 sentinel parameter", t => {
+			sentinelSig = MethodSig.CreateStatic(t.Module.CorLibTypes.Void, t.Module.CorLibTypes.Int32);
+			sentinelSig.ParamsAfterSentinel = new List<TypeSig> { new ClassSig(new TypeRefUser(t.Module, "N", "S", new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0")))) };
+			return ForwardWithSig(t, sentinelSig);
+		}, (t, cdi) => sentinelSig!.ParamsAfterSentinel![0] = new ClassSig(new TypeRefUser(t.Module, "N", "S", new AssemblyRefUser(new AssemblyNameInfo("B, Version=1.0.0.0")))));
+
+		// MemberRef parents beyond plain DeclaringType identity.
+		using (var left = Build()) {
+			var mr = new MemberRefUser(left.Module, "F", MethodSig.CreateStatic(left.Module.CorLibTypes.Void), new ModuleRefUser(left.Module, "M1"));
+			left.Module.CustomDebugInfos.Add(new PdbForwardMethodInfoCustomDebugInfo { Method = mr });
+			using var right = Build();
+			var mr2 = new MemberRefUser(right.Module, "F", MethodSig.CreateStatic(right.Module.CorLibTypes.Void), new ModuleRefUser(right.Module, "M2"));
+			right.Module.CustomDebugInfos.Add(new PdbForwardMethodInfoCustomDebugInfo { Method = mr2 });
+			Check(RowsText(left.Module) != RowsText(right.Module), "B1 ModuleRef member parent identity kept");
+		}
+		using (var t = Build()) {
+			var global1 = new MethodDefUser("G1", MethodSig.CreateStatic(t.Module.CorLibTypes.Void), dnlib.DotNet.MethodImplAttributes.IL, dnlib.DotNet.MethodAttributes.Public | dnlib.DotNet.MethodAttributes.Static) { Body = new CilBody() };
+			global1.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+			var global2 = new MethodDefUser("G2", MethodSig.CreateStatic(t.Module.CorLibTypes.Void), dnlib.DotNet.MethodImplAttributes.IL, dnlib.DotNet.MethodAttributes.Public | dnlib.DotNet.MethodAttributes.Static) { Body = new CilBody() };
+			global2.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+			t.Type1.Methods.Add(global1);
+			t.Type1.Methods.Add(global2);
+			var mr1 = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void), global1);
+			t.Module.CustomDebugInfos.Add(new PdbForwardMethodInfoCustomDebugInfo { Method = mr1 });
+			var before = Guard(t.Module);
+			((PdbForwardMethodInfoCustomDebugInfo)t.Module.CustomDebugInfos[0]).Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void), global2);
+			Check(Guard(t.Module) != before, "B1 MethodDef member parent identity kept");
+		}
+		// Equivalent copies with external signatures stay identical.
+		static ModuleDef ExternalCopy() {
+			var t = Build();
+			var a = new AssemblyRefUser(new AssemblyNameInfo("A, Version=1.0.0.0"));
+			var ty = new TypeRefUser(t.Module, "N", "T", a);
+			t.Module.CustomDebugInfos.Add(new PdbForwardMethodInfoCustomDebugInfo {
+				Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void, new ClassSig(ty)), new TypeRefUser(t.Module, "N", "Owner", a)),
+			});
+			return t.Module;
+		}
+		var copy1 = ExternalCopy();
+		var copy2 = ExternalCopy();
+		Check(RowsText(copy1) == RowsText(copy2), "B1 equivalent external signatures produce identical rows");
+		copy1.Dispose();
+		copy2.Dispose();
+
+		using (var t = Build()) {
+			var cdi = ForwardWithParam(t, new UnknownSig());
+			t.Module.CustomDebugInfos.Add(cdi);
+			ExpectCapability("B1 unknown signature shape", t.Module);
+		}
+	}
+
+	static PdbCustomDebugInfo ForwardWithParam(TestModule t, TypeSig parameter) =>
+		ForwardWithSig(t, MethodSig.CreateStatic(t.Module.CorLibTypes.Void, parameter));
+
+	static PdbCustomDebugInfo ForwardWithSig(TestModule t, MethodSig signature) =>
+		new PdbForwardMethodInfoCustomDebugInfo { Method = new MemberRefUser(t.Module, "F", signature, new TypeRefUser(t.Module, "N", "Owner")) };
+
+	static void SetForwardParam(TestModule t, PdbCustomDebugInfo cdi, TypeSig parameter) {
+		var member = (MemberRef)((PdbForwardMethodInfoCustomDebugInfo)cdi).Method!;
+		member.MethodSig!.Params[0] = parameter;
+	}
+
+	// B2: exact bound-type gate.  A derived class of a known CDI type must be
+	// rejected even when its base content is valid; the exact public type and the
+	// exact internal MD type stay legal.
+	static void B2ExactTypeGate() {
+		using (var t = Build()) {
+			var derived = new ExtraDocs();
+			derived.Extra = 0;
+			t.Module.CustomDebugInfos.Add(derived);
+			ExpectCapability("B2 derived CDI with extra state rejected", t.Module);
+			derived.Extra = 1;
+			ExpectCapability("B2 derived CDI with changed extra state rejected", t.Module);
+		}
+		using (var t = Build()) {
+			var exact = new PdbTypeDefinitionDocumentsDebugInfo();
+			exact.Documents.Add(NewDocument("exact://one"));
+			t.Module.CustomDebugInfos.Add(exact);
+			var before = Guard(t.Module);
+			exact.Documents[0].Url = "exact://two";
+			Check(Guard(t.Module) != before, "B2 exact public type remains legal and complete");
+		}
 	}
 
 	static void FailureModes() {
