@@ -482,6 +482,9 @@ internal static class EditFingerprint {
 
 	static string StrongScopeText(IResolutionScope? scope, StrongWalk walk) {
 		if (scope == null) return "null";
+		// A nested TypeRef owns its own traversal entry; entering it here too
+		// mistakes every valid nested reference for a cycle.
+		if (scope is TypeRef nestedScope) return StrongTypeRefText(nestedScope, walk);
 		walk.Enter(scope);
 		try {
 			switch (scope) {
@@ -490,7 +493,6 @@ internal static class EditFingerprint {
 				StrongQuote(assembly.PublicKeyOrToken?.Data == null ? null : EditWire.Sha256(assembly.PublicKeyOrToken.Data)) + "," +
 				StrongNumber((uint)assembly.Attributes) + "]";
 			case ModuleRef moduleRef: return "[\"module_ref\"," + StrongQuote(moduleRef.Name?.String) + "]";
-			case TypeRef nested: return StrongTypeRefText(nested, walk);
 			case ModuleDef definition: return "[\"module_def\"," + StrongQuote(definition.Name?.String) + "," + StrongQuote(definition.Mvid?.ToString("D")) + "]";
 			case AssemblyDef assemblyDefinition: return "[\"assembly_def\"," + StrongQuote(assemblyDefinition.FullName) + "]";
 			default: throw StrongFailure("unsupported resolution scope kind: " + scope.GetType().FullName);
@@ -534,6 +536,16 @@ internal static class EditFingerprint {
 		if (operand is FieldDef field) return "field:" + StrongFieldLabel(field, walk);
 		if (operand is TypeSig typeSignature) return "type:" + StrongSigText(typeSignature, walk);
 		if (operand is ITypeDefOrRef typeRef) return "type:" + StrongTypeRefText(typeRef, walk);
+		if (operand is MethodSpec instance) {
+			walk.Enter(instance);
+			try {
+				var signature = instance.GenericInstMethodSig ?? throw StrongFailure("method instantiation has no signature");
+				return "method-spec:[" + StrongQuote(StrongMethodRefLabel(instance.Method, walk)) + ",[" +
+					string.Join(",", signature.GenericArguments.Select(argument => StrongSigText(argument, walk))) + "]]";
+			}
+			finally { walk.Exit(instance); }
+		}
+		if (operand is MethodSig callSite) return "callsite:" + StrongMethodSignatureText(callSite, walk);
 		if (operand is IMethod called) return "method:" + StrongMethodRefLabel(called, walk);
 		if (operand is IField referencedField) return "field:" + StrongTypeRefText(referencedField.DeclaringType, walk) + "::" + referencedField.Name + ":" + StrongSigText(referencedField.FieldSig?.Type, walk);
 		if (operand is Local local) return "local:" + local.Index + ":" + StrongSigText(local.Type, walk);

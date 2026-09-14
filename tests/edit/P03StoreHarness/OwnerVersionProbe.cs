@@ -34,12 +34,59 @@ internal static class OwnerVersionProbe {
 		HistoricalVectors();
 		StrongOwnership();
 		DuplicateOwnerFailClosed();
+		NestedScopeControl();
+		GenericCallControl();
 		CycleAndDepth(fixturePath);
 		PositiveControls();
 		Compatibility(fixtureDir);
 		Console.WriteLine("SUMMARY checks=" + checks + " failures=" + failures);
 		if (failures != 0) Console.WriteLine("FAILED " + string.Join("; ", failed));
 		if (failures != 0) throw new InvalidOperationException("owner-version probe failed with " + failures + " failure(s)");
+	}
+
+	static void GenericCallControl() {
+		using var module = NewChildModule("GenericCall");
+		var type = module.Types[1];
+		var generic = new MethodDefUser("G", MethodSig.CreateStatic(module.CorLibTypes.Void)) { Body = new CilBody() };
+		generic.MethodSig.GenParamCount = 1;
+		generic.MethodSig.Generic = true;
+		generic.GenericParameters.Add(new GenericParamUser(0));
+		generic.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+		type.Methods.Add(generic);
+		var caller = new MethodDefUser("Caller", MethodSig.CreateStatic(module.CorLibTypes.Void)) { Body = new CilBody() };
+		type.Methods.Add(caller);
+		var instance = new MethodSpecUser(generic, new GenericInstMethodSig(module.CorLibTypes.Int32));
+		caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, instance));
+		caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+		var before = EditFingerprint.ComputeRoundtripStrong(module);
+		instance.GenericInstMethodSig.GenericArguments[0] = module.CorLibTypes.String;
+		Check(before != EditFingerprint.ComputeRoundtripStrong(module), "generic call instantiation argument is observed");
+		caller.Body.Instructions[0] = Instruction.Create(OpCodes.Calli, MethodSig.CreateStatic(module.CorLibTypes.Void));
+		Check(EditFingerprint.ComputeRoundtripStrong(module) == EditFingerprint.ComputeRoundtripStrong(module), "calli signature operand is supported and stable");
+	}
+
+	static void NestedScopeControl() {
+		using var module = NewChildModule("NestedScope");
+		var outer = new TypeRefUser(module, "N", "Outer", new AssemblyRefUser(new AssemblyNameInfo("External, Version=1.0.0.0")));
+		var inner = new TypeRefUser(module, "", "Inner", outer);
+		module.Types[1].Fields.Add(new FieldDefUser("nested", new FieldSig(new ClassSig(inner))));
+		var before = EditFingerprint.ComputeRoundtripStrong(module);
+		Check(before == EditFingerprint.ComputeRoundtripStrong(module), "legal nested TypeRef scope is stable, not a cycle");
+		outer.Name = "OtherOuter";
+		Check(before != EditFingerprint.ComputeRoundtripStrong(module), "nested scope owner change is observed");
+	}
+
+	// The committed v1 bytes were produced on Linux. Adapt only their output
+	// path separator for the platform-specific historical path contract, after
+	// verifying original hashes. Baseline, nodes, operations and hashes stay intact.
+	static byte[] PlatformFixture(byte[] package) {
+		var entries = ReadEntries(package);
+		var manifest = ManifestOf(package);
+		var path = manifest.DefaultOutput.RelativePath.Replace('/', Path.DirectorySeparatorChar);
+		if (path == manifest.DefaultOutput.RelativePath) return package;
+		manifest.DefaultOutput.RelativePath = path;
+		entries["manifest.json"] = JsonSerializer.SerializeToUtf8Bytes(manifest, EditWire.JsonOptions);
+		return BuildZip(entries);
 	}
 
 	static string ResolveFixtureDir() {
@@ -473,6 +520,8 @@ internal static class OwnerVersionProbe {
 		var v1SwappedPackage = File.ReadAllBytes(Path.Combine(fixtureDir, "v1-swapped-baseline-package.dnspy-mcp-checkpoints"));
 		Check(EditWire.Sha256(v1Package) == V1FixedSha, "v1 fixed fixture matches its recorded SHA");
 		Check(EditWire.Sha256(v1SwappedPackage) == V1SwappedSha, "v1 swapped fixture matches its recorded SHA");
+		v1Package = PlatformFixture(v1Package);
+		v1SwappedPackage = PlatformFixture(v1SwappedPackage);
 		var v1Manifest = ManifestOf(v1Package);
 		Check(v1Manifest.Format == V1, "v1 fixture is format v1");
 		Check(v1Manifest.SourceIdentity.BaselineSemanticFingerprint == V1BaselineSemantic,
