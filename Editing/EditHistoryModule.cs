@@ -84,7 +84,8 @@ internal sealed class EditCheckpointOperations {
 }
 
 internal sealed class EditLoadedLineage {
-	// ZIP entry timestamps are display facts, not part of the checkpoint identity.
+	// ZIP DOS entry times have no persisted offset. Retain their wall-clock values
+	// for display/rewrite; the reader-supplied offset is not a creation-time fact.
 	public Dictionary<string, DateTimeOffset> CheckpointTimes { get; init; } = new(StringComparer.Ordinal);
 	public EditCheckpointManifest Manifest { get; init; } = new();
 	public byte[] BaselineBytes { get; init; } = Array.Empty<byte>();

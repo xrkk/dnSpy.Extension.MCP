@@ -143,7 +143,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		public string SemanticPrefix = string.Empty;
 		// CHK-014: the full facts REQ-016/P09 IMP-001 require for browsing —
 		// complete hashes, sequence, review binding, validation summary,
-		// confirmed-risk set and best-effort creation time.
+		// confirmed-risk set and recorded package-entry wall time.
 		public string ImageSha256 = string.Empty;
 		public string SemanticFingerprint = string.Empty;
 		public int Sequence;
@@ -152,7 +152,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		public string Structural = string.Empty;
 		public string Roundtrip = string.Empty;
 		public List<string> ConfirmedRisks = new();
-		public string TimeUtc = string.Empty;
+		public string EntryTime = string.Empty;
 		public string Detail = string.Empty;
 	}
 
@@ -228,7 +228,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				// history even when no transaction is active.
 				foreach (var checkpoint in lineage.Manifest.Checkpoints) {
 					var time = lineage.CheckpointTimes.TryGetValue(checkpoint.CheckpointId, out var recordedTime)
-						? recordedTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture)
+						? recordedTime.DateTime.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)
 						: string.Empty;
 					var reviewId = checkpoint.Review.TryGetValue("review_id", out var rid) ? rid as string ?? string.Empty : string.Empty;
 					var reviewRevision = checkpoint.Review.TryGetValue("review_revision", out var rev) && rev is System.Text.Json.JsonElement revElement && revElement.ValueKind == System.Text.Json.JsonValueKind.Number ? revElement.GetUInt32() : 0u;
@@ -249,7 +249,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						Structural = structural,
 						Roundtrip = roundtrip,
 						ConfirmedRisks = checkpoint.ConfirmedRisks.ToList(),
-						TimeUtc = time,
+						EntryTime = time,
 					};
 					row.Detail = "checkpoint " + row.CheckpointId
 						+ " | parent " + (row.ParentCheckpointId == string.Empty ? "root" : row.ParentCheckpointId)
@@ -261,7 +261,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						+ " | confirmed_risks " + (row.ConfirmedRisks.Count == 0 ? "none" : string.Join(",", row.ConfirmedRisks))
 						+ " | image_sha256 " + row.ImageSha256
 						+ " | semantic " + row.SemanticFingerprint
-						+ (row.TimeUtc == string.Empty ? string.Empty : " | time_utc " + row.TimeUtc);
+						+ (row.EntryTime == string.Empty ? string.Empty : " | package_entry_time " + row.EntryTime + " (timezone unknown)");
 					snapshot.Checkpoints.Add(row);
 				}
 			}

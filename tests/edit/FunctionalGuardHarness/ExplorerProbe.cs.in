@@ -33,10 +33,10 @@ internal sealed class ExplorerProbe {
    Program.Check(p.CancelTransactionFromUi()=="canceled" && p.active==null && !p.barrier && tx.Workspace.Disposed,"safe cancellation after operation unwind");
   }
   foreach(var closed in new[]{false,true}){var p=new ExplorerProbe{active=new Transaction{OwnerClosed=closed}};Program.Check(p.BuildExplorerSnapshot().CanCancel && p.CancelTransactionFromUi()=="canceled","idle-operation cancel ownerClosed="+closed);}
-  var h=new ExplorerProbe();var first=DateTimeOffset.Parse("2026-09-11T01:02:04Z");var second=first.AddHours(2);
+  var h=new ExplorerProbe();var first=DateTimeOffset.Parse("2026-09-11T09:02:04+08:00");var second=first.AddHours(2);
   h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="first",Sequence=1});h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="second",ParentCheckpointId="first",Sequence=2});
   h.history.Value.CheckpointTimes["first"]=first;h.history.Value.CheckpointTimes["second"]=second;
   var rows=h.BuildExplorerSnapshot().Checkpoints;
-  Program.Check(rows.Count==2 && rows[0].TimeUtc=="2026-09-11T01:02:04Z" && rows[1].TimeUtc=="2026-09-11T03:02:04Z" && rows.All(r=>r.Detail.Contains("time_utc "+r.TimeUtc)),"two persisted checkpoint times bind snapshot and detail");
+  Program.Check(rows.Count==2 && rows[0].EntryTime=="2026-09-11T09:02:04" && rows[1].EntryTime=="2026-09-11T11:02:04" && rows.All(r=>r.Detail.Contains("package_entry_time "+r.EntryTime+" (timezone unknown)") && !r.Detail.Contains("time_utc")),"two package wall times bind snapshot and detail without invented UTC");
  }
 }
