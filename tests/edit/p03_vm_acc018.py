@@ -121,7 +121,12 @@ def main():
   c.close();v=waitui('owner-closed',lambda v:'idle' in v['state']);check('owner-close safely terminates private transaction','idle' in v['state'],v);observer.close()
   c=DnSpyClient(url,client_name='ui-history-'+arch,timeout=140);c.initialize();tx,rev=begin(c);a=apply(c,tx,rev,'UiCommitted');rev=payload(a).get('transaction',{}).get('work_revision',rev+1)
   review=call(c,'edit_review',dict(request_id=rid(),transaction_id=tx,expected_revision=rev));rr=payload(review).get('review',{});check('review',review.get('ok'),review)
-  v=waitui('reviewed',lambda v:any(rr.get('review_id','?') in x for x in v['items']))
+  risks=payload(review).get('risks',[]);diffs=payload(review).get('diffs',[])
+  # CHK-HANDOFF-001 methodology: accept the reviewed snapshot only when the tree
+  # is complete for this review (review id, every risk row, every diff row), so a
+  # capture that lands inside the 1s rebuild window is retried within waitui's
+  # bounded poll instead of failing the match checks on a partial tree.
+  v=waitui('reviewed',lambda v:any(rr.get('review_id','?') in x for x in v['items']) and all(any(risk['risk_id'] in x for x in v['items']) for risk in risks) and bool(diffs) and all(any(d['kind']+'/'+d['target'] in x for x in v['items']) for d in diffs))
   check('review id shown before commit',any(rr.get('review_id','?') in x for x in v['items']),v)
   check('risks match MCP review',bool(payload(review).get('risks')) and all(any(risk['risk_id'] in x for x in v['items']) for risk in payload(review).get('risks',[])),v)
   check('diffs match MCP review',bool(payload(review).get('diffs')) and all(any(d['kind']+'/'+d['target'] in x for x in v['items']) for d in payload(review).get('diffs',[])),v);shot('reviewed')
