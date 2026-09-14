@@ -5,6 +5,11 @@ The directory holds deployed-identity.json, per-architecture pid.txt, fixtures,
 and the configured artifact subdirectory. Open MCP Edit Explorer before running.
 DNMCP_UI_CLIENT_ROOT optionally selects a staged dnspy_mcp client package.
 Records raw MCP/UIA/package facts and screenshots; any failed check fails the run.
+Checkpoint selection uses a bounded observable protocol (CHK-HANDOFF-001): each
+attempt re-acquires the node by stable checkpoint row name, records node id,
+selection state, detail id and time bounds, waits for the explicit postcondition
+that the detail line belongs to the selected checkpoint, then re-reads it across a
+refresh boundary; stale detail never satisfies the postcondition.
 """
 import sys,os,json,time,uuid,subprocess,threading,hashlib,zipfile
 from pathlib import Path
@@ -38,6 +43,37 @@ def waitui(label,predicate):
   if predicate(v):return v
   time.sleep(.5)
  return v
+def select_checkpoint(row,cross_ms=1500):
+ # CHK-HANDOFF-001: the Explorer rebuilds its tree every second, so a UIA node
+ # reference can be disconnected between FindAll and Select. Each attempt
+ # re-acquires the node by exact stable row name and records node id, selection
+ # state, detail id and time bounds; acceptance requires the explicit
+ # postcondition that the detail line belongs to the selected checkpoint, so a
+ # stale node or stale detail fails instead of passing. Six bounded attempts
+ # (~2s, spanning refresh cycles) rather than blind sleeps or open retry; a
+ # settled selection is re-read once across a >=1s refresh boundary.
+ target=row.split()[1]
+ script=base+"""$watch=[Diagnostics.Stopwatch]::StartNew(); $attempts=@(); $detail=''; $met=$false; $selAt=$null;
+ for($n=0;$n -lt 6 -and -not $met;$n++){
+  $t0=$watch.ElapsedMilliseconds; $found=$false; $selectOk=$false; $selBefore=$null; $nodeId=$null;
+  try{
+   $node=@($exp.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::TreeItem))|Where-Object {$_.Current.Name -ceq 'ROWNAME'})[0];
+   $found=$null -ne $node;
+   if($found){ $selBefore=$node.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected; $node.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); $selectOk=$true; $selAt=$t0 }
+  }catch{}
+  Start-Sleep -Milliseconds 120; $detail=(ById 'McpEditDetailLine').Current.Name; $selAfter=$null;
+  try{
+   $fresh=@($exp.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::TreeItem))|Where-Object {$_.Current.Name -ceq 'ROWNAME'})[0];
+   if($null -ne $fresh){ $selAfter=$fresh.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected; $nodeId=($fresh.Current.Name -split ' ')[1] }
+  }catch{}
+  $met=$detail.StartsWith('checkpoint CHECKPOINTID ');
+  $attempts+=@([ordered]@{attempt=$n;t_start_ms=$t0;t_end_ms=$watch.ElapsedMilliseconds;node_found=$found;node_id=$nodeId;select_invoked=$selectOk;is_selected_before=$selBefore;is_selected_after=$selAfter;detail_id=(($detail -split ' ')[1]);postcondition_met=$met});
+  if(-not $met){Start-Sleep -Milliseconds 300}
+ }
+ $cross=$null;
+ if($met -and CROSSMS -gt 0 -and $null -ne $selAt){ Start-Sleep -Milliseconds ([Math]::Max(0,CROSSMS-($watch.ElapsedMilliseconds-$selAt))); $reread=(ById 'McpEditDetailLine').Current.Name; $cross=[ordered]@{selected_at_ms=$selAt;reread_at_ms=$watch.ElapsedMilliseconds;gap_ms=($watch.ElapsedMilliseconds-$selAt);detail_id=(($reread -split ' ')[1]);still_expected=$reread.StartsWith('checkpoint CHECKPOINTID ')} }
+ [ordered]@{row='ROWNAME';expected_checkpoint_id='CHECKPOINTID';postcondition_met=$met;attempts=@($attempts);settled_detail=$detail;cross_refresh=$cross}|ConvertTo-Json -Depth 6 -Compress""".replace('ROWNAME',row.replace("'","''")).replace('CHECKPOINTID',target).replace('CROSSMS',str(cross_ms))
+ return json.loads(ps(script))
 def begin(c):
  v=call(c,'edit_begin',dict(assembly_name='TestIL',request_id=rid()));check('begin',v.get('ok'),v);t=payload(v).get('transaction',{});return t.get('transaction_id',''),t.get('work_revision',0)
 def apply(c,tx,rev,name):return call(c,'edit_apply',dict(request_id=rid(),transaction_id=tx,expected_revision=rev,operation=dict(kind='module_update',name=name)))
@@ -107,14 +143,24 @@ def main():
   for row in rows:
    checkpoint_id=row.split()[1];node=packages[checkpoint_id];parent_id=node.get('parent_checkpoint_id')
    check('checkpoint UIA parent '+checkpoint_id,any(p['name']==row and len(p['ancestors'])>=3 and (p['ancestors'][-2].startswith('checkpoint '+parent_id+' ') if parent_id else p['ancestors'][-2].startswith('lineage-')) for p in v['paths']),v['paths'])
-  # Selecting each real TreeViewItem invokes the actual selected-detail binding.
+  # Selecting each real TreeViewItem invokes the actual selected-detail binding,
+  # with the bounded observable protocol: stale node/detail must fail explicitly.
   for i in range(len(rows)):
-   result=ps(base+"$nodes=@($exp.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::TreeItem))|Where-Object {$_.Current.Name -like 'checkpoint checkpoint-* kind * image * semantic *'}); $nodes["+str(i)+"].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); (ById 'McpEditDetailLine').Current.Name")
-   (out/('checkpoint-'+str(i)+'.txt')).write_text(result)
    checkpoint_id=rows[i].split()[1];node=packages[checkpoint_id]
+   obs=select_checkpoint(rows[i]);result=obs.get('settled_detail','')
+   (out/('checkpoint-select-'+str(i)+'.json')).write_text(json.dumps(obs,ensure_ascii=False,indent=2))
+   (out/('checkpoint-'+str(i)+'.txt')).write_text(result)
    mh=call(c,'edit_history',{'checkpoint_id':checkpoint_id});actual=payload(mh).get('checkpoint',{})
-   check('checkpoint UI vs MCP vs package '+str(i),mh.get('ok') and actual.get('result_image_sha256')==node['result_image_sha256'] and all(value in result for value in [checkpoint_id,node['result_image_sha256'],node['result_semantic_fingerprint'],node['review']['review_id'],'structural '+node['review']['structural'],'roundtrip '+node['review']['roundtrip'],node['zip_time']]),dict(ui=result,mcp=actual,package=node))
+   cross=obs.get('cross_refresh') or {}
+   check('checkpoint UI vs MCP vs package '+str(i),mh.get('ok') and actual.get('result_image_sha256')==node['result_image_sha256'] and obs.get('postcondition_met') and cross.get('still_expected') and cross.get('gap_ms',0)>=1000 and all(value in result for value in [checkpoint_id,node['result_image_sha256'],node['result_semantic_fingerprint'],node['review']['review_id'],'structural '+node['review']['structural'],'roundtrip '+node['review']['roundtrip'],node['zip_time']]),dict(observed=obs,mcp=actual,package=node))
    check('selected checkpoint detail '+str(i),all(k in result for k in ['image_sha256','semantic','parent','package_entry_time','timezone unknown']),result);shot('checkpoint-'+str(i))
+  # Stale-detail rejection counterexample: switch the real selection to another
+  # checkpoint; the protocol must reject the previous checkpoint's detail and the
+  # settled detail must observably follow the new selection across a refresh.
+  first_id=rows[0].split()[1];last_id=rows[-1].split()[1]
+  first=select_checkpoint(rows[0],cross_ms=0);time.sleep(.2);last=select_checkpoint(rows[-1])
+  (out/'checkpoint-select-probe.json').write_text(json.dumps(dict(first=first,last=last),ensure_ascii=False,indent=2))
+  check('stale-detail rejection probe',len(rows)>=2 and first.get('postcondition_met') and first.get('settled_detail','').startswith('checkpoint '+first_id+' ') and last.get('postcondition_met') and not last.get('settled_detail','').startswith('checkpoint '+first_id+' ') and last.get('settled_detail','').startswith('checkpoint '+last_id+' ') and (last.get('cross_refresh') or {}).get('still_expected'),dict(first=first,last=last))
   check('actual checkpoint package exists',len(list((r/artifact_subdir).rglob('*.dnspy-mcp-checkpoints')))>0)
  except Exception as e:
   check('driver completed',False,str(e));raise
