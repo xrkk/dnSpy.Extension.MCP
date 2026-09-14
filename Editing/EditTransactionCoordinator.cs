@@ -174,6 +174,11 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 
 	public ExplorerSnapshot BuildExplorerSnapshot() {
+		static string ReviewText(Dictionary<string, object?> review, string key) {
+			if (!review.TryGetValue(key, out var value)) return string.Empty;
+			return value is string text ? text : value is JsonElement element && element.ValueKind == JsonValueKind.String
+				? element.GetString() ?? string.Empty : string.Empty;
+		}
 		var snapshot = new ExplorerSnapshot();
 		lock (gate) {
 			ExpireLocked();
@@ -230,10 +235,10 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					var time = lineage.CheckpointTimes.TryGetValue(checkpoint.CheckpointId, out var recordedTime)
 						? recordedTime.DateTime.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)
 						: string.Empty;
-					var reviewId = checkpoint.Review.TryGetValue("review_id", out var rid) ? rid as string ?? string.Empty : string.Empty;
+					var reviewId = ReviewText(checkpoint.Review, "review_id");
 					var reviewRevision = checkpoint.Review.TryGetValue("review_revision", out var rev) && rev is System.Text.Json.JsonElement revElement && revElement.ValueKind == System.Text.Json.JsonValueKind.Number ? revElement.GetUInt32() : 0u;
-					var structural = checkpoint.Review.TryGetValue("structural", out var st) ? st as string ?? string.Empty : string.Empty;
-					var roundtrip = checkpoint.Review.TryGetValue("roundtrip", out var rt) ? rt as string ?? string.Empty : string.Empty;
+					var structural = ReviewText(checkpoint.Review, "structural");
+					var roundtrip = ReviewText(checkpoint.Review, "roundtrip");
 					var row = new ExplorerCheckpointRow {
 						LineageId = lineage.Manifest.LineageId,
 						CheckpointId = checkpoint.CheckpointId,

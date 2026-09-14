@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """P09 ACC-018: the read-only MCP Edit Explorer UI shows the same facts as the
-MCP queries, its guarded cancel rolls back only orphaned transactions, and it
+MCP queries, its guarded cancel rolls back the current transaction only when no operation or commit is executing, and it
 offers no commit/restore entry.  Drives the dnSpy UI through the Win10VM
 management MCP (UIA) while cross-checking every fact against edit_status /
 edit_history over the loopback."""
