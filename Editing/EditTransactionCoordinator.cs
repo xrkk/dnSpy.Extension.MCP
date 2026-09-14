@@ -525,7 +525,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			}
 			var liveFingerprint = workspace.CurrentLiveFingerprint();
 			var replay = history.Assess(lineage.Manifest.LineageId, lineage.Manifest.HeadCheckpointId, liveFingerprint);
-			if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprint()
+			if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprintFor(lineage.Manifest.Format)
 				|| replay.ImageSha256 != workspace.CurrentLiveImageSha256())
 				throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 			var output = history.Export(replay, OptionalArgument(sourceArgs, "output_path"), workspace.FilePath);

@@ -17,4 +17,12 @@
       <HintPath>$(DNSPY_CONTRACTS_DIR)dnSpy.Contracts.DnSpy.dll</HintPath>
     </Reference>
   </ItemGroup>
+
+  <!-- T003-R03 legacy v1 fixtures: committed real v1 packages plus their
+       regeneration generator.  The generator is documentation/build utility
+       source, never compiled into the harness. -->
+  <ItemGroup>
+    <Compile Remove="fixtures/**" />
+    <None Include="fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

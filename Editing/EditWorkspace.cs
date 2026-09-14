@@ -218,14 +218,14 @@ internal sealed class EditWorkspace : IDisposable {
 	/// against the owner-bound strong projection; v1 lineages keep the historical
 	/// algorithm and never mix the two.</summary>
 	public string CurrentLiveSemanticFingerprintFor(string format) =>
-		EditHistoryModule.IsV2(format)
-			? OnDispatcher(() => EditFingerprint.ComputeRoundtripStrong(LiveModule))
-			: CurrentLiveSemanticFingerprint();
+		OnDispatcher(() => EditHistoryModule.SemanticDigest(format, LiveModule));
 	string? baselineSemanticV2;
-	public string BaselineSemanticFingerprintFor(string format) =>
-		EditHistoryModule.IsV2(format)
-			? baselineSemanticV2 ??= EditHistoryModule.BaselineSemanticDigest(format, BaselineBytes)
-			: BaselineSemanticFingerprint;
+	public string BaselineSemanticFingerprintFor(string format) {
+		if (EditHistoryModule.IsV2(format))
+			return baselineSemanticV2 ??= EditHistoryModule.BaselineSemanticDigest(format, BaselineBytes);
+		if (EditHistoryModule.IsKnownFormat(format)) return BaselineSemanticFingerprint;
+		throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+	}
 	public string CurrentLiveImageSha256() => OnDispatcher(() => EditWire.Sha256(WriteCheckpointImage(LiveModule)));
 	public string PrivateFingerprint() => EditFingerprint.Compute(PrivateModule);
 	public byte[] ValidateRoundtrip() {

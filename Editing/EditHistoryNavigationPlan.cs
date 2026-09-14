@@ -14,16 +14,20 @@ internal sealed class EditHistoryNavigationPlan {
 		public bool IsInverse { get; init; }
 		public string Operation { get; init; } = string.Empty;
 	}
+	readonly string format;
 	readonly IReadOnlyList<Step> steps;
 	readonly string beforeFingerprint;
 	readonly string afterFingerprint;
 
-	internal EditHistoryNavigationPlan(IReadOnlyList<Step> steps, string beforeFingerprint, string afterFingerprint) {
-		this.steps = steps; this.beforeFingerprint = beforeFingerprint; this.afterFingerprint = afterFingerprint;
+	internal EditHistoryNavigationPlan(string format, IReadOnlyList<Step> steps, string beforeFingerprint, string afterFingerprint) {
+		this.format = format; this.steps = steps; this.beforeFingerprint = beforeFingerprint; this.afterFingerprint = afterFingerprint;
 	}
 
 	public Action Apply(ModuleDef live) {
-		if (EditFingerprint.ComputeRoundtrip(live) != beforeFingerprint) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		// T003-R03: both plan gates use the lineage's own semantic algorithm.
+		// For v2 this rejects a same-weak-hash method-ownership change before
+		// any operation is applied.
+		if (EditHistoryModule.SemanticDigest(format, live) != beforeFingerprint) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var beforeLiveFingerprint = EditFingerprint.Compute(live);
 		var inverses = new List<Action>();
 		var maps = new Dictionary<string, Dictionary<string, IMDTokenProvider>>(StringComparer.Ordinal);
@@ -37,7 +41,7 @@ internal sealed class EditHistoryNavigationPlan {
 				inverses.Add(outcome.Undo);
 			}
 			EditStructuralValidator.Validate(live);
-			if (EditFingerprint.ComputeRoundtrip(live) != afterFingerprint) throw new EditDomainException("EDIT_VALIDATION_FAILED");
+			if (EditHistoryModule.SemanticDigest(format, live) != afterFingerprint) throw new EditDomainException("EDIT_VALIDATION_FAILED");
 		}
 		catch {
 			Restore(live, inverses, beforeLiveFingerprint);

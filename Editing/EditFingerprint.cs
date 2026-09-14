@@ -246,55 +246,98 @@ internal static class EditFingerprint {
 	/// owner, every type-owned row (tgp/interface) to a structured type owner, and
 	/// each group is encoded as a JSON array so owner and content can never
 	/// collide.  Unknown signature or reference shapes fail with
-	/// EDIT_CAPABILITY_UNAVAILABLE instead of degrading to a name.  The historical
+	/// EDIT_CAPABILITY_UNAVAILABLE instead of degrading to a name; cyclic or
+	/// over-deep signature/scope graphs fail loudly instead of looping or
+	/// overflowing; and duplicate type/method owners are rejected because the
+	/// projection cannot tell the two same-named entities apart.  The historical
 	/// Compute/ComputeRoundtrip/Channels definitions above stay unchanged.</summary>
 	public static string ComputeRoundtripStrong(ModuleDef module) =>
 		EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n",
 			StrongProjection(module).OrderBy(x => x, StringComparer.Ordinal))));
 
+	// A legal metadata signature/scope graph is a tree (or a DAG); the bound is
+	// far beyond what any real compiler emits.  Exceeding it fails with
+	// EDIT_CAPABILITY_UNAVAILABLE rather than truncating or overflowing.
+	internal const int StrongMaxGraphDepth = 2048;
+
+	sealed class StrongWalk {
+		readonly HashSet<object> active = new(ReferenceComparer.Instance);
+		int depth;
+		public void Enter(object node) {
+			if (!active.Add(node)) throw StrongFailure("cyclic signature or scope graph");
+			if (++depth > StrongMaxGraphDepth)
+				throw StrongFailure("signature or scope graph exceeds the supported depth of " +
+					StrongMaxGraphDepth.ToString(CultureInfo.InvariantCulture));
+		}
+		public void Exit(object node) { active.Remove(node); depth--; }
+	}
+
+	sealed class ReferenceComparer : IEqualityComparer<object> {
+		internal static readonly ReferenceComparer Instance = new();
+		public new bool Equals(object? left, object? right) => ReferenceEquals(left, right);
+		public int GetHashCode(object value) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
+	}
+
+	/// <summary>Strong projection.  Every signature, scope and declaring-type
+	/// render goes through the guarded walk above; no historical projection
+	/// helper (whose frozen behavior has no cycle guard) is used on this path,
+	/// and the encoding is written as explicit structured text so no JSON
+	/// serializer depth limit can truncate a legal deep signature.  Duplicate
+	/// structured owners are rejected because the projection cannot tell two
+	/// same-named entities apart, and encoding an ambiguous state as a stable
+	/// hash would silently merge them.</summary>
 	static IEnumerable<string> StrongProjection(ModuleDef module) {
 		var rows = new List<string> {
 				"module|" + module.Name + "|" + (module.Mvid?.ToString("D") ?? string.Empty) + "|" + module.Kind + "|" + module.RuntimeVersion,
 			"assembly|" + (module.Assembly?.FullName ?? string.Empty),
 		};
-		foreach (var type in module.GetTypes().OrderBy(TypeKey, StringComparer.Ordinal)) {
+		var walk = new StrongWalk();
+		var typeOwners = new HashSet<string>(StringComparer.Ordinal);
+		var methodOwners = new HashSet<string>(StringComparer.Ordinal);
+		foreach (var type in module.GetTypes().OrderBy(t => t.Name?.String, StringComparer.Ordinal)) {
 			if (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsTombstone(type)) continue;
-			rows.Add("type|" + TypeKey(type) + "|" + (uint)type.Attributes + "|" + Sig(type.BaseType?.ToTypeSig()) + "|" + Attributes(type.CustomAttributes));
+			var typeOwner = StrongTypeOwnerText(type, walk);
+			if (!typeOwners.Add(typeOwner))
+				throw StrongFailure("duplicate type owner: " + OwnerLabel(type, null));
+			rows.Add("type|" + StrongTypePath(type, walk) + "|" + (uint)type.Attributes + "|" + StrongSigText(type.BaseType?.ToTypeSig(), walk) + "|" + Attributes(type.CustomAttributes));
 			foreach (var gp in type.GenericParameters.OrderBy(g => g.Number))
-				rows.Add(OwnerGroup("tgp", StrongTypeOwner(type), new[] { GenericRow("tgp", gp) }));
-			foreach (var iface in type.Interfaces.OrderBy(i => i.Interface?.FullName, StringComparer.Ordinal))
-				rows.Add(OwnerGroup("interface", StrongTypeOwner(type),
-					new[] { "interface|" + Sig(iface.Interface?.ToTypeSig()) + "|" + Attributes(iface.CustomAttributes) }));
-			foreach (var field in type.Fields.OrderBy(FieldKey, StringComparer.Ordinal))
-				rows.Add("field|" + FieldKey(field) + "|" + (uint)field.Attributes + "|" + Constant(field.Constant) + "|" + Bytes(field.InitialValue) + "|" + field.FieldOffset + "|" + MarshalRow(field.MarshalType) + "|" + Attributes(field.CustomAttributes));
-			foreach (var method in type.Methods.OrderBy(MethodKey, StringComparer.Ordinal)) {
+				rows.Add(OwnerGroup("tgp", typeOwner, new[] { StrongGenericRow("tgp", gp, walk) }));
+			foreach (var iface in type.Interfaces.OrderBy(i => i.Interface?.Name?.String, StringComparer.Ordinal))
+				rows.Add(OwnerGroup("interface", typeOwner,
+					new[] { "interface|" + StrongTypeRefText(iface.Interface, walk) + "|" + Attributes(iface.CustomAttributes) }));
+			foreach (var field in type.Fields.OrderBy(f => f.Name?.String, StringComparer.Ordinal))
+				rows.Add("field|" + StrongFieldLabel(field, walk) + "|" + (uint)field.Attributes + "|" + Constant(field.Constant) + "|" + Bytes(field.InitialValue) + "|" + field.FieldOffset + "|" + MarshalRow(field.MarshalType) + "|" + Attributes(field.CustomAttributes));
+			foreach (var method in type.Methods.OrderBy(m => m.Name?.String, StringComparer.Ordinal)) {
+				var methodOwner = StrongMethodOwnerText(method, walk);
+				if (!methodOwners.Add(methodOwner))
+					throw StrongFailure("duplicate method owner: " + OwnerLabel(type, method));
 				var content = new List<string> {
-					"method|" + MethodKey(method) + "|" + (uint)method.Attributes + "|" + (uint)method.ImplAttributes + "|" + ImplMapRow(method.ImplMap) + "|" + Attributes(method.CustomAttributes),
+					"method|" + StrongMethodLabel(method, walk) + "|" + (uint)method.Attributes + "|" + (uint)method.ImplAttributes + "|" + ImplMapRow(method.ImplMap) + "|" + Attributes(method.CustomAttributes),
 				};
-				foreach (var gp in method.GenericParameters.OrderBy(g => g.Number)) content.Add(GenericRow("mgp", gp));
+				foreach (var gp in method.GenericParameters.OrderBy(g => g.Number)) content.Add(StrongGenericRow("mgp", gp, walk));
 				foreach (var p in method.ParamDefs.OrderBy(p => p.Sequence))
 					content.Add("param|" + p.Sequence + "|" + p.Name + "|" + (uint)p.Attributes + "|" + Constant(p.Constant) + "|" + MarshalRow(p.MarshalType) + "|" + Attributes(p.CustomAttributes));
 				if (method.HasBody) {
 					content.Add("body|writer-normalized");
-					foreach (var local in method.Body.Variables) content.Add("local|" + local.Index + "|" + Sig(local.Type));
+					foreach (var local in method.Body.Variables) content.Add("local|" + local.Index + "|" + StrongSigText(local.Type, walk));
 					for (var instructionIndex = 0; instructionIndex < method.Body.Instructions.Count; instructionIndex++) {
 						var ins = method.Body.Instructions[instructionIndex];
 						var indexText = instructionIndex.ToString("X8", CultureInfo.InvariantCulture);
-						content.Add("il|" + indexText + "|" + ins.OpCode.Code + "|" + Operand(ins.Operand, method.Body.Instructions));
+						content.Add("il|" + indexText + "|" + ins.OpCode.Code + "|" + StrongOperand(ins.Operand, method.Body.Instructions, walk));
 						// T003: a sequence point is bound to the exact instruction slot so
 						// swapping two SPs inside one method cannot go unnoticed.
 						if (ins.SequencePoint != null)
 							content.Add("sp|" + indexText + "|" + ins.SequencePoint.Document?.Url + "|" + ins.SequencePoint.StartLine + "|" + ins.SequencePoint.StartColumn + "|" + ins.SequencePoint.EndLine + "|" + ins.SequencePoint.EndColumn);
 					}
 					foreach (var eh in method.Body.ExceptionHandlers)
-						content.Add("eh|" + eh.HandlerType + "|" + eh.CatchType?.FullName + "|" + InstructionIndex(method.Body.Instructions, eh.TryStart) + "|" + InstructionIndex(method.Body.Instructions, eh.TryEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerStart) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.FilterStart));
+						content.Add("eh|" + eh.HandlerType + "|" + StrongTypeRefText(eh.CatchType, walk) + "|" + InstructionIndex(method.Body.Instructions, eh.TryStart) + "|" + InstructionIndex(method.Body.Instructions, eh.TryEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerStart) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.FilterStart));
 				}
-				rows.Add(OwnerGroup("method", StrongMethodOwner(method), content));
+				rows.Add(OwnerGroup("method", methodOwner, content));
 			}
-			foreach (var property in type.Properties.OrderBy(PropertyKey, StringComparer.Ordinal))
-				rows.Add("property|" + PropertyKey(property) + "|" + (uint)property.Attributes + "|" + MethodKey(property.GetMethod) + "|" + MethodKey(property.SetMethod) + "|" + Attributes(property.CustomAttributes));
-			foreach (var evt in type.Events.OrderBy(EventKey, StringComparer.Ordinal))
-				rows.Add("event|" + EventKey(evt) + "|" + (uint)evt.Attributes + "|" + MethodKey(evt.AddMethod) + "|" + MethodKey(evt.RemoveMethod) + "|" + MethodKey(evt.InvokeMethod) + "|" + Attributes(evt.CustomAttributes));
+			foreach (var property in type.Properties.OrderBy(p => p.Name?.String, StringComparer.Ordinal))
+				rows.Add("property|" + StrongPropertyLabel(property, walk) + "|" + (uint)property.Attributes + "|" + StrongMethodRefLabel(property.GetMethod, walk) + "|" + StrongMethodRefLabel(property.SetMethod, walk) + "|" + Attributes(property.CustomAttributes));
+			foreach (var evt in type.Events.OrderBy(e => e.Name?.String, StringComparer.Ordinal))
+				rows.Add("event|" + StrongEventLabel(evt, walk) + "|" + (uint)evt.Attributes + "|" + StrongMethodRefLabel(evt.AddMethod, walk) + "|" + StrongMethodRefLabel(evt.RemoveMethod, walk) + "|" + StrongMethodRefLabel(evt.InvokeMethod, walk) + "|" + Attributes(evt.CustomAttributes));
 		}
 		foreach (var resource in module.Resources.OrderBy(r => r.Name.String, StringComparer.Ordinal)) {
 			byte[] bytes = resource is EmbeddedResource embedded ? embedded.CreateReader().ToArray() : Array.Empty<byte>();
@@ -303,111 +346,201 @@ internal static class EditFingerprint {
 		return rows;
 	}
 
-	static string OwnerGroup(string kind, Dictionary<string, object?> owner, IReadOnlyList<string> content) =>
-		JsonSerializer.Serialize(new Dictionary<string, object?> {
-			["kind"] = kind,
-			["owner"] = owner,
-			["content"] = content.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
-		}, EditWire.JsonOptions);
+	static string OwnerLabel(TypeDef type, MethodDef? method) {
+		var label = StrongTypePath(type, new StrongWalk());
+		if (method == null) return label;
+		return label + "::" + (method.Name?.String ?? string.Empty) + "(" +
+			(method.MethodSig?.Params.Count ?? -1).ToString(CultureInfo.InvariantCulture) + ")";
+	}
 
-	static Dictionary<string, object?> StrongTypeOwner(TypeDef type) {
-		var outer = type; while (outer.DeclaringType != null) outer = outer.DeclaringType;
+	// Owner groups embed the already-encoded owner text plus quoted content
+	// rows; the result is a valid JSON object and every boundary is explicit,
+	// so two owners or two content rows can never merge by delimiter collision.
+	static string OwnerGroup(string kind, string ownerText, IReadOnlyList<string> content) =>
+		"{\"kind\":" + StrongQuote(kind) + ",\"owner\":" + ownerText + ",\"content\":[" +
+		string.Join(",", content.OrderBy(x => x, StringComparer.Ordinal).Select(StrongQuote)) + "]}";
+
+	static string StrongQuote(string? value) => JsonSerializer.Serialize(value ?? string.Empty);
+	static string StrongNumber(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+	// Cycle-safe structured type path used by every strong row and label.  The
+	// declaring-type walk refuses to loop when malformed metadata nests a type
+	// inside itself.
+	static string StrongTypePath(TypeDef type, StrongWalk walk) {
 		var chain = new List<string>();
-		for (var current = type; current != null; current = current.DeclaringType) chain.Insert(0, current.Name?.String ?? string.Empty);
-		return new Dictionary<string, object?> { ["namespace"] = outer.Namespace?.String ?? string.Empty, ["chain"] = chain.ToArray() };
+		var seen = new HashSet<TypeDef>(ReferenceComparer.Instance);
+		var outer = type;
+		for (var current = type; current != null; current = current.DeclaringType) {
+			if (!seen.Add(current)) throw StrongFailure("cyclic type declaring chain");
+			outer = current;
+			chain.Insert(0, current.Name?.String ?? string.Empty);
+		}
+		var ns = outer.Namespace?.String;
+		return (string.IsNullOrEmpty(ns) ? string.Empty : ns + ".") + string.Join("/", chain);
 	}
 
-	static Dictionary<string, object?> StrongMethodOwner(MethodDef method) {
+	static string StrongTypeOwnerText(TypeDef type, StrongWalk walk) {
+		var chain = new List<string>();
+		var seen = new HashSet<TypeDef>(ReferenceComparer.Instance);
+		var outer = type;
+		for (var current = type; current != null; current = current.DeclaringType) {
+			if (!seen.Add(current)) throw StrongFailure("cyclic type declaring chain");
+			outer = current;
+			chain.Insert(0, current.Name?.String ?? string.Empty);
+		}
+		return "[\"type_owner\"," + StrongQuote(outer.Namespace?.String) + ",[" +
+			string.Join(",", chain.Select(StrongQuote)) + "]]";
+	}
+
+	static string StrongMethodOwnerText(MethodDef method, StrongWalk walk) {
 		var declaring = method.DeclaringType ?? throw StrongFailure("method without declaring type");
-		return new Dictionary<string, object?> {
-			["type"] = StrongTypeOwner(declaring),
-			["name"] = method.Name?.String ?? string.Empty,
-			["signature"] = StrongMethodSignature(method.MethodSig),
-		};
+		return "[\"method_owner\"," + StrongTypeOwnerText(declaring, walk) + "," +
+			StrongQuote(method.Name?.String) + "," + StrongMethodSignatureText(method.MethodSig, walk) + "]";
 	}
 
-	// Signature identity used only by the strong projection: custom modifiers and
-	// reference scopes are part of the identity, so legal overloads that differ
-	// only by modreq/modopt or by an assembly scope cannot collide.
-	static object? StrongMethodSignature(MethodSig? value) {
-		if (value == null) return null;
-		return new Dictionary<string, object?> {
-			["calling_convention"] = (byte)value.CallingConvention,
-			["has_this"] = value.HasThis,
-			["explicit_this"] = value.ExplicitThis,
-			["generic_parameter_count"] = value.GenParamCount,
-			["return_type"] = StrongSig(value.RetType),
-			["parameters"] = value.Params.Select(parameter => StrongSig(parameter)).ToArray(),
-			["sentinel_parameters"] = value.ParamsAfterSentinel == null ? null : value.ParamsAfterSentinel.Select(parameter => StrongSig(parameter)).ToArray(),
-		};
-	}
-
-	static object? StrongSig(TypeSig? value) {
-		switch (value) {
-		case null: return null;
-		case GenericSig generic:
-			return StrongDict(("kind", generic.IsMethodVar ? "mvar" : "var"), ("number", generic.Number));
-		case GenericInstSig instance:
-			return StrongDict(("kind", "generic_inst"), ("generic_type", StrongSig(instance.GenericType)),
-				("arguments", instance.GenericArguments.Select(argument => StrongSig(argument)).ToArray()));
-		case TypeDefOrRefSig type:
-			return StrongDict(("kind", "type_def_or_ref"), ("element_type", type.ElementType.ToString()), ("type", StrongTypeRef(type.TypeDefOrRef)));
-		case FnPtrSig function:
-			return StrongDict(("kind", "fnptr"), ("signature", function.Signature is MethodSig method ? StrongMethodSignature(method) : null));
-		case ArraySig array:
-			return StrongDict(("kind", "array"), ("next", StrongSig(array.Next)), ("rank", array.Rank),
-				("sizes", array.Sizes.Select(size => (object?)size).ToArray()), ("lower_bounds", array.LowerBounds.Select(bound => (object?)bound).ToArray()));
-		case SZArraySig szarray:
-			return StrongDict(("kind", "szarray"), ("next", StrongSig(szarray.Next)));
-		case PtrSig pointer:
-			return StrongDict(("kind", "ptr"), ("next", StrongSig(pointer.Next)));
-		case ByRefSig byref:
-			return StrongDict(("kind", "byref"), ("next", StrongSig(byref.Next)));
-		case PinnedSig pinned:
-			return StrongDict(("kind", "pinned"), ("next", StrongSig(pinned.Next)));
-		case CModReqdSig required:
-			return StrongDict(("kind", "modreq"), ("modifier", StrongTypeRef(required.Modifier)), ("next", StrongSig(required.Next)));
-		case CModOptSig optional:
-			return StrongDict(("kind", "modopt"), ("modifier", StrongTypeRef(optional.Modifier)), ("next", StrongSig(optional.Next)));
-		case SentinelSig:
-			return StrongDict(("kind", "sentinel"));
-		case ModuleSig moduleSignature:
-			return StrongDict(("kind", "module_sig"), ("index", moduleSignature.Index), ("next", StrongSig(moduleSignature.Next)));
-		default:
-			throw StrongFailure("unsupported signature element: " + value.GetType().FullName);
+	static string StrongSigText(TypeSig? value, StrongWalk walk) {
+		if (value == null) return "null";
+		walk.Enter(value);
+		try {
+			switch (value) {
+			case GenericSig generic:
+				return "[\"" + (generic.IsMethodVar ? "mvar" : "var") + "\"," + StrongNumber(generic.Number) + "]";
+			case GenericInstSig instance:
+				return "[\"generic_inst\"," + StrongSigText(instance.GenericType, walk) + ",[" +
+					string.Join(",", instance.GenericArguments.Select(argument => StrongSigText(argument, walk))) + "]]";
+			case TypeDefOrRefSig type:
+				return "[\"type_def_or_ref\"," + StrongQuote(type.ElementType.ToString()) + "," + StrongTypeRefText(type.TypeDefOrRef, walk) + "]";
+			case FnPtrSig function:
+				if (function.Signature is not MethodSig method)
+					throw StrongFailure("fnptr signature is not a method signature: " + (function.Signature?.GetType().FullName ?? "null"));
+				return "[\"fnptr\"," + StrongMethodSignatureText(method, walk) + "]";
+			case ArraySig array:
+				return "[\"array\"," + StrongSigText(array.Next, walk) + "," + StrongNumber(array.Rank) + ",[" +
+					string.Join(",", array.Sizes) + "],[" + string.Join(",", array.LowerBounds) + "]]";
+			case SZArraySig szarray:
+				return "[\"szarray\"," + StrongSigText(szarray.Next, walk) + "]";
+			case PtrSig pointer:
+				return "[\"ptr\"," + StrongSigText(pointer.Next, walk) + "]";
+			case ByRefSig byref:
+				return "[\"byref\"," + StrongSigText(byref.Next, walk) + "]";
+			case PinnedSig pinned:
+				return "[\"pinned\"," + StrongSigText(pinned.Next, walk) + "]";
+			case CModReqdSig required:
+				return "[\"modreq\"," + StrongTypeRefText(required.Modifier, walk) + "," + StrongSigText(required.Next, walk) + "]";
+			case CModOptSig optional:
+				return "[\"modopt\"," + StrongTypeRefText(optional.Modifier, walk) + "," + StrongSigText(optional.Next, walk) + "]";
+			case SentinelSig:
+				return "[\"sentinel\"]";
+			case ModuleSig moduleSignature:
+				return "[\"module_sig\"," + StrongNumber(moduleSignature.Index) + "," + StrongSigText(moduleSignature.Next, walk) + "]";
+			default:
+				throw StrongFailure("unsupported signature element: " + value.GetType().FullName);
+			}
 		}
+		finally { walk.Exit(value); }
 	}
 
-	static object? StrongTypeRef(ITypeDefOrRef? type) {
-		switch (type) {
-		case null: return null;
-		case TypeDef definition: return StrongDict(("kind", "type_def"), ("type", StrongTypeOwner(definition)));
-		case TypeRef reference: return StrongDict(("kind", "type_ref"), ("scope", StrongScope(reference.ResolutionScope)),
-			("namespace", reference.Namespace?.String), ("name", reference.Name?.String));
-		case TypeSpec spec: return StrongDict(("kind", "type_spec"), ("signature", StrongSig(spec.TypeSig)));
-		default: throw StrongFailure("unsupported type reference kind: " + type.GetType().FullName);
+	static string StrongMethodSignatureText(MethodSig? value, StrongWalk walk) {
+		if (value == null) return "null";
+		walk.Enter(value);
+		try {
+			return "[" + StrongNumber((byte)value.CallingConvention) + "," + (value.HasThis ? "true" : "false") + "," +
+				(value.ExplicitThis ? "true" : "false") + "," + StrongNumber(value.GenParamCount) + "," +
+				StrongSigText(value.RetType, walk) + ",[" +
+				string.Join(",", value.Params.Select(parameter => StrongSigText(parameter, walk))) + "]," +
+				(value.ParamsAfterSentinel == null ? "null" : "[" +
+					string.Join(",", value.ParamsAfterSentinel.Select(parameter => StrongSigText(parameter, walk))) + "]") + "]";
 		}
+		finally { walk.Exit(value); }
 	}
 
-	static object? StrongScope(IResolutionScope? scope) {
-		switch (scope) {
-		case null: return null;
-		case AssemblyRef assembly: return StrongDict(("kind", "assembly_ref"), ("name", assembly.Name?.String),
-			("version", assembly.Version?.ToString()), ("culture", assembly.Culture?.String),
-			("public_key_or_token", assembly.PublicKeyOrToken?.Data == null ? null : EditWire.Sha256(assembly.PublicKeyOrToken.Data)),
-			("attributes", (uint)assembly.Attributes));
-		case ModuleRef moduleRef: return StrongDict(("kind", "module_ref"), ("name", moduleRef.Name?.String));
-		case TypeRef nested: return StrongTypeRef(nested);
-		case ModuleDef definition: return StrongDict(("kind", "module_def"), ("name", definition.Name?.String), ("mvid", definition.Mvid?.ToString("D")));
-		case AssemblyDef assemblyDefinition: return StrongDict(("kind", "assembly_def"), ("full_name", assemblyDefinition.FullName));
-		default: throw StrongFailure("unsupported resolution scope kind: " + scope.GetType().FullName);
+	static string StrongPropertySignatureText(PropertySig? value, StrongWalk walk) {
+		if (value == null) return "null";
+		walk.Enter(value);
+		try {
+			return "[" + StrongNumber((byte)value.CallingConvention) + "," + (value.HasThis ? "true" : "false") + "," +
+				StrongSigText(value.RetType, walk) + ",[" +
+				string.Join(",", value.Params.Select(parameter => StrongSigText(parameter, walk))) + "]]";
 		}
+		finally { walk.Exit(value); }
 	}
 
-	static Dictionary<string, object?> StrongDict(params (string Key, object? Value)[] pairs) {
-		var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-		foreach (var pair in pairs) result[pair.Key] = pair.Value;
-		return result;
+	static string StrongTypeRefText(ITypeDefOrRef? type, StrongWalk walk) {
+		if (type == null) return "null";
+		walk.Enter(type);
+		try {
+			switch (type) {
+			case TypeDef definition: return "[\"type_def\"," + StrongTypeOwnerText(definition, walk) + "]";
+			case TypeRef reference: return "[\"type_ref\"," + StrongScopeText(reference.ResolutionScope, walk) + "," +
+				StrongQuote(reference.Namespace?.String) + "," + StrongQuote(reference.Name?.String) + "]";
+			case TypeSpec spec: return "[\"type_spec\"," + StrongSigText(spec.TypeSig, walk) + "]";
+			default: throw StrongFailure("unsupported type reference kind: " + type.GetType().FullName);
+			}
+		}
+		finally { walk.Exit(type); }
+	}
+
+	static string StrongScopeText(IResolutionScope? scope, StrongWalk walk) {
+		if (scope == null) return "null";
+		walk.Enter(scope);
+		try {
+			switch (scope) {
+			case AssemblyRef assembly: return "[\"assembly_ref\"," + StrongQuote(assembly.Name?.String) + "," +
+				StrongQuote(assembly.Version?.ToString()) + "," + StrongQuote(assembly.Culture?.String) + "," +
+				StrongQuote(assembly.PublicKeyOrToken?.Data == null ? null : EditWire.Sha256(assembly.PublicKeyOrToken.Data)) + "," +
+				StrongNumber((uint)assembly.Attributes) + "]";
+			case ModuleRef moduleRef: return "[\"module_ref\"," + StrongQuote(moduleRef.Name?.String) + "]";
+			case TypeRef nested: return StrongTypeRefText(nested, walk);
+			case ModuleDef definition: return "[\"module_def\"," + StrongQuote(definition.Name?.String) + "," + StrongQuote(definition.Mvid?.ToString("D")) + "]";
+			case AssemblyDef assemblyDefinition: return "[\"assembly_def\"," + StrongQuote(assemblyDefinition.FullName) + "]";
+			default: throw StrongFailure("unsupported resolution scope kind: " + scope.GetType().FullName);
+			}
+		}
+		finally { walk.Exit(scope); }
+	}
+
+	static string StrongFieldLabel(FieldDef field, StrongWalk walk) =>
+		StrongPathPrefix(field.DeclaringType, walk) + field.Name + ":" + StrongSigText(field.FieldType, walk);
+
+	static string StrongMethodLabel(MethodDef method, StrongWalk walk) =>
+		StrongPathPrefix(method.DeclaringType, walk) + method.Name + StrongMethodSignatureText(method.MethodSig, walk);
+
+	static string StrongMethodRefLabel(IMethod? method, StrongWalk walk) {
+		if (method == null) return string.Empty;
+		return StrongTypeRefText(method.DeclaringType, walk) + "::" + method.Name + StrongMethodSignatureText(method.MethodSig, walk);
+	}
+
+	static string StrongPropertyLabel(PropertyDef property, StrongWalk walk) =>
+		StrongPathPrefix(property.DeclaringType, walk) + property.Name + "|" + StrongPropertySignatureText(property.PropertySig, walk);
+
+	static string StrongEventLabel(EventDef evt, StrongWalk walk) =>
+		StrongPathPrefix(evt.DeclaringType, walk) + evt.Name + ":" + StrongSigText(evt.EventType?.ToTypeSig(), walk);
+
+	static string StrongPathPrefix(TypeDef? type, StrongWalk walk) =>
+		(type == null ? string.Empty : StrongTypePath(type, walk)) + "::";
+
+	static string StrongGenericRow(string prefix, GenericParam gp, StrongWalk walk) =>
+		prefix + "|" + gp.Number + "|" + gp.Name + "|" + (uint)gp.Flags + "|" +
+		string.Join(",", gp.GenericParamConstraints.Select(c => StrongSigText(c.Constraint?.ToTypeSig(), walk)).OrderBy(x => x, StringComparer.Ordinal)) + "|" + Attributes(gp.CustomAttributes);
+
+	// Strong IL operand rendering mirrors the historical grammar but never calls
+	// the unguarded historical Sig/MethodSignature helpers.
+	static string StrongOperand(object? operand, IList<Instruction> instructions, StrongWalk walk) {
+		if (operand == null) return string.Empty;
+		if (operand is Instruction instruction) return "label:" + instructions.IndexOf(instruction).ToString(CultureInfo.InvariantCulture);
+		if (operand is IList<Instruction> list) return "switch:" + string.Join(",", list.Select(x => instructions.IndexOf(x).ToString(CultureInfo.InvariantCulture)));
+		if (operand is TypeDef typeDefinition) return "type:" + StrongTypeRefText(typeDefinition, walk);
+		if (operand is MethodDef method) return "method:" + StrongMethodLabel(method, walk);
+		if (operand is FieldDef field) return "field:" + StrongFieldLabel(field, walk);
+		if (operand is TypeSig typeSignature) return "type:" + StrongSigText(typeSignature, walk);
+		if (operand is ITypeDefOrRef typeRef) return "type:" + StrongTypeRefText(typeRef, walk);
+		if (operand is IMethod called) return "method:" + StrongMethodRefLabel(called, walk);
+		if (operand is IField referencedField) return "field:" + StrongTypeRefText(referencedField.DeclaringType, walk) + "::" + referencedField.Name + ":" + StrongSigText(referencedField.FieldSig?.Type, walk);
+		if (operand is Local local) return "local:" + local.Index + ":" + StrongSigText(local.Type, walk);
+		if (operand is Parameter parameter) return "arg:" + parameter.Index + ":" + StrongSigText(parameter.Type, walk);
+		if (operand is string || operand is bool || operand is char || operand.GetType().IsPrimitive)
+			return Convert.ToString(operand, CultureInfo.InvariantCulture) ?? string.Empty;
+		throw StrongFailure("unsupported IL operand kind: " + operand.GetType().FullName);
 	}
 
 	static EditDomainException StrongFailure(string reason) => new("EDIT_CAPABILITY_UNAVAILABLE",

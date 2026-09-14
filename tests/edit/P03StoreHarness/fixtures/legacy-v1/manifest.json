@@ -1,0 +1,42 @@
+{
+  "fixture": "legacy-v1-checkpoint-packages",
+  "produced_by": {
+    "product_source_commit": "115b09a9ea856432eb2fb7ec24a2df9652261329",
+    "product_source_role": "parent of c71d276 (last revision whose product writes dnspy.edit.checkpoints.v1 for new lineages)",
+    "build_kind": "net10.0-windows Release",
+    "product_sha256": "869123f327b16457ada79251f03620a53ea0a709600c096dd348df5ba16dbe37",
+    "generator_source": "generator/Program.cs",
+    "generator_project": "generator/GenV1.csproj"
+  },
+  "packages": {
+    "v1-fixed-package.dnspy-mcp-checkpoints": {
+      "sha256": "3db186f57b86b5b6f9f4774529333483853cadc5b080bff0e1dc811e57a9da26",
+      "format": "dnspy.edit.checkpoints.v1",
+      "role": "exact load / append / branch / navigation / export"
+    },
+    "v1-swapped-baseline-package.dnspy-mcp-checkpoints": {
+      "sha256": "ac4d4b48a9014da768ebbb9e11bdcf7ddf0ab4acee54389fe85d3198ef5cc7e6",
+      "format": "dnspy.edit.checkpoints.v1",
+      "role": "image drift with unchanged historical semantics; unverified_drift and accept_live supersession"
+    }
+  },
+  "recorded_values": {
+    "baseline_semantic_fingerprint": "806506595d46ffcbb130cfec54c3f61b3533491adad79a8a3688f0e3a2884227",
+    "baseline_image_sha256_algorithm": "SHA-256, lowercase hex"
+  },
+  "regeneration": {
+    "requires": "a pre-T003 product build (new lineages are v2 since c71d276)",
+    "steps": [
+      "build commit 115b09a9ea856432eb2fb7ec24a2df9652261329 (net10.0-windows, Release)",
+      "set generator/GenV1.csproj ProductDir to that build output",
+      "dotnet build generator/GenV1.csproj -c Release",
+      "dotnet bin/Release/net10.0/P03StoreHarness.dll <output-dir>"
+    ],
+    "r03_regen_evidence": {
+      "log": ".tmp/dnspy-chk021-026-opencode-20260914-01/T003-R03-A1-regen.log",
+      "fresh_fixed_sha256": "ead8fedfc8d4984afa8ae50067dc339fdb04626b426008925c9e6c6594dbfe67",
+      "fresh_swapped_sha256": "801a14419eb26378a08c9730ce863b86a88d63fd8112705e6bdebc2b50049cdb",
+      "baseline_semantic_unchanged": true
+    }
+  }
+}

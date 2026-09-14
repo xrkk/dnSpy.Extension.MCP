@@ -154,8 +154,13 @@ internal sealed class EditHistoryModule : IDisposable {
 	internal static bool IsV2(string format) => string.Equals(format, PackageFormatV2, StringComparison.Ordinal);
 	internal static bool IsKnownFormat(string format) =>
 		IsV2(format) || string.Equals(format, PackageFormatV1, StringComparison.Ordinal);
-	internal static string SemanticDigest(string format, ModuleDef module) =>
-		IsV2(format) ? EditFingerprint.ComputeRoundtripStrong(module) : EditFingerprint.ComputeRoundtrip(module);
+	internal static string SemanticDigest(string format, ModuleDef module) {
+		if (IsV2(format)) return EditFingerprint.ComputeRoundtripStrong(module);
+		if (string.Equals(format, PackageFormatV1, StringComparison.Ordinal)) return EditFingerprint.ComputeRoundtrip(module);
+		// Never treat an arbitrary format string as the historical algorithm:
+		// an internal caller with an unknown lineage format must hard-stop.
+		throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+	}
 	internal static string BaselineSemanticDigest(string format, byte[] baselineBytes) {
 		using var module = ModuleDefMD.Load(baselineBytes);
 		return SemanticDigest(format, module);
@@ -659,6 +664,11 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	public EditHistoryNavigationPlan PlanNavigation(EditLoadedLineage lineage, string fromId, string targetId) {
+		// T003-R03: the plan binds to the verified lineage format and every
+		// before/after gate below uses that version's semantic digest; an
+		// unknown format never falls back to the historical algorithm.
+		var format = lineage.Manifest.Format;
+		if (!IsKnownFormat(format)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 		var fromPath = PathTo(lineage, fromId);
 		var toPath = PathTo(lineage, targetId);
 		var shared = 0;
@@ -686,7 +696,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			}
 			undoByCheckpoint[node.CheckpointId] = inverses;
 		}
-		var beforeFingerprint = EditFingerprint.ComputeRoundtrip(replay);
+		var beforeFingerprint = SemanticDigest(format, replay);
 		var steps = fromPath.Skip(shared).Reverse().SelectMany(x => undoByCheckpoint[x.CheckpointId].AsEnumerable().Reverse()).ToList();
 		foreach (var node in toPath.Skip(shared)) {
 			var operations = lineage.Operations[node.CheckpointId].Operations;
@@ -697,13 +707,9 @@ internal sealed class EditHistoryModule : IDisposable {
 			}
 		}
 		var target = Replay(lineage, targetId, beforeFingerprint);
-		// EditHistoryNavigationPlan compares live states with the historical
-		// projection (its file is outside the T003 scope); the ownership-sensitive
-		// target identity is enforced by the exact image gate below and by the
-		// caller's version-matched semantic comparison.
-		string afterFingerprintHistorical;
-		using (var targetModule = ModuleDefMD.Load(target.Bytes)) afterFingerprintHistorical = EditFingerprint.ComputeRoundtrip(targetModule);
-		var plan = new EditHistoryNavigationPlan(steps, beforeFingerprint, afterFingerprintHistorical);
+		string afterFingerprint;
+		using (var targetModule = ModuleDefMD.Load(target.Bytes)) afterFingerprint = SemanticDigest(format, targetModule);
+		var plan = new EditHistoryNavigationPlan(format, steps, beforeFingerprint, afterFingerprint);
 		plan.Apply(replay);
 		if (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replay)) != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
 		return plan;
