@@ -27,6 +27,32 @@ internal sealed class EditCdiGuard {
 	readonly Dictionary<object, InstructionOwner> instructionOwners = new(ReferenceComparer.Instance);
 	readonly Dictionary<object, LocalOwner> localOwners = new(ReferenceComparer.Instance);
 	int nextId;
+    readonly Queue<(int Id, object Value, Func<object?> Encode)> pending = new();
+    readonly Dictionary<int, HashSet<int>> metadataEdges = new();
+    int? metadataParent;
+
+    object Node(object value, Func<object?> encode) {
+        if (!ids.TryGetValue(value, out var id)) {
+            id = nextId++; ids[value] = id;
+            pending.Enqueue((id, value, encode));
+            if (value is TypeSig || value is TypeRef || value is MethodSig)
+                metadataEdges[id] = new HashSet<int>();
+        }
+        if (metadataParent is int parent && metadataEdges.ContainsKey(id)) metadataEdges[parent].Add(id);
+        return Ref(id);
+    }
+
+    void ValidateMetadataGraph() {
+        var indegree = metadataEdges.Keys.ToDictionary(id => id, _ => 0);
+        foreach (var children in metadataEdges.Values) foreach (var child in children) indegree[child]++;
+        var ready = new Queue<int>(indegree.Where(x => x.Value == 0).Select(x => x.Key));
+        var count = 0;
+        while (ready.Count != 0) {
+            var id = ready.Dequeue(); count++;
+            foreach (var child in metadataEdges[id]) if (--indegree[child] == 0) ready.Enqueue(child);
+        }
+        if (count != metadataEdges.Count) throw Capability("cyclic metadata signature or resolution scope");
+    }
 
 	static readonly JsonSerializerOptions Json = new JsonSerializerOptions {
 		WriteIndented = false,
@@ -79,6 +105,7 @@ internal sealed class EditCdiGuard {
 			for (var index = 0; index < type.Events.Count; index++)
 				guard.AddOwnerRow(rows, "e:" + typePath + "/e/" + index.ToString(CultureInfo.InvariantCulture), type.Events[index].CustomDebugInfos);
 		}
+		guard.ValidateMetadataGraph();
 		return rows;
 	}
 
@@ -88,12 +115,23 @@ internal sealed class EditCdiGuard {
 
 	string Row(string owner, IList<PdbCustomDebugInfo> infos) {
 		var list = infos.Select(EncodeCdi).ToArray();
-		return "cdi|" + owner + "|" + JsonSerializer.Serialize(list, Json);
+		var nodes = new List<object?>();
+        while (pending.Count != 0) {
+            var item = pending.Dequeue();
+            metadataParent = metadataEdges.ContainsKey(item.Id) ? item.Id : (int?)null;
+            object? value;
+            try { value = item.Encode(); }
+            catch (EditDomainException) { throw; }
+            catch (Exception ex) { throw Capability("unreadable CDI node: " + ex.GetType().Name); }
+            finally { metadataParent = null; }
+            nodes.Add(new Dictionary<string, object?> { ["id"] = item.Id, ["value"] = value });
+        }
+        return "cdi|" + owner + "|" + JsonSerializer.Serialize(new { roots = list, nodes }, Json);
 	}
 
 	object? EncodeCdi(PdbCustomDebugInfo? info) {
 		if (info == null) return null;
-		try { return EncodeCdiCore(info); }
+		try { return Node(info, () => EncodeCdiCore(info)); }
 		catch (EditDomainException) { throw; }
 		catch (Exception ex) {
 			throw Capability("unreadable CDI " + info.GetType().FullName + ": " + ex.GetType().Name + ": " + ex.Message);
@@ -106,11 +144,7 @@ internal sealed class EditCdiGuard {
 		// exact bound types (public concrete + the two exact internal shapes) are
 		// supported, and anything else fails before any hash is produced.
 		if (!SupportedCdiTypes.Contains(info.GetType())) throw Capability("unsupported CDI type: " + info.GetType().FullName);
-		if (ids.TryGetValue(info, out var existing)) return Ref(existing);
-		var id = nextId++;
-		ids[info] = id;
 		var body = new Dictionary<string, object?> {
-			["id"] = id,
 			["type"] = info.GetType().Name,
 			["guid"] = info.Guid.ToString("D"),
 			["kind"] = info.Kind.ToString(),
@@ -230,12 +264,10 @@ internal sealed class EditCdiGuard {
 		["is_synthesized_local"] = scope.IsSynthesizedLocal,
 	};
 
-	object? EncodeCompilationReference(PdbCompilationMetadataReference reference) {
-		if (ids.TryGetValue(reference, out var existing)) return Ref(existing);
-		var id = nextId++;
-		ids[reference] = id;
+	object? EncodeCompilationReference(PdbCompilationMetadataReference reference) => Node(reference, () => EncodeCompilationReferenceCore(reference));
+
+	object? EncodeCompilationReferenceCore(PdbCompilationMetadataReference reference) {
 		return new Dictionary<string, object?> {
-			["id"] = id,
 			["name"] = reference.Name,
 			["aliases"] = reference.Aliases,
 			["flags"] = reference.Flags.ToString(),
@@ -245,12 +277,10 @@ internal sealed class EditCdiGuard {
 		};
 	}
 
-	object? EncodeDynamicLocal(PdbDynamicLocal local) {
-		if (ids.TryGetValue(local, out var existing)) return Ref(existing);
-		var id = nextId++;
-		ids[local] = id;
+	object? EncodeDynamicLocal(PdbDynamicLocal local) => Node(local, () => EncodeDynamicLocalCore(local));
+
+	object? EncodeDynamicLocalCore(PdbDynamicLocal local) {
 		return new Dictionary<string, object?> {
-			["id"] = id,
 			["name"] = local.Name,
 			["flags"] = ArrayOf(local.Flags, flag => flag),
 			["is_constant"] = local.IsConstant,
@@ -259,12 +289,10 @@ internal sealed class EditCdiGuard {
 		};
 	}
 
-	object? EncodeTupleNames(PdbTupleElementNames names) {
-		if (ids.TryGetValue(names, out var existing)) return Ref(existing);
-		var id = nextId++;
-		ids[names] = id;
+	object? EncodeTupleNames(PdbTupleElementNames names) => Node(names, () => EncodeTupleNamesCore(names));
+
+	object? EncodeTupleNamesCore(PdbTupleElementNames names) {
 		return new Dictionary<string, object?> {
-			["id"] = id,
 			["name"] = names.Name,
 			["is_constant"] = names.IsConstant,
 			["is_variable"] = names.IsVariable,
@@ -275,12 +303,10 @@ internal sealed class EditCdiGuard {
 		};
 	}
 
-	object? EncodeDocument(PdbDocument document) {
-		if (ids.TryGetValue(document, out var existing)) return Ref(existing);
-		var id = nextId++;
-		ids[document] = id;
+	object? EncodeDocument(PdbDocument document) => Node(document, () => EncodeDocumentCore(document));
+
+	object? EncodeDocumentCore(PdbDocument document) {
 		return new Dictionary<string, object?> {
-			["id"] = id,
 			["url"] = document.Url,
 			["language"] = document.Language.ToString("D"),
 			["language_vendor"] = document.LanguageVendor.ToString("D"),
@@ -411,7 +437,9 @@ internal sealed class EditCdiGuard {
 	// JSON object (no flat separator concatenation), so a scope-only change, a
 	// modifier identity, a nested TypeRef chain or punctuation inside a name
 	// cannot collide with another shape; unknown elements fail explicitly.
-	object? MethodSignature(MethodSig? value) {
+	object? MethodSignature(MethodSig? value) => value == null ? null : Node(value, () => MethodSignatureCore(value));
+
+	object? MethodSignatureCore(MethodSig value) {
 		if (value == null) return null;
 		return new Dictionary<string, object?> {
 			["kind"] = "method_sig",
@@ -449,7 +477,9 @@ internal sealed class EditCdiGuard {
 		}
 	}
 
-	object? TypeRefRef(TypeRef reference) => new Dictionary<string, object?> {
+	object? TypeRefRef(TypeRef reference) => Node(reference, () => TypeRefCore(reference));
+
+	object? TypeRefCore(TypeRef reference) => new Dictionary<string, object?> {
 		["kind"] = "type_ref",
 		["scope"] = ResolutionScopeRef(reference.ResolutionScope),
 		["namespace"] = reference.Namespace?.String,
@@ -480,7 +510,9 @@ internal sealed class EditCdiGuard {
 		}
 	}
 
-	object? Sig(TypeSig? value) {
+	object? Sig(TypeSig? value) => value == null ? null : Node(value, () => SigCore(value));
+
+	object? SigCore(TypeSig value) {
 		switch (value) {
 		case null: return null;
 		case GenericSig generic: return new Dictionary<string, object?> {

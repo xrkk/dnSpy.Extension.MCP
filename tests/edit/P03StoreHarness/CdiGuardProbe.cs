@@ -25,12 +25,50 @@ internal static class CdiGuardProbe {
 		GraphShapes();
 		B1SignatureIdentity();
 		B2ExactTypeGate();
+		BoundedGraphTraversal();
 		FailureModes();
 		SemanticUnchanged();
 		CrossCopy();
 		Console.WriteLine("PASS cdi-guard-content failures=" + failures);
 		if (failures != 0) throw new InvalidOperationException("FAILED: " + failures + " cdi guard checks: " + string.Join("; ", failed));
 	}
+
+    static void BoundedGraphTraversal() {
+        using (var t = Build()) {
+            var scope = new TypeRefUser(t.Module, "N", "Loop");
+            scope.ResolutionScope = scope;
+            var cdi = new PdbForwardMethodInfoCustomDebugInfo { Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void), scope) };
+            t.Module.CustomDebugInfos.Add(cdi);
+            bool rejected = false;
+            try { Guard(t.Module); } catch (EditDomainException ex) { rejected = ex.Code == "EDIT_CAPABILITY_UNAVAILABLE"; }
+            Check(rejected, "cyclic TypeRef rejected without process failure");
+            Check(ReferenceEquals(scope.ResolutionScope, scope), "cyclic scope rejection leaves graph unchanged");
+        }
+        using (var t = Build()) {
+            var signature = MethodSig.CreateStatic(t.Module.CorLibTypes.Void);
+            var pointer = new FnPtrSig(signature);
+            signature.Params.Add(pointer);
+            var cdi = new PdbForwardMethodInfoCustomDebugInfo { Method = new MemberRefUser(t.Module, "F", MethodSig.CreateStatic(t.Module.CorLibTypes.Void, pointer), new TypeRefUser(t.Module,"N","Owner",t.Module.CorLibTypes.AssemblyRef)) };
+            t.Module.CustomDebugInfos.Add(cdi);
+            bool rejected = false;
+            try { Guard(t.Module); } catch (EditDomainException ex) { rejected = ex.Code == "EDIT_CAPABILITY_UNAVAILABLE"; }
+            Check(rejected, "cyclic TypeSig rejected without process failure");
+        }
+        using (var t = Build()) {
+            var tail = new PdbDefaultNamespaceCustomDebugInfo { Namespace = "deep-a" };
+            PdbCustomDebugInfo head = tail;
+            for (var i=0;i<512;i++) {
+                var document = NewDocument("deep-"+i);
+                DocumentWith(document, head);
+                var parent = new PdbTypeDefinitionDocumentsDebugInfo(); parent.Documents.Add(document); head = parent;
+            }
+            t.Module.CustomDebugInfos.Add(head);
+            var before = Guard(t.Module);
+            Check(before == Guard(t.Module), "512-level CDI graph deterministic without truncation");
+            tail.Namespace = "deep-b";
+            Check(before != Guard(t.Module), "512-level CDI leaf change detected");
+        }
+    }
 
 	static void Check(bool condition, string name) {
 		if (condition) Console.WriteLine("PASS " + name);
