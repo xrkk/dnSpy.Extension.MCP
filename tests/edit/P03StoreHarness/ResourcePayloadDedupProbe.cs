@@ -191,7 +191,7 @@ internal static class ResourcePayloadDedupProbe {
 		}
 		using var replayer = new EditHistoryModule(store, catalog.CheckpointPackage);
 		var legacy = replayer.Load(legacyId);
-		Check(legacy.Manifest.Format == "dnspy.edit.checkpoints.v1", "legacy package keeps the frozen v1 format");
+		Check(legacy.Manifest.Format == replayer.Load(realId).Manifest.Format, "legacy package keeps the source package format");
 		Check(legacy.Manifest.Payloads.Count == 0 && legacy.PayloadBytes.Count == 0, "legacy package has no payload rows");
 		Check(replayer.Assess(legacyId, head, EditFingerprint.Compute(live)).Classification == "exact", "legacy inline package replays exact");
 		var undo = replayer.PlanNavigation(legacy, head, first);

@@ -1620,7 +1620,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var liveGuard = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeExternalGuard(live));
 		var liveImage = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
 		var current = history.Assess(lineage.Manifest.LineageId, lineage.Manifest.HeadCheckpointId, liveFingerprint);
-		if (current.Classification != "exact" || current.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)) || current.ImageSha256 != liveImage)
+		if (current.Classification != "exact" || current.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live)) || current.ImageSha256 != liveImage)
 			throw new EditDomainException("EDIT_LINEAGE_DIVERGED");
 		var navigationPlan = history.PlanNavigation(lineage, lineage.Manifest.HeadCheckpointId, target.Checkpoint.CheckpointId);
 		EditPreparedHistoryWrite? prepared = null;
@@ -1637,7 +1637,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			});
 			StorageFault("navigate_forward");
 			StorageFault("navigate_inverse");
-			var actual = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live));
+			var actual = EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live));
 			var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
 			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
 			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
@@ -1692,7 +1692,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var liveGuard = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeExternalGuard(live));
 		var liveImage = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
 		var from = history.Assess(lineage.Manifest.LineageId, fromId, liveFingerprint);
-		if (from.Classification != "exact" || from.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)) || from.ImageSha256 != liveImage)
+		if (from.Classification != "exact" || from.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live)) || from.ImageSha256 != liveImage)
 			throw new EditDomainException("EDIT_LINEAGE_DIVERGED");
 		var target = existingAssessment ?? history.Assess(lineage.Manifest.LineageId, targetId, liveFingerprint);
 		if (target.Classification == "validated_drift") throw new EditDomainException("EDIT_REPLAY_CONFIRMATION_REQUIRED",
@@ -1716,7 +1716,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			});
 			StorageFault("navigate_forward");
 			StorageFault("navigate_inverse");
-			var actual = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeRoundtrip(live)); var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
+			var actual = EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live)); var image = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
 			if (actual != target.SemanticFingerprint || image != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
 			postActionFingerprint = EditWorkspace.OnDispatcher(() => EditFingerprint.Compute(live));
 			liveApplied = true;

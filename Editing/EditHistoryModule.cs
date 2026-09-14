@@ -145,6 +145,21 @@ internal sealed class EditReplayAssessment {
 internal sealed class EditHistoryModule : IDisposable {
 	const int MaxZipEntries = 4096;
 	const int MaxLineages = 128;
+	// T003 / CHK-022: the package format selects the persistent semantic
+	// algorithm.  v1 keeps the historical (owner-less) projection; v2 uses the
+	// owner-bound strong projection.  New lineages are always v2; existing v1
+	// packages stay byte-for-byte on the historical algorithm.
+	internal const string PackageFormatV1 = "dnspy.edit.checkpoints.v1";
+	internal const string PackageFormatV2 = "dnspy.edit.checkpoints.v2";
+	internal static bool IsV2(string format) => string.Equals(format, PackageFormatV2, StringComparison.Ordinal);
+	internal static bool IsKnownFormat(string format) =>
+		IsV2(format) || string.Equals(format, PackageFormatV1, StringComparison.Ordinal);
+	internal static string SemanticDigest(string format, ModuleDef module) =>
+		IsV2(format) ? EditFingerprint.ComputeRoundtripStrong(module) : EditFingerprint.ComputeRoundtrip(module);
+	internal static string BaselineSemanticDigest(string format, byte[] baselineBytes) {
+		using var module = ModuleDefMD.Load(baselineBytes);
+		return SemanticDigest(format, module);
+	}
 	// P08 resource payload whitelist: the only persisted slots whose bytes are
 	// externalized as a payload reference.  Everything else keeps its inline
 	// representation and is never scanned as a payload channel.
@@ -191,7 +206,12 @@ internal sealed class EditHistoryModule : IDisposable {
 		try { source = EditSourceFileIdentity.Observe(workspace.FilePath); }
 		catch (Exception ex) { throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",
 			new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "source_identity", ["reason"] = ex.Message }); }
-		var liveSemantic = workspace.CurrentLiveSemanticFingerprint();
+		var liveSemanticByFormat = new Dictionary<string, string>(StringComparer.Ordinal);
+		string LiveSemantic(string format) {
+			if (!liveSemanticByFormat.TryGetValue(format, out var value))
+				liveSemanticByFormat[format] = value = workspace.CurrentLiveSemanticFingerprintFor(format);
+			return value;
+		}
 		var liveImage = workspace.CurrentLiveImageSha256();
 		var candidates = new List<(EditLoadedLineage Lineage, string[] Basis, EditReplayAssessment Replay)>();
 		var aliasConflicts = new List<object>();
@@ -208,7 +228,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				continue;
 			}
 			var replay = Replay(lineage, lineage.Manifest.HeadCheckpointId, workspace.CurrentLiveFingerprint());
-			var contentExact = replay.Classification == "exact" && replay.SemanticFingerprint == liveSemantic && replay.ImageSha256 == liveImage;
+			var contentExact = replay.Classification == "exact" && replay.SemanticFingerprint == LiveSemantic(lineage.Manifest.Format) && replay.ImageSha256 == liveImage;
 			var basis = new List<string>();
 			if (contentExact) basis.Add("exact_head_content");
 			if (originAlias) basis.Add("origin_file_identity");
@@ -218,7 +238,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		}
 		if (candidates.Count == 1) {
 			var candidate = candidates[0];
-			if (candidate.Replay.Classification != "exact" || candidate.Replay.SemanticFingerprint != liveSemantic || candidate.Replay.ImageSha256 != liveImage)
+			if (candidate.Replay.Classification != "exact" || candidate.Replay.SemanticFingerprint != LiveSemantic(candidate.Lineage.Manifest.Format) || candidate.Replay.ImageSha256 != liveImage)
 				throw new EditDomainException("EDIT_LINEAGE_DIVERGED", new Dictionary<string, object?> {
 					["kind"] = "lineage_diverged", ["family_id"] = candidate.Lineage.Manifest.FamilyId,
 					["lineage_id"] = candidate.Lineage.Manifest.LineageId, ["match_basis"] = candidate.Basis,
@@ -241,9 +261,9 @@ internal sealed class EditHistoryModule : IDisposable {
 		workspace.ValidateRoundtrip();
 		var targetBytes = EditWorkspace.WriteCheckpointImage(workspace.PrivateModule);
 		var targetImage = EditWire.Sha256(targetBytes);
-		var targetSemantic = EditFingerprint.ComputeRoundtrip(workspace.PrivateModule);
 		EditLoadedLineage next;
 		string preHead;
+		string format;
 		var replace = binding.LineageId != null;
 		if (!replace) {
 			var currentLineages = LoadAll().Count;
@@ -252,10 +272,11 @@ internal sealed class EditHistoryModule : IDisposable {
 			var rootId = EditWire.NewId("checkpoint");
 			var rootOps = EmptyOperations(rootId);
 			var rootBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
+			format = PackageFormatV2;
 			var root = Node(rootId, null, "baseline", rootBytes, workspace.BaselineImageSha256,
-				workspace.BaselineSemanticFingerprint, 0, reviewId, reviewRevision, Array.Empty<string>());
+				BaselineSemanticDigest(format, workspace.BaselineBytes), 0, reviewId, reviewRevision, Array.Empty<string>());
 			var manifest = new EditCheckpointManifest {
-				LineageId = lineageId, FamilyId = binding.FamilyId,
+				Format = format, LineageId = lineageId, FamilyId = binding.FamilyId,
 				SourceIdentity = SourceIdentity(workspace),
 				Baseline = new EditBaselineEntry { Length = workspace.BaselineBytes.LongLength, Sha256 = workspace.BaselineImageSha256 },
 				HeadCheckpointId = rootId, Checkpoints = new List<EditCheckpointNode> { root },
@@ -269,9 +290,11 @@ internal sealed class EditHistoryModule : IDisposable {
 		}
 		else {
 			next = Clone(Load(binding.LineageId!));
+			format = next.Manifest.Format;
 			preHead = next.Manifest.HeadCheckpointId;
 			if (binding.BaseCheckpointId != preHead) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		}
+		var targetSemantic = SemanticDigest(format, workspace.PrivateModule);
 		var checkpointId = EditWire.NewId("checkpoint");
 		var operations = SerializeOperations(next, checkpointId, preHead, normalizedOperations, out var replayModule);
 		// P04: the recorded head identity comes from the deterministic replay graph,
@@ -284,7 +307,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		string replayImage; string replaySemantic;
 		try {
 			replayImage = EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replayModule));
-			replaySemantic = EditFingerprint.ComputeRoundtrip(replayModule);
+			replaySemantic = SemanticDigest(format, replayModule);
 			if (replaySemantic != targetSemantic) throw new EditDomainException("EDIT_VALIDATION_FAILED",
 				EditWorkspace.ValidationDetails("replay_private_semantic", operationKind, EditFingerprint.Difference(replayModule, workspace.PrivateModule)));
 		}
@@ -311,9 +334,9 @@ internal sealed class EditHistoryModule : IDisposable {
 		var rootOps = EmptyOperations(rootId);
 		var rootBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
 		var root = Node(rootId, null, "baseline", rootBytes, workspace.BaselineImageSha256,
-			workspace.BaselineSemanticFingerprint, 0, "legacy-save-baseline", 0, Array.Empty<string>());
+			BaselineSemanticDigest(PackageFormatV2, workspace.BaselineBytes), 0, "legacy-save-baseline", 0, Array.Empty<string>());
 		var manifest = new EditCheckpointManifest {
-			LineageId = lineageId, FamilyId = binding.FamilyId,
+			Format = PackageFormatV2, LineageId = lineageId, FamilyId = binding.FamilyId,
 			SourceIdentity = SourceIdentity(workspace),
 			Baseline = new EditBaselineEntry { Length = workspace.BaselineBytes.LongLength, Sha256 = workspace.BaselineImageSha256 },
 			HeadCheckpointId = rootId, Checkpoints = new List<EditCheckpointNode> { root },
@@ -373,6 +396,12 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	public EditPreparedHistoryWrite PrepareMigration(EditReplayAssessment target, byte[] currentImage, string reviewId) {
+		// T003: migration (confirmed validated drift) exists only for v2 lineages.
+		// A v1 lineage can never prove a byte-level drift because its historical
+		// algorithm has no method ownership; accepting the current live is the
+		// only path and it creates a new v2 lineage.
+		if (!IsV2(target.Lineage.Manifest.Format)) throw new EditDomainException("EDIT_REPLAY_UNVERIFIED");
+		if (target.Classification != "validated_drift") throw new EditDomainException("EDIT_REPLAY_CONFIRMATION_REQUIRED");
 		var next = Clone(Load(target.Lineage.Manifest.LineageId));
 		if (next.Manifest.HeadCheckpointId != target.HeadCheckpointId) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var preHead = next.Manifest.HeadCheckpointId;
@@ -393,10 +422,11 @@ internal sealed class EditHistoryModule : IDisposable {
 		if (currentLineages >= MaxLineages) throw Capacity("lineages", currentLineages + 1L, MaxLineages);
 		var lineageId = EditWire.NewId("lineage"); var rootId = EditWire.NewId("checkpoint");
 		var rootOps = EmptyOperations(rootId); var rootOpsBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
-		var bytes = workspace.BaselineBytes; var image = EditWire.Sha256(bytes); var semantic = workspace.BaselineSemanticFingerprint;
+		var bytes = workspace.BaselineBytes; var image = EditWire.Sha256(bytes);
+		var semantic = BaselineSemanticDigest(PackageFormatV2, bytes);
 		var root = Node(rootId, null, "accepted_baseline", rootOpsBytes, image, semantic, 0, "accepted-live", 0, Array.Empty<string>());
 		var manifest = new EditCheckpointManifest {
-			LineageId = lineageId, FamilyId = familyId, SupersededLineageId = supersededLineageId,
+			Format = PackageFormatV2, LineageId = lineageId, FamilyId = familyId, SupersededLineageId = supersededLineageId,
 			SourceIdentity = SourceIdentity(workspace), Baseline = new EditBaselineEntry { Length = bytes.LongLength, Sha256 = image },
 			HeadCheckpointId = rootId, Checkpoints = new List<EditCheckpointNode> { root },
 			DefaultOutput = CreateDefaultOutput(lineageId, workspace.FilePath, image),
@@ -457,7 +487,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			&& identity.FileId == source.FileId && identity.OnDiskSha256 == source.Sha256;
 		if (!processMatch && !fileMatch) throw SourceConflict(new object[] { CandidateSummary(active[0], new[] { "identity_not_current" }) });
 		var replay = Replay(active[0], active[0].Manifest.HeadCheckpointId, workspace.BaselineLiveFingerprint);
-		if (replay.Classification == "exact" && replay.SemanticFingerprint == workspace.BaselineSemanticFingerprint
+		if (replay.Classification == "exact" && replay.SemanticFingerprint == workspace.BaselineSemanticFingerprintFor(active[0].Manifest.Format)
 			&& replay.ImageSha256 == workspace.CurrentLiveImageSha256())
 			throw new EditDomainException("EDIT_HISTORY_CONFLICT", new Dictionary<string, object?> { ["kind"] = "not_diverged" });
 		return active[0];
@@ -538,7 +568,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		var readback = EditWorkspace.WriteCheckpointImage(module);
 		using var reloaded = ModuleDefMD.Load(readback);
 		EditStructuralValidator.Validate(reloaded);
-		if (EditWire.Sha256(readback) != replay.ImageSha256 || EditFingerprint.ComputeRoundtrip(reloaded) != replay.SemanticFingerprint)
+		if (EditWire.Sha256(readback) != replay.ImageSha256 || SemanticDigest(replay.Lineage.Manifest.Format, reloaded) != replay.SemanticFingerprint)
 			throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 		return WriteValidatedOutput(replay.Bytes, requestedPath ?? replay.Lineage.Manifest.DefaultOutput.RelativePath, sourcePath);
 	}
@@ -598,11 +628,19 @@ internal sealed class EditHistoryModule : IDisposable {
 		var bytes = EditWorkspace.WriteCheckpointImage(module);
 		using var reloaded = ModuleDefMD.Load(bytes);
 		EditStructuralValidator.Validate(reloaded);
-		if (EditFingerprint.ComputeRoundtrip(module) != EditFingerprint.ComputeRoundtrip(reloaded))
+		var format = lineage.Manifest.Format;
+		if (SemanticDigest(format, module) != SemanticDigest(format, reloaded))
 			throw new EditDomainException("EDIT_VALIDATION_FAILED");
-		var image = EditWire.Sha256(bytes); var semantic = EditFingerprint.ComputeRoundtrip(reloaded);
-		var classification = image == checkpoint.ResultImageSha256 && semantic == checkpoint.ResultSemanticFingerprint
-			? "exact" : semantic == checkpoint.ResultSemanticFingerprint ? "validated_drift" : "unverified_drift";
+		var image = EditWire.Sha256(bytes); var semantic = SemanticDigest(format, reloaded);
+		// T003: a v1 package can prove exactness only.  The historical owner-less
+		// algorithm cannot distinguish a byte-level writer drift from a method
+		// ownership change, so any v1 image mismatch is unverified (no migration,
+		// no live/head/package change) and the user must accept the current live
+		// as a new v2 lineage.
+		string classification;
+		if (image == checkpoint.ResultImageSha256 && semantic == checkpoint.ResultSemanticFingerprint) classification = "exact";
+		else if (!IsV2(format)) classification = "unverified_drift";
+		else classification = semantic == checkpoint.ResultSemanticFingerprint ? "validated_drift" : "unverified_drift";
 		return new EditReplayAssessment {
 			ReplayId = EditWire.NewId("replay"), Classification = classification, Lineage = lineage, Checkpoint = checkpoint,
 			Bytes = bytes, ImageSha256 = image, SemanticFingerprint = semantic, PackageSha256 = lineage.PackageSha256,
@@ -659,7 +697,13 @@ internal sealed class EditHistoryModule : IDisposable {
 			}
 		}
 		var target = Replay(lineage, targetId, beforeFingerprint);
-		var plan = new EditHistoryNavigationPlan(steps, beforeFingerprint, target.SemanticFingerprint);
+		// EditHistoryNavigationPlan compares live states with the historical
+		// projection (its file is outside the T003 scope); the ownership-sensitive
+		// target identity is enforced by the exact image gate below and by the
+		// caller's version-matched semantic comparison.
+		string afterFingerprintHistorical;
+		using (var targetModule = ModuleDefMD.Load(target.Bytes)) afterFingerprintHistorical = EditFingerprint.ComputeRoundtrip(targetModule);
+		var plan = new EditHistoryNavigationPlan(steps, beforeFingerprint, afterFingerprintHistorical);
 		plan.Apply(replay);
 		if (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replay)) != target.ImageSha256) throw new EditDomainException("EDIT_VALIDATION_FAILED");
 		return plan;
@@ -704,7 +748,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			// the frozen v1 schema rejects the well-formed future manifest.
 			if (manifestDocument.RootElement.TryGetProperty("format", out var manifestFormat)
 				&& manifestFormat.ValueKind == JsonValueKind.String
-				&& manifestFormat.GetString() != "dnspy.edit.checkpoints.v1")
+				&& !IsKnownFormat(manifestFormat.GetString() ?? string.Empty))
 				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			EditJsonSchemaValidator.ValidateValue(manifestSchema, manifestDocument.RootElement, "checkpoint manifest");
 			manifest = JsonSerializer.Deserialize<EditCheckpointManifest>(manifestBytes, EditWire.JsonOptions) ?? throw new JsonException();
@@ -763,7 +807,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	static void ValidateManifest(EditCheckpointManifest manifest, IReadOnlyDictionary<string, byte[]> entries) {
-		if (manifest.Format != "dnspy.edit.checkpoints.v1") throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+		if (!IsKnownFormat(manifest.Format)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 		if (!EditHistoryIds.Is(manifest.LineageId, "lineage") || !EditHistoryIds.Is(manifest.FamilyId, "family")
 			|| !EditHistoryIds.Is(manifest.HeadCheckpointId, "checkpoint")) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		if (manifest.Checkpoints.Count == 0 || manifest.Checkpoints.Count > MaxZipEntries - 2) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
@@ -1189,7 +1233,7 @@ internal sealed class EditHistoryModule : IDisposable {
 
 	void RequireLiveAtHead(EditWorkspace workspace, EditLoadedLineage lineage) {
 		var replay = Replay(lineage, lineage.Manifest.HeadCheckpointId, workspace.CurrentLiveFingerprint());
-		if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprint()
+		if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprintFor(lineage.Manifest.Format)
 			|| replay.ImageSha256 != workspace.CurrentLiveImageSha256()) throw new EditDomainException("EDIT_LINEAGE_DIVERGED",
 			new Dictionary<string, object?> { ["kind"] = "lineage_diverged", ["family_id"] = lineage.Manifest.FamilyId, ["lineage_id"] = lineage.Manifest.LineageId });
 	}

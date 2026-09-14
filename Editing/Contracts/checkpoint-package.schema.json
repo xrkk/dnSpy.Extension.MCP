@@ -16,7 +16,10 @@
     ],
     "properties": {
       "format": {
-        "const": "dnspy.edit.checkpoints.v1"
+        "enum": [
+          "dnspy.edit.checkpoints.v1",
+          "dnspy.edit.checkpoints.v2"
+        ]
       },
       "lineage_id": {
         "type": "string",

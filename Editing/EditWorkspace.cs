@@ -214,6 +214,18 @@ internal sealed class EditWorkspace : IDisposable {
 	/// Compare only against <see cref="BaselineExternalGuard"/>.</summary>
 	public string CurrentExternalGuard() => OnDispatcher(() => EditFingerprint.ComputeExternalGuard(LiveModule));
 	public string CurrentLiveSemanticFingerprint() => OnDispatcher(() => EditFingerprint.ComputeRoundtrip(LiveModule));
+	/// <summary>T003: version-matched live semantic digest.  v2 lineages compare
+	/// against the owner-bound strong projection; v1 lineages keep the historical
+	/// algorithm and never mix the two.</summary>
+	public string CurrentLiveSemanticFingerprintFor(string format) =>
+		EditHistoryModule.IsV2(format)
+			? OnDispatcher(() => EditFingerprint.ComputeRoundtripStrong(LiveModule))
+			: CurrentLiveSemanticFingerprint();
+	string? baselineSemanticV2;
+	public string BaselineSemanticFingerprintFor(string format) =>
+		EditHistoryModule.IsV2(format)
+			? baselineSemanticV2 ??= EditHistoryModule.BaselineSemanticDigest(format, BaselineBytes)
+			: BaselineSemanticFingerprint;
 	public string CurrentLiveImageSha256() => OnDispatcher(() => EditWire.Sha256(WriteCheckpointImage(LiveModule)));
 	public string PrivateFingerprint() => EditFingerprint.Compute(PrivateModule);
 	public byte[] ValidateRoundtrip() {

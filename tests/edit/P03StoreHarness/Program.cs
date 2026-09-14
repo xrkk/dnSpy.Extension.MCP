@@ -459,7 +459,7 @@ static class Program {
 		}));
 		var unknownFormatId = "lineage-" + Guid.NewGuid().ToString("N");
 		Inject(unknownFormatId, Craft(store.FinalBytes(realId), unknownFormatId, (manifest, _) => {
-			manifest.Format = "dnspy.edit.checkpoints.v2";
+			manifest.Format = "dnspy.edit.checkpoints.v3";
 		}));
 		var malformedVersionId = "lineage-" + Guid.NewGuid().ToString("N");
 		Inject(malformedVersionId, Craft(store.FinalBytes(realId), malformedVersionId, (manifest, entries) => {

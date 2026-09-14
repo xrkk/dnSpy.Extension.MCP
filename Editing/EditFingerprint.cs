@@ -241,8 +241,179 @@ internal static class EditFingerprint {
 		return rows;
 	}
 
-	internal static bool IsWriterTombstoneType(TypeDef type) {
-		// dnlib 4.5.0 PreserveTokensMetadata creates dummy.{GUID} for removed TypeDef
+	/// <summary>CHK-022 / T003: strong persistent projection.  Every method-owned
+	/// row (method/mgp/param/body/local/il/sp/eh) is bound to a structured method
+	/// owner, every type-owned row (tgp/interface) to a structured type owner, and
+	/// each group is encoded as a JSON array so owner and content can never
+	/// collide.  Unknown signature or reference shapes fail with
+	/// EDIT_CAPABILITY_UNAVAILABLE instead of degrading to a name.  The historical
+	/// Compute/ComputeRoundtrip/Channels definitions above stay unchanged.</summary>
+	public static string ComputeRoundtripStrong(ModuleDef module) =>
+		EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n",
+			StrongProjection(module).OrderBy(x => x, StringComparer.Ordinal))));
+
+	static IEnumerable<string> StrongProjection(ModuleDef module) {
+		var rows = new List<string> {
+				"module|" + module.Name + "|" + (module.Mvid?.ToString("D") ?? string.Empty) + "|" + module.Kind + "|" + module.RuntimeVersion,
+			"assembly|" + (module.Assembly?.FullName ?? string.Empty),
+		};
+		foreach (var type in module.GetTypes().OrderBy(TypeKey, StringComparer.Ordinal)) {
+			if (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsTombstone(type)) continue;
+			rows.Add("type|" + TypeKey(type) + "|" + (uint)type.Attributes + "|" + Sig(type.BaseType?.ToTypeSig()) + "|" + Attributes(type.CustomAttributes));
+			foreach (var gp in type.GenericParameters.OrderBy(g => g.Number))
+				rows.Add(OwnerGroup("tgp", StrongTypeOwner(type), new[] { GenericRow("tgp", gp) }));
+			foreach (var iface in type.Interfaces.OrderBy(i => i.Interface?.FullName, StringComparer.Ordinal))
+				rows.Add(OwnerGroup("interface", StrongTypeOwner(type),
+					new[] { "interface|" + Sig(iface.Interface?.ToTypeSig()) + "|" + Attributes(iface.CustomAttributes) }));
+			foreach (var field in type.Fields.OrderBy(FieldKey, StringComparer.Ordinal))
+				rows.Add("field|" + FieldKey(field) + "|" + (uint)field.Attributes + "|" + Constant(field.Constant) + "|" + Bytes(field.InitialValue) + "|" + field.FieldOffset + "|" + MarshalRow(field.MarshalType) + "|" + Attributes(field.CustomAttributes));
+			foreach (var method in type.Methods.OrderBy(MethodKey, StringComparer.Ordinal)) {
+				var content = new List<string> {
+					"method|" + MethodKey(method) + "|" + (uint)method.Attributes + "|" + (uint)method.ImplAttributes + "|" + ImplMapRow(method.ImplMap) + "|" + Attributes(method.CustomAttributes),
+				};
+				foreach (var gp in method.GenericParameters.OrderBy(g => g.Number)) content.Add(GenericRow("mgp", gp));
+				foreach (var p in method.ParamDefs.OrderBy(p => p.Sequence))
+					content.Add("param|" + p.Sequence + "|" + p.Name + "|" + (uint)p.Attributes + "|" + Constant(p.Constant) + "|" + MarshalRow(p.MarshalType) + "|" + Attributes(p.CustomAttributes));
+				if (method.HasBody) {
+					content.Add("body|writer-normalized");
+					foreach (var local in method.Body.Variables) content.Add("local|" + local.Index + "|" + Sig(local.Type));
+					for (var instructionIndex = 0; instructionIndex < method.Body.Instructions.Count; instructionIndex++) {
+						var ins = method.Body.Instructions[instructionIndex];
+						var indexText = instructionIndex.ToString("X8", CultureInfo.InvariantCulture);
+						content.Add("il|" + indexText + "|" + ins.OpCode.Code + "|" + Operand(ins.Operand, method.Body.Instructions));
+						// T003: a sequence point is bound to the exact instruction slot so
+						// swapping two SPs inside one method cannot go unnoticed.
+						if (ins.SequencePoint != null)
+							content.Add("sp|" + indexText + "|" + ins.SequencePoint.Document?.Url + "|" + ins.SequencePoint.StartLine + "|" + ins.SequencePoint.StartColumn + "|" + ins.SequencePoint.EndLine + "|" + ins.SequencePoint.EndColumn);
+					}
+					foreach (var eh in method.Body.ExceptionHandlers)
+						content.Add("eh|" + eh.HandlerType + "|" + eh.CatchType?.FullName + "|" + InstructionIndex(method.Body.Instructions, eh.TryStart) + "|" + InstructionIndex(method.Body.Instructions, eh.TryEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerStart) + "|" + InstructionIndex(method.Body.Instructions, eh.HandlerEnd) + "|" + InstructionIndex(method.Body.Instructions, eh.FilterStart));
+				}
+				rows.Add(OwnerGroup("method", StrongMethodOwner(method), content));
+			}
+			foreach (var property in type.Properties.OrderBy(PropertyKey, StringComparer.Ordinal))
+				rows.Add("property|" + PropertyKey(property) + "|" + (uint)property.Attributes + "|" + MethodKey(property.GetMethod) + "|" + MethodKey(property.SetMethod) + "|" + Attributes(property.CustomAttributes));
+			foreach (var evt in type.Events.OrderBy(EventKey, StringComparer.Ordinal))
+				rows.Add("event|" + EventKey(evt) + "|" + (uint)evt.Attributes + "|" + MethodKey(evt.AddMethod) + "|" + MethodKey(evt.RemoveMethod) + "|" + MethodKey(evt.InvokeMethod) + "|" + Attributes(evt.CustomAttributes));
+		}
+		foreach (var resource in module.Resources.OrderBy(r => r.Name.String, StringComparer.Ordinal)) {
+			byte[] bytes = resource is EmbeddedResource embedded ? embedded.CreateReader().ToArray() : Array.Empty<byte>();
+			rows.Add("resource|" + resource.ResourceType + "|" + resource.Name + "|" + EditWire.Sha256(bytes));
+		}
+		return rows;
+	}
+
+	static string OwnerGroup(string kind, Dictionary<string, object?> owner, IReadOnlyList<string> content) =>
+		JsonSerializer.Serialize(new Dictionary<string, object?> {
+			["kind"] = kind,
+			["owner"] = owner,
+			["content"] = content.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+		}, EditWire.JsonOptions);
+
+	static Dictionary<string, object?> StrongTypeOwner(TypeDef type) {
+		var outer = type; while (outer.DeclaringType != null) outer = outer.DeclaringType;
+		var chain = new List<string>();
+		for (var current = type; current != null; current = current.DeclaringType) chain.Insert(0, current.Name?.String ?? string.Empty);
+		return new Dictionary<string, object?> { ["namespace"] = outer.Namespace?.String ?? string.Empty, ["chain"] = chain.ToArray() };
+	}
+
+	static Dictionary<string, object?> StrongMethodOwner(MethodDef method) {
+		var declaring = method.DeclaringType ?? throw StrongFailure("method without declaring type");
+		return new Dictionary<string, object?> {
+			["type"] = StrongTypeOwner(declaring),
+			["name"] = method.Name?.String ?? string.Empty,
+			["signature"] = StrongMethodSignature(method.MethodSig),
+		};
+	}
+
+	// Signature identity used only by the strong projection: custom modifiers and
+	// reference scopes are part of the identity, so legal overloads that differ
+	// only by modreq/modopt or by an assembly scope cannot collide.
+	static object? StrongMethodSignature(MethodSig? value) {
+		if (value == null) return null;
+		return new Dictionary<string, object?> {
+			["calling_convention"] = (byte)value.CallingConvention,
+			["has_this"] = value.HasThis,
+			["explicit_this"] = value.ExplicitThis,
+			["generic_parameter_count"] = value.GenParamCount,
+			["return_type"] = StrongSig(value.RetType),
+			["parameters"] = value.Params.Select(parameter => StrongSig(parameter)).ToArray(),
+			["sentinel_parameters"] = value.ParamsAfterSentinel == null ? null : value.ParamsAfterSentinel.Select(parameter => StrongSig(parameter)).ToArray(),
+		};
+	}
+
+	static object? StrongSig(TypeSig? value) {
+		switch (value) {
+		case null: return null;
+		case GenericSig generic:
+			return StrongDict(("kind", generic.IsMethodVar ? "mvar" : "var"), ("number", generic.Number));
+		case GenericInstSig instance:
+			return StrongDict(("kind", "generic_inst"), ("generic_type", StrongSig(instance.GenericType)),
+				("arguments", instance.GenericArguments.Select(argument => StrongSig(argument)).ToArray()));
+		case TypeDefOrRefSig type:
+			return StrongDict(("kind", "type_def_or_ref"), ("element_type", type.ElementType.ToString()), ("type", StrongTypeRef(type.TypeDefOrRef)));
+		case FnPtrSig function:
+			return StrongDict(("kind", "fnptr"), ("signature", function.Signature is MethodSig method ? StrongMethodSignature(method) : null));
+		case ArraySig array:
+			return StrongDict(("kind", "array"), ("next", StrongSig(array.Next)), ("rank", array.Rank),
+				("sizes", array.Sizes.Select(size => (object?)size).ToArray()), ("lower_bounds", array.LowerBounds.Select(bound => (object?)bound).ToArray()));
+		case SZArraySig szarray:
+			return StrongDict(("kind", "szarray"), ("next", StrongSig(szarray.Next)));
+		case PtrSig pointer:
+			return StrongDict(("kind", "ptr"), ("next", StrongSig(pointer.Next)));
+		case ByRefSig byref:
+			return StrongDict(("kind", "byref"), ("next", StrongSig(byref.Next)));
+		case PinnedSig pinned:
+			return StrongDict(("kind", "pinned"), ("next", StrongSig(pinned.Next)));
+		case CModReqdSig required:
+			return StrongDict(("kind", "modreq"), ("modifier", StrongTypeRef(required.Modifier)), ("next", StrongSig(required.Next)));
+		case CModOptSig optional:
+			return StrongDict(("kind", "modopt"), ("modifier", StrongTypeRef(optional.Modifier)), ("next", StrongSig(optional.Next)));
+		case SentinelSig:
+			return StrongDict(("kind", "sentinel"));
+		case ModuleSig moduleSignature:
+			return StrongDict(("kind", "module_sig"), ("index", moduleSignature.Index), ("next", StrongSig(moduleSignature.Next)));
+		default:
+			throw StrongFailure("unsupported signature element: " + value.GetType().FullName);
+		}
+	}
+
+	static object? StrongTypeRef(ITypeDefOrRef? type) {
+		switch (type) {
+		case null: return null;
+		case TypeDef definition: return StrongDict(("kind", "type_def"), ("type", StrongTypeOwner(definition)));
+		case TypeRef reference: return StrongDict(("kind", "type_ref"), ("scope", StrongScope(reference.ResolutionScope)),
+			("namespace", reference.Namespace?.String), ("name", reference.Name?.String));
+		case TypeSpec spec: return StrongDict(("kind", "type_spec"), ("signature", StrongSig(spec.TypeSig)));
+		default: throw StrongFailure("unsupported type reference kind: " + type.GetType().FullName);
+		}
+	}
+
+	static object? StrongScope(IResolutionScope? scope) {
+		switch (scope) {
+		case null: return null;
+		case AssemblyRef assembly: return StrongDict(("kind", "assembly_ref"), ("name", assembly.Name?.String),
+			("version", assembly.Version?.ToString()), ("culture", assembly.Culture?.String),
+			("public_key_or_token", assembly.PublicKeyOrToken?.Data == null ? null : EditWire.Sha256(assembly.PublicKeyOrToken.Data)),
+			("attributes", (uint)assembly.Attributes));
+		case ModuleRef moduleRef: return StrongDict(("kind", "module_ref"), ("name", moduleRef.Name?.String));
+		case TypeRef nested: return StrongTypeRef(nested);
+		case ModuleDef definition: return StrongDict(("kind", "module_def"), ("name", definition.Name?.String), ("mvid", definition.Mvid?.ToString("D")));
+		case AssemblyDef assemblyDefinition: return StrongDict(("kind", "assembly_def"), ("full_name", assemblyDefinition.FullName));
+		default: throw StrongFailure("unsupported resolution scope kind: " + scope.GetType().FullName);
+		}
+	}
+
+	static Dictionary<string, object?> StrongDict(params (string Key, object? Value)[] pairs) {
+		var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+		foreach (var pair in pairs) result[pair.Key] = pair.Value;
+		return result;
+	}
+
+	static EditDomainException StrongFailure(string reason) => new("EDIT_CAPABILITY_UNAVAILABLE",
+		new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "strong_semantic", ["reason"] = reason });
+
+	internal static bool IsWriterTombstoneType(TypeDef type) {		// dnlib 4.5.0 PreserveTokensMetadata creates dummy.{GUID} for removed TypeDef
 		// rows and dummy_ptr.{GUID} as the owner of reused Field/Method/Param/Event/
 		// Property rows.  Skip the whole writer-owned subtree during round-trip-only
 		// comparison so its synthetic member rows cannot leak into the projection.
