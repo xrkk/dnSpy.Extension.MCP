@@ -425,6 +425,20 @@ internal static partial class EditOperationRegistry {
 		return inverse;
 	}
 
+	// T001-R03: the three internal resource inverse payload reads accept an
+	// empty string because a resource may legitimately restore to zero bytes.
+	// This is an internal-history recovery channel only: the public forward
+	// grammar keeps its non-empty data_base64 boundary, and a missing field,
+	// null, a non-string or invalid base64 still fails before any mutation.
+	static byte[] InverseResourcePayload(JsonElement state, string name) {
+		if (!state.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		var text = value.GetString()!;
+		if (text.Length == 0) return Array.Empty<byte>();
+		try { return Convert.FromBase64String(text); }
+		catch (FormatException) { throw new EditDomainException("EDIT_HISTORY_CONFLICT"); }
+	}
+
 	internal static EditOperationOutcome ApplyCompiledInverse(ModuleDef module, JsonElement inverse,
 		Dictionary<string, IMDTokenProvider> objects, int index) {
 		if (inverse.TryGetProperty("legacy", out _)) return EditLegacyRenameOperation.ApplyInverse(module, inverse);
@@ -502,7 +516,7 @@ internal static partial class EditOperationRegistry {
 			var name = RequiredString(managedUpdate, "name");
 			var row = module.Resources.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal)) as EmbeddedResource
 				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
-			var restored = new EmbeddedResource(row.Name, Convert.FromBase64String(RequiredString(managedUpdate, "data_base64")), row.Attributes);
+			var restored = new EmbeddedResource(row.Name, InverseResourcePayload(managedUpdate, "data_base64"), row.Attributes);
 			var slot = module.Resources.IndexOf(row);
 			module.Resources[slot] = restored;
 			return new EditOperationOutcome { Kind = "managed_resource_update", Target = name,
@@ -510,7 +524,7 @@ internal static partial class EditOperationRegistry {
 		}
 		if (inverse.TryGetProperty("managed_resource_restore_state", out var managedRestore)) {
 			var row = new EmbeddedResource(RequiredString(managedRestore, "name"),
-				Convert.FromBase64String(RequiredString(managedRestore, "data_base64")),
+				InverseResourcePayload(managedRestore, "data_base64"),
 				(dnlib.DotNet.ManifestResourceAttributes)managedRestore.GetProperty("attributes").GetUInt32());
 			var slot = managedRestore.GetProperty("index").GetInt32();
 			if (slot < 0 || slot > module.Resources.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
@@ -532,22 +546,48 @@ internal static partial class EditOperationRegistry {
 			var type = Win32Name(win32Restore, "type_id", "type_name", "type");
 			var rowName = Win32Name(win32Restore, "name_id", "name_string", "name");
 			var langId = win32Restore.GetProperty("lang_id").GetUInt32();
-			var payload = Convert.FromBase64String(RequiredString(win32Restore, "data_base64"));
-			var row = new dnlib.W32Resources.ResourceData(new dnlib.W32Resources.ResourceName((int)langId),
-				dnlib.IO.ByteArrayDataReaderFactory.Create(payload, null), 0, (uint)payload.Length);
+			var payload = InverseResourcePayload(win32Restore, "data_base64");
+			var langName = new dnlib.W32Resources.ResourceName((int)langId);
+			// T001-R03: restore is upsert with exact rollback.  Update-undo finds
+			// the still-present row and replaces it in the same slot (keeping the
+			// current row metadata); remove-undo inserts it and the rollback
+			// removes only what this call created.  A duplicated identity is
+			// rejected before any mutation instead of silently repairing one row.
 			var typeDirectory = module.Win32Resources.Root.FindDirectory(type);
+			var nameDirectory = typeDirectory?.FindDirectory(rowName);
+			var matches = nameDirectory?.Data.Where(x => x.Name == langName).ToArray() ?? Array.Empty<dnlib.W32Resources.ResourceData>();
+			if (matches.Length > 1) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			if (matches.Length == 1) {
+				var existing = matches[0];
+				var existingSlot = nameDirectory!.Data.IndexOf(existing);
+				var replacement = new dnlib.W32Resources.ResourceData(langName,
+					Factory(payload), 0, (uint)payload.Length, existing.CodePage, existing.Reserved);
+				nameDirectory.Data[existingSlot] = replacement;
+				return new EditOperationOutcome { Kind = "win32_resource_update",
+					Undo = () => nameDirectory.Data[existingSlot] = existing };
+			}
+			var createdTypeDirectory = false;
+			var createdNameDirectory = false;
 			if (typeDirectory == null) {
 				typeDirectory = new dnlib.W32Resources.ResourceDirectoryUser(type);
 				module.Win32Resources.Root.Directories.Add(typeDirectory);
+				createdTypeDirectory = true;
 			}
-			var nameDirectory = typeDirectory.FindDirectory(rowName);
 			if (nameDirectory == null) {
 				nameDirectory = new dnlib.W32Resources.ResourceDirectoryUser(rowName);
 				typeDirectory.Directories.Add(nameDirectory);
+				createdNameDirectory = true;
 			}
+			var row = new dnlib.W32Resources.ResourceData(langName, Factory(payload), 0, (uint)payload.Length);
 			nameDirectory.Data.Add(row);
 			return new EditOperationOutcome { Kind = "win32_resource_add",
-				Undo = () => nameDirectory.Data.Remove(row) };
+				Undo = () => {
+					nameDirectory.Data.Remove(row);
+					if (createdNameDirectory && nameDirectory.Data.Count == 0 && nameDirectory.Directories.Count == 0)
+						typeDirectory.Directories.Remove(nameDirectory);
+					if (createdTypeDirectory && typeDirectory.Data.Count == 0 && typeDirectory.Directories.Count == 0)
+						module.Win32Resources.Root.Directories.Remove(typeDirectory);
+				} };
 		}
 		if (inverse.TryGetProperty("strong_name_restore_state", out var strongName)) {
 			var assembly = module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");

@@ -22,12 +22,15 @@ internal static class ResourcePayloadDedupProbe {
 		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
 		TestPackageUniqueness(fixture);
 		TestNavigationAndBranch(fixture);
+		TestWin32RestoreClosure(fixture);
 		TestEntryModeInverse(fixture);
+		TestEmptyInverseRecovery(fixture);
 		TestLegacyInlinePackage(fixture);
 		TestRejections(fixture);
 		TestReadback(fixture);
 		Console.WriteLine("PASS resource-payload-dedup A1=package-unique+envelope-union A2=persisted-inverse-navigation+branch "
-			+ "A3=legacy-inline-readable+appendable A3b=entry-mode-inverse-dedup A4=rejections-zero-side-effect A5=reload-readback+empty-payload");
+			+ "A3=legacy-inline-readable+appendable A3b=entry-mode-inverse-dedup A4=rejections-zero-side-effect A5=reload-readback+empty-payload "
+			+ "A8=win32-restore-closure+empty-inverse-recovery");
 	}
 
 	// A1: one lineage, one physical blob per distinct byte sequence, no inline
@@ -181,6 +184,7 @@ internal static class ResourcePayloadDedupProbe {
 		var legacyId = "lineage-" + Guid.NewGuid().ToString("N");
 		var legacyFamily = "family-" + Guid.NewGuid().ToString("N");
 		var legacyPackage = RewriteAsInline(store.FinalBytes(realId), legacyId, legacyFamily);
+		var legacyEntries = ReadEntries(legacyPackage);
 		{
 			var temp = store.CreateTemp(legacyId, legacyPackage);
 			store.FinalizeTemp(temp, replaceExisting: false);
@@ -202,12 +206,35 @@ internal static class ResourcePayloadDedupProbe {
 		Check(next.Manifest.Payloads.Count == 1 && next.Manifest.Payloads[0].Sha256 == EditWire.Sha256(c), "append adds only the new payload");
 		Check(next.Checkpoint(first).OperationSha256 == legacy.Checkpoint(first).OperationSha256, "legacy node bytes survive the append");
 		var entries = ReadEntries(store.FinalBytes(legacyId));
-		Check(Encoding.UTF8.GetString(entries["operations/" + first + ".json"]).Contains(Convert.ToBase64String(a), StringComparison.Ordinal),
-			"legacy inline bytes remain readable in the appended package");
+		// T001-R03: compare the raw pre-append operation entries byte-for-byte and
+		// then decode the JSON fields; a raw base64 substring test is an encoder
+		// artifact (System.Text.Json escapes '+' as \u002B).
+		foreach (var node in legacy.Manifest.Checkpoints)
+			Check(entries[node.OperationEntry].SequenceEqual(legacyEntries[node.OperationEntry]),
+				"legacy operation entry bytes unchanged: " + node.CheckpointId);
+		var firstRow = JsonSerializer.Deserialize<EditCheckpointOperations>(entries["operations/" + first + ".json"], EditWire.JsonOptions)!;
+		var firstOperation = firstRow.Operations.Single();
+		Check(firstOperation.Forward.TryGetValue("data_base64", out var firstValue)
+			&& firstValue is JsonElement { ValueKind: JsonValueKind.String } firstText
+			&& Convert.FromBase64String(firstText.GetString()!).SequenceEqual(a),
+			"legacy add keeps an inline base64 string that decodes to A");
+		var secondRow = JsonSerializer.Deserialize<EditCheckpointOperations>(entries["operations/" + head + ".json"], EditWire.JsonOptions)!;
+		var secondOperation = secondRow.Operations.Single();
+		Check(secondOperation.Forward.TryGetValue("data_base64", out var updateValue)
+			&& updateValue is JsonElement { ValueKind: JsonValueKind.String } updateText
+			&& Convert.FromBase64String(updateText.GetString()!).SequenceEqual(b),
+			"legacy update keeps an inline base64 string that decodes to B");
+		var updateState = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+			((JsonElement)secondOperation.Inverse["state"]!).GetProperty("managed_resource_update_state").GetRawText(), EditWire.JsonOptions)!;
+		Check(updateState["data_base64"] is JsonElement { ValueKind: JsonValueKind.String } inverseText
+			&& Convert.FromBase64String(inverseText.GetString()!).SequenceEqual(a),
+			"legacy update inverse keeps an inline base64 string that decodes to A");
 		var appendedRow = JsonSerializer.Deserialize<EditCheckpointOperations>(entries["operations/" + appended + ".json"], EditWire.JsonOptions)!;
 		var appendedOperation = appendedRow.Operations.Single();
 		Check(appendedOperation.PayloadSha256.SequenceEqual(new[] { EditWire.Sha256(c) })
-			&& appendedOperation.Forward.TryGetValue("data_base64", out var value) && value is JsonElement { ValueKind: JsonValueKind.Object },
+			&& appendedOperation.Forward.TryGetValue("data_base64", out var value) && value is JsonElement { ValueKind: JsonValueKind.Object } appendedRef
+			&& appendedRef.EnumerateObject().Count() == 1
+			&& appendedRef.TryGetProperty("payload_sha256", out var appendedSha) && appendedSha.GetString() == EditWire.Sha256(c),
 			"appended operation externalizes while the old nodes stay inline");
 	}
 
@@ -337,6 +364,8 @@ internal static class ResourcePayloadDedupProbe {
 		Check(emptyAssessment.Classification == "exact", "zero-byte capture replay classifies exact");
 		using var afterRemove = ModuleDefMD.Load(emptyAssessment.Bytes);
 		Check(ManagedBytes(afterRemove, "P08.Empty.Resource") == null, "the zero-byte resource removal replays");
+		replayer.PlanNavigation(lineage, empty, resources).Apply(live);
+		Check(ManagedBytes(live, "P08.Empty.Resource") is { Length: 0 }, "zero-byte resource restore through the persisted inverse");
 		Check(EditWire.MaxResourceBytes == 8 * 1024 * 1024, "resource payload limit is unchanged");
 		// Boundary evidence: the frozen public schema is minLength=1 for resource
 		// data_base64, so a forward add of a zero-byte payload is out of domain.
@@ -348,6 +377,198 @@ internal static class ResourcePayloadDedupProbe {
 		}
 		catch (ArgumentException) { emptyAddRejected = true; }
 		Check(emptyAddRejected, "zero-byte forward payload rejected by the frozen grammar");
+	}
+
+	// A8: the Win32 restore inverse is an upsert with exact rollback.  An existing
+	// identity is replaced in its slot (metadata preserved); a missing identity is
+	// inserted and the rollback removes only what the call created; a duplicated
+	// identity is rejected before any mutation.
+	static void TestWin32RestoreClosure(string fixture) {
+		var a = Repeat256();
+		var b = Reverse256();
+		var path = Path.GetFullPath(fixture);
+		using (var module = ModuleDefMD.Load(path)) {
+			AddWin32Row(module, 10, 1, 0, a, 0x1234, 0x5678);
+			AddWin32Row(module, 10, 1, 1033, new byte[] { 7, 7 }, 0x21, 0x22);
+			var typeDirectory = module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(10))!;
+			var nameDirectory = typeDirectory.FindDirectory(new dnlib.W32Resources.ResourceName(1))!;
+			var sibling = nameDirectory.Data.Single(x => x.Name == new dnlib.W32Resources.ResourceName(1033));
+			var before = EditWorkspace.WriteCanonical(module);
+			using var state = JsonDocument.Parse(Win32RestoreState(10, 1, 0, b));
+			var outcome = EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			Check(nameDirectory.Data.Count == 2, "update-undo keeps exactly one row per identity");
+			var restored = nameDirectory.Data[0];
+			Check(restored.Name == new dnlib.W32Resources.ResourceName(0), "update-undo keeps the original slot");
+			Check(restored.CreateReader().ToArray().SequenceEqual(b), "update-undo restores the captured B bytes");
+			Check(restored.CodePage == 0x1234 && restored.Reserved == 0x5678, "update-undo preserves the existing row metadata");
+			Check(ReferenceEquals(nameDirectory.Data[1], sibling), "update-undo leaves sibling rows untouched");
+			outcome.Undo();
+			Check(EditWorkspace.WriteCanonical(module).SequenceEqual(before), "update-undo rollback restores the exact tree");
+		}
+		using (var module = ModuleDefMD.Load(path)) {
+			var before = EditWorkspace.WriteCanonical(module);
+			using var state = JsonDocument.Parse(Win32RestoreState(10, 1, 0, a));
+			var outcome = EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			Check(Win32Bytes(module, 10, 1)?.SequenceEqual(a) == true, "remove-undo inserts the missing row");
+			Check(module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(10)) != null, "remove-undo creates the type directory");
+			outcome.Undo();
+			Check(module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(10)) == null,
+				"remove-undo rollback removes the directories this call created");
+			Check(EditWorkspace.WriteCanonical(module).SequenceEqual(before), "remove-undo rollback restores the exact tree");
+		}
+		using (var module = ModuleDefMD.Load(path)) {
+			AddWin32Row(module, 10, 5, 0, b);
+			var typeDirectory = module.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(10))!;
+			var before = EditWorkspace.WriteCanonical(module);
+			using var state = JsonDocument.Parse(Win32RestoreState(10, 6, 0, a));
+			var outcome = EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			Check(typeDirectory.FindDirectory(new dnlib.W32Resources.ResourceName(6)) != null, "insert creates the missing name directory");
+			outcome.Undo();
+			Check(typeDirectory.FindDirectory(new dnlib.W32Resources.ResourceName(6)) == null
+				&& typeDirectory.FindDirectory(new dnlib.W32Resources.ResourceName(5)) != null,
+				"partial-directory rollback removes only the created name directory");
+			Check(EditWorkspace.WriteCanonical(module).SequenceEqual(before), "partial-directory rollback restores the exact tree");
+		}
+		using (var module = ModuleDefMD.Load(path)) {
+			AddWin32Row(module, 10, 1, 0, a);
+			AddWin32Row(module, 10, 1, 0, b);
+			AddWin32Row(module, 10, 1, 1033, new byte[] { 9 });
+			var before = EditWorkspace.WriteCanonical(module);
+			var rejected = false;
+			try {
+				using var state = JsonDocument.Parse(Win32RestoreState(10, 1, 0, a));
+				EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			}
+			catch (EditDomainException ex) when (ex.Code == "EDIT_HISTORY_CONFLICT") { rejected = true; }
+			Check(rejected, "duplicated identity rejected before mutation");
+			Check(EditWorkspace.WriteCanonical(module).SequenceEqual(before), "duplicate rejection leaves the tree unchanged");
+		}
+		{
+			using var catalog = new EditSchemaCatalog();
+			var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "p08-win32-r03"));
+			using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+			using var live = ModuleDefMD.Load(path);
+			using var workspace = EditWorkspace.CreateForTesting(live);
+			var add = CommitOperations(history, workspace, live, "review-win32-r03-1", Win32Add(10, 77, a));
+			var remove = CommitOperations(history, workspace, live, "review-win32-r03-2", Win32Remove(10, 77));
+			var lineageId = store.ListFinalIds().Single();
+			using var replayer = new EditHistoryModule(store, catalog.CheckpointPackage);
+			var lineage = replayer.Load(lineageId);
+			var preFingerprint = EditFingerprint.Compute(live);
+			var undoAction = replayer.PlanNavigation(lineage, remove, add).Apply(live);
+			Check(Win32Bytes(live, 10, 77)?.SequenceEqual(a) == true, "navigation restore inserts the removed win32 row");
+			undoAction();
+			Check(Win32Bytes(live, 10, 77) == null, "navigation undo removes the restored row");
+			Check(live.Win32Resources.Root.FindDirectory(new dnlib.W32Resources.ResourceName(10)) == null,
+				"navigation undo removes the directory recreated by the restore");
+			Check(EditFingerprint.Compute(live) == preFingerprint, "navigation undo restores the live fingerprint");
+		}
+		Console.WriteLine("PASS win32-restore-closure replace-in-place+metadata+slot insert+dir-rollback duplicate-rejected-before-mutation navigation-dir-cleanup");
+	}
+
+	// A8: the three internal inverse shapes restore zero-byte resources from the
+	// persisted reference form and from the legacy inline empty string, while
+	// missing/null/non-string/invalid payloads fail before any mutation.
+	static void TestEmptyInverseRecovery(string fixture) {
+		using var catalog = new EditSchemaCatalog();
+		var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "p08-empty-r03"));
+		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+		using var live = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		live.Resources.Add(new EmbeddedResource("P08.Empty.Remove", Array.Empty<byte>(), ManifestResourceAttributes.Private));
+		live.Resources.Add(new EmbeddedResource("P08.Empty.Update", Array.Empty<byte>(), ManifestResourceAttributes.Private));
+		AddWin32Row(live, 10, 91, 0, Array.Empty<byte>());
+		using var workspace = EditWorkspace.CreateForTesting(live);
+		var a = Repeat256();
+		var head = CommitOperations(history, workspace, live, "review-empty-r03",
+			ManagedRemove("P08.Empty.Remove"),
+			ManagedUpdate("P08.Empty.Update", a),
+			Win32Remove(10, 91));
+		var lineageId = store.ListFinalIds().Single();
+		using var replayer = new EditHistoryModule(store, catalog.CheckpointPackage);
+		var lineage = replayer.Load(lineageId);
+		var root = lineage.Manifest.Checkpoints.Single(x => x.ParentCheckpointId == null).CheckpointId;
+		Check(lineage.Manifest.Payloads.Any(x => x.Sha256 == EditWire.Sha256(Array.Empty<byte>()) && x.Length == 0),
+			"all three internal shapes share the empty-content payload row");
+		replayer.PlanNavigation(lineage, head, root).Apply(live);
+		Check(ManagedBytes(live, "P08.Empty.Remove") is { Length: 0 }, "managed restore recovers the removed empty resource");
+		Check(ManagedBytes(live, "P08.Empty.Update") is { Length: 0 }, "managed update inverse recovers the empty old blob");
+		Check(Win32Bytes(live, 10, 91) is { Length: 0 }, "win32 restore recovers the removed empty row");
+		replayer.PlanNavigation(lineage, root, head).Apply(live);
+		Check(ManagedBytes(live, "P08.Empty.Remove") == null, "redo removes the empty resource again");
+		Check(ManagedBytes(live, "P08.Empty.Update")?.SequenceEqual(a) == true, "redo reapplies the non-empty update");
+		Check(Win32Bytes(live, 10, 91) == null, "redo removes the empty win32 row");
+		var legacyId = "lineage-" + Guid.NewGuid().ToString("N");
+		var legacyFamily = "family-" + Guid.NewGuid().ToString("N");
+		var legacyPackage = RewriteAsInline(store.FinalBytes(lineageId), legacyId, legacyFamily);
+		{
+			var temp = store.CreateTemp(legacyId, legacyPackage);
+			store.FinalizeTemp(temp, replaceExisting: false);
+		}
+		using var legacyReplayer = new EditHistoryModule(store, catalog.CheckpointPackage);
+		var legacy = legacyReplayer.Load(legacyId);
+		Check(legacy.Manifest.Payloads.Count == 0, "inline empty package has no payload rows");
+		legacyReplayer.PlanNavigation(legacy, head, root).Apply(live);
+		Check(ManagedBytes(live, "P08.Empty.Remove") is { Length: 0 }
+			&& ManagedBytes(live, "P08.Empty.Update") is { Length: 0 }
+			&& Win32Bytes(live, 10, 91) is { Length: 0 }, "inline empty inverse strings restore all three shapes");
+		using var scratch = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		scratch.Resources.Add(new EmbeddedResource("P08.Empty.Remove", Array.Empty<byte>(), ManifestResourceAttributes.Private));
+		scratch.Resources.Add(new EmbeddedResource("P08.Empty.Update", Array.Empty<byte>(), ManifestResourceAttributes.Private));
+		foreach (var (label, json) in BadInverseCases()) {
+			var before = EditWorkspace.WriteCanonical(scratch);
+			var rejected = false;
+			try {
+				using var document = JsonDocument.Parse(json);
+				EditOperationRegistry.ApplyCompiledInverse(scratch, document.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			}
+			catch (EditDomainException ex) when (ex.Code == "EDIT_HISTORY_CONFLICT") { rejected = true; }
+			Check(rejected, "bad inverse rejected before mutation: " + label);
+			Check(EditWorkspace.WriteCanonical(scratch).SequenceEqual(before), "bad inverse leaves the module unchanged: " + label);
+		}
+		var emptyAddRejected = false;
+		try {
+			using var json = JsonDocument.Parse(ManagedAdd("P08.Empty.Forward", Array.Empty<byte>()));
+			EditOperationRegistry.Apply(scratch, json.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+		}
+		catch (ArgumentException) { emptyAddRejected = true; }
+		Check(emptyAddRejected, "public empty forward payload still rejected by the frozen grammar");
+		Console.WriteLine("PASS empty-inverse-recovery managed-restore+update+win32-restore ref+inline negatives-before-mutation forward-empty-still-rejected");
+	}
+
+	static IEnumerable<(string Label, string Json)> BadInverseCases() {
+		foreach (var (shape, identity) in new[] {
+			("managed_resource_update_state", "\"name\":\"P08.Empty.Remove\""),
+			("managed_resource_restore_state", "\"name\":\"P08.Empty.Remove\",\"attributes\":2,\"index\":0"),
+			("win32_resource_restore_state", "\"type_id\":10,\"name_id\":91,\"lang_id\":0"),
+		}) {
+			yield return (shape + " missing data_base64", "{\"" + shape + "\":{" + identity + "}}");
+			yield return (shape + " null data_base64", "{\"" + shape + "\":{" + identity + ",\"data_base64\":null}}");
+			yield return (shape + " non-string data_base64", "{\"" + shape + "\":{" + identity + ",\"data_base64\":5}}");
+			yield return (shape + " invalid base64", "{\"" + shape + "\":{" + identity + ",\"data_base64\":\"!!!\"}}");
+		}
+	}
+
+	static string Win32RestoreState(int typeId, int nameId, uint langId, byte[] data) =>
+		"{\"win32_resource_restore_state\":{\"type_id\":" + typeId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+		+ ",\"name_id\":" + nameId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+		+ ",\"lang_id\":" + langId.ToString(System.Globalization.CultureInfo.InvariantCulture)
+		+ ",\"data_base64\":\"" + Convert.ToBase64String(data) + "\"}}";
+
+	static void AddWin32Row(ModuleDef module, int typeId, int nameId, uint langId, byte[] data, uint codePage = 0, uint reserved = 0) {
+		var typeName = new dnlib.W32Resources.ResourceName(typeId);
+		var nameName = new dnlib.W32Resources.ResourceName(nameId);
+		var typeDirectory = module.Win32Resources.Root.FindDirectory(typeName);
+		if (typeDirectory == null) {
+			typeDirectory = new dnlib.W32Resources.ResourceDirectoryUser(typeName);
+			module.Win32Resources.Root.Directories.Add(typeDirectory);
+		}
+		var nameDirectory = typeDirectory.FindDirectory(nameName);
+		if (nameDirectory == null) {
+			nameDirectory = new dnlib.W32Resources.ResourceDirectoryUser(nameName);
+			typeDirectory.Directories.Add(nameDirectory);
+		}
+		nameDirectory.Data.Add(new dnlib.W32Resources.ResourceData(new dnlib.W32Resources.ResourceName((int)langId),
+			dnlib.IO.ByteArrayDataReaderFactory.Create(data, null), 0, (uint)data.Length, codePage, reserved));
 	}
 
 	static string CommitOperations(EditHistoryModule history, EditWorkspace workspace, ModuleDef live, string review, params string[] operations) =>
