@@ -78,9 +78,14 @@ def begin(c):
  v=call(c,'edit_begin',dict(assembly_name='TestIL',request_id=rid()));check('begin',v.get('ok'),v);t=payload(v).get('transaction',{});return t.get('transaction_id',''),t.get('work_revision',0)
 def apply(c,tx,rev,name):return call(c,'edit_apply',dict(request_id=rid(),transaction_id=tx,expected_revision=rev,operation=dict(kind='module_update',name=name)))
 def assert_capacity(c,v,label):
+ # CHK-HANDOFF-001 methodology: read the meters from MCP first, then accept a UI
+ # snapshot only when every expected meter row is visible; a capture that lands
+ # inside the 1s rebuild window is retried within waitui's bounded poll instead
+ # of failing the match check on a partially populated tree.
  st=call(c,'edit_status',{});meters=payload(st).get('capacity',{})
  expected=[str(k)+': '+str(m['current'])+'/'+str(m['maximum']) for k,m in meters.items() if isinstance(m,dict) and 'current' in m and 'maximum' in m]
- check(label+' capacity matches all MCP meters',bool(expected) and all(x in v['items'] for x in expected),dict(expected=expected,ui=v['items']))
+ w=waitui(label+'-capacity',lambda x:bool(expected) and all(e in x['items'] for e in expected))
+ check(label+' capacity matches all MCP meters',bool(expected) and all(x in w['items'] for x in expected),dict(expected=expected,ui=w['items']))
 
 def main():
  global root,arch,r,pid,url,out,checks,calls,base,artifact_subdir
