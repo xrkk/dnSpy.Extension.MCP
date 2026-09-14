@@ -186,7 +186,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
             "driver_log": {"path": str(log_path), "sha256": sha256_file(log_path)},
             "actions": {"path": str(actions_path), "sha256": sha256_file(actions_path), "calls": call_index["n"]},
         },
-        "cleanup": f"runner closed {closed}/{len(created_clients)} MCP sessions created by the driver; ArtifactRoot edit-checkpoints/edit-output removed by the orchestrator after the run",
+        "cleanup": f"runner closed {closed}/{len(created_clients)} MCP sessions created by the driver; ArtifactRoot retained; this runner does not remove checkpoint, output or evidence files",
         "reason": "" if status == "pass" else (error_text or f"exit={exit_code} fail_lines={log_text.count('FAIL ')}"),
     }
     (evidence_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
