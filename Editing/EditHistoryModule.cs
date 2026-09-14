@@ -145,6 +145,12 @@ internal sealed class EditReplayAssessment {
 internal sealed class EditHistoryModule : IDisposable {
 	const int MaxZipEntries = 4096;
 	const int MaxLineages = 128;
+	// P08 resource payload whitelist: the only persisted slots whose bytes are
+	// externalized as a payload reference.  Everything else keeps its inline
+	// representation and is never scanned as a payload channel.
+	static readonly string[] ResourcePayloadForwardKinds = { "managed_resource_add", "managed_resource_update", "win32_resource_add", "win32_resource_update" };
+	static readonly string[] ResourcePayloadInverseShapes = { "managed_resource_update_state", "managed_resource_restore_state", "win32_resource_restore_state" };
+	const string PayloadReferenceProperty = "payload_sha256";
 	readonly Func<McpSettingsSnapshot?> snapshot;
 	readonly bool injectedStore;
 	readonly JsonElement manifestSchema;
@@ -422,7 +428,11 @@ internal sealed class EditHistoryModule : IDisposable {
 					["recorded_semantic"] = verified.Head.ResultSemanticFingerprint,
 					["replayed_image"] = stagedReplay.ImageSha256, ["recorded_image"] = verified.Head.ResultImageSha256 });
 			return new EditPreparedHistoryWrite {
-				Lineage = verified, Temp = staged, ReplacesExisting = replacesExisting,
+				// The package keeps the single payload reference, but every
+				// in-process consumer (the commit-time pregenerated inverse plan,
+				// for one) calls the operation registry, which is defined on the
+				// inline base64 form.  Decode here once; never recompile.
+				Lineage = ExpandInversePayloadReferences(verified), Temp = staged, ReplacesExisting = replacesExisting,
 				PreHeadCheckpointId = preHeadCheckpointId, PostHeadCheckpointId = postHeadCheckpointId,
 				OperationKind = operationKind,
 			};
@@ -632,7 +642,7 @@ internal sealed class EditHistoryModule : IDisposable {
 						|| stateElement.ValueKind != JsonValueKind.Object)
 						throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 					inverses.Add(new EditHistoryNavigationPlan.Step { CheckpointId = node.CheckpointId, Index = index,
-						IsInverse = true, Operation = stateElement.GetRawText() });
+						IsInverse = true, Operation = ExpandPersistedInverseState(lineage, stateElement) });
 				}
 				EditOperationRegistry.ApplyPersisted(replay, forward.RootElement, map, index);
 			}
@@ -844,6 +854,57 @@ internal sealed class EditHistoryModule : IDisposable {
 					throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 				EditLegacyRenameOperation.ValidateShape(legacy);
 			}
+			// P08: every external payload reference must sit in a whitelisted
+			// slot, the envelope declaration must be exactly the union of those
+			// references, and no unlisted position may smuggle a reference.
+			using var forward = JsonDocument.Parse(JsonSerializer.Serialize(operation.Forward, EditWire.JsonOptions));
+			ValidatePayloadReferences(operation, forward.RootElement, root, payloads);
+		}
+	}
+
+	static void ValidatePayloadReferences(EditSerializedOperation operation, JsonElement forward, JsonElement inverse, HashSet<string> payloads) {
+		var declared = operation.PayloadSha256;
+		var actual = new List<string>();
+		var allowedPaths = new HashSet<string>(StringComparer.Ordinal);
+		if (IsResourceForwardPayloadKind(operation.Kind)) allowedPaths.Add("forward/data_base64");
+		if (operation.Kind is "method_body_replace" or "method_add" && declared.Length != 0) {
+			allowedPaths.Add("forward/body");
+			if (declared.Length != 1 || !forward.TryGetProperty("body", out var body)
+				|| body.ValueKind != JsonValueKind.Object || !body.TryGetProperty(PayloadReferenceProperty, out _))
+				throw EnvelopeInvalid("envelope_payload");
+			actual.Add(PayloadReferenceHash(body));
+		}
+		if (forward.TryGetProperty("data_base64", out var forwardData)) {
+			if (forwardData.ValueKind == JsonValueKind.Object) actual.Add(PayloadReferenceHash(forwardData));
+			else if (forwardData.ValueKind != JsonValueKind.String) throw EnvelopeInvalid("envelope_payload");
+		}
+		if (inverse.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) {
+			foreach (var shape in ResourcePayloadInverseShapes) {
+				allowedPaths.Add("inverse/state/" + shape + "/data_base64");
+				if (!state.TryGetProperty(shape, out var shapeValue) || shapeValue.ValueKind != JsonValueKind.Object) continue;
+				if (!shapeValue.TryGetProperty("data_base64", out var captured)) continue;
+				if (captured.ValueKind == JsonValueKind.Object) actual.Add(PayloadReferenceHash(captured));
+				else if (captured.ValueKind != JsonValueKind.String) throw EnvelopeInvalid("envelope_payload");
+			}
+		}
+		if (actual.Any(hash => !payloads.Contains(hash))
+			|| !new HashSet<string>(actual, StringComparer.Ordinal).SetEquals(declared))
+			throw EnvelopeInvalid("envelope_payload");
+		RejectStrayPayloadReferences(forward, "forward", allowedPaths);
+		RejectStrayPayloadReferences(inverse, "inverse", allowedPaths);
+	}
+
+	static void RejectStrayPayloadReferences(JsonElement element, string path, HashSet<string> allowedPaths) {
+		if (element.ValueKind == JsonValueKind.Object) {
+			if (element.TryGetProperty(PayloadReferenceProperty, out _) && !allowedPaths.Contains(path))
+				throw EnvelopeInvalid("envelope_payload_position");
+			foreach (var property in element.EnumerateObject())
+				RejectStrayPayloadReferences(property.Value, path + "/" + property.Name, allowedPaths);
+		}
+		else if (element.ValueKind == JsonValueKind.Array) {
+			var index = 0;
+			foreach (var item in element.EnumerateArray())
+				RejectStrayPayloadReferences(item, path + "/" + (index++).ToString(System.Globalization.CultureInfo.InvariantCulture), allowedPaths);
 		}
 	}
 
@@ -889,17 +950,30 @@ internal sealed class EditHistoryModule : IDisposable {
 			var forward = JsonSerializer.Deserialize<Dictionary<string, object?>>(document.RootElement.GetRawText()) ?? new();
 			// Compile before applying so the state binds to the pre-operation graph.
 			var compiled = EditOperationRegistry.CompileInverse(module, document.RootElement, map);
-			var payloads = Array.Empty<string>();
+			var payloadList = new List<string>();
 			if (kind is "method_body_replace" or "method_add" && document.RootElement.TryGetProperty("body", out var body)) {
-				var bytes = JsonSerializer.SerializeToUtf8Bytes(body);
-				if (bytes.LongLength > EditWire.MaxResourceBytes) throw Capacity("payload_bytes", bytes.LongLength, EditWire.MaxResourceBytes);
-				var hash = EditWire.Sha256(bytes);
-				if (!lineage.PayloadBytes.ContainsKey(hash)) {
-					lineage.PayloadBytes.Add(hash, bytes);
-					lineage.Manifest.Payloads.Add(new EditPayloadEntry { Sha256 = hash, Entry = "payloads/" + hash + ".bin", Length = bytes.LongLength });
+				var hash = RegisterPayload(lineage, JsonSerializer.SerializeToUtf8Bytes(body));
+				forward["body"] = PayloadReference(hash);
+				payloadList.Add(hash);
+			}
+			// P08: the resource forward bytes become a payload reference too, so a
+			// lineage that adds/updates the same bytes twice stores them once.
+			if (IsResourceForwardPayloadKind(kind)
+				&& document.RootElement.TryGetProperty("data_base64", out var dataBase64) && dataBase64.ValueKind == JsonValueKind.String) {
+				var hash = RegisterPayload(lineage, DecodeResourcePayload(dataBase64.GetString()!));
+				forward["data_base64"] = PayloadReference(hash);
+				payloadList.Add(hash);
+			}
+			// The compiled inverse is built against the base64 registry interface
+			// and only then externalized: an entry-mode update creates no forward
+			// data_base64, but its captured full old blob is still deduplicated.
+			foreach (var shape in ResourcePayloadInverseShapes) {
+				if (compiled.TryGetValue(shape, out var stateValue) && stateValue is Dictionary<string, object?> state
+					&& state.TryGetValue("data_base64", out var captured) && captured is string capturedBase64) {
+					var hash = RegisterPayload(lineage, DecodeResourcePayload(capturedBase64));
+					state["data_base64"] = PayloadReference(hash);
+					payloadList.Add(hash);
 				}
-				forward["body"] = new Dictionary<string, object?> { ["payload_sha256"] = hash };
-				payloads = new[] { hash };
 			}
 			EditOperationRegistry.ApplyPersisted(module, document.RootElement, map, index);
 			var inverse = new Dictionary<string, object?> {
@@ -913,7 +987,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			};
 			result.Operations.Add(new EditSerializedOperation {
 				OperationId = EditWire.NewId("operation"), Kind = kind, Forward = forward,
-				Inverse = inverse, PayloadSha256 = payloads,
+				Inverse = inverse, PayloadSha256 = payloadList.Distinct(StringComparer.Ordinal).ToArray(),
 			});
 		}
 		EditStructuralValidator.Validate(module);
@@ -923,21 +997,110 @@ internal sealed class EditHistoryModule : IDisposable {
 
 	static JsonDocument ExpandedForward(EditLoadedLineage lineage, EditSerializedOperation operation) {
 		var forward = new Dictionary<string, object?>(operation.Forward, StringComparer.Ordinal);
-		if (operation.PayloadSha256.Length != 0) {
-			if (operation.Kind is not ("method_body_replace" or "method_add") || operation.PayloadSha256.Length != 1
-				|| !forward.TryGetValue("body", out var body)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-			using var reference = JsonDocument.Parse(JsonSerializer.Serialize(body));
+		if (operation.Kind is "method_body_replace" or "method_add" && operation.PayloadSha256.Length != 0) {
+			if (operation.PayloadSha256.Length != 1 || !forward.TryGetValue("body", out var body))
+				throw EnvelopeInvalid("envelope_payload");
 			var hash = operation.PayloadSha256[0];
-			if (reference.RootElement.ValueKind != JsonValueKind.Object || reference.RootElement.EnumerateObject().Count() != 1
-				|| !StringProperty(reference.RootElement, "payload_sha256", hash)
-				|| !lineage.PayloadBytes.TryGetValue(hash, out var bytes) || EditWire.Sha256(bytes) != hash)
-				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			if (PayloadHashOf(body) != hash) throw EnvelopeInvalid("envelope_payload");
+			var bytes = RequirePayloadBytes(lineage, hash);
 			using var payload = JsonDocument.Parse(bytes);
-			if (payload.RootElement.ValueKind != JsonValueKind.Object) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			if (payload.RootElement.ValueKind != JsonValueKind.Object) throw EnvelopeInvalid("envelope_payload");
 			forward["body"] = payload.RootElement.Clone();
+		}
+		// P08: a resource forward slot holds either the legacy inline base64
+		// string or the persisted payload reference; nothing else is accepted.
+		if (forward.TryGetValue("data_base64", out var dataValue) && !IsInlinePayloadString(dataValue)) {
+			var hash = PayloadHashOf(dataValue);
+			forward["data_base64"] = Convert.ToBase64String(RequirePayloadBytes(lineage, hash));
 		}
 		return JsonDocument.Parse(JsonSerializer.Serialize(forward, EditWire.JsonOptions));
 	}
+
+	static bool IsResourceForwardPayloadKind(string kind) => ResourcePayloadForwardKinds.Contains(kind, StringComparer.Ordinal);
+
+	static bool IsInlinePayloadString(object? value) =>
+		value is string || value is JsonElement { ValueKind: JsonValueKind.String };
+
+	static Dictionary<string, object?> PayloadReference(string hash) => new() { [PayloadReferenceProperty] = hash };
+
+	static string PayloadHashOf(object? value) {
+		using var document = JsonDocument.Parse(JsonSerializer.Serialize(value, EditWire.JsonOptions));
+		return PayloadReferenceHash(document.RootElement);
+	}
+
+	static string PayloadReferenceHash(JsonElement reference) {
+		if (reference.ValueKind != JsonValueKind.Object) throw EnvelopeInvalid("envelope_payload_shape");
+		var properties = reference.EnumerateObject().ToArray();
+		if (properties.Length != 1 || !string.Equals(properties[0].Name, PayloadReferenceProperty, StringComparison.Ordinal)
+			|| properties[0].Value.ValueKind != JsonValueKind.String)
+			throw EnvelopeInvalid("envelope_payload_shape");
+		return properties[0].Value.GetString()!;
+	}
+
+	static byte[] RequirePayloadBytes(EditLoadedLineage lineage, string hash) {
+		if (!lineage.PayloadBytes.TryGetValue(hash, out var bytes) || EditWire.Sha256(bytes) != hash)
+			throw EnvelopeInvalid("envelope_payload_missing");
+		return bytes;
+	}
+
+	static byte[] DecodeResourcePayload(string base64) {
+		try { return Convert.FromBase64String(base64); }
+		catch (FormatException) { throw EnvelopeInvalid("payload_base64"); }
+	}
+
+	static string RegisterPayload(EditLoadedLineage lineage, byte[] bytes) {
+		if (bytes.LongLength > EditWire.MaxResourceBytes) throw Capacity("payload_bytes", bytes.LongLength, EditWire.MaxResourceBytes);
+		var hash = EditWire.Sha256(bytes);
+		if (!lineage.PayloadBytes.ContainsKey(hash)) {
+			lineage.PayloadBytes.Add(hash, bytes);
+			lineage.Manifest.Payloads.Add(new EditPayloadEntry { Sha256 = hash, Entry = "payloads/" + hash + ".bin", Length = bytes.LongLength });
+		}
+		return hash;
+	}
+
+	/// <summary>The persisted inverse state references at most one payload per
+	/// whitelisted resource shape; return a registry-ready copy with the base64
+	/// restored and every declared reference checked against the payload pool.</summary>
+	static string ExpandPersistedInverseState(EditLoadedLineage lineage, JsonElement state) {
+		var stateObject = JsonSerializer.Deserialize<Dictionary<string, object?>>(state.GetRawText(), EditWire.JsonOptions)
+			?? throw EnvelopeInvalid("envelope_state_missing");
+		foreach (var shape in ResourcePayloadInverseShapes) {
+			if (!stateObject.TryGetValue(shape, out var shapeValue) || shapeValue is not JsonElement shapeElement
+				|| shapeElement.ValueKind != JsonValueKind.Object) continue;
+			if (!shapeElement.TryGetProperty("data_base64", out var captured) || captured.ValueKind == JsonValueKind.String) continue;
+			var restored = JsonSerializer.Deserialize<Dictionary<string, object?>>(shapeElement.GetRawText(), EditWire.JsonOptions)
+				?? throw EnvelopeInvalid("envelope_state_missing");
+			restored["data_base64"] = Convert.ToBase64String(RequirePayloadBytes(lineage, PayloadReferenceHash(captured)));
+			stateObject[shape] = restored;
+		}
+		return JsonSerializer.Serialize(stateObject, EditWire.JsonOptions);
+	}
+
+	static bool HasExternalizedInversePayload(JsonElement state) {
+		if (state.ValueKind != JsonValueKind.Object) return false;
+		foreach (var shape in ResourcePayloadInverseShapes) {
+			if (state.TryGetProperty(shape, out var shapeValue) && shapeValue.ValueKind == JsonValueKind.Object
+				&& shapeValue.TryGetProperty("data_base64", out var captured) && captured.ValueKind == JsonValueKind.Object) return true;
+		}
+		return false;
+	}
+
+	/// <summary>In-process consumers call the registry with the base64 form; the
+	/// package itself keeps the deduplicated references untouched.</summary>
+	static EditLoadedLineage ExpandInversePayloadReferences(EditLoadedLineage lineage) {
+		foreach (var entry in lineage.Operations.Values) {
+			foreach (var operation in entry.Operations) {
+				if (!operation.Inverse.TryGetValue("state", out var stateValue) || stateValue is not JsonElement state
+					|| !HasExternalizedInversePayload(state)) continue;
+				using var expanded = JsonDocument.Parse(ExpandPersistedInverseState(lineage, state));
+				operation.Inverse["state"] = expanded.RootElement.Clone();
+			}
+		}
+		return lineage;
+	}
+
+	static EditDomainException EnvelopeInvalid(string kind) =>
+		new("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = kind });
 
 	static EditCheckpointOperations EmptyOperations(string checkpointId) => new() { CheckpointId = checkpointId };
 	static EditCheckpointNode Node(string id, string? parent, string kind, byte[] operationBytes, string image, string semantic,
