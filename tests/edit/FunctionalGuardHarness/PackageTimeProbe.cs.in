@@ -1,0 +1,32 @@
+using System;
+using System.IO;
+using System.IO.Compression;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using dnSpy.Extension.MCP.Editing;
+@@MODELS@@
+internal static class PackageTimeProbe {
+@@BUILD@@
+@@WRITE@@
+@@CLONE@@
+ public static void Run(){
+  var lineage=new EditLoadedLineage();
+  var first=new DateTimeOffset(2026,9,11,1,2,4,TimeSpan.Zero);var second=first.AddHours(2);
+  foreach(var id in new[]{"first","second"}){
+   lineage.Manifest.Checkpoints.Add(new EditCheckpointNode{CheckpointId=id,OperationEntry="operations/"+id+".json",Sequence=lineage.Manifest.Checkpoints.Count});
+   lineage.Operations[id]=new EditCheckpointOperations{CheckpointId=id};
+   lineage.CheckpointTimes[id]=id=="first"?first:second;
+  }
+  foreach(var current in new[]{lineage,Clone(lineage)}){
+   using var zip=new ZipArchive(new MemoryStream(BuildPackage(current)),ZipArchiveMode.Read);
+   foreach(var row in current.Manifest.Checkpoints){
+    var actual=zip.GetEntry(row.OperationEntry)!.LastWriteTime;
+    Program.Check(actual.DateTime==current.CheckpointTimes[row.CheckpointId].DateTime,"package rewrite preserves historical entry time "+row.CheckpointId);
+    using var data=zip.GetEntry(row.OperationEntry)!.Open();using var json=JsonDocument.Parse(data);
+    Program.Check(json.RootElement.GetProperty("checkpoint_id").GetString()==row.CheckpointId,"timestamp remains bound to operation entry "+row.CheckpointId);
+   }
+  }
+ }
+}

@@ -1,0 +1,42 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+internal sealed class ExplorerProbe {
+ sealed class Cache { public void Clear(){} public void RemovePrefix(string s){} public void RemoveSession(string s){} }
+ sealed class Workspace { public List<string> NormalizedOperations=new(); public List<Dictionary<string,object?>> Diffs=new(),Risks=new(); public bool Disposed; public void Dispose(){Disposed=true;} }
+ sealed class Transport { public string ToWireName()=>"streamable_http"; }
+ sealed class Transaction { public string Id="tx",Owner="owner"; public uint Revision=1; public Transport Transport=new(); public bool OwnerClosed,OperationBusy,CommitStarted,CancelRequested,LiveLinearized; public Workspace Workspace=new(); public Cache ApplyCache=new(),ReviewCache=new(); }
+ public sealed class McpTransportSessionClosed { public string SessionId="owner",Reason="closed"; }
+ sealed class Node { public string CheckpointId="",ParentCheckpointId="",Kind="commit",ResultImageSha256="abcd",ResultSemanticFingerprint="efgh"; public int Sequence; public Dictionary<string,object?> Review=new(); public string[] ConfirmedRisks=Array.Empty<string>(); }
+ sealed class Manifest { public string LineageId="lineage",HeadCheckpointId="second"; public List<Node> Checkpoints=new(); }
+ sealed class Lineage { public Manifest Manifest=new(); public Dictionary<string,DateTimeOffset> CheckpointTimes=new(); }
+ sealed class History { public Lineage Value=new(); public IEnumerable<Lineage> LoadAll(){yield return Value;} public string? LineageDirectory(string id)=>null; }
+ readonly object gate=new(); Transaction? active; string state="active"; History history=new();
+ HashSet<string> pendingBeginSessions=new(),closedPendingBeginSessions=new(); Cache beginCache=new(),commandCache=new(),terminalCache=new();
+ bool barrier=true; void ReleaseBarrierLocked(string owner){barrier=false;} void ExpireLocked(){}
+ static List<string> txValidationSummary(Transaction tx)=>new();
+@@ROWS@@
+@@SNAPSHOT@@
+@@CANCEL@@
+@@CLOSE@@
+@@END@@
+ public static void Run(){
+  foreach(var commit in new[]{false,true}) foreach(var linearized in new[]{false,true}){
+   var p=new ExplorerProbe(); var tx=new Transaction();p.active=tx;
+   var staleClick=p.BuildExplorerSnapshot();
+   Program.Check(staleClick.CanCancel,"capture enabled button before operation begins");
+   tx.OperationBusy=true;tx.CommitStarted=commit;tx.LiveLinearized=linearized;p.OnSessionClosed(new McpTransportSessionClosed());
+   var result=p.CancelTransactionFromUi();
+   Program.Check(result=="busy" && ReferenceEquals(p.active,tx) && !tx.Workspace.Disposed && !p.BuildExplorerSnapshot().CanCancel,"owner-close busy cancel preserves operation commit="+commit+" linearized="+linearized);
+   tx.OperationBusy=false;tx.CommitStarted=false;
+   Program.Check(p.CancelTransactionFromUi()=="canceled" && p.active==null && !p.barrier && tx.Workspace.Disposed,"safe cancellation after operation unwind");
+  }
+  foreach(var closed in new[]{false,true}){var p=new ExplorerProbe{active=new Transaction{OwnerClosed=closed}};Program.Check(p.BuildExplorerSnapshot().CanCancel && p.CancelTransactionFromUi()=="canceled","idle-operation cancel ownerClosed="+closed);}
+  var h=new ExplorerProbe();var first=DateTimeOffset.Parse("2026-09-11T01:02:04Z");var second=first.AddHours(2);
+  h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="first",Sequence=1});h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="second",ParentCheckpointId="first",Sequence=2});
+  h.history.Value.CheckpointTimes["first"]=first;h.history.Value.CheckpointTimes["second"]=second;
+  var rows=h.BuildExplorerSnapshot().Checkpoints;
+  Program.Check(rows.Count==2 && rows[0].TimeUtc=="2026-09-11T01:02:04Z" && rows[1].TimeUtc=="2026-09-11T03:02:04Z" && rows.All(r=>r.Detail.Contains("time_utc "+r.TimeUtc)),"two persisted checkpoint times bind snapshot and detail");
+ }
+}

@@ -226,16 +226,10 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				// CHK-002: expose every checkpoint row (parent, kind, image and
 				// semantic prefixes) so the explorer tree can show the branching
 				// history even when no transaction is active.
-				var lineageDirectory = history.LineageDirectory(lineage.Manifest.LineageId);
 				foreach (var checkpoint in lineage.Manifest.Checkpoints) {
-					var time = string.Empty;
-					try {
-						var operationsFile = lineageDirectory == null ? null
-							: System.IO.Path.Combine(lineageDirectory, "operations", checkpoint.CheckpointId + ".json");
-						if (operationsFile != null && System.IO.File.Exists(operationsFile))
-							time = System.IO.File.GetLastWriteTimeUtc(operationsFile).ToString("yyyy-MM-ddTHH:mm:ssZ");
-					}
-					catch { /* best effort only */ }
+					var time = lineage.CheckpointTimes.TryGetValue(checkpoint.CheckpointId, out var recordedTime)
+						? recordedTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture)
+						: string.Empty;
 					var reviewId = checkpoint.Review.TryGetValue("review_id", out var rid) ? rid as string ?? string.Empty : string.Empty;
 					var reviewRevision = checkpoint.Review.TryGetValue("review_revision", out var rev) && rev is System.Text.Json.JsonElement revElement && revElement.ValueKind == System.Text.Json.JsonValueKind.Number ? revElement.GetUInt32() : 0u;
 					var structural = checkpoint.Review.TryGetValue("structural", out var st) ? st as string ?? string.Empty : string.Empty;
@@ -283,14 +277,14 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	/// the dnSpy UI.  Cancelable whenever the transaction is active and neither
 	/// an edit operation nor a commit is executing; the owner session may still
 	/// be connected (its next edit call then reports EDIT_TRANSACTION_NOT_FOUND).
-	/// Orphaned transactions (owner closed) remain cancelable unconditionally.
+	/// Owner closure does not bypass the operation/commit guard.
 	/// This entry reuses the rollback release path — there is no second
 	/// commit/recovery implementation.</summary>
 	public string CancelTransactionFromUi() {
 		lock (gate) {
 			var tx = active;
 			if (tx == null) return "no_transaction";
-			if (!tx.OwnerClosed && (tx.OperationBusy || tx.CommitStarted)) return "busy";
+			if (tx.OperationBusy || tx.CommitStarted) return "busy";
 			tx.CancelRequested = true;
 			ReleaseBarrierLocked(tx.Owner);
 			EndLocked(tx, "ui_cancel");
@@ -298,9 +292,6 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 	}
 	public JsonElement FaultGolden => catalog.Faults;
-	/// <summary>CHK-014: read-only lineage directory probe for the explorer's
-	/// best-effort checkpoint time facts.</summary>
-	public string? StoreLineageDirectory(string lineageId) => history.LineageDirectory(lineageId);
 
 	static List<string> txValidationSummary(Transaction tx) {
 		var rows = new List<string>();

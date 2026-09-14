@@ -27,7 +27,28 @@ with tempfile.TemporaryDirectory(prefix='dnspy-functional-guard-') as temporary:
     expiry_start = source.index('\tvoid ExpireLocked()')
     expiry_end = source.index('\n\tvoid EndLocked', expiry_start)
     (dest / 'ExpiryProbe.cs').write_text((harness / 'ExpiryProbe.cs.in').read_text().replace('@@METHOD@@', source[expiry_start:expiry_end]))
-    includes = [harness / 'ResourceProbe.cs', root / 'Editing/EditResourceCodec.cs', root / 'Editing/EditSourceFileIdentity.cs', root / 'Debugger/FileIdentityModel.cs', harness / 'Program.cs', harness / 'Support.cs', root / 'Editing/EditFingerprint.cs', dest / 'GateProbe.cs', dest / 'ExpiryProbe.cs']
+    def body(signature, text=source):
+        begin = text.index(signature)
+        opening = text.index('{', begin)
+        depth = 1
+        end = opening + 1
+        while depth:
+            depth += (text[end] == '{') - (text[end] == '}')
+            end += 1
+        return text[begin:end]
+    explorer = (harness / 'ExplorerProbe.cs.in').read_text()
+    rows = source[source.index('\tpublic sealed class ExplorerCheckpointRow'):source.index('\n\tpublic ExplorerSnapshot BuildExplorerSnapshot')]
+    explorer = explorer.replace('@@ROWS@@', rows)
+    for name, signature in [('SNAPSHOT', 'public ExplorerSnapshot BuildExplorerSnapshot()'), ('CANCEL', 'public string CancelTransactionFromUi()'), ('CLOSE', 'public void OnSessionClosed('), ('END', 'void EndLocked(')]:
+        explorer = explorer.replace('@@' + name + '@@', body(signature))
+    (dest / 'ExplorerProbe.cs').write_text(explorer)
+    history_source = (root / 'Editing/EditHistoryModule.cs').read_text()
+    models = history_source[history_source.index('internal sealed class EditSourceIdentity'):history_source.index('internal sealed class EditHistoryBinding')]
+    package = (harness / 'PackageTimeProbe.cs.in').read_text().replace('@@MODELS@@', models)
+    for name, signature in [('BUILD', 'static byte[] BuildPackage('), ('WRITE', 'static void WriteEntry('), ('CLONE', 'static EditLoadedLineage Clone(')]:
+        package = package.replace('@@' + name + '@@', body(signature, history_source))
+    (dest / 'PackageTimeProbe.cs').write_text(package)
+    includes = [dest / 'PackageTimeProbe.cs', dest / 'ExplorerProbe.cs', harness / 'ResourceProbe.cs', root / 'Editing/EditResourceCodec.cs', root / 'Editing/EditSourceFileIdentity.cs', root / 'Debugger/FileIdentityModel.cs', harness / 'Program.cs', harness / 'Support.cs', root / 'Editing/EditFingerprint.cs', dest / 'GateProbe.cs', dest / 'ExpiryProbe.cs']
     project = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>'
     project += ''.join('<Compile Include="' + escape(str(path)) + '" />' for path in includes)
     project += '<Reference Include="dnlib"><HintPath>' + escape(str(dnlib)) + '</HintPath></Reference></ItemGroup></Project>'

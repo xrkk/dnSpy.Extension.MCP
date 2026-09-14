@@ -45,5 +45,5 @@ internal static class Program {
   var before=EditFingerprint.ComputeExternalGuard(module);named.Argument=new CAArgument(module.CorLibTypes.String,"after");
   Check(before!=EditFingerprint.ComputeExternalGuard(module),"declared security argument drift");
  }
- static int Main(){AttributeProbe(true);AttributeProbe(false);GateProbe.Run();ExpiryProbe.Run();SecurityProbe();AttributeArrayProbe();ResourceProbe.Run();return failures==0?0:1;}
+ static int Main(){AttributeProbe(true);AttributeProbe(false);GateProbe.Run();ExpiryProbe.Run();ExplorerProbe.Run();PackageTimeProbe.Run();SecurityProbe();AttributeArrayProbe();ResourceProbe.Run();return failures==0?0:1;}
 }

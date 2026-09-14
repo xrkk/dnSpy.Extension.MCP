@@ -84,6 +84,8 @@ internal sealed class EditCheckpointOperations {
 }
 
 internal sealed class EditLoadedLineage {
+	// ZIP entry timestamps are display facts, not part of the checkpoint identity.
+	public Dictionary<string, DateTimeOffset> CheckpointTimes { get; init; } = new(StringComparer.Ordinal);
 	public EditCheckpointManifest Manifest { get; init; } = new();
 	public byte[] BaselineBytes { get; init; } = Array.Empty<byte>();
 	public Dictionary<string, EditCheckpointOperations> Operations { get; init; } = new(StringComparer.Ordinal);
@@ -479,13 +481,6 @@ internal sealed class EditHistoryModule : IDisposable {
 		return ParsePackage(Store.ReadFinal(lineageId));
 	}
 
-	/// <summary>CHK-014: read-only directory probe used by the explorer for
-	/// best-effort checkpoint time facts; never mutates the store.</summary>
-	public string? LineageDirectory(string lineageId) {
-		try { return Store.LineageDirectoryUtcProbe(lineageId); }
-		catch { return null; }
-	}
-
 	public IReadOnlyList<EditLoadedLineage> LoadAll() {
 		var objects = Store.EnumerateCheckpointObjects();
 		var finals = objects.Where(x => x.IsTrustedFinal).ToArray();
@@ -662,6 +657,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	EditLoadedLineage ParsePackage(byte[] package) {
 		if (package.LongLength > ArtifactStoreLedger.MaxFileBytes) throw Capacity("package_file_bytes", package.LongLength, ArtifactStoreLedger.MaxFileBytes);
 		var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+		var entryTimes = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
 		try {
 			using var stream = new MemoryStream(package, writable: false);
 			using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
@@ -684,6 +680,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				}
 				if (source.ReadByte() != -1) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 				entries.Add(entry.FullName, bytes);
+				entryTimes.Add(entry.FullName, entry.LastWriteTime);
 			}
 		}
 		catch (InvalidDataException) { throw new EditDomainException("EDIT_CHECKPOINT_INVALID"); }
@@ -730,6 +727,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			operations.Add(node.CheckpointId, op);
 		}
 		return new EditLoadedLineage { Manifest = manifest, BaselineBytes = entries["baseline/module.bin"], Operations = operations,
+			CheckpointTimes = manifest.Checkpoints.ToDictionary(x => x.CheckpointId, x => entryTimes[x.OperationEntry], StringComparer.Ordinal),
 			PayloadBytes = manifest.Payloads.ToDictionary(x => x.Sha256, x => entries[x.Entry], StringComparer.Ordinal),
 			PackageBytes = package, PackageSha256 = EditWire.Sha256(package) };
 	}
@@ -740,14 +738,17 @@ internal sealed class EditHistoryModule : IDisposable {
 			WriteEntry(zip, "manifest.json", JsonSerializer.SerializeToUtf8Bytes(lineage.Manifest, EditWire.JsonOptions));
 			WriteEntry(zip, "baseline/module.bin", lineage.BaselineBytes);
 			foreach (var row in lineage.Manifest.Checkpoints.OrderBy(x => x.Sequence))
-				WriteEntry(zip, row.OperationEntry, JsonSerializer.SerializeToUtf8Bytes(lineage.Operations[row.CheckpointId], EditWire.JsonOptions));
+				WriteEntry(zip, row.OperationEntry, JsonSerializer.SerializeToUtf8Bytes(lineage.Operations[row.CheckpointId], EditWire.JsonOptions),
+					lineage.CheckpointTimes.TryGetValue(row.CheckpointId, out var recordedTime) ? recordedTime : (DateTimeOffset?)null);
 			foreach (var row in lineage.Manifest.Payloads) WriteEntry(zip, row.Entry, lineage.PayloadBytes[row.Sha256]);
 		}
 		return stream.ToArray();
 	}
 
-	static void WriteEntry(ZipArchive zip, string name, byte[] bytes) {
-		var entry = zip.CreateEntry(name, CompressionLevel.Optimal); using var output = entry.Open(); output.Write(bytes, 0, bytes.Length);
+	static void WriteEntry(ZipArchive zip, string name, byte[] bytes, DateTimeOffset? recordedTime = null) {
+		var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
+		if (recordedTime.HasValue) entry.LastWriteTime = recordedTime.Value;
+		using var output = entry.Open(); output.Write(bytes, 0, bytes.Length);
 	}
 
 	static void ValidateManifest(EditCheckpointManifest manifest, IReadOnlyDictionary<string, byte[]> entries) {
@@ -983,6 +984,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		var operations = source.Operations.ToDictionary(x => x.Key,
 			x => JsonSerializer.Deserialize<EditCheckpointOperations>(JsonSerializer.Serialize(x.Value, EditWire.JsonOptions), EditWire.JsonOptions)!, StringComparer.Ordinal);
 		return new EditLoadedLineage { Manifest = manifest, BaselineBytes = (byte[])source.BaselineBytes.Clone(), Operations = operations,
+			CheckpointTimes = new Dictionary<string, DateTimeOffset>(source.CheckpointTimes, StringComparer.Ordinal),
 			PayloadBytes = source.PayloadBytes.ToDictionary(x => x.Key, x => (byte[])x.Value.Clone(), StringComparer.Ordinal),
 			PackageBytes = source.PackageBytes, PackageSha256 = source.PackageSha256 };
 	}
