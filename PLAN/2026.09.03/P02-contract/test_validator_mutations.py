@@ -29,6 +29,13 @@ def u8_truncation(doc):
     field=next(x for x in rows if x["properties"]["kind"]["const"]=="field_add")
     u8=next(x for x in field["properties"]["constant"]["oneOf"] if x["properties"]["kind"]["const"]=="u8")
     u8["properties"]["value"]["maximum"]=2**63-1
+def delete_interface_add(doc):
+    doc["operations"][:]=[row for row in doc["operations"] if row["kind"]!="interface_add"]
+def swap_new_operation_order(doc):
+    rows=doc["operations"]
+    interface=next(i for i,row in enumerate(rows) if row["kind"]=="interface_add")
+    reference=next(i for i,row in enumerate(rows) if row["kind"]=="reference_add")
+    rows[interface],rows[reference]=rows[reference],rows[interface]
 def main():
     cases=[
       ("old-review-slot","capacity-golden.json","capacity:review-slot",lambda d:d["limits"].update({"review_slot_bytes":2*1024*1024})),
@@ -51,6 +58,8 @@ def main():
       ("rollback-slot-one","capacity-golden.json","capacity:rollback-slot",lambda d:d["limits"].update({"rollback_slot_bytes":1})),
       ("fault-trace-terminal-weakened","fault-golden.json","fault-contract:machine-suite",lambda d:d["suite_contract"]["per_call"]["actual_mutation_trace"]["when_injected"].update({"terminal_equals":None})),
       ("fault-runner-artifact-reuse","fault-golden.json","fault-contract:machine-suite",lambda d:d["suite_contract"]["runner"].update({"artifact_count":1,"artifact_unique_by":"none"})),
+      ("interface-add-deleted","operation-lowering.json","operation-set:order",delete_interface_add),
+      ("new-operation-order-swapped","operation-lowering.json","operation-set:order",swap_new_operation_order),
     ]
     results=[]
     with tempfile.TemporaryDirectory(prefix="p02-validator-mutations-") as td:
