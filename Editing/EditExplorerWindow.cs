@@ -139,7 +139,7 @@ internal sealed class EditExplorerWindow : Window {
 			}
 			tree.Items.Add(transactionNode);
 		}
-		var capacityNode = new TreeViewItem { Header = "capacity (current/maximum)", IsExpanded = false };
+		var capacityNode = new TreeViewItem { Header = "capacity (current/maximum)", IsExpanded = true };
 		foreach (var meter in snapshot.CapacityRows)
 			capacityNode.Items.Add(new TreeViewItem { Header = meter });
 		tree.Items.Add(capacityNode);
