@@ -81,6 +81,8 @@ internal static partial class EditOperationRegistry {
 			"win32_resource_update" => Win32ResourceUpdate(module, operation),
 			"win32_resource_remove" => Win32ResourceRemove(module, operation),
 			"strong_name_remove" => StrongNameRemove(module, operation),
+			"interface_add" => InterfaceAdd(module, operation, objects, operationIndex),
+			"reference_add" => ReferenceAdd(module, operation, objects, operationIndex),
 			_ => throw new EditDomainException("EDIT_VALIDATION_FAILED"),
 		};
 	}
@@ -97,10 +99,13 @@ internal static partial class EditOperationRegistry {
 
 	static EditOperationOutcome TypeAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map, int index) {
 		var name = RequiredString(op, "name"); var ns = OptionalString(op, "namespace") ?? string.Empty;
+		// T004: interface rows are exclusively interface_add's domain — an
+		// `interfaces` field here must fail loudly, never silently drop rows.
+		if (op.TryGetProperty("interfaces", out _)) Invalid("interfaces", "type_add does not carry interface rows; add them with interface_add");
 		var attrs = (TypeAttributes)OptionalAttributes(op, "attributes", "type", 0);
 		var parser = new EditTypeSigParser(module);
 		ITypeDefOrRef? baseType = null;
-		if (op.TryGetProperty("base_type", out var b) && b.ValueKind != JsonValueKind.Null) baseType = parser.Parse(b.GetString()!, false).ToTypeDefOrRef();
+		if (op.TryGetProperty("base_type", out var b) && b.ValueKind != JsonValueKind.Null) baseType = ResolveTypeEntry(b, module, map).ToTypeDefOrRef();
 		var type = new TypeDefUser(ns, name, baseType) { Attributes = attrs };
 		var id = ObjectId(index, 0); var owner = OptionalRef<TypeDef>(module, op, "owner_type", map);
 		if (owner == null) module.Types.Add(type); else owner.NestedTypes.Add(type);
@@ -120,7 +125,7 @@ internal static partial class EditOperationRegistry {
 			if ((((ulong)updated ^ (ulong)t.Attributes) & 0x18ul) != 0) Invalid("attributes", "layout bits are owned by the layout field");
 			t.Attributes = updated;
 		}
-		if (op.TryGetProperty("base_type", out var b)) t.BaseType = b.ValueKind == JsonValueKind.Null ? null : new EditTypeSigParser(module, t.GenericParameters.Count).Parse(b.GetString()!).ToTypeDefOrRef();
+		if (op.TryGetProperty("base_type", out var b)) t.BaseType = b.ValueKind == JsonValueKind.Null ? null : ResolveTypeEntry(b, module, map, t.GenericParameters.Count).ToTypeDefOrRef();
 		Dictionary<string, object?>? layoutRisk = null;
 		if (op.TryGetProperty("layout", out var lay)) { SetLayout(t, lay); layoutRisk = Risk("layout_change", t); }
 		var risks = layoutRisk == null ? Array.Empty<Dictionary<string, object?>>() : new[] { layoutRisk };
@@ -172,10 +177,10 @@ internal static partial class EditOperationRegistry {
 	static EditOperationOutcome MethodAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map, int index) {
 		var owner = Ref<TypeDef>(module, op.GetProperty("owner_type"), map); var signature = op.GetProperty("signature");
 		var gps = signature.GetProperty("generic_parameters").EnumerateArray().ToList();
-		var parser = new EditTypeSigParser(module, owner.GenericParameters.Count, gps.Count);
-		var ret = parser.Parse(RequiredString(signature, "return_type"), true);
+		var ownerArity = owner.GenericParameters.Count;
+		var ret = ResolveTypeEntry(signature.GetProperty("return_type"), module, map, ownerArity, gps.Count, allowVoid: true);
 		var parameters = signature.GetProperty("parameters").EnumerateArray().ToList();
-		var paramTypes = parameters.Select(p => parser.Parse(RequiredString(p, "type"))).ToArray();
+		var paramTypes = parameters.Select(p => ResolveTypeEntry(p.GetProperty("type"), module, map, ownerArity, gps.Count)).ToArray();
 		var sig = MethodSig.CreateStatic(ret, paramTypes); if (RequiredBool(signature, "has_this")) sig.HasThis = true;
 		sig.GenParamCount = (uint)gps.Count;
 		if (gps.Count != 0) sig.CallingConvention |= CallingConvention.Generic;
@@ -184,6 +189,8 @@ internal static partial class EditOperationRegistry {
 			(MethodAttributes)OptionalAttributes(op, "attributes", "method", 128));
 		for (int i = 0; i < gps.Count; i++) {
 			var gp = new GenericParamUser((ushort)i, (GenericParamAttributes)OptionalAttributes(gps[i], "attributes", "generic", 0), RequiredString(gps[i], "name"));
+			if (gps[i].TryGetProperty("constraints", out var constraints) && constraints.ValueKind == JsonValueKind.Array)
+				SetGenericConstraints(module, gp, constraints, map);
 			method.GenericParameters.Add(gp);
 		}
 		for (int i = 0; i < parameters.Count; i++) {
@@ -191,14 +198,16 @@ internal static partial class EditOperationRegistry {
 			if (p.TryGetProperty("name", out var pn) && pn.ValueKind != JsonValueKind.Null)
 				method.ParamDefs.Add(new ParamDefUser(pn.GetString(), (ushort)(i + 1), (ParamAttributes)OptionalAttributes(p, "attributes", "parameter", 0)));
 		}
+		PdbDocument[] documentsBefore = CapturePdbDocuments(module);
 		if (op.TryGetProperty("body", out var body)) method.Body = BuildBody(module, method, body, map);
+		var addedDocuments = module.PdbState == null ? Array.Empty<PdbDocument>() : module.PdbState.Documents.Where(d => !documentsBefore.Contains(d)).ToArray();
 		ApplyMethodDebugInfo(module, op, method, map);
-		if (op.TryGetProperty("overrides", out var addOverrides)) ApplyOverrides(module, method, addOverrides);
+		if (op.TryGetProperty("overrides", out var addOverrides)) ApplyOverrides(module, method, addOverrides, map);
 		Dictionary<string, object?>? pinvokeAddRisk = null;
 		if (op.TryGetProperty("pinvoke", out var addPInvoke)) { ApplyPInvoke(module, method, addPInvoke); pinvokeAddRisk = Risk("external_code_entry", method); }
 		owner.Methods.Add(method); var id = ObjectId(index, 0); map[id] = method;
 		var methodAddRisks = pinvokeAddRisk == null ? Array.Empty<Dictionary<string, object?>>() : new[] { pinvokeAddRisk! };
-		return Outcome("method_add", id, method, null, method.FullName, () => { owner.Methods.Remove(method); map.Remove(id); }, methodAddRisks);
+		return Outcome("method_add", id, method, null, method.FullName, () => { owner.Methods.Remove(method); ReleasePdbDocuments(module, addedDocuments); map.Remove(id); }, methodAddRisks);
 	}
 
 	static EditOperationOutcome MethodUpdate(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
@@ -207,11 +216,11 @@ internal static partial class EditOperationRegistry {
 		if (op.TryGetProperty("name",out var n)) m.Name=NonEmpty(n,"name");
 		if (op.TryGetProperty("attributes",out var a)) m.Attributes=(MethodAttributes)Attributes(a,"method");
 		if (op.TryGetProperty("impl_attributes",out var ia)) m.ImplAttributes=(MethodImplAttributes)Attributes(ia,"method_impl");
-		if (op.TryGetProperty("return_type",out var r)) m.MethodSig.RetType=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(r.GetString()!,true);
+		if (op.TryGetProperty("return_type",out var r)) m.MethodSig.RetType=ResolveTypeEntry(r,module,map,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count,allowVoid:true);
 		if (op.TryGetProperty("has_this",out var h)) m.MethodSig.HasThis=h.GetBoolean();
 		var risks = new List<Dictionary<string, object?>>(); if (m.ReturnType != oldRet || m.MethodSig.HasThis != oldHas) risks.Add(Risk("signature_change",m)); if (m.Attributes != oldAttrs) risks.Add(Risk("visibility_change",m));
 		var oldOverrides=m.Overrides.ToArray();var overrideRisk=false;
-		if(op.TryGetProperty("overrides",out var ov)){ApplyOverrides(module,m,ov);overrideRisk=true;}
+		if(op.TryGetProperty("overrides",out var ov)){ApplyOverrides(module,m,ov,map);overrideRisk=true;}
 		var oldImplMap=m.ImplMap;var oldPInvokeBit=m.IsPinvokeImpl;
 		var pinvokeRisk=false;
 		if(op.TryGetProperty("pinvoke",out var pi)){ApplyPInvoke(module,m,pi);pinvokeRisk=true;}
@@ -232,7 +241,7 @@ internal static partial class EditOperationRegistry {
 	}
 
 	static EditOperationOutcome FieldAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map, int index) {
-		var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map); var type=new EditTypeSigParser(module,owner.GenericParameters.Count).Parse(RequiredString(op,"field_type"));
+		var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map); var type=ResolveTypeEntry(op.GetProperty("field_type"),module,map,owner.GenericParameters.Count);
 		var f=new FieldDefUser(RequiredString(op,"name"),new FieldSig(type),(FieldAttributes)OptionalAttributes(op,"attributes","field",0));
 		if(op.TryGetProperty("constant",out var c)) f.Constant=ParseConstant(c,type);
 		Dictionary<string,object?>? dataRisk=null;
@@ -272,7 +281,7 @@ internal static partial class EditOperationRegistry {
 
 	static EditOperationOutcome FieldUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){
 		var f=Ref<FieldDef>(module,op.GetProperty("target"),map);var before=f.FullName;var oldName=f.Name;var oldType=f.FieldType;var oldAttrs=f.Attributes;var oldConst=f.Constant;var oldOffset=f.FieldOffset;var oldInitial=f.InitialValue;
-		if(op.TryGetProperty("name",out var n))f.Name=NonEmpty(n,"name"); if(op.TryGetProperty("field_type",out var t))f.FieldSig.Type=new EditTypeSigParser(module,f.DeclaringType.GenericParameters.Count).Parse(t.GetString()!);
+		if(op.TryGetProperty("name",out var n))f.Name=NonEmpty(n,"name"); if(op.TryGetProperty("field_type",out var t))f.FieldSig.Type=ResolveTypeEntry(t,module,map,f.DeclaringType.GenericParameters.Count);
 		if(op.TryGetProperty("attributes",out var a))f.Attributes=(FieldAttributes)Attributes(a,"field"); if(op.TryGetProperty("clear_constant",out var clear)&&clear.GetBoolean())f.Constant=null; else if(op.TryGetProperty("constant",out var c))f.Constant=ParseConstant(c,f.FieldType);
 		if(op.TryGetProperty("field_offset",out var fo)){
 			var owner=f.DeclaringType;
@@ -289,15 +298,15 @@ internal static partial class EditOperationRegistry {
 	static EditOperationOutcome FieldRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var f=Ref<FieldDef>(module,op.GetProperty("target"),map);if(HasReference(module,f)||HasAttachment(module,f))Invalid("operation.target","Field is referenced or attached");var owner=f.DeclaringType;var i=owner.Fields.IndexOf(f);var before=f.FullName;owner.Fields.Remove(f);RemoveMapValue(map,f);var tombstoneRow=f.MDToken.Rid!=0;dnlib.DotNet.TypeDef? tombstone=null;if(tombstoneRow){tombstone=EditDeletedRowsTombstone.GetOrCreate(module);EditDeletedRowsTombstone.AcquireRow(module,f);}var risks=IsPublic(f.Attributes)?new[]{Risk("public_delete",f)}:Array.Empty<Dictionary<string,object?>>();return Outcome("field_remove",null,f,before,null,()=>{if(tombstoneRow)EditDeletedRowsTombstone.ReleaseRow(f,tombstone!);owner.Fields.Insert(i,f);},risks);}
 
 	static EditOperationOutcome PropertyAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){
-		var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map);var parser=new EditTypeSigParser(module,owner.GenericParameters.Count);var ret=parser.Parse(RequiredString(op,"property_type"));var indices=op.TryGetProperty("index_parameter_types",out var arr)?arr.EnumerateArray().Select(x=>parser.Parse(x.GetString()!)).ToArray():Array.Empty<TypeSig>();
+		var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map);var ret=ResolveTypeEntry(op.GetProperty("property_type"),module,map,owner.GenericParameters.Count);var indices=op.TryGetProperty("index_parameter_types",out var arr)?arr.EnumerateArray().Select(x=>ResolveTypeEntry(x,module,map,owner.GenericParameters.Count)).ToArray():Array.Empty<TypeSig>();
 		var p=new PropertyDefUser(RequiredString(op,"name"),new PropertySig(true,ret,indices),(PropertyAttributes)OptionalAttributes(op,"attributes","property",0));
 		if(op.TryGetProperty("getter",out var g)){if(g.ValueKind==JsonValueKind.Null)Invalid("getter","Explicit null is invalid for property_add");p.GetMethod=Ref<MethodDef>(module,g,map);}if(op.TryGetProperty("setter",out var s)){if(s.ValueKind==JsonValueKind.Null)Invalid("setter","Explicit null is invalid for property_add");p.SetMethod=Ref<MethodDef>(module,s,map);}
 		owner.Properties.Add(p);var id=ObjectId(index,0);map[id]=p;return Outcome("property_add",id,p,null,p.FullName,()=>{owner.Properties.Remove(p);map.Remove(id);});}
-	static EditOperationOutcome PropertyUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var p=Ref<PropertyDef>(module,op.GetProperty("target"),map);var before=p.FullName;var oldName=p.Name;var oldSig=p.PropertySig;var oldAttrs=p.Attributes;var oldGet=p.GetMethod;var oldSet=p.SetMethod;var parser=new EditTypeSigParser(module,p.DeclaringType.GenericParameters.Count);if(op.TryGetProperty("name",out var n))p.Name=NonEmpty(n,"name");var ret=op.TryGetProperty("property_type",out var pt)?parser.Parse(pt.GetString()!):p.PropertySig.RetType;var args=op.TryGetProperty("index_parameter_types",out var a)?a.EnumerateArray().Select(x=>parser.Parse(x.GetString()!)).ToArray():p.PropertySig.Params.ToArray();if(op.TryGetProperty("property_type",out _)||op.TryGetProperty("index_parameter_types",out _))p.PropertySig=new PropertySig(p.PropertySig.HasThis,ret,args);if(op.TryGetProperty("attributes",out var at))p.Attributes=(PropertyAttributes)Attributes(at,"property");if(op.TryGetProperty("getter",out var g))p.GetMethod=g.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,g,map);if(op.TryGetProperty("setter",out var s))p.SetMethod=s.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,s,map);var risks=new List<Dictionary<string,object?>>();if(p.PropertySig!=oldSig||p.GetMethod!=oldGet||p.SetMethod!=oldSet)risks.Add(Risk("signature_change",p));return Outcome("property_update",null,p,before,p.FullName,()=>{p.Name=oldName;p.PropertySig=oldSig;p.Attributes=oldAttrs;p.GetMethod=oldGet;p.SetMethod=oldSet;},risks);}
+	static EditOperationOutcome PropertyUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var p=Ref<PropertyDef>(module,op.GetProperty("target"),map);var before=p.FullName;var oldName=p.Name;var oldSig=p.PropertySig;var oldAttrs=p.Attributes;var oldGet=p.GetMethod;var oldSet=p.SetMethod;if(op.TryGetProperty("name",out var n))p.Name=NonEmpty(n,"name");var ret=op.TryGetProperty("property_type",out var pt)?ResolveTypeEntry(pt,module,map,p.DeclaringType.GenericParameters.Count):p.PropertySig.RetType;var args=op.TryGetProperty("index_parameter_types",out var a)?a.EnumerateArray().Select(x=>ResolveTypeEntry(x,module,map,p.DeclaringType.GenericParameters.Count)).ToArray():p.PropertySig.Params.ToArray();if(op.TryGetProperty("property_type",out _)||op.TryGetProperty("index_parameter_types",out _))p.PropertySig=new PropertySig(p.PropertySig.HasThis,ret,args);if(op.TryGetProperty("attributes",out var at))p.Attributes=(PropertyAttributes)Attributes(at,"property");if(op.TryGetProperty("getter",out var g))p.GetMethod=g.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,g,map);if(op.TryGetProperty("setter",out var s))p.SetMethod=s.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,s,map);var risks=new List<Dictionary<string,object?>>();if(p.PropertySig!=oldSig||p.GetMethod!=oldGet||p.SetMethod!=oldSet)risks.Add(Risk("signature_change",p));return Outcome("property_update",null,p,before,p.FullName,()=>{p.Name=oldName;p.PropertySig=oldSig;p.Attributes=oldAttrs;p.GetMethod=oldGet;p.SetMethod=oldSet;},risks);}
 	static EditOperationOutcome PropertyRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var p=Ref<PropertyDef>(module,op.GetProperty("target"),map);if(HasAttachment(module,p))Invalid("operation.target","Property is referenced or attached");var owner=p.DeclaringType;var i=owner.Properties.IndexOf(p);var before=p.FullName;_=p.GetMethod;_=p.SetMethod;_=p.OtherMethods.Count;var slots=AccessorSlots(PropertyAccessors(p),owner);owner.Properties.Remove(p);RemoveMapValue(map,p);var tombstoneRow=p.MDToken.Rid!=0;dnlib.DotNet.TypeDef? tombstone=null;if(tombstoneRow){tombstone=EditDeletedRowsTombstone.GetOrCreate(module);EditDeletedRowsTombstone.AcquireRow(module,p);DetachAccessors(owner,tombstone,slots);}return Outcome("property_remove",null,p,before,null,()=>{if(tombstoneRow){ReattachAccessors(owner,tombstone!,slots);EditDeletedRowsTombstone.ReleaseRow(p,tombstone!);}owner.Properties.Insert(i,p);},new[]{Risk("public_delete",p)});}
 
-	static EditOperationOutcome EventAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map);var et=new EditTypeSigParser(module,owner.GenericParameters.Count).Parse(RequiredString(op,"event_type")).ToTypeDefOrRef()!;var e=new EventDefUser(RequiredString(op,"name"),et,(EventAttributes)OptionalAttributes(op,"attributes","event",0)){AddMethod=Ref<MethodDef>(module,op.GetProperty("add_method"),map),RemoveMethod=Ref<MethodDef>(module,op.GetProperty("remove_method"),map)};if(op.TryGetProperty("raise_method",out var r)){if(r.ValueKind==JsonValueKind.Null)Invalid("raise_method","Explicit null is invalid for event_add");e.InvokeMethod=Ref<MethodDef>(module,r,map);}owner.Events.Add(e);var id=ObjectId(index,0);map[id]=e;return Outcome("event_add",id,e,null,e.FullName,()=>{owner.Events.Remove(e);map.Remove(id);});}
-	static EditOperationOutcome EventUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var e=Ref<EventDef>(module,op.GetProperty("target"),map);var before=e.FullName;var oldName=e.Name;var oldType=e.EventType;var oldAttrs=e.Attributes;var oldAdd=e.AddMethod;var oldRemove=e.RemoveMethod;var oldRaise=e.InvokeMethod;if(op.TryGetProperty("name",out var n))e.Name=NonEmpty(n,"name");if(op.TryGetProperty("event_type",out var t))e.EventType=new EditTypeSigParser(module,e.DeclaringType.GenericParameters.Count).Parse(t.GetString()!).ToTypeDefOrRef()!;if(op.TryGetProperty("attributes",out var a))e.Attributes=(EventAttributes)Attributes(a,"event");if(op.TryGetProperty("add_method",out var add))e.AddMethod=add.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,add,map);if(op.TryGetProperty("remove_method",out var rem))e.RemoveMethod=rem.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,rem,map);if(op.TryGetProperty("raise_method",out var raise))e.InvokeMethod=raise.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,raise,map);return Outcome("event_update",null,e,before,e.FullName,()=>{e.Name=oldName;e.EventType=oldType;e.Attributes=oldAttrs;e.AddMethod=oldAdd;e.RemoveMethod=oldRemove;e.InvokeMethod=oldRaise;},new[]{Risk("signature_change",e)});}
+	static EditOperationOutcome EventAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<TypeDef>(module,op.GetProperty("owner_type"),map);var et=ResolveTypeEntry(op.GetProperty("event_type"),module,map,owner.GenericParameters.Count).ToTypeDefOrRef()!;var e=new EventDefUser(RequiredString(op,"name"),et,(EventAttributes)OptionalAttributes(op,"attributes","event",0)){AddMethod=Ref<MethodDef>(module,op.GetProperty("add_method"),map),RemoveMethod=Ref<MethodDef>(module,op.GetProperty("remove_method"),map)};if(op.TryGetProperty("raise_method",out var r)){if(r.ValueKind==JsonValueKind.Null)Invalid("raise_method","Explicit null is invalid for event_add");e.InvokeMethod=Ref<MethodDef>(module,r,map);}owner.Events.Add(e);var id=ObjectId(index,0);map[id]=e;return Outcome("event_add",id,e,null,e.FullName,()=>{owner.Events.Remove(e);map.Remove(id);});}
+	static EditOperationOutcome EventUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var e=Ref<EventDef>(module,op.GetProperty("target"),map);var before=e.FullName;var oldName=e.Name;var oldType=e.EventType;var oldAttrs=e.Attributes;var oldAdd=e.AddMethod;var oldRemove=e.RemoveMethod;var oldRaise=e.InvokeMethod;if(op.TryGetProperty("name",out var n))e.Name=NonEmpty(n,"name");if(op.TryGetProperty("event_type",out var t))e.EventType=ResolveTypeEntry(t,module,map,e.DeclaringType.GenericParameters.Count).ToTypeDefOrRef()!;if(op.TryGetProperty("attributes",out var a))e.Attributes=(EventAttributes)Attributes(a,"event");if(op.TryGetProperty("add_method",out var add))e.AddMethod=add.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,add,map);if(op.TryGetProperty("remove_method",out var rem))e.RemoveMethod=rem.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,rem,map);if(op.TryGetProperty("raise_method",out var raise))e.InvokeMethod=raise.ValueKind==JsonValueKind.Null?null:Ref<MethodDef>(module,raise,map);return Outcome("event_update",null,e,before,e.FullName,()=>{e.Name=oldName;e.EventType=oldType;e.Attributes=oldAttrs;e.AddMethod=oldAdd;e.RemoveMethod=oldRemove;e.InvokeMethod=oldRaise;},new[]{Risk("signature_change",e)});}
 	static EditOperationOutcome EventRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var e=Ref<EventDef>(module,op.GetProperty("target"),map);if(HasAttachment(module,e))Invalid("operation.target","Event is referenced or attached");var owner=e.DeclaringType;var i=owner.Events.IndexOf(e);var before=e.FullName;_=e.AddMethod;_=e.RemoveMethod;_=e.InvokeMethod;_=e.OtherMethods.Count;
 // dnlib resolves event/property accessors only within the owning type, so the
 // accessor methods must travel with the row into the tombstone or the deleted
@@ -310,24 +319,27 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	static void ReattachAccessors(TypeDef owner,TypeDef tombstone,(dnlib.DotNet.MethodDef? method,int index)[] slots){foreach(var (method,index) in slots.OrderBy(s=>s.index))if(method!=null){tombstone.Methods.Remove(method);owner.Methods.Insert(index,method);}}
 
 
-	static EditOperationOutcome ParameterAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var m=Ref<MethodDef>(module,op.GetProperty("owner_method"),map);var requested=(int)RequiredUInt(op,"parameter_index");if(requested!=m.MethodSig.Params.Count)Invalid("parameter_index","Only tail parameter insertion is supported");var type=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count).Parse(RequiredString(op,"parameter_type"));m.MethodSig.Params.Add(type);var p=new ParamDefUser(RequiredString(op,"name"),(ushort)(requested+1),(ParamAttributes)OptionalAttributes(op,"attributes","parameter",0));if(op.TryGetProperty("marshal",out var addMarshal))p.MarshalType=EditMarshalCodec.Parse(module,addMarshal,new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count));m.ParamDefs.Add(p);var id=ObjectId(index,0);map[id]=p;return Outcome("parameter_add",id,p,null,p.Name,()=>{m.ParamDefs.Remove(p);m.MethodSig.Params.RemoveAt(m.MethodSig.Params.Count-1);map.Remove(id);},new[]{Risk("signature_change",m)});}
-	static EditOperationOutcome ParameterUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;var p=target.param;var index=target.index;var oldName=p?.Name;var oldAttrs=p?.Attributes??0;var oldType=m.MethodSig.Params[index];var materialized=p==null;if(p==null){p=new ParamDefUser(null,(ushort)(index+1));m.ParamDefs.Add(p);}if(op.TryGetProperty("name",out var n))p.Name=n.ValueKind==JsonValueKind.Null?null:NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))p.Attributes=(ParamAttributes)Attributes(a,"parameter");var oldMarshal=p.MarshalType;var paramParser=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count);if(op.TryGetProperty("parameter_type",out var t))m.MethodSig.Params[index]=paramParser.Parse(t.GetString()!);if(op.TryGetProperty("marshal",out var ma))p.MarshalType=EditMarshalCodec.Parse(module,ma,paramParser);var current=p;return Outcome("parameter_update",null,current,"parameter:"+index,current.Name,()=>{m.MethodSig.Params[index]=oldType;current.MarshalType=oldMarshal;if(materialized)m.ParamDefs.Remove(current);else{current.Name=oldName;current.Attributes=oldAttrs;}},new[]{Risk("signature_change",m)});}
+	static EditOperationOutcome ParameterAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var m=Ref<MethodDef>(module,op.GetProperty("owner_method"),map);var requested=(int)RequiredUInt(op,"parameter_index");if(requested!=m.MethodSig.Params.Count)Invalid("parameter_index","Only tail parameter insertion is supported");var type=ResolveTypeEntry(op.GetProperty("parameter_type"),module,map,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count);m.MethodSig.Params.Add(type);var p=new ParamDefUser(RequiredString(op,"name"),(ushort)(requested+1),(ParamAttributes)OptionalAttributes(op,"attributes","parameter",0));if(op.TryGetProperty("marshal",out var addMarshal))p.MarshalType=EditMarshalCodec.Parse(module,addMarshal,new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count));m.ParamDefs.Add(p);var id=ObjectId(index,0);map[id]=p;return Outcome("parameter_add",id,p,null,p.Name,()=>{m.ParamDefs.Remove(p);m.MethodSig.Params.RemoveAt(m.MethodSig.Params.Count-1);map.Remove(id);},new[]{Risk("signature_change",m)});}
+	static EditOperationOutcome ParameterUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;var p=target.param;var index=target.index;var oldName=p?.Name;var oldAttrs=p?.Attributes??0;var oldType=m.MethodSig.Params[index];var materialized=p==null;if(p==null){p=new ParamDefUser(null,(ushort)(index+1));m.ParamDefs.Add(p);}if(op.TryGetProperty("name",out var n))p.Name=n.ValueKind==JsonValueKind.Null?null:NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))p.Attributes=(ParamAttributes)Attributes(a,"parameter");var oldMarshal=p.MarshalType;var paramParser=new EditTypeSigParser(module,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count);if(op.TryGetProperty("parameter_type",out var t))m.MethodSig.Params[index]=ResolveTypeEntry(t,module,map,m.DeclaringType.GenericParameters.Count,m.GenericParameters.Count);if(op.TryGetProperty("marshal",out var ma))p.MarshalType=EditMarshalCodec.Parse(module,ma,paramParser);var current=p;return Outcome("parameter_update",null,current,"parameter:"+index,current.Name,()=>{m.MethodSig.Params[index]=oldType;current.MarshalType=oldMarshal;if(materialized)m.ParamDefs.Remove(current);else{current.Name=oldName;current.Attributes=oldAttrs;}},new[]{Risk("signature_change",m)});}
 	static EditOperationOutcome ParameterRemove(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){RequireRemoveMode(op);var target=ResolveParameter(module,op.GetProperty("parameter_target"),map);var m=target.method;if(target.index!=m.MethodSig.Params.Count-1)Invalid("parameter_target","Only tail parameter removal is supported");var p=target.param;if(HasParameterReference(m,target.index)||(p!=null&&HasAttachment(module,p)))Invalid("parameter_target","Parameter is referenced or attached");var oldType=m.MethodSig.Params[target.index];var wasInParamDefs=p!=null;dnlib.DotNet.MethodDef? host=null;if(p!=null){m.ParamDefs.Remove(p);RemoveMapValue(map,p);if(p.MDToken.Rid!=0)host=EditDeletedRowsTombstone.AcquireParamHost(module,p);}m.MethodSig.Params.RemoveAt(target.index);IMDTokenProvider removedTarget=p is null ? m : p;return Outcome("parameter_remove",null,removedTarget,"parameter:"+target.index,null,()=>{m.MethodSig.Params.Add(oldType);if(wasInParamDefs){host!.ParamDefs.Remove(p!);m.ParamDefs.Add(p!);EditDeletedRowsTombstone.ReleaseParamHost(host!);}},new[]{Risk("signature_change",m)});}
 
-	static EditOperationOutcome GenericAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<IMDTokenProvider>(module,op.GetProperty("owner"),map);IList<GenericParam> collection;if(owner is TypeDef t)collection=t.GenericParameters;else if(owner is MethodDef m)collection=m.GenericParameters;else throw Validation("owner","Generic owner must be type or method");var oldArity=owner is MethodDef oldMethod ? oldMethod.MethodSig.GenParamCount : 0;var oldCallingConvention=owner is MethodDef oldConventionMethod?oldConventionMethod.MethodSig.CallingConvention:0;var requested=(int)RequiredUInt(op,"generic_index");if(requested!=collection.Count)Invalid("generic_index","Only tail generic parameter insertion is supported");var gp=new GenericParamUser((ushort)requested,(GenericParamAttributes)OptionalAttributes(op,"attributes","generic",0),RequiredString(op,"name"));if(op.TryGetProperty("constraints",out var addCons))SetGenericConstraints(module,gp,addCons);collection.Add(gp);if(owner is MethodDef method){method.MethodSig.GenParamCount=(uint)collection.Count;method.MethodSig.CallingConvention|=CallingConvention.Generic;}var id=ObjectId(index,0);map[id]=gp;return Outcome("generic_parameter_add",id,gp,null,gp.Name,()=>{collection.Remove(gp);if(owner is MethodDef mm){mm.MethodSig.GenParamCount=oldArity;mm.MethodSig.CallingConvention=oldCallingConvention;}map.Remove(id);},new[]{Risk("signature_change",owner)});}
-	static EditOperationOutcome GenericUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);var oldName=gp.Name;var oldFlags=gp.Flags;var oldConstraints=gp.GenericParamConstraints.ToArray();if(op.TryGetProperty("name",out var n))gp.Name=NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))gp.Flags=(GenericParamAttributes)Attributes(a,"generic");if(op.TryGetProperty("constraints",out var cons))SetGenericConstraints(module,gp,cons);return Outcome("generic_parameter_update",null,gp,oldName,gp.Name,()=>{gp.Name=oldName;gp.Flags=oldFlags;gp.GenericParamConstraints.Clear();foreach(var c in oldConstraints)gp.GenericParamConstraints.Add(c);},new[]{Risk("signature_change",gp)});}
+	static EditOperationOutcome GenericAdd(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map,int index){var owner=Ref<IMDTokenProvider>(module,op.GetProperty("owner"),map);IList<GenericParam> collection;if(owner is TypeDef t)collection=t.GenericParameters;else if(owner is MethodDef m)collection=m.GenericParameters;else throw Validation("owner","Generic owner must be type or method");var oldArity=owner is MethodDef oldMethod ? oldMethod.MethodSig.GenParamCount : 0;var oldCallingConvention=owner is MethodDef oldConventionMethod?oldConventionMethod.MethodSig.CallingConvention:0;var requested=(int)RequiredUInt(op,"generic_index");if(requested!=collection.Count)Invalid("generic_index","Only tail generic parameter insertion is supported");var gp=new GenericParamUser((ushort)requested,(GenericParamAttributes)OptionalAttributes(op,"attributes","generic",0),RequiredString(op,"name"));if(op.TryGetProperty("constraints",out var addCons))SetGenericConstraints(module,gp,addCons,map);collection.Add(gp);if(owner is MethodDef method){method.MethodSig.GenParamCount=(uint)collection.Count;method.MethodSig.CallingConvention|=CallingConvention.Generic;}var id=ObjectId(index,0);map[id]=gp;return Outcome("generic_parameter_add",id,gp,null,gp.Name,()=>{collection.Remove(gp);if(owner is MethodDef mm){mm.MethodSig.GenParamCount=oldArity;mm.MethodSig.CallingConvention=oldCallingConvention;}map.Remove(id);},new[]{Risk("signature_change",owner)});}
+	static EditOperationOutcome GenericUpdate(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var gp=Ref<GenericParam>(module,op.GetProperty("target"),map);var oldName=gp.Name;var oldFlags=gp.Flags;var oldConstraints=gp.GenericParamConstraints.ToArray();if(op.TryGetProperty("name",out var n))gp.Name=NonEmpty(n,"name");if(op.TryGetProperty("attributes",out var a))gp.Flags=(GenericParamAttributes)Attributes(a,"generic");if(op.TryGetProperty("constraints",out var cons))SetGenericConstraints(module,gp,cons,map);return Outcome("generic_parameter_update",null,gp,oldName,gp.Name,()=>{gp.Name=oldName;gp.Flags=oldFlags;gp.GenericParamConstraints.Clear();foreach(var c in oldConstraints)gp.GenericParamConstraints.Add(c);},new[]{Risk("signature_change",gp)});}
 
 	// P04 IMP-002: whole-list generic constraint replacement. Self constraints
 	// and constraint cycles are structural errors (dnlib GenericParamConstraints).
-	static void SetGenericConstraints(ModuleDef module, GenericParam gp, JsonElement cons) {
+	static void SetGenericConstraints(ModuleDef module, GenericParam gp, JsonElement cons, Dictionary<string, IMDTokenProvider>? map = null) {
 		if (cons.ValueKind == JsonValueKind.Null) { gp.GenericParamConstraints.Clear(); return; }
-		if (cons.ValueKind != JsonValueKind.Array) Invalid("constraints", "constraints must be an array of type signature strings");
+		if (cons.ValueKind != JsonValueKind.Array) Invalid("constraints", "constraints must be an array of type entries");
 		var ownerType = gp.Owner as TypeDef; var ownerMethod = gp.Owner as MethodDef;
-		var parser = new EditTypeSigParser(module, ownerType?.GenericParameters.Count ?? 0, ownerMethod?.GenericParameters.Count ?? 0);
 		var parsed = new List<ITypeDefOrRef>();
 		foreach (var row in cons.EnumerateArray()) {
-			if (row.ValueKind != JsonValueKind.String) Invalid("constraints", "constraint entries must be type signature strings");
-			var signature = parser.Parse(row.GetString()!);
+			// T004: v2 rows carry structured {kind:type,type:...} nodes so a
+			// constraint can reference rows created earlier in the sequence;
+			// plain strings keep the frozen v1 grammar.
+			TypeSig signature = row.ValueKind == JsonValueKind.String
+				? new EditTypeSigParser(module, ownerType?.GenericParameters.Count ?? 0, ownerMethod?.GenericParameters.Count ?? 0).Parse(row.GetString()!)
+				: ResolveTypeEntry(row, module, map ?? new Dictionary<string, IMDTokenProvider>(), ownerType?.GenericParameters.Count ?? 0, ownerMethod?.GenericParameters.Count ?? 0);
 			// A bare generic variable target becomes a TypeSpec row (ECMA-335
 			// II 23.2.5: constraints to another generic parameter); its own
 			// parameter is what the self/cycle checks reason about.
@@ -725,7 +737,7 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		return new Version(numbers[0], numbers[1], numbers[2], numbers[3]);
 	}
 
-	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var oldDebug=m.CustomDebugInfos.ToArray();ApplyMethodDebugInfo(module,op,m,map);var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>{m.Body=old;m.CustomDebugInfos.Clear();foreach(var row in oldDebug)m.CustomDebugInfos.Add(row);},risks);}
+	static EditOperationOutcome BodyReplace(ModuleDef module,JsonElement op,Dictionary<string,IMDTokenProvider> map){var m=Ref<MethodDef>(module,op.GetProperty("target"),map);var old=m.Body;var documentsBefore=CapturePdbDocuments(module);var body=BuildBody(module,m,op.GetProperty("body"),map);m.Body=body;var addedDocuments=module.PdbState==null?Array.Empty<PdbDocument>():module.PdbState.Documents.Where(d=>!documentsBefore.Contains(d)).ToArray();var oldDebug=m.CustomDebugInfos.ToArray();ApplyMethodDebugInfo(module,op,m,map);var risks=new List<Dictionary<string,object?>> { Risk("body_change",m) };if((old?.ExceptionHandlers.Count??0)!=body.ExceptionHandlers.Count)risks.Add(Risk("eh_change",m));return Outcome("method_body_replace",null,m,old==null?null:"body", "body",()=>{m.Body=old;m.CustomDebugInfos.Clear();foreach(var row in oldDebug)m.CustomDebugInfos.Add(row);ReleasePdbDocuments(module,addedDocuments);},risks);}
 
 	// P06: optional method custom debug info rows (reference grammar: tokens of
 	// module rows or object IDs of operations in the same sequence).  Absent =
@@ -748,10 +760,10 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		var result=new CilBody(RequiredBool(body,"init_locals"),new List<Instruction>(),new List<ExceptionHandler>(),new List<Local>()){
 			MaxStack=(ushort)RequiredUInt(body,"max_stack"), KeepOldMaxStack=true, HeaderSize=12,
 		};
-		var parser=new EditTypeSigParser(module,method.DeclaringType?.GenericParameters.Count??0,method.GenericParameters.Count);foreach(var l in locals)result.Variables.Add(new Local(parser.Parse(RequiredString(l,"type")),l.GetProperty("name").ValueKind==JsonValueKind.Null?null:l.GetProperty("name").GetString()));
+		var parserOwnerType=method.DeclaringType?.GenericParameters.Count??0;var parserOwnerMethod=method.GenericParameters.Count;foreach(var l in locals)result.Variables.Add(new Local(ResolveTypeEntry(l.GetProperty("type"),module,map,parserOwnerType,parserOwnerMethod),l.GetProperty("name").ValueKind==JsonValueKind.Null?null:l.GetProperty("name").GetString()));
 		foreach(var row in insRows){var name=RequiredString(row,"opcode");if(!OpCodesByName.TryGetValue(name,out var code))Invalid("body.instructions.opcode","Unknown opcode: "+name);result.Instructions.Add(new Instruction(code));}
 		for(int i=0;i<insRows.Count;i++){var row=insRows[i];if(row.TryGetProperty("operand",out var operand)&&operand.ValueKind!=JsonValueKind.Null)result.Instructions[i].Operand=CanonicalOperand(result.Instructions[i],ParseOperand(module,method,result,operand,map));ValidateOperand(result.Instructions[i]);}
-		foreach(var row in ehs){var kind=RequiredString(row,"kind");var eh=new ExceptionHandler(kind switch{"catch"=>ExceptionHandlerType.Catch,"finally"=>ExceptionHandlerType.Finally,"fault"=>ExceptionHandlerType.Fault,"filter"=>ExceptionHandlerType.Filter,_=>throw Validation("exception_handler","Unknown handler kind")}){TryStart=IndexOrEnd(result,row,"try_start"),TryEnd=IndexOrEnd(result,row,"try_end"),HandlerStart=IndexOrEnd(result,row,"handler_start"),HandlerEnd=IndexOrEnd(result,row,"handler_end"),FilterStart=NullableIndex(result,row,"filter_start")};if(row.GetProperty("catch_type").ValueKind!=JsonValueKind.Null)eh.CatchType=parser.Parse(row.GetProperty("catch_type").GetString()!).ToTypeDefOrRef();result.ExceptionHandlers.Add(eh);}
+		foreach(var row in ehs){var kind=RequiredString(row,"kind");var eh=new ExceptionHandler(kind switch{"catch"=>ExceptionHandlerType.Catch,"finally"=>ExceptionHandlerType.Finally,"fault"=>ExceptionHandlerType.Fault,"filter"=>ExceptionHandlerType.Filter,_=>throw Validation("exception_handler","Unknown handler kind")}){TryStart=IndexOrEnd(result,row,"try_start"),TryEnd=IndexOrEnd(result,row,"try_end"),HandlerStart=IndexOrEnd(result,row,"handler_start"),HandlerEnd=IndexOrEnd(result,row,"handler_end"),FilterStart=NullableIndex(result,row,"filter_start")};if(row.GetProperty("catch_type").ValueKind!=JsonValueKind.Null)eh.CatchType=ResolveTypeEntry(row.GetProperty("catch_type"),module,map,parserOwnerType,parserOwnerMethod).ToTypeDefOrRef();result.ExceptionHandlers.Add(eh);}
 		// P06: optional symbol payload — sequence points and the root PDB scope
 		// travel with the body so private copy, live module and checkpoint replay
 		// materialize identical symbol state.  Absent fields keep the frozen P02
@@ -789,11 +801,32 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 
 	static Constant ParseConstant(JsonElement c,TypeSig target){var kind=RequiredString(c,"kind");var v=c.GetProperty("value");object? value=kind switch{"null"=>null,"boolean"=>v.GetBoolean(),"char"=>(v.GetString()??throw Validation("constant","char missing"))[0],"string"=>v.GetString(),"r4"=>(float)v.GetDouble(),"r8"=>v.GetDouble(),"i1"=>(sbyte)v.GetInt64(),"u1"=>(byte)v.GetUInt64(),"i2"=>(short)v.GetInt64(),"u2"=>(ushort)v.GetUInt64(),"i4"=>(int)v.GetInt64(),"u4"=>(uint)v.GetUInt64(),"i8"=>v.GetInt64(),"u8"=>v.GetUInt64(),_=>throw Validation("constant.kind","Unknown constant kind")};if(value==null&&!IsReferenceType(target))Invalid("constant","null constant requires a reference type");return new ConstantUser(value);}
 
-	static T Ref<T>(ModuleDef module,JsonElement reference,Dictionary<string,IMDTokenProvider> map) where T:class,IMDTokenProvider{IMDTokenProvider value;if(reference.TryGetProperty("token",out var token))value=ResolveToken(module,ParseToken(token.GetString()!));else if(reference.TryGetProperty("object_id",out var id)&&map.TryGetValue(id.GetString()!,out var found))value=found;else throw Validation("reference","Unknown token or object ID");if(value is T typed)return typed;throw Validation("reference","Reference has the wrong metadata kind");}
+	static T Ref<T>(ModuleDef module,JsonElement reference,Dictionary<string,IMDTokenProvider> map) where T:class,IMDTokenProvider{IMDTokenProvider value;if(reference.TryGetProperty("token",out var token))value=ResolveToken(module,ParseToken(token.GetString()!));else if(reference.TryGetProperty("object_id",out var id)&&map.TryGetValue(id.GetString()!,out var found))value=found;else if(reference.TryGetProperty("object_id",out var objectId)&&reference.TryGetProperty("address",out var address)&&address.ValueKind==JsonValueKind.String){value=EditDefinitionAddress.Resolve(module,address.GetString()!);map[objectId.GetString()!]=value;}else throw Validation("reference","Unknown token or object ID");if(value is T typed)return typed;throw Validation("reference","Reference has the wrong metadata kind");}
 	static T? OptionalRef<T>(ModuleDef module,JsonElement op,string name,Dictionary<string,IMDTokenProvider> map) where T:class,IMDTokenProvider=>op.TryGetProperty(name,out var r)&&r.ValueKind!=JsonValueKind.Null?Ref<T>(module,r,map):null;
 	static IMDTokenProvider ResolveToken(ModuleDef module,uint token){try{return module.ResolveToken(token)??throw new Exception();}catch{throw Validation("token","Metadata token could not be resolved: 0x"+token.ToString("x8"));}}
 	static uint ParseToken(string text){uint token;if(text.Length!=10||!text.StartsWith("0x",StringComparison.OrdinalIgnoreCase)||!uint.TryParse(text.Substring(2),NumberStyles.HexNumber,CultureInfo.InvariantCulture,out token))throw Validation("token","Expected 0x followed by eight hex digits");return token;}
 	static (MethodDef method,ParamDef? param,int index) ResolveParameter(ModuleDef module,JsonElement r,Dictionary<string,IMDTokenProvider> map){if(r.TryGetProperty("owner_method",out var owner)){var m=Ref<MethodDef>(module,owner,map);var i=(int)RequiredUInt(r,"parameter_index");if(i>=m.MethodSig.Params.Count)Invalid("parameter_index","Parameter index is outside signature");return(m,m.ParamDefs.FirstOrDefault(p=>p.Sequence==i+1),i);}var p=Ref<ParamDef>(module,r,map);if(p.Sequence==0)Invalid("parameter_target","Return ParamDef cannot be edited");var method=p.DeclaringMethod;return(method,p,p.Sequence-1);}
+
+	// Sequence points register documents in the module PdbState; when a body
+	// is undone those rows must not linger (the checkpoint image gate compares
+	// byte-level state, and an unreferenced document row is a residue).
+	static PdbDocument[] CapturePdbDocuments(ModuleDef module) =>
+		module.PdbState == null ? Array.Empty<PdbDocument>() : module.PdbState.Documents.ToArray();
+	static void ReleasePdbDocuments(ModuleDef module, PdbDocument[] added) {
+		var state = module.PdbState;
+		if (state == null || added.Length == 0) return;
+		bool Referenced(PdbDocument document) {
+			foreach (var type in module.GetTypes())
+				foreach (var method in type.Methods) {
+					if (!method.HasBody) continue;
+					foreach (var instruction in method.Body.Instructions)
+						if (ReferenceEquals(instruction.SequencePoint?.Document, document)) return true;
+				}
+			return false;
+		}
+		foreach (var document in added)
+			if (!Referenced(document)) state.Remove(document);
+	}
 
 	static EditOperationOutcome Outcome(string kind,string? created,IMDTokenProvider target,string? before,string? after,Action undo,IReadOnlyList<Dictionary<string,object?>>? risks=null)=>new(){Kind=kind,CreatedObjectIds=created==null?Array.Empty<string>():new[]{created},Undo=undo,Target=Target(target),Before=Truncate(before),After=Truncate(after),Risks=risks??Array.Empty<Dictionary<string,object?>>()};
 	static string Target(IMDTokenProvider value)=>value.MDToken.Raw==0?value.GetType().Name:"0x"+value.MDToken.Raw.ToString("x8");
@@ -926,21 +959,50 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	// P04 IMP-003: whole-list method override mapping. Both sides must be
 	// virtual methods of in-module types; declarations resolve by owner type,
 	// name and parameter shape (FindMethod semantics).
-	static void ApplyOverrides(ModuleDef module, MethodDef body, JsonElement value) {
+	static void ApplyOverrides(ModuleDef module, MethodDef body, JsonElement value, Dictionary<string, IMDTokenProvider> map) {
 		if (value.ValueKind == JsonValueKind.Null) { body.Overrides.Clear(); return; }
 		if (!body.IsVirtual) Invalid("overrides", "override mapping requires a virtual method body");
 		var rows = new List<MethodOverride>();
 		foreach (var row in value.EnumerateArray()) {
-			var declarationMethod = ResolveMethodReference(module, row.GetProperty("declaration"));
-			if (!declarationMethod.IsVirtual) Invalid("overrides.declaration", "override declaration must be virtual");
-			if (ReferenceEquals(declarationMethod, body)) Invalid("overrides.declaration", "a method cannot override itself");
-			if (rows.Any(x => ReferenceEquals(x.MethodDeclaration, declarationMethod))) Invalid("overrides", "duplicate override declaration");
+			var declarationElement = row.GetProperty("declaration");
+			IMethodDefOrRef declaration;
+			if (declarationElement.ValueKind == JsonValueKind.Object
+				&& (declarationElement.TryGetProperty("token", out _) || declarationElement.TryGetProperty("object_id", out _))) {
+				declaration = ResolveReferenceRow(module, map, declarationElement) as IMethodDefOrRef
+					?? throw Validation("overrides.declaration", "override declaration must resolve to a method reference");
+			}
+			else declaration = ResolveMethodReference(module, declarationElement);
+			if (!IsVirtualMethod(declaration)) Invalid("overrides.declaration", "override declaration must be virtual");
+			if (ReferenceEquals(declaration, body)) Invalid("overrides.declaration", "a method cannot override itself");
+			if (rows.Any(x => SameMethodDefOrRef(x.MethodDeclaration, declaration))) Invalid("overrides", "duplicate override declaration");
 			var methodRef = row.TryGetProperty("method", out var methodValue) ? ResolveMethodReference(module, methodValue) : body;
 			if (!ReferenceEquals(methodRef, body)) Invalid("overrides.method", "override rows must map the updated method");
-			rows.Add(new MethodOverride(body, declarationMethod));
+			rows.Add(new MethodOverride(body, declaration));
 		}
 		body.Overrides.Clear();
 		foreach (var row in rows) body.Overrides.Add(row);
+	}
+
+	static bool IsVirtualMethod(IMethodDefOrRef method) => method switch {
+		MethodDef definition => definition.IsVirtual,
+		MemberRef reference => reference.ResolveMethodDef()?.IsVirtual ?? true,
+		_ => true,
+	};
+
+	static bool SameMethodDefOrRef(IMethodDefOrRef left, IMethodDefOrRef right) => ReferenceEquals(left, right)
+		|| (left is MemberRef memberLeft && right is MemberRef memberRight && SameMethodRow(memberLeft, memberRight))
+		|| (left is MethodDef defLeft && right is MethodDef defRight && ReferenceEquals(defLeft, defRight));
+
+	static bool IsSystemType(TypeSig? type) => type is TypeDefOrRefSig reference
+		&& string.Equals(reference.TypeDefOrRef?.FullName, "System.Type", StringComparison.Ordinal);
+
+	static void RequireSystemType(TypeSig type, string location) {
+		if (!IsSystemType(type)) Invalid(location, "structured type values are only supported for System.Type parameters");
+	}
+
+	static void RequireSystemTypeArray(TypeSig type, string location) {
+		if (type is SZArraySig array && IsSystemType(array.Next)) return;
+		Invalid(location, "structured type arrays are only supported for System.Type[] parameters");
 	}
 	static MethodDef ResolveMethodReference(ModuleDef module, JsonElement reference) {
 		var ownerRef = new EditTypeSigParser(module).Parse(RequiredString(reference, "owner_type")).ToTypeDefOrRef();
@@ -960,11 +1022,17 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	}
 
 	// P04 IMP-001: custom attributes on every definition kind plus the assembly.
-	static IHasCustomAttribute ResolveAttributeTarget(ModuleDef module, JsonElement reference) {
+	// T004: token targets address module rows; object_id targets address rows an
+	// earlier operation of the same sequence created (state-machine kickoffs and
+	// their generated subtrees are created and attributed in one import).
+	static IHasCustomAttribute ResolveAttributeTarget(ModuleDef module, JsonElement reference, Dictionary<string, IMDTokenProvider> map) {
 		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly") {
 			if (module.Assembly == null) { Invalid("target", "module has no assembly"); throw new InvalidOperationException(); }
 			return module.Assembly;
 		}
+		if (!reference.TryGetProperty("token", out _))
+			return ResolveReferenceRow(module, map, reference) as IHasCustomAttribute
+				?? throw Validation("target", "attribute target must be a definition that carries attributes");
 		var resolved = ResolveToken(module, ParseToken(RequiredString(reference, "token")));
 		if (resolved is not IHasCustomAttribute attributeTarget) { Invalid("target", "attribute target must be a definition that carries attributes"); throw new InvalidOperationException(); }
 		return attributeTarget;
@@ -1019,14 +1087,14 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		return true;
 	}
 	static EditOperationOutcome AttributeAdd(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
-		var target = ResolveAttributeTarget(module, op.GetProperty("target"));
+		var target = ResolveAttributeTarget(module, op.GetProperty("target"), map);
 		var constructor = ResolveAttributeConstructor(module, op.GetProperty("constructor"));
 		var parameterTypes = constructor is MethodDef ctorDef ? ctorDef.MethodSig.Params : ((MemberRef)constructor).MethodSig.Params;
 		var fixedArguments = op.TryGetProperty("fixed_arguments", out var fixedValues)
-			? fixedValues.EnumerateArray().Select((value, i) => new CAArgument(parameterTypes[i], CaValue(parameterTypes[i], value, "fixed_arguments"))).ToArray() : Array.Empty<CAArgument>();
+			? fixedValues.EnumerateArray().Select((value, i) => new CAArgument(parameterTypes[i], CaValue(parameterTypes[i], value, "fixed_arguments", module, map))).ToArray() : Array.Empty<CAArgument>();
 		if (fixedArguments.Length != parameterTypes.Count) Invalid("fixed_arguments", "fixed_arguments must match the constructor parameter count");
 		var namedArguments = op.TryGetProperty("named_arguments", out var namedValues)
-			? namedValues.EnumerateArray().Select(NamedArgument).ToList() : new List<CANamedArgument>();
+			? namedValues.EnumerateArray().Select(value => NamedArgument(value, module, map)).ToList() : new List<CANamedArgument>();
 		if (!AllowsMultiple((constructor as MethodDef)?.DeclaringType) && target.CustomAttributes.Any(x => SameAttributeConstructor(x.Constructor, constructor)))
 			Invalid("target", "the attribute type does not allow multiple instances on one target");
 		var attribute = new CustomAttribute(constructor, fixedArguments, namedArguments);
@@ -1037,7 +1105,7 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 			new[] { Risk("attribute_change", target is IMDTokenProvider provider ? provider : constructor) });
 	}
 	static EditOperationOutcome AttributeRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
-		var target = ResolveAttributeTarget(module, op.GetProperty("target"));
+		var target = ResolveAttributeTarget(module, op.GetProperty("target"), map);
 		var constructor = ResolveAttributeConstructor(module, op.GetProperty("match").GetProperty("constructor"));
 		var rows = target.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, constructor)).ToList();
 		var index = op.GetProperty("match").TryGetProperty("index", out var indexValue) ? (int)indexValue.GetUInt32() : 0;
@@ -1056,15 +1124,32 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 			if (named.Name == "AllowMultiple" && named.Argument.Value is bool allow) return allow;
 		return false;
 	}
-	static CANamedArgument NamedArgument(JsonElement value) {
+	static CANamedArgument NamedArgument(JsonElement value, ModuleDef module, Dictionary<string, IMDTokenProvider> map) {
 		var kind = RequiredString(value, "kind");
 		if (kind is not ("field" or "property")) Invalid("named_arguments.kind", "kind must be field or property");
-		var type = new EditTypeSigParser(null!).Parse(RequiredString(value, "type"));
-		var argument = new CAArgument(type, CaValue(type, value.GetProperty("value"), "named_arguments.value"));
+		var type = new EditTypeSigParser(module).Parse(RequiredString(value, "type"));
+		var argument = new CAArgument(type, CaValue(type, value.GetProperty("value"), "named_arguments.value", module, map));
 		return new CANamedArgument(kind == "field", type, RequiredString(value, "name"), argument);
 	}
-	static object CaValue(TypeSig type, JsonElement value, string location) {
+	static object CaValue(TypeSig type, JsonElement value, string location, ModuleDef module, Dictionary<string, IMDTokenProvider> map) {
 		if (value.ValueKind == JsonValueKind.Null) return null!;
+		if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("kind", out var kindElement)
+			&& kindElement.ValueKind == JsonValueKind.String && kindElement.GetString() == "type") {
+			RequireSystemType(type, location);
+			if (!value.TryGetProperty("type", out var typeNode) || typeNode.ValueKind != JsonValueKind.Object)
+				Invalid(location, "a structured type value requires the type node");
+			return RestoreTypeNode(typeNode, module, map);
+		}
+		if (value.ValueKind == JsonValueKind.Array) {
+			RequireSystemTypeArray(type, location);
+			return value.EnumerateArray().Select(entry => {
+				if (entry.ValueKind != JsonValueKind.Object) Invalid(location, "every structured type array entry must be {kind:type,type:...}");
+				var entryKind = entry.GetProperty("kind").GetString();
+				if (entryKind != "type") Invalid(location, "every structured type array entry must be {kind:type,type:...}");
+				var entryNode = entry.GetProperty("type");
+				return (TypeSig)RestoreTypeNode(entryNode, module, map);
+			}).ToArray();
+		}
 		switch (type.ElementType) {
 			case ElementType.Boolean: return value.GetBoolean();
 			case ElementType.Char: return (char)value.GetUInt16();

@@ -18,7 +18,15 @@ namespace dnSpy.Extension.MCP.Editing;
 /// tokens for rows that already exist in the target, object IDs for rows an
 /// earlier operation of this import creates.  Any metadata operand that cannot
 /// be mapped is a hard rejection (ACC-005: 任一引用未映射＝失败).
-/// </summary>
+///
+/// T004: the emission layer covers the whole first-add surface.  External
+/// rows the target lacks are synthesized bottom-up through explicit-scope
+/// <c>reference_add</c> operations (assembly/type/member/spec), signatures
+/// that must point at batch rows carry structured v2 nodes, and generated
+/// state-machine subtrees are emitted as type/interface/generic/field/method
+/// shells whose bodies and symbol rows are filled once every row of the plan
+/// exists — so kickoff and state machine can reference each other without
+/// depending on compiler emission order.</summary>
 internal sealed class EditCSharpImporter : IDisposable {
 	readonly ModuleDef artifact;
 	readonly ModuleDef target;
@@ -36,6 +44,18 @@ internal sealed class EditCSharpImporter : IDisposable {
 	readonly Dictionary<string, string> typeRefCache = new(StringComparer.Ordinal);
 	readonly Dictionary<string, string> methodSpecCache = new(StringComparer.Ordinal);
 	readonly Dictionary<string, string> typeSpecCache = new(StringComparer.Ordinal);
+	// bodies and symbol rows deferred until every shell of this import exists
+	sealed class PendingFill {
+		public MethodDef Method = null!;
+		public Dictionary<string, object?> Target = null!;
+		public string Member = string.Empty;
+	}
+	readonly List<PendingFill> pendingFills = new();
+
+	// Owner positions of generic variables may point at the row the very
+	// operation being built creates; those bind to null (dnlib resolves by
+	// number against the actual owner on use).
+	const string OwnerSentinel = "\u0001owner";
 
 	sealed class ReferenceTextComparer : IEqualityComparer<IMDTokenProvider> {
 		public static readonly ReferenceTextComparer Instance = new();
@@ -67,6 +87,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 			throw Reject("targets", "targets exceed the operation capacity");
 		foreach (var row in targets.EnumerateArray())
 			ImportRow(row);
+		FlushFills();
 		return rows;
 	}
 
@@ -160,21 +181,19 @@ internal sealed class EditCSharpImporter : IDisposable {
 	/// type (and its generated siblings) lands on its target counterpart —
 	/// fields that are missing are added, missing methods are added, shared
 	/// methods get their bodies replaced.  A generated type with no target
-	/// counterpart is added whole when it is a plain class (closure); new state
-	/// machine subtrees (interfaces plus generic-instantiation rows) are outside
-	/// the frozen operation language and are rejected.</summary>
+	/// counterpart is added whole through the full emission path (state
+	/// machines included: interface rows, explicit-override declarations and
+	/// marker attributes are explicit operations now).</summary>
 	void SyncGeneratedSubtree(TypeDef generated, MethodDef kickoff) {
 		var counterpart = TargetFor(generated);
 		if (counterpart == null) {
-			if (EditImportMatcher.IsStateMachineType(generated))
-				throw Reject("generated_subtree", "the compiled state machine has no target counterpart, and new generated state machine subtrees are outside the importable domain: " + generated.FullName);
-			AddTypeSubtree(generated, ContainerFor(generated));
+			EmitTypeTree(generated, ContainerFor(generated));
 			return;
 		}
 		// Interface-driven accessor rows (IEnumerator.Current pairs) exist on both
 		// compilers' state machines and stay the target's; the subtree sync lands
 		// fields and method bodies.  A property/event the counterpart lacks is a
-		// shape the frozen operation language cannot reconcile — reject.
+		// shape the operation language cannot reconcile — reject.
 		foreach (var property in generated.Properties)
 			if (!counterpart.Properties.Any(p => string.Equals(p.Name.String, property.Name.String, StringComparison.Ordinal)))
 				throw Reject("generated_subtree", "the generated state machine property has no target counterpart: " + property.FullName);
@@ -188,7 +207,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 		foreach (var method in generated.Methods) {
 			var existing = counterpart.Methods.FirstOrDefault(m => string.Equals(m.Name.String, method.Name.String, StringComparison.Ordinal)
 				&& string.Equals(matcher.TargetMethodKey(m), matcher.MethodKey(method), StringComparison.Ordinal));
-			if (existing == null) EmitMethodAdd(method, RefOf(counterpart));
+			if (existing == null) EmitMethodAdd(method, RefOf(counterpart), deferBody: true);
 			else if (method.HasBody) EmitBodyReplace(method, existing);
 		}
 		foreach (var nested in generated.NestedTypes)
@@ -237,39 +256,38 @@ internal sealed class EditCSharpImporter : IDisposable {
 		if (matcher.TargetType(artifactType) != null)
 			throw new EditDomainException("EDIT_HISTORY_CONFLICT", new Dictionary<string, object?> {
 				["kind"] = "import_target_exists", ["target"] = artifactType.FullName });
-		AddTypeSubtree(artifactType, ContainerFor(artifactType)!);
+		EmitTypeTree(artifactType, ContainerFor(artifactType)!);
 	}
 
-	/// <summary>Whole-subtree add for a new type: type_add, then fields, then
-	/// accessor methods, then plain methods, then property and event rows, then
-	/// zero-argument custom attributes.  Generic types, interface lists,
-	/// layouts and parameterized attributes are outside the frozen operation
-	/// language and are rejected.</summary>
-	void AddTypeSubtree(TypeDef artifactType, Dictionary<string, object?>? container) {
-		if (artifactType.GenericParameters.Count != 0)
-			throw Reject("add", "generic type adds are outside the frozen operation language: " + artifactType.FullName);
-		if (artifactType.Interfaces.Count != 0)
-			throw Reject("add", "types with interface lists cannot be added by the frozen operation language: " + artifactType.FullName);
+	/// <summary>Whole-subtree emission for a new type: type_add, then generic
+	/// parameters, interface rows, fields, nested types (state machines and
+	/// closures included — a method's state-machine attribute references its
+	/// nested generated type, so the nested trees must exist first), then
+	/// accessor and plain method shells, property and event rows, attribute rows
+	/// (compiler markers included), and finally the deferred bodies and symbol
+	/// rows of every method once the whole plan exists.  Layouts, security rows
+	/// and P/Invoke shapes stay outside the operation language and are
+	/// rejected.</summary>
+	Dictionary<string, object?> EmitTypeTree(TypeDef artifactType, Dictionary<string, object?>? container) {
 		if (artifactType.ClassLayout != null || artifactType.DeclSecurities.Count != 0)
 			throw Reject("add", "the type shape is outside the frozen operation language: " + artifactType.FullName);
-		RejectCustomAttributes(artifactType.FullName, artifactType.CustomAttributes);
 		var self = EmitTypeAdd(artifactType, container);
-		foreach (var field in artifactType.Fields) EmitFieldAdd(field, self);
-		foreach (var property in artifactType.Properties) {
-			if (property.GetMethod != null) EmitMethodAdd(property.GetMethod, self);
-			if (property.SetMethod != null) EmitMethodAdd(property.SetMethod, self);
-		}
-		foreach (var evt in artifactType.Events) {
-			if (evt.AddMethod != null) EmitMethodAdd(evt.AddMethod, self);
-			if (evt.RemoveMethod != null) EmitMethodAdd(evt.RemoveMethod, self);
-			if (evt.InvokeMethod != null) EmitMethodAdd(evt.InvokeMethod, self);
-		}
-		foreach (var method in artifactType.Methods.Where(m => !IsAccessor(m, artifactType)))
-			EmitMethodAdd(method, self);
-		foreach (var property in artifactType.Properties) EmitPropertyAdd(property, self);
-		foreach (var evt in artifactType.Events) EmitEventAdd(evt, self);
+		foreach (var gp in artifactType.GenericParameters)
+			EmitGenericParameterAdd(gp, self);
+		foreach (var implemented in artifactType.Interfaces)
+			EmitInterfaceAdd(self, implemented, artifactType.FullName);
+		foreach (var field in artifactType.Fields)
+			EmitFieldAdd(field, self);
 		foreach (var nested in artifactType.NestedTypes)
-			AddTypeSubtree(nested, self);
+			EmitTypeTree(nested, self);
+		foreach (var method in artifactType.Methods)
+			EmitMethodAdd(method, self, deferBody: true);
+		foreach (var property in artifactType.Properties)
+			EmitPropertyAdd(property, self);
+		foreach (var evt in artifactType.Events)
+			EmitEventAdd(evt, self);
+		EmitAttributeRows(self, artifactType.CustomAttributes, artifactType.FullName);
+		return self;
 	}
 
 	static bool IsAccessor(MethodDef method, TypeDef owner) =>
@@ -277,8 +295,6 @@ internal sealed class EditCSharpImporter : IDisposable {
 		|| owner.Events.Any(e => ReferenceEquals(e.AddMethod, method) || ReferenceEquals(e.RemoveMethod, method) || ReferenceEquals(e.InvokeMethod, method));
 
 	void AddMethod(MethodDef artifactMethod, Dictionary<string, object?>? explicitContainer) {
-		if (EditImportMatcher.StateMachineType(artifactMethod) != null)
-			throw Reject("add", "new async/iterator members are outside the importable domain: state machine subtrees need interface and generic-instantiation rows");
 		var artifactOwner = artifactMethod.DeclaringType!;
 		Dictionary<string, object?> ownerRef;
 		if (explicitContainer != null) {
@@ -293,7 +309,17 @@ internal sealed class EditCSharpImporter : IDisposable {
 			ownerRef = OwnerRefFor(artifactOwner);
 		}
 		EnsureNoSignatureConflict(artifactMethod, ownerRef);
-		EmitMethodAdd(artifactMethod, ownerRef);
+		// New async/iterator members carry their state-machine subtree: the
+		// generated type is emitted whole before the kickoff so the kickoff's
+		// body, attribute and symbol rows see every generated row, while the
+		// state machine's own bodies are deferred past the kickoff.
+		var stateMachine = EditImportMatcher.StateMachineType(artifactMethod) ?? StateMachineByPattern(artifactMethod);
+		if (stateMachine != null) {
+			if (TargetFor(stateMachine) != null)
+				throw Reject("add", "the compiled state machine name collides with an existing target generated type: " + stateMachine.FullName);
+			EmitTypeTree(stateMachine, ownerRef);
+		}
+		EmitMethodAdd(artifactMethod, ownerRef, deferBody: false);
 		var property = artifactOwner.Properties.FirstOrDefault(p => ReferenceEquals(p.GetMethod, artifactMethod) || ReferenceEquals(p.SetMethod, artifactMethod));
 		if (property != null && !TargetPropertyExists(property))
 			EmitPropertyAdd(property, ownerRef);
@@ -345,6 +371,248 @@ internal sealed class EditCSharpImporter : IDisposable {
 
 	string? CreatedTypeName(string objectId) => null;  // conflict checks against not-yet-applied adds are covered by later staging validation
 
+	// ------------------------------------------------------- reference planning
+
+	/// <summary>Plan the target-side reference for an artifact row: the token of
+	/// an existing target row, the object ID of a row this import creates, or a
+	/// synthesized <c>reference_add</c> row (emitted here, dependencies first).
+	/// Scope identity is never guessed and never reduced to a FullName.</summary>
+	string Bind(IMDTokenProvider? row) {
+		if (row == null) throw Reject("reference", "a reference row is missing");
+		if (referenceText.TryGetValue(row, out var cached)) return cached;
+		var text = row switch {
+			TypeDef definition => BindDefinition(definition),
+			TypeRef reference => BindTypeRef(reference),
+			TypeSpec specification => BindTypeSpec(specification),
+			MemberRef member => BindMemberRef(member),
+			MethodSpec specification => BindMethodSpec(specification),
+			MethodDef method => BindMethodRow(method),
+			FieldDef field => BindFieldRow(field),
+			AssemblyRef assembly => BindAssemblyRef(assembly),
+			_ => throw Reject("reference", "the artifact reference shape is outside the importable domain: " + row.GetType().Name),
+		};
+		referenceText[row] = text;
+		return text;
+	}
+
+	// Owner positions bind through this wrapper so a generic variable owned by
+	// the row the operation under construction creates degrades to an ownerless
+	// node instead of deadlocking the emission order.
+	string BindForCapture(IMDTokenProvider row) {
+		if (row is MethodDef method && ReferenceEquals(method.Module, artifact) && FindMethodRow(method).Length == 0)
+			return OwnerSentinel;
+		if (row is TypeDef type && ReferenceEquals(type.Module, artifact) && FindTypeRow(type).Length == 0)
+			return OwnerSentinel;
+		return Bind(row);
+	}
+
+	string BindDefinition(TypeDef definition) {
+		var mapped = FindTypeRow(definition);
+		if (mapped.Length != 0) return mapped;
+		if (ReferenceEquals(definition.Module, artifact))
+			throw Reject("reference", "an artifact type has no target counterpart and is not created by this import: " + definition.FullName);
+		var targetDefinition = target.GetTypes().FirstOrDefault(t => string.Equals(t.FullName, definition.FullName, StringComparison.Ordinal));
+		if (targetDefinition != null) return Token(targetDefinition);
+		var scope = definition.DeclaringType != null
+			? RowDescriptor(Bind(definition.DeclaringType))
+			: ScopeDescriptor(AssemblyScopeOf(definition));
+		return SynthesizeTypeRef(definition.Namespace?.String ?? string.Empty, definition.Name.String, scope, definition.FullName);
+	}
+
+	static AssemblyRef AssemblyScopeOf(TypeDef externalDefinition) {
+		var assembly = externalDefinition.Module?.Assembly;
+		return new AssemblyRefUser(assembly?.Name?.String ?? string.Empty, assembly?.Version, assembly?.PublicKey) {
+			Culture = assembly?.Culture?.String,
+			Attributes = assembly != null ? assembly.Attributes : 0,
+		};
+	}
+
+	string BindTypeRef(TypeRef reference) {
+		// A compile artifact references the target assembly like any other
+		// reference assembly; those rows rebind to the target definitions.
+		if (reference.ResolutionScope is AssemblyRef scope && string.Equals(scope.Name, TargetAssemblyName, StringComparison.OrdinalIgnoreCase)) {
+			var rebound = target.GetTypes().FirstOrDefault(t => string.Equals(t.FullName, reference.FullName, StringComparison.Ordinal))
+				?? throw Reject("reference", "the artifact references a target-assembly type the target does not define: " + reference.FullName);
+			return Token(rebound);
+		}
+		var scopeDescriptor = reference.ResolutionScope switch {
+			AssemblyRef assembly => ScopeDescriptor(assembly),
+			TypeRef parent => RowDescriptor(BindTypeRef(parent)),
+			TypeDef parent => RowDescriptor(BindDefinition(parent)),
+			ModuleRef module => ModuleScope(module),
+			_ => throw Reject("reference", "the type reference scope is outside the importable domain: " + reference.FullName),
+		};
+		return SynthesizeTypeRef(reference.Namespace?.String ?? string.Empty, reference.Name.String, scopeDescriptor, reference.FullName);
+	}
+
+	Dictionary<string, object?> ModuleScope(ModuleRef module) {
+		var match = target.GetModuleRefs().FirstOrDefault(m => string.Equals(m.Name?.String, module.Name?.String, StringComparison.Ordinal));
+		return match == null
+			? throw Reject("reference", "the target has no module reference row for the artifact scope: " + module.Name)
+			: TokenRef(match);
+	}
+
+	/// <summary>Reuse an existing target TypeRef with the same name and scope
+	/// identity, or synthesize one through reference_add.</summary>
+	string SynthesizeTypeRef(string ns, string name, Dictionary<string, object?> scopeDescriptor, string fullName) {
+		var matches = target.GetTypeRefs()
+			.Where(t => string.Equals(t.Namespace?.String ?? string.Empty, ns, StringComparison.Ordinal)
+				&& string.Equals(t.Name?.String, name, StringComparison.Ordinal)
+				&& ScopeMatchesPlanned(t.ResolutionScope, scopeDescriptor))
+			.OrderBy(t => t.MDToken.Rid)
+			.ToArray();
+		if (matches.Length != 0) return Token(matches[0]);
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "type_ref",
+			["scope"] = scopeDescriptor,
+			["namespace"] = ns,
+			["name"] = name,
+		};
+		return EmitReferenceAdd(descriptor, fullName);
+	}
+
+	// A planned scope descriptor points at a target row (token) or a batch row
+	// (object ID); existing target scopes compare by identity, never by name
+	// alone.
+	bool ScopeMatchesPlanned(IResolutionScope? existing, Dictionary<string, object?> planned) {
+		IMDTokenProvider? plannedRow = null;
+		if (planned.TryGetValue("token", out var tokenText))
+			plannedRow = target.ResolveToken(uint.Parse(((tokenText as string)!).Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+		else if (planned.TryGetValue("object_id", out var idText) && objectIds.TryGetValue((idText as string)!, out var batchRow))
+			plannedRow = batchRow;
+		if (plannedRow == null) return false;
+		if (ReferenceEquals(existing, plannedRow)) return true;
+		if (existing is AssemblyRef assembly && plannedRow is AssemblyRef plannedAssembly)
+			return AssemblyIdentityEquals(assembly, plannedAssembly);
+		if (existing is TypeRef reference && plannedRow is TypeRef plannedReference)
+			return string.Equals(reference.Namespace?.String ?? string.Empty, plannedReference.Namespace?.String ?? string.Empty, StringComparison.Ordinal)
+				&& string.Equals(reference.Name?.String, plannedReference.Name?.String, StringComparison.Ordinal)
+				&& ScopeMatchesPlanned(reference.ResolutionScope, planned);
+		if (existing is TypeDef definition && plannedRow is TypeDef plannedDefinition)
+			return string.Equals(definition.FullName, plannedDefinition.FullName, StringComparison.Ordinal);
+		if (existing is ModuleRef module && plannedRow is ModuleRef plannedModule)
+			return string.Equals(module.Name?.String, plannedModule.Name?.String, StringComparison.Ordinal);
+		return false;
+	}
+
+	Dictionary<string, object?> ScopeDescriptor(AssemblyRef assembly) => RowDescriptor(BindAssemblyRef(assembly));
+
+	static Dictionary<string, object?> RowDescriptor(string text) =>
+		text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+			? new Dictionary<string, object?> { ["token"] = text }
+			: new Dictionary<string, object?> { ["object_id"] = text };
+
+	string BindTypeSpec(TypeSpec specification) {
+		var mapped = FindTypeSpecRow(specification.TypeSig);
+		if (mapped.Length != 0) return mapped;
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "type_spec",
+			["signature"] = NodeJson(CaptureNode(specification.TypeSig)),
+		};
+		return EmitReferenceAdd(descriptor, specification.FullName);
+	}
+
+	string BindMemberRef(MemberRef member) {
+		var mapped = member.IsMethodRef ? FindMemberRefMethodRow(member) : FindMemberRefFieldRow(member);
+		if (mapped.Length != 0) return mapped;
+		var owner = member.DeclaringType ?? throw Reject("reference", "the member reference has no declaring type: " + member.FullName);
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "member_ref",
+			["member_kind"] = member.IsMethodRef ? "method" : "field",
+			["owner"] = RowDescriptor(Bind(owner)),
+			["name"] = member.Name.String,
+			["signature"] = JsonSerializer.SerializeToElement(
+				NormalizeCall(EditStructuredSignatureCodec.Capture((CallingConventionSig)(member.IsMethodRef ? member.MethodSig! : member.FieldSig!), BindForCapture)), EditWire.JsonOptions),
+		};
+		return EmitReferenceAdd(descriptor, member.FullName);
+	}
+
+	string BindMethodSpec(MethodSpec specification) {
+		var mapped = FindMethodSpecRow(specification);
+		if (mapped.Length != 0) return mapped;
+		var method = specification.Method as IMDTokenProvider
+			?? throw Reject("reference", "the method specification has no method: " + specification.FullName);
+		var arguments = (specification.GenericInstMethodSig?.GenericArguments ?? Array.Empty<TypeSig>()).ToArray();
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "method_spec",
+			["method"] = RowDescriptor(Bind(method)),
+			["arguments"] = arguments.Select(argument => (object)NodeJson(CaptureNode(argument))).ToArray(),
+		};
+		return EmitReferenceAdd(descriptor, specification.FullName);
+	}
+
+	string BindMethodRow(MethodDef method) {
+		var mapped = FindMethodRow(method);
+		if (mapped.Length != 0) return mapped;
+		if (!ReferenceEquals(method.Module, artifact))
+			return SynthesizeExternalMember(method.DeclaringType, method.Name.String, true,
+				method.MethodSig ?? throw Reject("reference", "the external method has no signature: " + method.FullName), method.FullName);
+		throw Reject("reference", "an artifact method has no target counterpart and is not created by this import: " + method.FullName);
+	}
+
+	string BindFieldRow(FieldDef field) {
+		var mapped = FindFieldRow(field);
+		if (mapped.Length != 0) return mapped;
+		if (!ReferenceEquals(field.Module, artifact))
+			return SynthesizeExternalMember(field.DeclaringType, field.Name.String, false,
+				field.FieldSig ?? throw Reject("reference", "the external field has no signature: " + field.FullName), field.FullName);
+		throw Reject("reference", "an artifact field has no target counterpart and is not created by this import: " + field.FullName);
+	}
+
+	string SynthesizeExternalMember(TypeDef? declaring, string name, bool isMethod, CallingConventionSig signature, string fullName) {
+		var owner = declaring ?? throw Reject("reference", "the external member has no declaring type: " + fullName);
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "member_ref",
+			["member_kind"] = isMethod ? "method" : "field",
+			["owner"] = RowDescriptor(BindDefinition(owner)),
+			["name"] = name,
+			["signature"] = JsonSerializer.SerializeToElement(
+				NormalizeCall(EditStructuredSignatureCodec.Capture(signature, BindForCapture)), EditWire.JsonOptions),
+		};
+		return EmitReferenceAdd(descriptor, fullName);
+	}
+
+	string BindAssemblyRef(AssemblyRef assembly) {
+		var name = assembly.Name?.String ?? throw Reject("reference", "the assembly reference has no name");
+		if (string.Equals(name, TargetAssemblyName, StringComparison.OrdinalIgnoreCase))
+			throw Reject("reference", "a type cannot be scoped to the target's own assembly through a reference row");
+		var match = target.GetAssemblyRefs().FirstOrDefault(t => AssemblyIdentityEquals(t, assembly));
+		if (match != null) return Token(match);
+		var descriptor = new Dictionary<string, object?> {
+			["form"] = "assembly_ref",
+			["name"] = name,
+			["version"] = (assembly.Version ?? new Version(0, 0, 0, 0)).ToString(),
+			["culture"] = string.IsNullOrEmpty(assembly.Culture?.String) ? null : assembly.Culture?.String,
+			["flags"] = (ulong)assembly.Attributes,
+		};
+		var data = assembly.PublicKeyOrToken?.Data;
+		if (data is { Length: > 0 })
+			descriptor["public_key_or_token"] = new Dictionary<string, object?> {
+				["kind"] = assembly.PublicKeyOrToken is PublicKey ? "public_key" : "token",
+				["base64"] = Convert.ToBase64String(data),
+			};
+		return EmitReferenceAdd(descriptor, name);
+	}
+
+	static bool AssemblyIdentityEquals(AssemblyRef left, AssemblyRef right) {
+		if (!string.Equals(left.Name?.String, right.Name?.String, StringComparison.OrdinalIgnoreCase)) return false;
+		if (left.Version != right.Version) return false;
+		if (!string.Equals(left.Culture?.String ?? string.Empty, right.Culture?.String ?? string.Empty, StringComparison.Ordinal)) return false;
+		if (left.Attributes != right.Attributes) return false;
+		return (left.PublicKeyOrToken?.Data ?? Array.Empty<byte>()).SequenceEqual(right.PublicKeyOrToken?.Data ?? Array.Empty<byte>());
+	}
+
+	string EmitReferenceAdd(Dictionary<string, object?> descriptor, string label) {
+		var index = NextIndex;
+		var operation = new Dictionary<string, object?> {
+			["kind"] = "reference_add",
+			["reference"] = descriptor,
+		};
+		rows.Add(new PlanRow { Operation = operation, Kind = "reference_add", ArtifactMember = label,
+			Target = descriptor.TryGetValue("form", out var form) ? form as string ?? string.Empty : string.Empty });
+		return ObjectId(index);
+	}
+
 	// ------------------------------------------------------------ op emission
 
 	int NextIndex => baseOperationIndex + rows.Count;
@@ -367,17 +635,22 @@ internal sealed class EditCSharpImporter : IDisposable {
 	}
 
 	Dictionary<string, object?> EmitTypeAdd(TypeDef artifactType, Dictionary<string, object?>? container) {
-		var index = NextIndex;
 		var operation = new Dictionary<string, object?> {
 			["kind"] = "type_add",
 			["name"] = artifactType.Name.String,
 			["namespace"] = artifactType.Namespace?.String ?? string.Empty,
 			["attributes"] = (uint)artifactType.Attributes,
-			["__object_id"] = ObjectId(index),
 		};
-		if (artifactType.BaseType != null)
-			operation["base_type"] = ResolveTypeText(artifactType.BaseType.ToTypeSig() ?? throw Reject("add", "the base type signature is outside the importable domain"));
+		if (artifactType.BaseType != null) {
+			var arity = artifactType.GenericParameters.Count;
+			operation["base_type"] = EmitType(artifactType.BaseType.ToTypeSig()
+				?? throw Reject("add", "the base type signature is outside the importable domain"), arity, 0, forceStructured: arity != 0);
+		}
 		if (container != null) operation["owner_type"] = container;
+		// The object id is pinned after signature planning: planning can append
+		// reference_add rows, so the id must match the row's final position.
+		var index = NextIndex;
+		operation["__object_id"] = ObjectId(index);
 		Record(operation, "type_add", artifactType, artifactType.FullName, container == null ? "module" : "nested");
 		createdTypeNames.Add(artifactType.FullName);
 		return ObjectRef(index);
@@ -385,36 +658,62 @@ internal sealed class EditCSharpImporter : IDisposable {
 
 	static string ObjectId(int index) => "obj-" + index.ToString("D3", CultureInfo.InvariantCulture) + "-00";
 
-	void EmitFieldAdd(FieldDef field, Dictionary<string, object?> ownerRef) {
+	void EmitGenericParameterAdd(GenericParam gp, Dictionary<string, object?> ownerRef) {
+		var operation = new Dictionary<string, object?> {
+			["kind"] = "generic_parameter_add",
+			["owner"] = ownerRef,
+			["generic_index"] = (int)gp.Number,
+			["name"] = gp.Name?.String ?? string.Empty,
+			["attributes"] = (uint)gp.Flags,
+		};
+		if (gp.GenericParamConstraints.Count != 0)
+			operation["constraints"] = gp.GenericParamConstraints
+				.Select(constraint => EmitType(constraint.Constraint?.ToTypeSig()
+					?? throw Reject("add", "the generic constraint is outside the importable domain"), (int)gp.Number, 0))
+				.ToArray();
+		Record(operation, "generic_parameter_add", null, gp.Owner is TypeDef owner ? owner.FullName : gp.Name?.String ?? string.Empty, gp.Name?.String ?? string.Empty);
+	}
+
+	void EmitInterfaceAdd(Dictionary<string, object?> ownerRef, InterfaceImpl implemented, string ownerName) {
+		var signature = implemented.Interface?.ToTypeSig()
+			?? throw Reject("add", "the interface signature is outside the importable domain on " + ownerName);
+		var operation = new Dictionary<string, object?> {
+			["kind"] = "interface_add",
+			["owner_type"] = ownerRef,
+			["interface"] = new Dictionary<string, object?> { ["type"] = NodeJson(CaptureNode(signature)) },
+		};
+		rows.Add(new PlanRow { Operation = operation, Kind = "interface_add", ArtifactMember = implemented.Interface.FullName, Target = ownerName });
+	}
+
+	Dictionary<string, object?> EmitFieldAdd(FieldDef field, Dictionary<string, object?> ownerRef) {
 		if (field.Constant != null)
 			throw Reject("add", "literal fields are outside the importable member domain: " + field.FullName);
 		if (field.MarshalType != null || field.FieldOffset != null || (field.InitialValue != null && field.InitialValue.Length != 0))
 			throw Reject("add", "the field shape is outside the frozen operation language: " + field.FullName);
-		RejectCustomAttributes(field.FullName, field.CustomAttributes);
-		var index = NextIndex;
+		var ownerArity = field.DeclaringType?.GenericParameters.Count ?? 0;
 		var operation = new Dictionary<string, object?> {
 			["kind"] = "field_add",
 			["owner_type"] = ownerRef,
-			["field_type"] = ResolveTypeText(field.FieldType),
+			["field_type"] = EmitType(field.FieldType, ownerArity),
 			["name"] = field.Name.String,
 			["attributes"] = (uint)field.Attributes,
-			["__object_id"] = ObjectId(index),
 		};
+		var index = NextIndex;
+		operation["__object_id"] = ObjectId(index);
 		Record(operation, "field_add", field, field.FullName, field.FullName);
+		var self = ObjectRef(index);
+		EmitAttributeRows(self, field.CustomAttributes, field.FullName);
+		return self;
 	}
 
-	void EmitMethodAdd(MethodDef method, Dictionary<string, object?> ownerRef) {
-		if (method.Overrides.Count != 0)
-			throw Reject("add", "explicit override mappings are outside the importable member domain: " + method.FullName);
+	Dictionary<string, object?> EmitMethodAdd(MethodDef method, Dictionary<string, object?> ownerRef, bool deferBody) {
 		if (method.ImplMap != null || method.DeclSecurities.Count != 0)
 			throw Reject("add", "the method shape is outside the frozen operation language: " + method.FullName);
-		RejectCustomAttributes(method.FullName, method.CustomAttributes);
-		var index = NextIndex;
 		var ownerArity = method.DeclaringType?.GenericParameters.Count ?? 0;
 		var signature = new Dictionary<string, object?> {
-			["return_type"] = ResolveTypeText(method.MethodSig.RetType, ownerArity, method.GenericParameters.Count),
+			["return_type"] = EmitType(method.MethodSig.RetType, ownerArity, method.GenericParameters.Count, allowVoid: true),
 			["parameters"] = method.MethodSig.Params.Select((p, i) => new Dictionary<string, object?> {
-				["type"] = ResolveTypeText(p, ownerArity, method.GenericParameters.Count),
+				["type"] = EmitType(p, ownerArity, method.GenericParameters.Count),
 				["name"] = ParamName(method, i),
 			}).ToArray(),
 			["has_this"] = method.MethodSig.HasThis,
@@ -422,7 +721,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 				["name"] = gp.Name?.String ?? string.Empty,
 				["attributes"] = (uint)gp.Flags,
 				["constraints"] = gp.GenericParamConstraints.Count == 0 ? null
-					: gp.GenericParamConstraints.Select(c => ResolveTypeText(c.Constraint?.ToTypeSig(), ownerArity, method.GenericParameters.Count)).ToArray(),
+					: gp.GenericParamConstraints.Select(c => EmitType(c.Constraint?.ToTypeSig(), ownerArity, (int)gp.Number)).ToArray(),
 			}).ToArray(),
 		};
 		var operation = new Dictionary<string, object?> {
@@ -432,12 +731,30 @@ internal sealed class EditCSharpImporter : IDisposable {
 			["signature"] = signature,
 			["attributes"] = (uint)method.Attributes,
 			["impl_attributes"] = (uint)method.ImplAttributes,
-			["__object_id"] = ObjectId(index),
 		};
-		if (method.HasBody) operation["body"] = EncodeBody(method);
-		var cdi = EditPdbTransferCodec.CaptureMethodDebugInfo(method, BindReference);
-		if (cdi.Count != 0) operation["custom_debug_infos"] = cdi;
+		if (method.Overrides.Count != 0)
+		operation["overrides"] = method.Overrides.Select(overrideRow => (object)new Dictionary<string, object?> {
+				["declaration"] = RowDescriptor(Bind(overrideRow.MethodDeclaration switch {
+					MemberRef declaration => declaration,
+					MethodDef declaration => declaration,
+					_ => throw Reject("add", "the override declaration shape is outside the importable domain: " + method.FullName),
+				})),
+			}).ToArray();
+		if (!deferBody && method.HasBody) {
+			operation["body"] = EncodeBody(method);
+			var inlineCdi = EditPdbTransferCodec.CaptureMethodDebugInfo(method, BindReference);
+			if (inlineCdi.Count != 0) operation["custom_debug_infos"] = inlineCdi;
+		}
+		// The object id is pinned after override/body planning so it matches
+		// the row's final position in the plan.
+		var index = NextIndex;
+		operation["__object_id"] = ObjectId(index);
 		Record(operation, "method_add", method, method.FullName, method.FullName);
+		var self = ObjectRef(index);
+		EmitAttributeRows(self, method.CustomAttributes, method.FullName);
+		if (deferBody && method.HasBody)
+			pendingFills.Add(new PendingFill { Method = method, Target = self, Member = method.FullName });
+		return self;
 	}
 
 	static string ParamName(MethodDef method, int index) {
@@ -450,34 +767,43 @@ internal sealed class EditCSharpImporter : IDisposable {
 		var setter = property.SetMethod == null ? null : AccessorRef(property.SetMethod);
 		if (getter == null && setter == null)
 			throw Reject("add", "a property without accessors is outside the importable domain: " + property.FullName);
+		var ownerArity = property.DeclaringType?.GenericParameters.Count ?? 0;
 		var operation = new Dictionary<string, object?> {
 			["kind"] = "property_add",
 			["owner_type"] = ownerRef,
 			["name"] = property.Name.String,
-			["property_type"] = ResolveTypeText(property.PropertySig.RetType),
+			["property_type"] = EmitType(property.PropertySig.RetType, ownerArity),
 			["attributes"] = (uint)property.Attributes,
 		};
 		if (property.PropertySig.Params.Count != 0)
-			operation["index_parameter_types"] = property.PropertySig.Params.Select(p => ResolveTypeText(p)).ToArray();
+			operation["index_parameter_types"] = property.PropertySig.Params
+				.Select(p => EmitType(p, ownerArity)).ToArray();
 		if (getter != null) operation["getter"] = new Dictionary<string, object?> { ["object_id"] = getter };
 		if (setter != null) operation["setter"] = new Dictionary<string, object?> { ["object_id"] = setter };
+		var index = NextIndex;
+		operation["__object_id"] = ObjectId(index);
 		Record(operation, "property_add", null, property.FullName, property.FullName);
+		EmitAttributeRows(ObjectRef(index), property.CustomAttributes, property.FullName);
 	}
 
 	void EmitEventAdd(EventDef evt, Dictionary<string, object?> ownerRef) {
 		var add = AccessorRef(evt.AddMethod ?? throw Reject("add", "an event without an add accessor is outside the importable domain: " + evt.FullName));
 		var remove = AccessorRef(evt.RemoveMethod ?? throw Reject("add", "an event without a remove accessor is outside the importable domain: " + evt.FullName));
+		var ownerArity = evt.DeclaringType?.GenericParameters.Count ?? 0;
 		var operation = new Dictionary<string, object?> {
 			["kind"] = "event_add",
 			["owner_type"] = ownerRef,
 			["name"] = evt.Name.String,
-			["event_type"] = ResolveTypeText(evt.EventType?.ToTypeSig() ?? throw Reject("add", "the event type signature is outside the importable domain")),
+			["event_type"] = EmitType(evt.EventType?.ToTypeSig() ?? throw Reject("add", "the event type signature is outside the importable domain"), ownerArity),
 			["attributes"] = (uint)evt.Attributes,
 			["add_method"] = new Dictionary<string, object?> { ["object_id"] = add },
 			["remove_method"] = new Dictionary<string, object?> { ["object_id"] = remove },
 		};
 		if (evt.InvokeMethod != null) operation["raise_method"] = new Dictionary<string, object?> { ["object_id"] = AccessorRef(evt.InvokeMethod) };
+		var index = NextIndex;
+		operation["__object_id"] = ObjectId(index);
 		Record(operation, "event_add", null, evt.FullName, evt.FullName);
+		EmitAttributeRows(ObjectRef(index), evt.CustomAttributes, evt.FullName);
 	}
 
 	string AccessorRef(MethodDef accessor) =>
@@ -494,13 +820,160 @@ internal sealed class EditCSharpImporter : IDisposable {
 		Record(operation, "method_body_replace", null, artifactMethod.FullName, targetMethod.FullName);
 	}
 
+	/// <summary>Deferred bodies and symbol rows: emitted once every shell of
+	/// the plan exists, so state-machine bodies can bind their kickoff and
+	/// kickoffs their generated rows regardless of compiler order.</summary>
+	void FlushFills() {
+		foreach (var fill in pendingFills) {
+			var operation = new Dictionary<string, object?> {
+				["kind"] = "method_body_replace",
+				["target"] = fill.Target,
+				["body"] = EncodeBody(fill.Method),
+			};
+			var cdi = EditPdbTransferCodec.CaptureMethodDebugInfo(fill.Method, BindReference);
+			if (cdi.Count != 0) operation["custom_debug_infos"] = cdi;
+			Record(operation, "method_body_replace", null, fill.Member, fill.Member);
+		}
+		pendingFills.Clear();
+	}
+
+	// ------------------------------------------------------------- attributes
+
+	/// <summary>Emit attribute_add rows for every custom attribute of a new
+	/// member — compiler markers and state-machine attributes included (T004:
+	/// markers are real rows now, never dropped).  System.Type values travel as
+	/// structured nodes so typeof(state-machine) binds to the batch row.</summary>
+	void EmitAttributeRows(Dictionary<string, object?> targetRef, IEnumerable<dnlib.DotNet.CustomAttribute> attributes, string member) {
+		foreach (var attribute in attributes) {
+			var constructor = attribute.Constructor as IMethod
+				?? throw Reject("add", "the attribute constructor is outside the importable domain on " + member);
+			var constructorOwner = constructor.DeclaringType
+				?? throw Reject("add", "the attribute constructor has no declaring type on " + member);
+			var operation = new Dictionary<string, object?> {
+				["kind"] = "attribute_add",
+				["target"] = targetRef,
+				["constructor"] = new Dictionary<string, object?> {
+					["attribute_type"] = EditPdbTransferCodec.SigText(constructorOwner.ToTypeSig()
+						?? throw Reject("add", "the attribute type signature is outside the importable domain: " + constructorOwner.FullName)),
+					["parameter_types"] = (constructor.MethodSig?.Params ?? Array.Empty<TypeSig>())
+						.Select(p => (object)EditPdbTransferCodec.SigText(p)).ToArray(),
+				},
+			};
+			var fixedArguments = attribute.ConstructorArguments.Select(argument => EmitCaValue(argument, member)).ToArray();
+			if (fixedArguments.Length != 0) operation["fixed_arguments"] = fixedArguments;
+			if (attribute.NamedArguments.Count != 0)
+				operation["named_arguments"] = attribute.NamedArguments.Select(named => {
+					if (named.Argument.Value == null)
+						throw Reject("add", "null named argument values are outside the importable domain on " + member);
+					return new Dictionary<string, object?> {
+						["kind"] = named.IsField ? "field" : "property",
+						["name"] = named.Name?.String ?? string.Empty,
+						["type"] = EditPdbTransferCodec.SigText(named.Type ?? throw Reject("add", "the named argument type is missing on " + member)),
+						["value"] = EmitCaValue(named.Argument, member),
+					};
+				}).ToArray();
+			rows.Add(new PlanRow { Operation = operation, Kind = "attribute_add", ArtifactMember = member, Target = constructorOwner.FullName });
+		}
+	}
+
+	object EmitCaValue(CAArgument argument, string member) {
+		// Enum-typed arguments (and null named values) have no v1/v2 encoding
+		// in the attribute domain; reject them at compile time so the staging
+		// pass never mutates for an unsupported shape.
+		if (argument.Type is TypeDefOrRefSig declared && declared.TypeDefOrRef.ResolveTypeDef()?.IsEnum == true)
+			throw Reject("add", "enum attribute arguments are outside the importable domain on " + member);
+		switch (argument.Value) {
+		case null:
+			return null!;
+		case TypeSig signature:
+			return TypeEntry(CaptureNode(signature));
+		case ITypeDefOrRef reference:
+			return TypeEntry(CaptureNode(reference.ToTypeSig()));
+		case TypeSig[] signatures:
+			return signatures.Select(signature => (object)TypeEntry(CaptureNode(signature))).ToArray();
+		case bool value: return value;
+		case char value: return (ushort)value;
+		case sbyte value: return value;
+		case byte value: return value;
+		case short value: return value;
+		case ushort value: return value;
+		case int value: return value;
+		case uint value: return value;
+		case long value: return value;
+		case ulong value: return value;
+		case float value: return value;
+		case double value: return value;
+		case string value: return value;
+		default:
+			throw Reject("add", "the attribute argument shape is outside the importable domain on " + member + ": " + argument.Value.GetType().Name);
+		}
+	}
+
+	// ------------------------------------------------- structured type entries
+
+	/// <summary>Loss-free capture of a signature with every reference planned
+	/// (existing target rows, batch rows or synthesized reference rows).</summary>
+	EditStructuredSignatureCodec.TypeNode CaptureNode(TypeSig signature) =>
+		EditStructuredSignatureCodec.Capture(signature, BindForCapture) is { } node ? NormalizeNode(node) : throw Reject("signature", "a signature is missing");
+
+	/// <summary>Resolve owner sentinels (rows created by the operation under
+	/// construction) to ownerless nodes; a sentinel in a reference position is a
+	/// real ordering violation.</summary>
+	static EditStructuredSignatureCodec.TypeNode NormalizeNode(EditStructuredSignatureCodec.TypeNode node) {
+		if (node.Owner == OwnerSentinel) node.Owner = null;
+		if (node.Reference == OwnerSentinel)
+			throw Reject("signature", "a signature references a row this import has not created yet");
+		if (node.Owner != null && node.Owner.Length == 0) node.Owner = null;
+		foreach (var child in node.Children) NormalizeNode(child);
+		if (node.Call != null) NormalizeCall(node.Call);
+		return node;
+	}
+
+	static EditStructuredSignatureCodec.CallNode NormalizeCall(EditStructuredSignatureCodec.CallNode call) {
+		if (call.Result != null) NormalizeNode(call.Result);
+		foreach (var parameter in call.Parameters) NormalizeNode(parameter);
+		if (call.Optional != null)
+			foreach (var optional in call.Optional) NormalizeNode(optional);
+		return call;
+	}
+
+	static JsonElement NodeJson(EditStructuredSignatureCodec.TypeNode node) =>
+		JsonSerializer.SerializeToElement(node, EditWire.JsonOptions);
+
+	static Dictionary<string, object?> TypeEntry(EditStructuredSignatureCodec.TypeNode node) => new() {
+		["kind"] = "type",
+		["type"] = NodeJson(node),
+	};
+
+	/// <summary>Emit a type entry for a payload: the frozen v1 text when every
+	/// planned reference resolves to an existing target row, otherwise a
+	/// structured v2 node bound to the planned references.</summary>
+	object EmitType(TypeSig? signature, int ownerTypeArity = 0, int ownerMethodArity = 0, bool allowVoid = false, bool forceStructured = false) {
+		if (signature == null) throw Reject("signature", "a signature is missing");
+		bool sawObject = false;
+		var node = EditStructuredSignatureCodec.Capture(signature, row => {
+			var text = BindForCapture(row);
+			if (!text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) sawObject = true;
+			return text;
+		});
+		if (sawObject || forceStructured)
+			return TypeEntry(NormalizeNode(node));
+		try {
+			return ResolveTypeText(signature, ownerTypeArity, ownerMethodArity, allowVoid);
+		}
+		catch (Exception ex) when (ex is ArgumentException or EditDomainException) {
+			return TypeEntry(NormalizeNode(node));
+		}
+	}
+
 	// ------------------------------------------------------------- body encode
 
 	Dictionary<string, object?> EncodeBody(MethodDef method) {
 		var body = method.Body ?? throw Reject("body", "the compiled member has no body: " + method.FullName);
 		var ownerArity = method.DeclaringType?.GenericParameters.Count ?? 0;
+		var methodArity = method.GenericParameters.Count;
 		var locals = body.Variables.Select(local => new Dictionary<string, object?> {
-			["type"] = ResolveTypeText(local.Type, ownerArity, method.GenericParameters.Count),
+			["type"] = EmitType(local.Type, ownerArity, methodArity),
 			["name"] = local.Name,
 		}).ToArray();
 		var instructions = new List<Dictionary<string, object?>>();
@@ -521,7 +994,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 			["handler_start"] = InstructionIndex(body, eh.HandlerStart),
 			["handler_end"] = InstructionIndex(body, eh.HandlerEnd),
 			["filter_start"] = eh.FilterStart == null ? null : (object)body.Instructions.IndexOf(eh.FilterStart),
-			["catch_type"] = eh.CatchType == null ? null : ResolveTypeText(eh.CatchType.ToTypeSig(), ownerArity, method.GenericParameters.Count),
+			["catch_type"] = eh.CatchType == null ? null : EmitType(eh.CatchType.ToTypeSig(), ownerArity, methodArity),
 		}).ToArray();
 		var payload = new Dictionary<string, object?> {
 			["init_locals"] = body.InitLocals,
@@ -563,23 +1036,26 @@ internal sealed class EditCSharpImporter : IDisposable {
 		case float value: return new Dictionary<string, object?> { ["kind"] = "f32", ["value"] = value };
 		case double value: return new Dictionary<string, object?> { ["kind"] = "f64", ["value"] = value };
 		case string value: return new Dictionary<string, object?> { ["kind"] = "string", ["value"] = value };
-		case MethodDef artifactMethod: return TokenOperand(FindMethodRow(artifactMethod), "method", artifactMethod.FullName);
-		case FieldDef artifactField: return TokenOperand(FindFieldRow(artifactField), "field", artifactField.FullName);
-		case TypeDef artifactType: return TokenOperand(FindTypeRow(artifactType), "type", artifactType.FullName);
+		case MethodDef artifactMethod: return TokenOperand(PlannedText(FindMethodRow(artifactMethod), artifactMethod), "method", artifactMethod.FullName);
+		case FieldDef artifactField: return TokenOperand(PlannedText(FindFieldRow(artifactField), artifactField), "field", artifactField.FullName);
+		case TypeDef artifactType: return TokenOperand(PlannedText(FindTypeRow(artifactType), artifactType), "type", artifactType.FullName);
 		case MemberRef member: return member.IsMethodRef
-			? TokenOperand(FindMemberRefMethodRow(member), "method", member.FullName)
-			: TokenOperand(FindMemberRefFieldRow(member), "field", member.FullName);
-		case MethodSpec specification: return TokenOperand(FindMethodSpecRow(specification), "method", specification.FullName,
+			? TokenOperand(PlannedText(FindMemberRefMethodRow(member), member), "method", member.FullName)
+			: TokenOperand(PlannedText(FindMemberRefFieldRow(member), member), "field", member.FullName);
+		case MethodSpec specification: return TokenOperand(PlannedText(FindMethodSpecRow(specification), specification), "method", specification.FullName,
 			"artifact_key=" + ArtifactSpecKey(specification) + " target_keys=" + string.Join(" | ", methodSpecCache.Keys.Take(6)));
-		case TypeSpec specification: return TokenOperand(FindTypeSpecRow(specification.TypeSig), "type", specification.FullName);
-		case TypeSig signature: return TokenOperand(FindTypeSpecRow(signature), "type", signature.FullName);
-		case ITypeDefOrRef typeReference: return TokenOperand(FindExternalTypeRow(typeReference), "type", typeReference.FullName);
+		case TypeSpec specification: return TokenOperand(PlannedText(FindTypeSpecRow(specification.TypeSig), specification), "type", specification.FullName);
+		case TypeSig signature: return TokenOperand(PlannedText(FindTypeSpecRow(signature), signature), "type", signature.FullName);
+		case ITypeDefOrRef typeReference: return TokenOperand(PlannedText(FindExternalTypeRow(typeReference), typeReference), "type", typeReference.FullName);
 		case StandAloneSig or MethodSig:
 			throw Reject("operand", "call-site signatures are outside the importable body domain: " + method.FullName);
 		default:
 			throw Reject("operand", "the operand shape is outside the importable body domain: " + operand.GetType().Name);
 		}
 	}
+
+	string PlannedText(string mapped, IMDTokenProvider artifactRow) =>
+		mapped.Length != 0 ? mapped : Bind(artifactRow);
 
 	static object TokenOperand(string token, string kind, string member) => TokenOperand(token, kind, member, null);
 
@@ -598,7 +1074,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 	/// other reference assembly, so its calls into target members arrive as
 	/// MemberRefs scoped by the target's AssemblyRef.  Those bind straight to
 	/// the target definitions by identity; every other MemberRef maps to an
-	/// existing target row of the same shape.</summary>
+	/// existing target row of the same shape or is synthesized.</summary>
 	string FindMemberRefMethodRow(MemberRef member) {
 		if (ReferencesTargetAssembly(member, out var owner)) {
 			var match = owner!.Methods.Where(m => string.Equals(m.Name.String, member.Name.String, StringComparison.Ordinal)
@@ -637,21 +1113,26 @@ internal sealed class EditCSharpImporter : IDisposable {
 
 	/// <summary>Bind for CDI capture: reference text of artifact rows (token of
 	/// the matched target row, or object ID of a row this import creates).</summary>
-	string BindReference(IMDTokenProvider artifactRow) => artifactRow switch {
-		MethodDef method => FindMethodRow(method),
-		FieldDef field => FindFieldRow(field),
-		TypeDef type => FindTypeRow(type),
-		_ => throw Reject("internal", "an unsupported reference row was bound: " + artifactRow.GetType().Name),
-	};
+	string BindReference(IMDTokenProvider artifactRow) {
+		var mapped = artifactRow switch {
+			MethodDef method => FindMethodRow(method),
+			FieldDef field => FindFieldRow(field),
+			TypeDef type => FindTypeRow(type),
+			_ => string.Empty,
+		};
+		return mapped.Length != 0 ? mapped : Bind(artifactRow);
+	}
 
-	/// <summary>Target counterpart of an artifact type: exact full name, or the
+	/// <summary>Target counterpart of an artifact type: a row this import
+	/// created has none by definition; otherwise the exact full name, or the
 	/// generated kickoff-name pattern when the compilers numbered the state
 	/// machines differently (cached; null means unmapped).</summary>
 	TypeDef? TargetFor(TypeDef artifactType) {
 		if (generatedTargets.TryGetValue(artifactType, out var cached)) return cached;
-		var match = EditImportMatcher.IsGeneratedType(artifactType) && artifactType.DeclaringType != null
-			? matcher.TargetGeneratedType(artifactType, artifactType.DeclaringType)
-			: matcher.TargetType(artifactType);
+		TypeDef? match = referenceText.ContainsKey(artifactType) ? null
+			: EditImportMatcher.IsGeneratedType(artifactType) && artifactType.DeclaringType != null
+				? matcher.TargetGeneratedType(artifactType, artifactType.DeclaringType)
+				: matcher.TargetType(artifactType);
 		generatedTargets[artifactType] = match;
 		return match;
 	}
@@ -833,12 +1314,12 @@ internal sealed class EditCSharpImporter : IDisposable {
 	/// to an existing target row or to a type this import creates — a name that
 	/// would make the parser synthesize a reference is an unmapped reference and
 	/// is rejected.</summary>
-	string ResolveTypeText(TypeSig? signature, int ownerTypeArity = 0, int ownerMethodArity = 0) {
+	string ResolveTypeText(TypeSig? signature, int ownerTypeArity = 0, int ownerMethodArity = 0, bool allowVoid = false) {
 		if (signature == null) throw Reject("signature", "a signature is missing");
 		var text = EditPdbTransferCodec.SigText(signature, RebindGenerated);
 		var parser = new EditTypeSigParser(target, ownerTypeArity, ownerMethodArity);
 		TypeSig parsed;
-		try { parsed = parser.Parse(text, signature.ElementType == ElementType.Void); }
+		try { parsed = parser.Parse(text, allowVoid || signature.ElementType == ElementType.Void); }
 		catch (Exception ex) when (ex is ArgumentException or EditDomainException) {
 			var detail = ex is EditDomainException domain ? EditWire.CanonicalPayload(domain.Details) : ex.Message;
 			throw Reject("signature", "the signature text did not reparse in the target: " + text + " (" + detail + ")");
@@ -875,27 +1356,6 @@ internal sealed class EditCSharpImporter : IDisposable {
 			}
 		}
 		return true;
-	}
-
-	// The four compiler-marker attributes the Roslyn codegen stamps onto
-	// generated members; they carry no fixed/named arguments and no program
-	// semantics, and the replace path keeps the target's rows untouched.
-	static readonly string[] CompilerMarkers = {
-		"System.Runtime.CompilerServices.CompilerGeneratedAttribute",
-		"System.Diagnostics.DebuggerHiddenAttribute",
-		"System.Diagnostics.DebuggerNonUserCodeAttribute",
-		"System.Diagnostics.DebuggerStepThroughAttribute",
-	};
-
-	/// <summary>Non-marker custom attributes are outside the P06 add domain;
-	/// compiler markers are dropped because the replace path keeps the target's
-	/// rows and a fresh marker row is not expressible without a resolvable
-	/// constructor in the target.</summary>
-	static void RejectCustomAttributes(string member, IEnumerable<dnlib.DotNet.CustomAttribute> attributes) {
-		foreach (var attribute in attributes)
-			if (!CompilerMarkers.Contains(attribute.TypeFullName))
-				throw Reject("add", "members with custom attributes are outside the importable add domain: " + member
-					+ " (" + attribute.TypeFullName + ")");
 	}
 
 	static string RequiredString(JsonElement element, string name) =>

@@ -16,6 +16,14 @@ internal static partial class EditOperationRegistry {
 		if (kind == "legacy_symbol_rename") return new() { ["legacy"] = EditLegacyRenameOperation.Reverse(forward) };
 		var inverse = new Dictionary<string, object?> { ["kind"] = kind };
 		if (forward.TryGetProperty("target", out var target)) inverse["target"] = target.Clone();
+		if (kind == "interface_add") return CaptureInterfaceAddState(before, forward, objects);
+		if (kind == "reference_add") {
+			var descriptor = forward.GetProperty("reference");
+			var form = RequiredString(descriptor, "form");
+			return new() { ["reference_release_state"] = new Dictionary<string, object?> {
+				["form"] = form, ["created"] = true,
+			} };
+		}
 		switch (kind) {
 		case "type_add":
 		case "method_add":
@@ -47,7 +55,7 @@ internal static partial class EditOperationRegistry {
 				};
 			}
 			return new() { ["type_state"] = new Dictionary<string, object?> {
-				["type"] = InverseReference(value, objects), ["state"] = state,
+				["type"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "method_update": {
@@ -63,8 +71,8 @@ internal static partial class EditOperationRegistry {
 				// P04: whole-list override capture; both sides are in-module
 				// method rows, so structured references round-trip exactly.
 				state["overrides"] = value.Overrides.Select(x => (object)new Dictionary<string, object?> {
-					["method"] = InverseReference(x.MethodBody, objects),
-					["declaration"] = InverseReference((IMDTokenProvider)x.MethodDeclaration, objects),
+					["method"] = InverseReference(before, x.MethodBody, objects),
+					["declaration"] = InverseReference(before, (IMDTokenProvider)x.MethodDeclaration, objects),
 				}).ToArray();
 			}
 			if (forward.TryGetProperty("pinvoke", out _)) {
@@ -76,7 +84,7 @@ internal static partial class EditOperationRegistry {
 				};
 			}
 			return new() { ["method_state"] = new Dictionary<string, object?> {
-				["method"] = InverseReference(value, objects), ["state"] = state,
+				["method"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "field_update": {
@@ -108,7 +116,7 @@ internal static partial class EditOperationRegistry {
 				else state["marshal"] = EditMarshalCodec.Capture(value.MarshalType, binder);
 			}
 			return new() { ["field_state"] = new Dictionary<string, object?> {
-				["field"] = InverseReference(value, objects), ["state"] = state,
+				["field"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "property_update": {
@@ -120,14 +128,14 @@ internal static partial class EditOperationRegistry {
 				state["property_signature"] = EditStructuredSignatureCodec.Capture(value.PropertySig, InverseBinder(before, objects));
 			if (forward.TryGetProperty("getter", out _)) {
 				if (value.GetMethod == null) state["getter_null"] = true;
-				else state["getter"] = InverseReference(value.GetMethod, objects);
+				else state["getter"] = InverseReference(before, value.GetMethod, objects);
 			}
 			if (forward.TryGetProperty("setter", out _)) {
 				if (value.SetMethod == null) state["setter_null"] = true;
-				else state["setter"] = InverseReference(value.SetMethod, objects);
+				else state["setter"] = InverseReference(before, value.SetMethod, objects);
 			}
 			return new() { ["property_state"] = new Dictionary<string, object?> {
-				["property"] = InverseReference(value, objects), ["state"] = state,
+				["property"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "event_update": {
@@ -141,18 +149,18 @@ internal static partial class EditOperationRegistry {
 			}
 			if (forward.TryGetProperty("add_method", out _)) {
 				if (value.AddMethod == null) state["add_null"] = true;
-				else state["add_method"] = InverseReference(value.AddMethod, objects);
+				else state["add_method"] = InverseReference(before, value.AddMethod, objects);
 			}
 			if (forward.TryGetProperty("remove_method", out _)) {
 				if (value.RemoveMethod == null) state["remove_null"] = true;
-				else state["remove_method"] = InverseReference(value.RemoveMethod, objects);
+				else state["remove_method"] = InverseReference(before, value.RemoveMethod, objects);
 			}
 			if (forward.TryGetProperty("raise_method", out _)) {
 				if (value.InvokeMethod == null) state["raise_null"] = true;
-				else state["raise_method"] = InverseReference(value.InvokeMethod, objects);
+				else state["raise_method"] = InverseReference(before, value.InvokeMethod, objects);
 			}
 			return new() { ["event_state"] = new Dictionary<string, object?> {
-				["event"] = InverseReference(value, objects), ["state"] = state,
+				["event"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "generic_parameter_update": {
@@ -166,7 +174,7 @@ internal static partial class EditOperationRegistry {
 					.Select(x => (object)EditStructuredSignatureCodec.Capture(x.Constraint.ToTypeSig(), binder)).ToArray();
 			}
 			return new() { ["generic_state"] = new Dictionary<string, object?> {
-				["generic"] = InverseReference(value, objects), ["state"] = state,
+				["generic"] = InverseReference(before, value, objects), ["state"] = state,
 			} };
 		}
 		case "security_add": {
@@ -196,8 +204,8 @@ internal static partial class EditOperationRegistry {
 			var addConstructor = ResolveAttributeConstructor(before, forward.GetProperty("constructor"));
 			var rows = addTarget.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, addConstructor)).Count();
 			return new() { ["attribute_remove_state"] = new Dictionary<string, object?> {
-				["target"] = addAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference((IMDTokenProvider)addTarget, objects),
-				["constructor"] = InverseReference(addConstructor, objects),
+				["target"] = addAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference(before, (IMDTokenProvider)addTarget, objects),
+				["constructor"] = AttributeConstructorState(addConstructor),
 				["index"] = rows,
 			} };
 		}
@@ -209,12 +217,12 @@ internal static partial class EditOperationRegistry {
 			var removedRow = removeTarget.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, removeConstructor)).Skip(removeIndex).FirstOrDefault()
 				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			return new() { ["attribute_add_state"] = new Dictionary<string, object?> {
-				["target"] = removeAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference((IMDTokenProvider)removeTarget, objects),
-				["constructor"] = InverseReference(removeConstructor, objects),
-				["fixed_arguments"] = removedRow.ConstructorArguments.Select(x => CaInverseValue(x.Value)).ToArray(),
+				["target"] = removeAssemblyScoped ? new Dictionary<string, object?> { ["scope"] = "assembly" } : InverseReference(before, (IMDTokenProvider)removeTarget, objects),
+				["constructor"] = AttributeConstructorState(removeConstructor),
+				["fixed_arguments"] = removedRow.ConstructorArguments.Select(x => CaInverseValue(x.Value, row => InverseBinding(before, row, objects))).ToArray(),
 				["named_arguments"] = removedRow.NamedArguments.Select(x => (object)new Dictionary<string, object?> {
 					["kind"] = x.IsField ? "field" : "property", ["name"] = x.Name?.String,
-					["type"] = x.Type.FullName, ["value"] = CaInverseValue(x.Argument.Value),
+					["type"] = x.Type.FullName, ["value"] = CaInverseValue(x.Argument.Value, row => InverseBinding(before, row, objects)),
 				}).ToArray(),
 			} };
 		}
@@ -238,7 +246,7 @@ internal static partial class EditOperationRegistry {
 				: objects.TryGetValue(RequiredString(forward.GetProperty("target"), "object_id"), out var bound) && bound is AssemblyRef boundRef
 					? boundRef : throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			return new() { ["assembly_ref_update_state"] = new Dictionary<string, object?> {
-				["target"] = InverseReference(reference, objects),
+				["target"] = InverseReference(before, reference, objects),
 				["name"] = reference.Name?.String ?? string.Empty,
 				["version"] = reference.Version?.ToString() ?? string.Empty,
 				["culture"] = reference.Culture?.String ?? string.Empty,
@@ -313,7 +321,28 @@ internal static partial class EditOperationRegistry {
 		}
 		case "method_body_replace": {
 			var value = Ref<MethodDef>(before, forward.GetProperty("target"), objects);
-			if (value.Body == null) return new() { ["absent_body"] = InverseReference(value, objects) };
+			// The forward body registers sequence-point documents in the module
+			// PdbState; the inverse releases exactly those rows when nothing
+			// references them anymore (byte-level image equality).
+			if (forward.TryGetProperty("body", out var bodyElement) && bodyElement.ValueKind == JsonValueKind.Object
+				&& bodyElement.TryGetProperty("sequence_points", out var points) && points.ValueKind == JsonValueKind.Array) {
+				var documents = new List<Dictionary<string, object?>>();
+				foreach (var point in points.EnumerateArray()) {
+					var document = point.GetProperty("document");
+					var row = new Dictionary<string, object?> {
+						["name"] = document.GetProperty("name").GetString(),
+						["hash"] = document.TryGetProperty("hash", out var hash) && hash.ValueKind == JsonValueKind.String ? hash.GetString() : null,
+					};
+					if (!documents.Any(existing => string.Equals(existing["name"] as string, row["name"] as string, StringComparison.Ordinal)))
+						documents.Add(row);
+				}
+				if (documents.Count != 0) inverse["release_documents"] = documents;
+			}
+			if (value.Body == null) {
+				var absent = new Dictionary<string, object?> { ["absent_body"] = InverseReference(before, value, objects) };
+				if (inverse.TryGetValue("release_documents", out var release)) absent["release_documents"] = release;
+				return absent;
+			}
 			inverse["body"] = McpTools.StructuredBody(value);
 			break;
 		}
@@ -326,7 +355,7 @@ internal static partial class EditOperationRegistry {
 		case "parameter_remove": {
 			var value = ResolveParameter(before, forward.GetProperty("parameter_target"), objects);
 			return new() { ["parameter_tail_restore"] = new Dictionary<string, object?> {
-				["owner_method"] = InverseReference(value.method, objects), ["parameter_index"] = value.index,
+				["owner_method"] = InverseReference(before, value.method, objects), ["parameter_index"] = value.index,
 				// FullName text loses fidelity and reparsing appends duplicate TypeRef
 				// rows; capture the signature with reference identity instead.
 				["parameter_signature"] = EditStructuredSignatureCodec.Capture(value.method.MethodSig.Params[value.index], InverseBinder(before, objects)),
@@ -344,7 +373,7 @@ internal static partial class EditOperationRegistry {
 			var value = Ref<GenericParam>(before, forward.GetProperty("target"), objects);
 			var method = value.Owner as MethodDef;
 			return new() { ["generic_tail_restore"] = new Dictionary<string, object?> {
-				["owner"] = InverseReference(value.Owner, objects), ["generic_index"] = (int)value.Number,
+				["owner"] = InverseReference(before, value.Owner, objects), ["generic_index"] = (int)value.Number,
 				["token"] = value.MDToken.Raw, ["name"] = value.Name?.String, ["attributes"] = (uint)value.Flags,
 				["method_arity"] = method?.MethodSig.GenParamCount, ["method_calling_convention"] = method == null ? null : (uint?)method.MethodSig.CallingConvention,
 			} };
@@ -352,7 +381,7 @@ internal static partial class EditOperationRegistry {
 		case "parameter_update": {
 			var value = ResolveParameter(before, forward.GetProperty("parameter_target"), objects);
 			var state = new Dictionary<string, object?> {
-				["owner_method"] = InverseReference(value.method, objects), ["parameter_index"] = value.index,
+				["owner_method"] = InverseReference(before, value.method, objects), ["parameter_index"] = value.index,
 				["had_paramdef"] = value.param != null,
 			};
 			if (forward.TryGetProperty("name", out _)) {
@@ -382,8 +411,8 @@ internal static partial class EditOperationRegistry {
 			// to move it back; no parallel snapshot representation exists.
 			var rowTarget = forward.GetProperty("target");
 			Dictionary<string, object?> Emit(IMDTokenProvider row, TypeDef owner, int index) => new() {
-				["kind"] = kind, ["row"] = InverseReference(row, objects),
-				["owner"] = InverseReference(owner, objects), ["owner_index"] = index,
+				["kind"] = kind, ["row"] = InverseReference(before, row, objects),
+				["owner"] = InverseReference(before, owner, objects), ["owner_index"] = index,
 			};
 			switch (kind) {
 			case "field_remove": { var row = Ref<FieldDef>(before, rowTarget, objects); return new() { ["member_restore"] = Emit(row, row.DeclaringType!, row.DeclaringType!.Fields.IndexOf(row)) }; }
@@ -391,13 +420,13 @@ internal static partial class EditOperationRegistry {
 			case "property_remove": {
 				var row = Ref<PropertyDef>(before, rowTarget, objects);
 				var state = Emit(row, row.DeclaringType!, row.DeclaringType!.Properties.IndexOf(row));
-				state["accessors"] = AccessorState(PropertyAccessors(row), row.DeclaringType!, objects);
+				state["accessors"] = AccessorState(before, PropertyAccessors(row), row.DeclaringType!, objects);
 				return new() { ["member_restore"] = state };
 			}
 			default: {
 				var row = Ref<EventDef>(before, rowTarget, objects);
 				var state = Emit(row, row.DeclaringType!, row.DeclaringType!.Events.IndexOf(row));
-				state["accessors"] = AccessorState(EventAccessors(row), row.DeclaringType!, objects);
+				state["accessors"] = AccessorState(before, EventAccessors(row), row.DeclaringType!, objects);
 				return new() { ["member_restore"] = state };
 			}
 			case "type_remove": {
@@ -408,8 +437,8 @@ internal static partial class EditOperationRegistry {
 				var parent = row.DeclaringType;
 				var collection = parent == null ? before.Types : parent.NestedTypes;
 				var state = new Dictionary<string, object?> {
-					["kind"] = "type_remove", ["row"] = InverseReference(row, objects),
-					["top_level"] = parent == null, ["parent"] = parent == null ? null : InverseReference(parent, objects),
+					["kind"] = "type_remove", ["row"] = InverseReference(before, row, objects),
+					["top_level"] = parent == null, ["parent"] = parent == null ? null : InverseReference(before, parent, objects),
 					["owner_index"] = collection.IndexOf(row),
 				};
 				return new() { ["member_restore"] = state };
@@ -442,6 +471,16 @@ internal static partial class EditOperationRegistry {
 	internal static EditOperationOutcome ApplyCompiledInverse(ModuleDef module, JsonElement inverse,
 		Dictionary<string, IMDTokenProvider> objects, int index) {
 		if (inverse.TryGetProperty("legacy", out _)) return EditLegacyRenameOperation.ApplyInverse(module, inverse);
+		if (inverse.TryGetProperty("interface_remove_state", out var interfaceState))
+			return ApplyInterfaceRemoveState(module, interfaceState, objects);
+		if (inverse.TryGetProperty("reference_release_state", out var referenceState)) {
+			// Created reference rows live only in the object graph until the module
+			// is written; reverse-order inversion has already detached every user.
+			// Non-created rows are shared and must survive.
+			var created = referenceState.GetProperty("created").GetBoolean();
+			return new EditOperationOutcome { Kind = "reference_release", Target = referenceState.GetProperty("form").GetString() ?? "reference",
+				Undo = () => { } , Before = created ? "created" : "shared" };
+		}
 		if (inverse.TryGetProperty("definition_tail_remove", out var definitionTail)) {
 			var kind = RequiredString(definitionTail, "add_kind");
 			var ownerValue = definitionTail.GetProperty("owner_address");
@@ -455,15 +494,28 @@ internal static partial class EditOperationRegistry {
 				PropertyDef p => p.Name, EventDef e => e.Name, _ => throw new EditDomainException("EDIT_HISTORY_CONFLICT") };
 			if (name != RequiredString(definitionTail, "name")) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			var bindings = objects.Where(pair => ReferenceEquals(pair.Value, target)).ToArray();
+			// Explicit-override rows created with the method travel with it: the
+			// public remove policy treats them as attachments, but a tail
+			// removal of a row this checkpoint created owns them.  Detach for
+			// the composed remove and restore on undo.
+			dnlib.DotNet.MethodOverride[]? detachedOverrides = null;
+			var detachedMethod = target as MethodDef;
+			if (detachedMethod != null) {
+				detachedOverrides = detachedMethod.Overrides.ToArray();
+				detachedMethod.Overrides.Clear();
+			}
 			var temporary = new Dictionary<string, IMDTokenProvider> { ["inverse-definition-tail"] = target };
 			using var removal = JsonDocument.Parse(JsonSerializer.Serialize(new {
 				kind = kind.Substring(0, kind.Length - 4) + "_remove", target = new { object_id = "inverse-definition-tail" }, remove_mode = "reject_if_referenced",
 			}));
-			var applied = Apply(module, removal.RootElement, temporary, index);
+			EditOperationOutcome applied;
+			try { applied = Apply(module, removal.RootElement, temporary, index); }
+			catch { if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row); throw; }
 			foreach (var binding in bindings) objects.Remove(binding.Key);
 			return new EditOperationOutcome { Kind = applied.Kind, Target = applied.Target, Before = applied.Before,
 				After = applied.After, Risks = applied.Risks, Undo = () => {
 					applied.Undo();
+					if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row);
 					foreach (var binding in bindings) objects[binding.Key] = binding.Value;
 				} };
 		}
@@ -471,6 +523,7 @@ internal static partial class EditOperationRegistry {
 			var method = Ref<MethodDef>(module, absentBody, objects);
 			var previous = method.Body;
 			method.Body = null;
+			ReleaseRecordedDocuments(module, inverse);
 			return new EditOperationOutcome { Kind = "method_body_replace", Undo = () => method.Body = previous };
 		}
 		if (inverse.TryGetProperty("assembly_update_state", out var assemblyState)) {
@@ -614,8 +667,12 @@ internal static partial class EditOperationRegistry {
 			return RestoreGenericState(module, genericState, objects);
 		if (inverse.TryGetProperty("attribute_remove_state", out var attributeRemove)) {
 			var removeTarget = AttributeRestoreTarget(module, attributeRemove.GetProperty("target"), objects);
-			var removeConstructor = Ref<MethodDef>(module, attributeRemove.GetProperty("constructor"), objects);
-			var removeRows = removeTarget.CustomAttributes.Where(x => ReferenceEquals(x.Constructor, removeConstructor)).ToList();
+			// New states carry the resolvable constructor shape; packages written
+			// before that keep the row-reference form.
+			var removeConstructor = attributeRemove.GetProperty("constructor").TryGetProperty("attribute_type", out _)
+				? ResolveAttributeConstructor(module, attributeRemove.GetProperty("constructor"))
+				: Ref<MethodDef>(module, attributeRemove.GetProperty("constructor"), objects);
+			var removeRows = removeTarget.CustomAttributes.Where(x => SameAttributeConstructor(x.Constructor, removeConstructor)).ToList();
 			var removeIndex = attributeRemove.GetProperty("index").GetInt32();
 			if (removeIndex >= removeRows.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			var removedRow = removeRows[removeIndex];
@@ -624,15 +681,17 @@ internal static partial class EditOperationRegistry {
 		}
 		if (inverse.TryGetProperty("attribute_add_state", out var attributeAdd)) {
 			var addTarget = AttributeRestoreTarget(module, attributeAdd.GetProperty("target"), objects);
-			var addConstructor = Ref<MethodDef>(module, attributeAdd.GetProperty("constructor"), objects);
+			var addConstructor = attributeAdd.GetProperty("constructor").TryGetProperty("attribute_type", out _)
+				? ResolveAttributeConstructor(module, attributeAdd.GetProperty("constructor"))
+				: Ref<MethodDef>(module, attributeAdd.GetProperty("constructor"), objects);
 			var fixedArguments = attributeAdd.GetProperty("fixed_arguments").EnumerateArray()
-				.Select((value, i) => new CAArgument(addConstructor.MethodSig.Params[i], CaValue(addConstructor.MethodSig.Params[i], value, "inverse")))
+				.Select((value, i) => new CAArgument(addConstructor.MethodSig.Params[i], CaValue(addConstructor.MethodSig.Params[i], value, "inverse", module, objects)))
 				.ToArray();
 			var namedArguments = attributeAdd.GetProperty("named_arguments").EnumerateArray().Select(x => {
 				var kind = x.GetProperty("kind").GetString()!;
 				var type = new EditTypeSigParser(module).Parse(x.GetProperty("type").GetString()!);
 				return new CANamedArgument(kind == "field", type, x.GetProperty("name").GetString()!,
-					new CAArgument(type, CaValue(type, x.GetProperty("value"), "inverse")));
+					new CAArgument(type, CaValue(type, x.GetProperty("value"), "inverse", module, objects)));
 			}).ToList();
 			var attribute = new CustomAttribute(addConstructor, fixedArguments, namedArguments);
 			addTarget.CustomAttributes.Add(attribute);
@@ -885,18 +944,24 @@ internal static partial class EditOperationRegistry {
 		return key;
 	}
 
-	static object? InverseReference(IMDTokenProvider? value, Dictionary<string, IMDTokenProvider> objects) {
+	static object? InverseReference(ModuleDef module, IMDTokenProvider? value, Dictionary<string, IMDTokenProvider> objects) {
 		if (value == null) return null;
 		var objectId = objects.FirstOrDefault(x => ReferenceEquals(x.Value, value)).Key;
-		if (objectId != null) return new Dictionary<string, object?> { ["object_id"] = objectId };
+		if (objectId != null) return new Dictionary<string, object?> { ["object_id"] = objectId, ["address"] = AddressOf(module, value) };
 		if (value.MDToken.Rid != 0) return new Dictionary<string, object?> { ["token"] = "0x" + value.MDToken.Raw.ToString("x8") };
 		// Zero-RID session-created rows get a same-session binding, mirroring the
-		// signature binder; cross-reload persistence of such bindings stays open
-		// under PLAN-CHANGE-001.
+		// signature binder.  Definitions additionally carry a position address so
+		// the persisted inverse resolves on navigation, where the forward object
+		// map no longer exists (the PLAN-CHANGE-001 cross-reload gap for
+		// reference rows stays open; definitions are closed here).
 		var key = NextInverseBindingKey(objects);
 		objects[key] = value;
-		return new Dictionary<string, object?> { ["object_id"] = key };
+		return new Dictionary<string, object?> { ["object_id"] = key, ["address"] = AddressOf(module, value) };
 	}
+
+	static string? AddressOf(ModuleDef module, IMDTokenProvider value) =>
+		value is TypeDef or MethodDef or FieldDef or PropertyDef or EventDef or ParamDef or GenericParam
+			? EditDefinitionAddress.Capture(module, value) : null;
 
 	static EditOperationOutcome RestoreTypeState(ModuleDef module, JsonElement state, Dictionary<string, IMDTokenProvider> objects) {
 		var type = Ref<TypeDef>(module, state.GetProperty("type"), objects);
@@ -983,13 +1048,70 @@ internal static partial class EditOperationRegistry {
 		return Ref<IMDTokenProvider>(module, reference, objects) as IHasCustomAttribute
 			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 	}
-	static object? CaInverseValue(object? value) => value switch {
+	static string InverseBinding(ModuleDef module, IMDTokenProvider value, Dictionary<string, IMDTokenProvider> objects) {
+		var objectId = objects.FirstOrDefault(x => ReferenceEquals(x.Value, value)).Key;
+		if (objectId != null) return objectId;
+		if (value.MDToken.Rid != 0) return "0x" + value.MDToken.Raw.ToString("x8");
+		// Definitions bind to their position address so signature-level inverse
+		// references survive navigation without the forward map.
+		if (value is TypeDef or MethodDef or FieldDef or PropertyDef or EventDef or ParamDef or GenericParam)
+			return "addr:" + EditDefinitionAddress.Capture(module, value);
+		var key = NextInverseBindingKey(objects);
+		objects[key] = value;
+		return key;
+	}
+
+	static object? CaInverseValue(object? value, Func<IMDTokenProvider, string>? bind = null) => value switch {
 		null => null,
 		bool b => b, char c => (ushort)c, sbyte v => v, byte v => v, short v => v, ushort v => v,
 		int v => v, uint v => v, long v => v, ulong v => v, float v => v, double v => v,
 		UTF8String s => s.String ?? string.Empty, string s => s,
+		TypeSig signature when bind != null => new Dictionary<string, object?> { ["kind"] = "type",
+			["type"] = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+				JsonSerializer.Serialize(EditStructuredSignatureCodec.Capture(signature, bind), EditWire.JsonOptions), EditWire.JsonOptions) ?? new() },
+		TypeSig[] signatures when bind != null => signatures.Select(signature => CaInverseValue(signature, bind)).ToArray(),
 		_ => throw new EditDomainException("EDIT_HISTORY_CONFLICT"),
 	};
+	// The constructor travels as its resolvable shape (attribute type plus
+	// parameter texts): synthesized MemberRef constructors have no table row,
+	// so a row reference could never resolve on navigation without the
+	// forward map.
+	static Dictionary<string, object?> AttributeConstructorState(ICustomAttributeType constructor) {
+		var method = constructor as IMethod ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		var owner = method.DeclaringType ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		return new Dictionary<string, object?> {
+			["attribute_type"] = EditPdbTransferCodec.SigText(owner.ToTypeSig()
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT")),
+			["parameter_types"] = (method.MethodSig?.Params ?? Array.Empty<TypeSig>())
+				.Select(parameter => (object)EditPdbTransferCodec.SigText(parameter)).ToArray(),
+		};
+	}
+
+	// Release PdbState documents the forward body registered when no live
+	// sequence point references them anymore (persisted-inverse counterpart of
+	// the forward-side release).
+	static void ReleaseRecordedDocuments(ModuleDef module, JsonElement inverse) {
+		var state = module.PdbState;
+		if (state == null || !inverse.TryGetProperty("release_documents", out var rows) || rows.ValueKind != JsonValueKind.Array) return;
+		foreach (var row in rows.EnumerateArray()) {
+			var name = row.GetProperty("name").GetString();
+			dnlib.DotNet.Pdb.PdbDocument? match = null;
+			foreach (var document in state.Documents)
+				if (string.Equals(document.Url, name, StringComparison.Ordinal)) { match = document; break; }
+			if (match == null) continue;
+			bool Referenced() {
+				foreach (var type in module.GetTypes())
+					foreach (var method in type.Methods) {
+						if (!method.HasBody) continue;
+						foreach (var instruction in method.Body.Instructions)
+							if (ReferenceEquals(instruction.SequencePoint?.Document, match)) return true;
+					}
+				return false;
+			}
+			if (!Referenced()) state.Remove(match);
+		}
+	}
+
 	static IHasCustomAttribute AttributeRestoreTarget(ModuleDef module, JsonElement reference, Dictionary<string, IMDTokenProvider> objects) {
 		if (reference.TryGetProperty("scope", out var scope) && scope.GetString() == "assembly")
 			return module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
@@ -1118,10 +1240,10 @@ internal static partial class EditOperationRegistry {
 		} };
 	}
 
-	static object?[] AccessorState((string slot, MethodDef? method)[] accessors, TypeDef owner, Dictionary<string, IMDTokenProvider> objects) =>
+	static object?[] AccessorState(ModuleDef module, (string slot, MethodDef? method)[] accessors, TypeDef owner, Dictionary<string, IMDTokenProvider> objects) =>
 		accessors.Where(a => a.method != null)
 			.Select(a => (object?)new Dictionary<string, object?> {
-				["slot"] = a.slot, ["row"] = InverseReference(a.method!, objects),
+				["slot"] = a.slot, ["row"] = InverseReference(module, a.method!, objects),
 				["owner_index"] = owner.Methods.IndexOf(a.method!),
 			}).ToArray();
 
@@ -1234,6 +1356,7 @@ internal static partial class EditOperationRegistry {
 	}
 
 	static IMDTokenProvider ResolveInverseReference(ModuleDef module, string id, Dictionary<string, IMDTokenProvider> objects) {
+		if (id.StartsWith("addr:", StringComparison.Ordinal)) return EditDefinitionAddress.Resolve(module, id.Substring("addr:".Length));
 		if (id.StartsWith("corlib:", StringComparison.Ordinal)) {
 			var name = id.Substring("corlib:".Length);
 			return name switch {

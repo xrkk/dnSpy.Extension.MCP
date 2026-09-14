@@ -318,7 +318,7 @@
               "maxLength": 128
             },
             "kind_version": {
-              "const": 1
+              "enum": [1, 2]
             },
             "forward": {
               "type": "object"

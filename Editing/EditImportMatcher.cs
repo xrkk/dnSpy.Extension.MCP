@@ -244,8 +244,15 @@ internal sealed class EditImportMatcher {
 			if (!string.Equals(name, "System.Runtime.CompilerServices.AsyncStateMachineAttribute", StringComparison.Ordinal)
 				&& !string.Equals(name, "System.Runtime.CompilerServices.IteratorStateMachineAttribute", StringComparison.Ordinal))
 				continue;
-			if (attribute.ConstructorArguments.Count == 1 && attribute.ConstructorArguments[0].Value is ITypeDefOrRef stateMachine)
-				return stateMachine.ResolveTypeDef();
+			if (attribute.ConstructorArguments.Count != 1) continue;
+			// Real Roslyn output stores the typeof(...) argument as a TypeSig
+			// (ClassSig), hand-built artifacts as an ITypeDefOrRef.
+			var stateMachine = attribute.ConstructorArguments[0].Value switch {
+				TypeSig signature => signature.ToTypeDefOrRef(),
+				ITypeDefOrRef reference => reference,
+				_ => null,
+			};
+			if (stateMachine != null) return stateMachine.ResolveTypeDef();
 		}
 		return null;
 	}

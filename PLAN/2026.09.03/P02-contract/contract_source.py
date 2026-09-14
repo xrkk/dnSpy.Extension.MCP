@@ -329,6 +329,16 @@ OPERATIONS = [
     op("strong_name_remove", ["dynamic_failure"], [],
        ["validate_one_time_evidence", "capture_public_key"], ["clear:public_key_and_flag"], ["restore:captured_key_and_attributes"],
        delete_policy="hard_fail_if_dynamic_evidence_not_consumed;removal_is_risk"),
+    # T004 (PLAN-CHANGE-006): explicit-scope reference synthesis and interface
+    # row creation.  Both are v1 kinds; the importer emits them bottom-up for
+    # first async/iterator adds on zero-reference-surface targets.
+    op("interface_add", ["owner_type", "interface"], [],
+       ["resolve_owner_type", "resolve_interface_row", "reject_duplicate_implementation", "insert_interface_row"],
+       ["insert:interface_collection"], ["remove:interface_collection_by_index"]),
+    op("reference_add", ["reference"], [],
+       ["resolve_descriptor_form", "reuse_full_identity_row_or_create", "register_object_id"],
+       ["insert:reference_row:if_created"], ["release:reference_row:if_created_and_unreferenced"],
+       delete_policy="graph_only_rows_released_on_inverse"),
 ]
 
 # The frozen P02 machine suite: the P02 tool schemas, acceptance-case map and

@@ -267,7 +267,17 @@ internal sealed class EditWorkspace : IDisposable {
 	}
 
 	public T OnLive<T>(Func<T> action) => OnDispatcher(action);
+	// The WPF touch lives in a NoInlining helper: JIT of this wrapper never
+	// loads WindowsBase, so a headless host without WPF (the Linux store-level
+	// verification probe) falls back to inline execution instead of failing
+	// assembly resolution.  Real dnSpy hosts dispatch unchanged.
 	public static T OnDispatcher<T>(Func<T> action) {
+		try { return Dispatched(action); }
+		catch (System.IO.FileNotFoundException ex) when (ex.FileName?.StartsWith("WindowsBase", StringComparison.Ordinal) == true) { return action(); }
+		catch (TypeLoadException) { return action(); }
+	}
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	static T Dispatched<T>(Func<T> action) {
 		var dispatcher = Application.Current?.Dispatcher;
 		if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.CheckAccess()) return action();
 		return dispatcher.Invoke(action);

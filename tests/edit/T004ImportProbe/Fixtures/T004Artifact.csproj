@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>T004Artifact</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <DebugType>portable</DebugType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T004Artifact.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="T004Target"><HintPath>bin/T004Target.dll</HintPath></Reference>
+    <Reference Include="T004Plain"><HintPath>bin/T004Plain.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

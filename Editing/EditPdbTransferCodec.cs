@@ -149,6 +149,10 @@ internal static class EditPdbTransferCodec {
 		[JsonPropertyName("breakpoint")]
 		public InstructionRow Breakpoint { get; set; } = new();
 	}
+	public sealed class StateMapRow {
+		[JsonPropertyName("syntax_offset")] public int SyntaxOffset { get; set; }
+		[JsonPropertyName("state")] public int State { get; set; }
+	}
 	public sealed class CdiRow {
 		[JsonPropertyName("kind")]
 		public string Kind { get; set; } = string.Empty;
@@ -160,6 +164,8 @@ internal static class EditPdbTransferCodec {
 		public AsyncStepRow[]? Steps { get; set; }
 		[JsonPropertyName("ranges")]
 		public int[][]? Ranges { get; set; }
+		[JsonPropertyName("states")]
+		public StateMapRow[]? States { get; set; }
 		[JsonPropertyName("type")]
 		public string? Type { get; set; }
 		[JsonPropertyName("documents")]
@@ -439,6 +445,14 @@ internal static class EditPdbTransferCodec {
 			return new CdiRow { Kind = "embedded_source", Base64 = Convert.ToBase64String(source.SourceCodeBlob) };
 		case PdbSourceLinkCustomDebugInfo link:
 			return new CdiRow { Kind = "source_link", Base64 = Convert.ToBase64String(link.FileBlob) };
+		case PdbEditAndContinueStateMachineStateMapDebugInfo stateMap:
+			return new CdiRow {
+				Kind = "enc_state_map",
+				States = stateMap.StateMachineStates.Select(entry => new StateMapRow {
+					SyntaxOffset = entry.SyntaxOffset,
+					State = (int)entry.State,
+				}).ToArray(),
+			};
 		case PdbEditAndContinueLocalSlotMapCustomDebugInfo encLocal:
 			return new CdiRow { Kind = "enc_local", Base64 = Convert.ToBase64String(encLocal.Data) };
 		case PdbEditAndContinueLambdaMapCustomDebugInfo encLambda:
@@ -510,6 +524,11 @@ internal static class EditPdbTransferCodec {
 		case "embedded_source": return new PdbEmbeddedSourceCustomDebugInfo(Convert.FromBase64String(row.Base64 ?? string.Empty));
 		case "source_link": return new PdbSourceLinkCustomDebugInfo(Convert.FromBase64String(row.Base64 ?? string.Empty));
 		case "enc_local": return new PdbEditAndContinueLocalSlotMapCustomDebugInfo(Convert.FromBase64String(row.Base64 ?? string.Empty));
+		case "enc_state_map":
+			var stateMap = new PdbEditAndContinueStateMachineStateMapDebugInfo();
+			stateMap.StateMachineStates.AddRange((row.States ?? Array.Empty<StateMapRow>())
+				.Select(entry => new StateMachineStateInfo(entry.SyntaxOffset, (StateMachineState)entry.State)));
+			return stateMap;
 		case "enc_lambda": return new PdbEditAndContinueLambdaMapCustomDebugInfo(Convert.FromBase64String(row.Base64 ?? string.Empty));
 		case "unknown": return new PdbUnknownCustomDebugInfo(Guid.Parse(row.Text!), Convert.FromBase64String(row.Base64 ?? string.Empty));
 		default: throw Reject("unknown custom debug info kind: " + row.Kind);

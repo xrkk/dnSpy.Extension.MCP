@@ -43,6 +43,7 @@ internal static class EditWire {
 		"managed_resource_add", "managed_resource_update", "managed_resource_remove",
 		"win32_resource_add", "win32_resource_update", "win32_resource_remove",
 		"strong_name_remove",
+		"interface_add", "reference_add",
 	};
 
 	public static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {

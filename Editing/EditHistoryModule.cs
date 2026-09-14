@@ -622,10 +622,12 @@ internal sealed class EditHistoryModule : IDisposable {
 			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 			for (var i = 0; i < entry.Operations.Count; i++) {
 				var row = entry.Operations[i];
-				if (row.KindVersion != 1 || row.Forward.TryGetValue("kind", out var rawKind) == false
-					|| !string.Equals(rawKind?.ToString(), row.Kind, StringComparison.Ordinal))
+				if (row.Forward.TryGetValue("kind", out var rawKind) == false
+					|| !string.Equals(rawKind?.ToString(), row.Kind, StringComparison.Ordinal)
+					|| !EditOperationVersions.IsSupported(row.Kind, row.KindVersion))
 					throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 				using var json = ExpandedForward(lineage, row);
+				EditOperationVersions.Validate(row.Kind, row.KindVersion, json.RootElement);
 				EditOperationRegistry.ApplyPersisted(module, json.RootElement, map, i);
 			}
 			EditStructuralValidator.Validate(module);
@@ -863,7 +865,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		for (var index = 0; index < entry.Operations.Count; index++) {
 			var operation = entry.Operations[index];
 			if (!EditHistoryIds.Is(operation.OperationId, "operation") || !operationIds.Add(operation.OperationId)
-				|| operation.KindVersion != 1 || (!EditWire.OperationKinds.Contains(operation.Kind, StringComparer.Ordinal)
+				|| !EditOperationVersions.IsSupported(operation.Kind, operation.KindVersion) || (!EditWire.OperationKinds.Contains(operation.Kind, StringComparer.Ordinal)
 					&& operation.Kind != "legacy_symbol_rename")) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			if (!operation.Forward.TryGetValue("kind", out var forwardKind) || !string.Equals(ValueString(forwardKind), operation.Kind, StringComparison.Ordinal))
 				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
@@ -893,6 +895,8 @@ internal sealed class EditHistoryModule : IDisposable {
 				"managed_resource_remove_state", "managed_resource_restore_state", "managed_resource_update_state",
 				"win32_resource_remove_state", "win32_resource_restore_state", "win32_resource_update_state",
 				"strong_name_restore_state",
+				// T004 compiled-state shapes: interface/reference add inverses.
+				"interface_remove_state", "reference_release_state",
 			};
 			var hits = shapes.Count(shape => state.TryGetProperty(shape, out _));
 			var bodyShape = state.TryGetProperty("kind", out var stateKind)
@@ -988,6 +992,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			var ancestorMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 			for (var i = 0; i < ancestor.Operations.Count; i++) {
 				using var json = ExpandedForward(lineage, ancestor.Operations[i]);
+				EditOperationVersions.Validate(ancestor.Operations[i].Kind, ancestor.Operations[i].KindVersion, json.RootElement);
 				EditOperationRegistry.ApplyPersisted(module, json.RootElement, ancestorMap, i);
 			}
 			EditStructuralValidator.Validate(module);
@@ -1036,7 +1041,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				["state"] = compiled,
 			};
 			result.Operations.Add(new EditSerializedOperation {
-				OperationId = EditWire.NewId("operation"), Kind = kind, Forward = forward,
+				OperationId = EditWire.NewId("operation"), Kind = kind, KindVersion = EditOperationVersions.RequiredVersion(kind, document.RootElement), Forward = forward,
 				Inverse = inverse, PayloadSha256 = payloadList.Distinct(StringComparer.Ordinal).ToArray(),
 			});
 		}
