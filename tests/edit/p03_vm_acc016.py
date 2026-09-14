@@ -28,6 +28,14 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, ARCH, FIXTURE, INBOUND
+    URL = context.mcp_url
+    ARCH = context.architecture
+    FIXTURE = context.fixture("StrongHost/StrongHost.exe" if ARCH == "x64" else "StrongHost-x86/StrongHost.exe")
+    INBOUND = context.fixture("StrongHost/InboundStrong.exe")
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

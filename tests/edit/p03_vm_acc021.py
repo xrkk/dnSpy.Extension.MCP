@@ -27,6 +27,12 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, FIXTURE
+    URL = context.mcp_url
+    FIXTURE = context.fixture("TestIL.dll")
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

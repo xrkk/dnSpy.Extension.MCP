@@ -34,6 +34,13 @@ FIXTURE = (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if 
 FAILURES: list[str] = []
 PASSES: list[str] = []
 
+
+def configure_isolation(context) -> None:
+    global URL, ARCH, FIXTURE
+    URL = context.mcp_url
+    ARCH = context.architecture
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe" if ARCH == "x64" else "ImportHost-x86/ImportHost.exe")
+
 # EditClass compilation of the same ImportHost.Machines class: edited bodies for
 # the iterator/async kickoffs (20/200 constants), plus new members (generic
 # method with class constraint, property getter).

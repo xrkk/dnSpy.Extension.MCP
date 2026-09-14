@@ -15,6 +15,18 @@ import sys,os,json,time,uuid,subprocess,threading,hashlib,zipfile
 from pathlib import Path
 sys.path.insert(0,os.environ.get('DNMCP_UI_CLIENT_ROOT',str(Path(__file__).resolve().parents[2])))
 from dnspy_mcp import DnSpyClient
+
+
+def configure_isolation(context):
+ """Receive the runner's explicit P03 context without touching APPDATA."""
+ if not context.ui_deployment_root:
+  raise ValueError('ui_deployment_root is required for EDIT-ACC-018 isolation')
+ os.environ['DNMCP_UI_DEPLOYMENT_ROOT']=context.ui_deployment_root
+ os.environ['DNMCP_UI_ARCH']=context.architecture
+ os.environ['DNMCP_UI_MCP_URL']=context.mcp_url
+ os.environ['DNMCP_UI_FIXTURE']=context.fixture('TestIL.dll')
+ os.environ['DNMCP_UI_OUTPUT_ROOT']=str(Path(context.artifact_root)/'ui-evidence')
+ os.environ['DNMCP_UI_PACKAGE_ROOT']=context.artifact_root
 def check(n,v,d=None):
  checks.append(dict(name=n,passed=bool(v),detail=d));print(('PASS ' if v else 'FAIL ')+n,flush=True)
 def call(c,n,a):
@@ -88,20 +100,23 @@ def assert_capacity(c,v,label):
  check(label+' capacity matches all MCP meters',bool(expected) and all(x in w['items'] for x in expected),dict(expected=expected,ui=w['items']))
 
 def main():
- global root,arch,r,pid,url,out,checks,calls,base,artifact_subdir
+ global root,arch,r,pid,url,out,checks,calls,base,artifact_subdir,package_root,fixture
  deployment=os.environ.get('DNMCP_UI_DEPLOYMENT_ROOT')
  if not deployment:
   raise RuntimeError('Set DNMCP_UI_DEPLOYMENT_ROOT to the dedicated deployed instance directory; no shared-instance fallback')
  root=Path(deployment);arch=os.environ.get('DNMCP_UI_ARCH','x64')
  if arch not in ('x64','x86'):raise ValueError('DNMCP_UI_ARCH must be x64 or x86')
  artifact_subdir=os.environ.get('DNMCP_UI_ARTIFACT_SUBDIR','artifacts-final')
- r=root/arch;pid=int((r/'pid.txt').read_text());url='http://localhost:'+str(15540 if arch=='x64' else 15541)+'/mcp'
- out=r/('run-'+uuid.uuid4().hex);out.mkdir();checks=[];calls=[]
+ r=root/arch;pid=int((r/'pid.txt').read_text());url=os.environ.get('DNMCP_UI_MCP_URL','http://localhost:'+str(15540 if arch=='x64' else 15541)+'/mcp')
+ fixture=Path(os.environ.get('DNMCP_UI_FIXTURE',str(r/'fixtures/TestIL.dll')))
+ package_root=Path(os.environ.get('DNMCP_UI_PACKAGE_ROOT',str(r/artifact_subdir)))
+ output_root=Path(os.environ.get('DNMCP_UI_OUTPUT_ROOT',str(r)))
+ out=output_root/('run-'+uuid.uuid4().hex);out.mkdir(parents=True,exist_ok=False);checks=[];calls=[]
  base="""$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes; $root=[System.Windows.Automation.AutomationElement]::RootElement; $condition=[System.Windows.Automation.AndCondition]::new([System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty,PIDVALUE),[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,'McpEditExplorer')); $exp=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$condition); if($null -eq $exp){throw 'dedicated explorer missing'}; function ById($id){return $exp.FindFirst([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$id))};
  """.replace('PIDVALUE',str(pid))
  c=DnSpyClient(url,client_name='real-ui-'+arch,timeout=140);c.initialize()
  try:
-  check('open_fixture',call(c,'open_files',{'paths':[str(r/'fixtures/TestIL.dll')]}).get('ok',True))
+  check('open_fixture',call(c,'open_files',{'paths':[str(fixture)]}).get('ok',True))
   v=ui('idle');assert_capacity(c,v,'idle');check('U2 real explorer window',bool(v));shot('idle')
   tx,rev=begin(c);a=apply(c,tx,rev,'UiStaged');check('stage operation',a.get('ok'),a)
   rev=payload(a).get('transaction',{}).get('work_revision',rev+1)
@@ -140,7 +155,7 @@ def main():
   assert_capacity(c,v,'history')
   rows=[s for s in v['items'] if s.startswith('checkpoint checkpoint-') and ' image ' in s];check('idle checkpoint parent-child rows',len(rows)>=2 and 'idle' in v['state'],v)
   packages={}
-  for package in (r/artifact_subdir).rglob('*.dnspy-mcp-checkpoints'):
+  for package in package_root.rglob('*.dnspy-mcp-checkpoints'):
    with zipfile.ZipFile(package) as z:
     manifest=json.loads(z.read('manifest.json'))
     for node in manifest['checkpoints']:
@@ -171,7 +186,7 @@ def main():
   first=select_checkpoint(rows[0],cross_ms=0);time.sleep(.2);last=select_checkpoint(rows[-1])
   (out/'checkpoint-select-probe.json').write_text(json.dumps(dict(first=first,last=last),ensure_ascii=False,indent=2))
   check('stale-detail rejection probe',len(rows)>=2 and first.get('postcondition_met') and first.get('settled_detail','').startswith('checkpoint '+first_id+' ') and last.get('postcondition_met') and not last.get('settled_detail','').startswith('checkpoint '+first_id+' ') and last.get('settled_detail','').startswith('checkpoint '+last_id+' ') and (last.get('cross_refresh') or {}).get('still_expected'),dict(first=first,last=last))
-  check('actual checkpoint package exists',len(list((r/artifact_subdir).rglob('*.dnspy-mcp-checkpoints')))>0)
+  check('actual checkpoint package exists',len(list(package_root.rglob('*.dnspy-mcp-checkpoints')))>0)
  except Exception as e:
   check('driver completed',False,str(e));raise
  finally:

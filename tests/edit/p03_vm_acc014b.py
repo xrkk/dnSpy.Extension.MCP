@@ -23,6 +23,7 @@ from dnspy_mcp import DnSpyClient  # noqa: E402
 URL = "http://127.0.0.1:15378/mcp"
 FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"
 CHECKPOINTS = Path.home() / "Desktop" / "dnspy-mcp-artifacts" / "edit-checkpoints"
+WORK_ROOT = Path(__file__).resolve().parent / "locker"
 LOCKER = r"""
 import sys, time
 from pathlib import Path
@@ -36,6 +37,14 @@ handle.close()
 """
 FAILURES: list[str] = []
 PASSES: list[str] = []
+
+
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, CHECKPOINTS, WORK_ROOT
+    URL = context.mcp_url
+    FIXTURE = context.fixture("TestIL.dll")
+    CHECKPOINTS = Path(context.checkpoint_store)
+    WORK_ROOT = Path(context.work_root)
 
 
 def rid() -> str:
@@ -162,8 +171,8 @@ def main() -> int:
         thread.join(timeout=30)
         return 1
     temp_path = temps[0]
-    work_dir = Path(__file__).resolve().parent / "locker"
-    work_dir.mkdir(exist_ok=True)
+    work_dir = WORK_ROOT / "acc014-locker"
+    work_dir.mkdir(parents=True, exist_ok=True)
     lock_script = work_dir / "locker.py"
     lock_script.write_text(LOCKER.lstrip(), encoding="utf-8")
     held_signal = work_dir / f"{temp_path.name}.held"

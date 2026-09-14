@@ -25,6 +25,13 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, BIG_PATH
+    URL = context.mcp_url
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe")
+    BIG_PATH = context.work_file("p08-big-payload.bin")
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

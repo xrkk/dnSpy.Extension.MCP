@@ -24,6 +24,13 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, SENTINEL
+    URL = context.mcp_url
+    FIXTURE = context.fixture("ResourceHost/ResourceHost.dll")
+    SENTINEL = context.work_file("p08-sentinel.flag")
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

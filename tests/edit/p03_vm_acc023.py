@@ -54,6 +54,15 @@ PASSES: list[str] = []
 SENTINEL = r"C:\Tools\dnspy-mcp-edit-tests\p09-sentinel.flag"
 
 
+def configure_isolation(context) -> None:
+    global ARCH, URL, FIXTURE, SENTINEL, MALICIOUS_SOURCE
+    ARCH = context.architecture
+    URL = context.mcp_url
+    FIXTURE = context.fixture("ResourceHost/ResourceHost.dll")
+    SENTINEL = context.work_file("p09-sentinel.flag")
+    MALICIOUS_SOURCE = MALICIOUS_SOURCE.replace(r"C:\\Tools\\dnspy-mcp-edit-tests\\p09-sentinel.flag", SENTINEL.replace("\\", "\\\\"))
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

@@ -20,8 +20,16 @@ from dnspy_mcp import DnSpyClient  # noqa: E402
 
 URL = "http://127.0.0.1:15378/mcp"
 FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"
+CHECKPOINTS = Path.home() / "Desktop" / "dnspy-mcp-artifacts" / "edit-checkpoints"
 FAILURES: list[str] = []
 PASSES: list[str] = []
+
+
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, CHECKPOINTS
+    URL = context.mcp_url
+    FIXTURE = context.fixture("TestIL.dll")
+    CHECKPOINTS = Path(context.checkpoint_store)
 
 
 def rid() -> str:
@@ -158,7 +166,7 @@ def main() -> int:
     import hashlib
     import io
     import zipfile
-    package_path = Path.home() / "Desktop" / "dnspy-mcp-artifacts" / "edit-checkpoints" / f"{lineage_id}.dnspy-mcp-checkpoints"
+    package_path = CHECKPOINTS / f"{lineage_id}.dnspy-mcp-checkpoints"
     package = package_path.read_bytes()
     source = zipfile.ZipFile(io.BytesIO(package))
     entries = {name: source.read(name) for name in source.namelist()}
@@ -174,7 +182,7 @@ def main() -> int:
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
         for name, data in entries.items():
             target.writestr(name, data)
-    (Path.home() / "Desktop" / "dnspy-mcp-artifacts" / "edit-checkpoints" / f"{fixture_id}.dnspy-mcp-checkpoints").write_bytes(output.getvalue())
+    (CHECKPOINTS / f"{fixture_id}.dnspy-mcp-checkpoints").write_bytes(output.getvalue())
     blocked = call(client, "edit_export", {
         "request_id": rid(), "lineage_id": fixture_id, "checkpoint_id": nodes[-1]["checkpoint_id"],
     })

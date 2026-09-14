@@ -34,6 +34,14 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, STORE, ARTIFACT_STORE
+    URL = context.mcp_url
+    FIXTURE = context.fixture("TestIL.dll")
+    STORE = Path(context.work_root) / "store"
+    ARTIFACT_STORE = Path(context.checkpoint_store)
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

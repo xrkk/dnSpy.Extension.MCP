@@ -25,6 +25,13 @@ FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
+def configure_isolation(context) -> None:
+    global URL, FIXTURE, INBOUND
+    URL = context.mcp_url
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe")
+    INBOUND = context.fixture("ImportHost/InboundRef.exe")
+
+
 def rid() -> str:
     return str(uuid.uuid4())
 

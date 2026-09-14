@@ -28,6 +28,8 @@ import sys
 import time
 from pathlib import Path
 
+from p03_vm_isolation import IsolationContext, IsolationError
+
 DRIVER_DIR = Path(__file__).resolve().parent
 CASES_DIR = Path(__file__).resolve().parents[2] / "tests" / "edit" / "cases"
 if not CASES_DIR.is_dir():
@@ -94,16 +96,29 @@ def response_digest(value) -> dict:
     return out
 
 
-def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") -> tuple[str, dict]:
+def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64",
+             isolation: IsolationContext | None = None,
+             module_loader=importlib.import_module) -> tuple[str, dict]:
     if case_id in HARNESS_CASES:
-        return run_harness_case(case_id, run_id, artifact_root, arch)
+        return run_harness_case(case_id, run_id, artifact_root, arch, isolation)
     module_name = CASE_MODULES[case_id]
+    if isolation is not None:
+        try:
+            # Configuration is validated before a driver import or evidence write.
+            isolation.validate(require_ui=case_id == "EDIT-ACC-018")
+        except IsolationError as ex:
+            return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
     case_file = CASES_DIR / f"{case_id}.json"
+    module = module_loader(module_name)
+    if isolation is not None:
+        try:
+            configure = getattr(module, "configure_isolation")
+            configure(isolation)
+        except (IsolationError, AttributeError, ValueError) as ex:
+            return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
     evidence_dir = artifact_root / "edit-tests" / run_id / case_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(case_file, evidence_dir / "case.json")
-
-    module = importlib.import_module(module_name)
     actions_path = evidence_dir / "actions.jsonl"
     actions_path.touch(exist_ok=True)
     log_path = evidence_dir / "driver.log"
@@ -131,7 +146,8 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
         return outcome
 
     previous_ui_arch = os.environ.get("DNMCP_UI_ARCH")
-    if case_id == "EDIT-ACC-018":
+    legacy_ui_arch = case_id == "EDIT-ACC-018" and isolation is None
+    if legacy_ui_arch:
         os.environ["DNMCP_UI_ARCH"] = arch
     started = time.time()
     stdout = io.StringIO()
@@ -146,7 +162,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
         error_text = f"{type(ex).__name__}: {ex}"
         exit_code = 1
     finally:
-        if case_id == "EDIT-ACC-018":
+        if legacy_ui_arch:
             if previous_ui_arch is None:
                 os.environ.pop("DNMCP_UI_ARCH", None)
             else:
@@ -193,8 +209,15 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64") 
     return status, summary
 
 
-def run_harness_case(case_id: str, run_id: str, artifact_root: Path, arch: str) -> tuple[str, dict]:
+def run_harness_case(case_id: str, run_id: str, artifact_root: Path, arch: str,
+                     isolation: IsolationContext | None = None,
+                     subprocess_runner=None) -> tuple[str, dict]:
     import subprocess
+    if isolation is not None:
+        try:
+            isolation.validate()
+        except IsolationError as ex:
+            return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
     case_file = CASES_DIR / f"{case_id}.json"
     evidence_dir = artifact_root / "edit-tests" / run_id / case_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -203,9 +226,18 @@ def run_harness_case(case_id: str, run_id: str, artifact_root: Path, arch: str) 
     actions_path = evidence_dir / "actions.jsonl"
     actions_path.write_text("", encoding="utf-8")
     started = time.time()
-    completed = subprocess.run(
-        [str(DOTNET_BY_ARCH[arch]), "P03StoreHarness.dll", HARNESS_FIXTURE, HARNESS_CASES[case_id]],
-        cwd=str(HARNESS_DIR), capture_output=True, text=True, timeout=600,
+    if isolation is not None:
+        dotnet_host = isolation.dotnet_host
+        harness_dir = Path(isolation.harness_dir)
+        fixture = isolation.fixture("TestIL.dll")
+    else:
+        dotnet_host = str(DOTNET_BY_ARCH[arch])
+        harness_dir = HARNESS_DIR
+        fixture = HARNESS_FIXTURE
+    runner = subprocess_runner or subprocess.run
+    completed = runner(
+        [dotnet_host, "P03StoreHarness.dll", fixture, HARNESS_CASES[case_id]],
+        cwd=str(harness_dir), capture_output=True, text=True, timeout=600,
     )
     log_text = completed.stdout + completed.stderr
     log_path.write_text(log_text, encoding="utf-8")
@@ -235,21 +267,77 @@ def run_harness_case(case_id: str, run_id: str, artifact_root: Path, arch: str) 
     return status, summary
 
 
+def blocked_summary(case_id: str, run_id: str, artifact_root: Path, arch: str, reason: str) -> tuple[str, dict]:
+    """Report a configuration gap before any RPC, file write, or subprocess."""
+    return "blocked", {
+        "suite": "structured-edit-p03", "case_id": case_id,
+        "acc_id": case_id.replace("EDIT-", ""), "status": "blocked",
+        "architecture": arch, "reason": "isolation configuration: " + reason,
+        "run_id": run_id, "artifact_root": str(artifact_root),
+        "cleanup": "none; blocked before driver import side effects, RPC, write, or subprocess",
+    }
+
+
+def build_isolation(args: argparse.Namespace) -> IsolationContext | None:
+    values = (args.isolation_root, args.mcp_url, args.fixture_root, args.checkpoint_store,
+              args.work_root, args.harness_dir, args.dotnet_host)
+    if not any(values) and not args.ui_deployment_root:
+        return None
+    if not all(values):
+        raise IsolationError("isolation mode requires --isolation-root, --mcp-url, --fixture-root, "
+                             "--checkpoint-store, --work-root, --harness-dir, and --dotnet-host")
+    context = IsolationContext(
+        run_id=args.run_id or "dry-run", architecture=args.arch, mcp_url=args.mcp_url,
+        isolation_root=args.isolation_root, fixture_root=args.fixture_root,
+        artifact_root=args.artifact_root, checkpoint_store=args.checkpoint_store,
+        work_root=args.work_root, harness_dir=args.harness_dir, dotnet_host=args.dotnet_host,
+        ui_deployment_root=args.ui_deployment_root)
+    context.validate()
+    return context
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", action="append", required=True, choices=sorted(CASE_MODULES | HARNESS_CASES))
     parser.add_argument("--arch", default="x64", choices=("x64", "x86"))
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--artifact-root", default=os.path.join(os.environ.get("USERPROFILE", str(Path.home())), "Desktop", "dnspy-mcp-artifacts"))
+    parser.add_argument("--isolation-root")
+    parser.add_argument("--mcp-url")
+    parser.add_argument("--fixture-root")
+    parser.add_argument("--checkpoint-store")
+    parser.add_argument("--work-root")
+    parser.add_argument("--harness-dir")
+    parser.add_argument("--dotnet-host")
+    parser.add_argument("--ui-deployment-root")
+    parser.add_argument("--plan", action="store_true")
     args = parser.parse_args()
     run_id = args.run_id or f"p03-evidence-{time.strftime('%Y%m%d-%H%M%S')}"
     artifact_root = Path(args.artifact_root)
+    try:
+        isolation = build_isolation(args)
+    except IsolationError as ex:
+        print(f"isolation configuration blocked: {ex}", file=sys.stderr)
+        return 2
+
+    if args.plan:
+        if isolation is None:
+            print("plan mode requires explicit isolation inputs", file=sys.stderr)
+            return 2
+        try:
+            plans = [isolation.plan(case, harness=case in HARNESS_CASES,
+                                    requires_ui=case == "EDIT-ACC-018") for case in args.case]
+        except IsolationError as ex:
+            print(f"isolation configuration blocked: {ex}", file=sys.stderr)
+            return 2
+        print(json.dumps({"result": "PLAN", "run_id": run_id, "cases": plans}, ensure_ascii=False, indent=2))
+        return 0
 
     statuses: list[str] = []
     for case in args.case:
-        status, summary = run_case(case, run_id, artifact_root, args.arch)
+        status, summary = run_case(case, run_id, artifact_root, args.arch, isolation)
         statuses.append(status)
-        print(f"{case} {status} pass={summary['pass_lines']} fail={summary['fail_lines']}", flush=True)
+        print(f"{case} {status} pass={summary.get('pass_lines', 0)} fail={summary.get('fail_lines', 0)}", flush=True)
     if any(s == "fail" for s in statuses):
         return 1
     if statuses and all(s == "blocked" for s in statuses):
