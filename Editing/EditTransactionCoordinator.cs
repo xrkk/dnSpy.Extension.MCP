@@ -135,6 +135,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	// inside the coordinator lock; the UI thread only ever sees these rows and
 	// never calls back into locking methods (adjudicated AUD-005).
 	public sealed class ExplorerCheckpointRow {
+		public string FamilyId = string.Empty;
 		public string LineageId = string.Empty;
 		public string CheckpointId = string.Empty;
 		public string ParentCheckpointId = string.Empty;
@@ -169,6 +170,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		public List<string> Operations = new();
 		public List<string> Diffs = new();
 		public List<string> Risks = new();
+		public List<string> CapacityRows = new();
+		public Dictionary<string, string> LineageFamilies = new(StringComparer.Ordinal);
 		public List<string> Lineages = new();
 		public List<ExplorerCheckpointRow> Checkpoints = new();
 	}
@@ -180,6 +183,12 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				? element.GetString() ?? string.Empty : string.Empty;
 		}
 		var snapshot = new ExplorerSnapshot();
+		void AddCapacity(Dictionary<string, object?> meters) {
+			foreach (var row in meters.OrderBy(x => x.Key, StringComparer.Ordinal))
+				if (row.Value is Dictionary<string, object?> meter)
+					snapshot.CapacityRows.Add(row.Key + ": " + Convert.ToString(meter["current"], System.Globalization.CultureInfo.InvariantCulture)
+						+ "/" + Convert.ToString(meter["maximum"], System.Globalization.CultureInfo.InvariantCulture));
+		}
 		lock (gate) {
 			ExpireLocked();
 			snapshot.State = state;
@@ -198,35 +207,40 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				// whenever it is active and no operation or commit is executing —
 				// the owner being still connected does not block local cancel.
 				snapshot.CanCancel = !active.OperationBusy && !active.CommitStarted;
-				foreach (var operation in active.Workspace.NormalizedOperations) {
-					using var document = System.Text.Json.JsonDocument.Parse(operation);
-					var kind = document.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String ? kindElement.GetString() : "?";
-					// CHK-014: the operation row shows kind AND target (name /
-					// token / owner) so same-kind rows stay distinguishable.
-					var target = "?";
-					if (document.RootElement.TryGetProperty("target", out var targetElement)) {
-						if (targetElement.ValueKind == System.Text.Json.JsonValueKind.Object && targetElement.TryGetProperty("token", out var tokenElement)) target = tokenElement.GetString() ?? "?";
-						else if (targetElement.ValueKind == System.Text.Json.JsonValueKind.String) target = targetElement.GetString() ?? "?";
+				if (!active.OperationBusy) {
+					AddCapacity(Capacity(active));
+					foreach (var operation in active.Workspace.NormalizedOperations) {
+						using var document = System.Text.Json.JsonDocument.Parse(operation);
+						var kind = document.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String ? kindElement.GetString() : "?";
+						// CHK-014: the operation row shows kind AND target (name /
+						// token / owner) so same-kind rows stay distinguishable.
+						var target = "?";
+						if (document.RootElement.TryGetProperty("target", out var targetElement)) {
+							if (targetElement.ValueKind == System.Text.Json.JsonValueKind.Object && targetElement.TryGetProperty("token", out var tokenElement)) target = tokenElement.GetString() ?? "?";
+							else if (targetElement.ValueKind == System.Text.Json.JsonValueKind.String) target = targetElement.GetString() ?? "?";
+						}
+						foreach (var nameField in (string[])["name", "assembly_name", "entry_point"]) {
+							if (target != "?") break;
+							if (document.RootElement.TryGetProperty(nameField, out var nameElement) && nameElement.ValueKind == System.Text.Json.JsonValueKind.String) target = nameElement.GetString() ?? "?";
+						}
+						snapshot.Operations.Add(kind + "|" + target);
 					}
-					foreach (var nameField in (string[])["name", "assembly_name", "entry_point"]) {
-						if (target != "?") break;
-						if (document.RootElement.TryGetProperty(nameField, out var nameElement) && nameElement.ValueKind == System.Text.Json.JsonValueKind.String) target = nameElement.GetString() ?? "?";
-					}
-					snapshot.Operations.Add(kind + "|" + target);
+					// CHK-014: validation summary channel (structural/roundtrip/dynamic
+					// from the last review of the active transaction).
+					snapshot.Validation = txValidationSummary(active);
+					foreach (var diff in active.Workspace.Diffs)
+						snapshot.Diffs.Add(string.Join("/", diff.TryGetValue("kind", out var diffKind) ? diffKind : "?", diff.TryGetValue("target", out var diffTarget) ? diffTarget : "?"));
+					foreach (var risk in active.Workspace.Risks)
+						snapshot.Risks.Add(string.Join("/", risk.TryGetValue("risk_id", out var riskId) ? riskId : "?", risk.TryGetValue("kind", out var riskKind) ? riskKind : "?", risk.TryGetValue("confirmation_required", out var riskRequired) ? riskRequired : false));
 				}
-				// CHK-014: validation summary channel (structural/roundtrip/dynamic
-				// from the last review of the active transaction).
-				snapshot.Validation = txValidationSummary(active);
-				foreach (var diff in active.Workspace.Diffs)
-					snapshot.Diffs.Add(string.Join("/", diff.TryGetValue("kind", out var diffKind) ? diffKind : "?", diff.TryGetValue("target", out var diffTarget) ? diffTarget : "?"));
-				foreach (var risk in active.Workspace.Risks)
-					snapshot.Risks.Add(string.Join("/", risk.TryGetValue("risk_id", out var riskId) ? riskId : "?", risk.TryGetValue("kind", out var riskKind) ? riskKind : "?", risk.TryGetValue("confirmation_required", out var riskRequired) ? riskRequired : false));
 			}
 		}
 		try {
+			AddCapacity(SafeHistoryCapacity());
 			foreach (var lineage in history.LoadAll()) {
 				var builder = new System.Text.StringBuilder();
 				builder.Append(lineage.Manifest.LineageId).Append(" head:").Append(lineage.Manifest.HeadCheckpointId);
+				snapshot.LineageFamilies.Add(lineage.Manifest.LineageId, lineage.Manifest.FamilyId);
 				snapshot.Lineages.Add(builder.ToString());
 				// CHK-002: expose every checkpoint row (parent, kind, image and
 				// semantic prefixes) so the explorer tree can show the branching
@@ -240,6 +254,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					var structural = ReviewText(checkpoint.Review, "structural");
 					var roundtrip = ReviewText(checkpoint.Review, "roundtrip");
 					var row = new ExplorerCheckpointRow {
+						FamilyId = lineage.Manifest.FamilyId,
 						LineageId = lineage.Manifest.LineageId,
 						CheckpointId = checkpoint.CheckpointId,
 						ParentCheckpointId = checkpoint.ParentCheckpointId ?? string.Empty,
@@ -257,6 +272,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						EntryTime = time,
 					};
 					row.Detail = "checkpoint " + row.CheckpointId
+						+ " | family " + row.FamilyId + " | lineage " + row.LineageId
 						+ " | parent " + (row.ParentCheckpointId == string.Empty ? "root" : row.ParentCheckpointId)
 						+ " | kind " + row.Kind
 						+ " | sequence " + row.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture)

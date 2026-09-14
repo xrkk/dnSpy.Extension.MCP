@@ -9,12 +9,14 @@ internal sealed class ExplorerProbe {
  sealed class Transaction { public string Id="tx",Owner="owner"; public uint Revision=1; public Transport Transport=new(); public bool OwnerClosed,OperationBusy,CommitStarted,CancelRequested,LiveLinearized; public Workspace Workspace=new(); public Cache ApplyCache=new(),ReviewCache=new(); }
  public sealed class McpTransportSessionClosed { public string SessionId="owner",Reason="closed"; }
  sealed class Node { public string CheckpointId="",ParentCheckpointId="",Kind="commit",ResultImageSha256="abcd",ResultSemanticFingerprint="efgh"; public int Sequence; public Dictionary<string,object?> Review=new(); public string[] ConfirmedRisks=Array.Empty<string>(); }
- sealed class Manifest { public string LineageId="lineage",HeadCheckpointId="second"; public List<Node> Checkpoints=new(); }
+ sealed class Manifest { public string LineageId="lineage",FamilyId="family",HeadCheckpointId="second"; public List<Node> Checkpoints=new(); }
  sealed class Lineage { public Manifest Manifest=new(); public Dictionary<string,DateTimeOffset> CheckpointTimes=new(); }
  sealed class History { public Lineage Value=new(); public IEnumerable<Lineage> LoadAll(){yield return Value;} public string? LineageDirectory(string id)=>null; }
  readonly object gate=new(); Transaction? active; string state="active"; History history=new();
  HashSet<string> pendingBeginSessions=new(),closedPendingBeginSessions=new(); Cache beginCache=new(),commandCache=new(),terminalCache=new();
  bool barrier=true; void ReleaseBarrierLocked(string owner){barrier=false;} void ExpireLocked(){}
+ static Dictionary<string,object?> Capacity(Transaction tx)=>new(){{"operations",new Dictionary<string,object?>{{"current",2},{"maximum",256}}}};
+ Dictionary<string,object?> SafeHistoryCapacity()=>new(){{"store_bytes",new Dictionary<string,object?>{{"current",7},{"maximum",100}}}};
  static List<string> txValidationSummary(Transaction tx)=>new();
 @@ROWS@@
 @@SNAPSHOT@@
@@ -37,7 +39,14 @@ internal sealed class ExplorerProbe {
   h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="first",Sequence=1});h.history.Value.Manifest.Checkpoints.Add(new Node{CheckpointId="second",ParentCheckpointId="first",Sequence=2});
   h.history.Value.CheckpointTimes["first"]=first;h.history.Value.CheckpointTimes["second"]=second;
   foreach(var node in h.history.Value.Manifest.Checkpoints) node.Review=JsonSerializer.Deserialize<Dictionary<string,object?>>("{\"review_id\":\"review-persisted\",\"review_revision\":3,\"structural\":\"passed\",\"roundtrip\":\"passed\"}")!;
-  var rows=h.BuildExplorerSnapshot().Checkpoints;
+  var captured=h.BuildExplorerSnapshot();
+  var familyField=captured.GetType().GetField("LineageFamilies");
+  Program.Check(familyField!=null && ((Dictionary<string,string>)familyField.GetValue(captured)!).GetValueOrDefault("lineage")=="family","snapshot retains lineage family identity");
+  var capacityField=captured.GetType().GetField("CapacityRows");
+  Program.Check(capacityField!=null && ((List<string>)capacityField.GetValue(captured)!).Contains("store_bytes: 7/100"),"idle snapshot exposes returned capacity meters");
+  var activeProbe=new ExplorerProbe{active=new Transaction()};var activeSnapshot=activeProbe.BuildExplorerSnapshot();
+  Program.Check(capacityField!=null && ((List<string>)capacityField.GetValue(activeSnapshot)!).Contains("operations: 2/256"),"active snapshot exposes transaction capacity meters");
+  var rows=captured.Checkpoints;
   Program.Check(rows.Count==2 && rows[0].EntryTime=="2026-09-11T09:02:04" && rows[1].EntryTime=="2026-09-11T11:02:04" && rows.All(r=>r.Detail.Contains("package_entry_time "+r.EntryTime+" (timezone unknown)") && !r.Detail.Contains("time_utc")),"two package wall times bind snapshot and detail without invented UTC");
   Program.Check(rows.All(r=>r.ReviewId=="review-persisted" && r.ReviewRevision==3 && r.Structural=="passed" && r.Roundtrip=="passed" && r.Detail.Contains("review review-persisted rev 3")),"deserialized checkpoint review facts match selected details");
  }

@@ -117,41 +117,58 @@ internal sealed class EditExplorerWindow : Window {
 		if (snapshot.TransactionId != null) {
 			var transactionNode = new TreeViewItem { Header = "Transaction " + snapshot.TransactionId, IsExpanded = true };
 			transactionNode.Items.Add(new TreeViewItem { Header = "work revision: " + snapshot.Revision });
-			var operationsNode = new TreeViewItem { Header = "staged operations (" + snapshot.Operations.Count + ")", IsExpanded = true };
-			foreach (var operation in snapshot.Operations)
-				operationsNode.Items.Add(new TreeViewItem { Header = operation });
-			transactionNode.Items.Add(operationsNode);
-			var diffsNode = new TreeViewItem { Header = "diffs (" + snapshot.Diffs.Count + ")" };
-			foreach (var diff in snapshot.Diffs)
-				diffsNode.Items.Add(new TreeViewItem { Header = diff });
-			transactionNode.Items.Add(diffsNode);
-			var risksNode = new TreeViewItem { Header = "risks (" + snapshot.Risks.Count + ")", IsExpanded = snapshot.Risks.Count != 0 };
-			foreach (var risk in snapshot.Risks)
-				risksNode.Items.Add(new TreeViewItem { Header = risk });
-			transactionNode.Items.Add(risksNode);
-			var validationNode = new TreeViewItem { Header = "validation (" + snapshot.Validation.Count + ")", IsExpanded = snapshot.Validation.Count != 0 };
-			foreach (var row in snapshot.Validation)
-				validationNode.Items.Add(new TreeViewItem { Header = row });
-			transactionNode.Items.Add(validationNode);
+			if (snapshot.OperationBusy)
+				transactionNode.Items.Add(new TreeViewItem { Header = "Operation executing; transaction details updating." });
+			else {
+				var operationsNode = new TreeViewItem { Header = "staged operations (" + snapshot.Operations.Count + ")", IsExpanded = true };
+				foreach (var operation in snapshot.Operations)
+					operationsNode.Items.Add(new TreeViewItem { Header = operation });
+				transactionNode.Items.Add(operationsNode);
+				var diffsNode = new TreeViewItem { Header = "diffs (" + snapshot.Diffs.Count + ")" };
+				foreach (var diff in snapshot.Diffs)
+					diffsNode.Items.Add(new TreeViewItem { Header = diff });
+				transactionNode.Items.Add(diffsNode);
+				var risksNode = new TreeViewItem { Header = "risks (" + snapshot.Risks.Count + ")", IsExpanded = snapshot.Risks.Count != 0 };
+				foreach (var risk in snapshot.Risks)
+					risksNode.Items.Add(new TreeViewItem { Header = risk });
+				transactionNode.Items.Add(risksNode);
+				var validationNode = new TreeViewItem { Header = "validation (" + snapshot.Validation.Count + ")", IsExpanded = snapshot.Validation.Count != 0 };
+				foreach (var row in snapshot.Validation)
+					validationNode.Items.Add(new TreeViewItem { Header = row });
+				transactionNode.Items.Add(validationNode);
+			}
 			tree.Items.Add(transactionNode);
 		}
+		var capacityNode = new TreeViewItem { Header = "capacity (current/maximum)", IsExpanded = false };
+		foreach (var meter in snapshot.CapacityRows)
+			capacityNode.Items.Add(new TreeViewItem { Header = meter });
+		tree.Items.Add(capacityNode);
 		var lineageNode = new TreeViewItem { Header = "checkpoint lineages (" + snapshot.Lineages.Count + ")", IsExpanded = true };
-		foreach (var lineage in snapshot.Lineages) {
-			var lineageId = lineage.Split(' ')[0];
-			var lineageItem = new TreeViewItem { Header = lineage, IsExpanded = true };
-			// CHK-002: one child node per checkpoint with parent/kind/image/semantic
-			// rows — the branching history is browsable even when idle.
-			foreach (var checkpoint in snapshot.Checkpoints) {
-				if (checkpoint.LineageId != lineageId) continue;
-				var item = new TreeViewItem { Header = "checkpoint " + checkpoint.CheckpointId
-					+ " parent " + (checkpoint.ParentCheckpointId == string.Empty ? "root" : checkpoint.ParentCheckpointId)
-					+ " kind " + checkpoint.Kind
-					+ " image " + checkpoint.ImageShaPrefix
-					+ " semantic " + checkpoint.SemanticPrefix, Tag = checkpoint };
-				item.Items.Add(new TreeViewItem { Header = checkpoint.Detail });
-				lineageItem.Items.Add(item);
+		foreach (var family in snapshot.Lineages.GroupBy(x => snapshot.LineageFamilies[x.Split(' ')[0]])) {
+			var familyItem = new TreeViewItem { Header = "family " + family.Key, IsExpanded = true };
+			foreach (var lineage in family) {
+				var lineageId = lineage.Split(' ')[0];
+				var lineageItem = new TreeViewItem { Header = lineage, IsExpanded = true };
+				// CHK-002: one child node per checkpoint with parent/kind/image/semantic
+				// rows — the branching history is browsable even when idle.
+				var checkpointItems = new Dictionary<string, TreeViewItem>(StringComparer.Ordinal);
+				foreach (var checkpoint in snapshot.Checkpoints) {
+					if (checkpoint.LineageId != lineageId) continue;
+					var item = new TreeViewItem { Header = "checkpoint " + checkpoint.CheckpointId
+						+ " parent " + (checkpoint.ParentCheckpointId == string.Empty ? "root" : checkpoint.ParentCheckpointId)
+						+ " kind " + checkpoint.Kind
+						+ " image " + checkpoint.ImageShaPrefix
+						+ " semantic " + checkpoint.SemanticPrefix, Tag = checkpoint, IsExpanded = true };
+					item.Items.Add(new TreeViewItem { Header = checkpoint.Detail });
+					checkpointItems.Add(checkpoint.CheckpointId, item);
+				}
+				foreach (var checkpoint in snapshot.Checkpoints.Where(x => x.LineageId == lineageId)) {
+					var parent = checkpoint.ParentCheckpointId == string.Empty ? lineageItem : checkpointItems[checkpoint.ParentCheckpointId];
+					parent.Items.Add(checkpointItems[checkpoint.CheckpointId]);
+				}
+				familyItem.Items.Add(lineageItem);
 			}
-			lineageNode.Items.Add(lineageItem);
+			lineageNode.Items.Add(familyItem);
 		}
 		tree.Items.Add(lineageNode);
 	}
