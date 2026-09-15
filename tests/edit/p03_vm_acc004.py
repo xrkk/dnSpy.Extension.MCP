@@ -45,6 +45,8 @@ def call(client: DnSpyClient, tool: str, args: dict) -> dict:
         return client.call_tool_json(tool, args)
     except Exception as ex:  # noqa: BLE001
         text = str(ex)
+        if getattr(ex, "code", None) == -32602:
+            return {"ok": False, "error": {"code": "JSON_RPC_INVALID_PARAMS", "message": text}}
         start = text.find("{")
         if start >= 0:
             try:
@@ -97,8 +99,10 @@ def main() -> int:
             "request_id": rid(), "transaction_id": tx, "expected_revision": revision, "operation": operation,
         })
         if expect_reject:
-            ok_reject = err_code(applied) == expect_reject or not applied.get("ok")
+            ok_reject = not applied.get("ok") and err_code(applied) == expect_reject
             check(f"{name} rejected", ok_reject, f"code={err_code(applied)}")
+            after = payload(call(client, "edit_status", {}))
+            check(f"{name} no staged mutation", after.get("transaction", {}).get("work_revision") == revision, str(after)[:200])
             if tx:
                 call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx})
             return None
@@ -137,30 +141,14 @@ def main() -> int:
         },
         "attributes": 128,
     })
-    # apply constraints update on that method's generic is addressable only via target token of generic param — the integration layer addresses generics through owner methods; use harness-side proven path via apply on the method body? Skip direct: constraints success was harness-proven; integration uses the same apply pipeline. Record illegal through constraints on the fresh generic via object_id from created_object_ids.
-    begin = call(client, "edit_begin", {"assembly_name": "TestIL", "request_id": rid()})
-    tx = payload(begin).get("transaction", {}).get("transaction_id", "")
-    revision = int(payload(begin).get("transaction", {}).get("work_revision", 0))
-    applied = call(client, "edit_apply", {
-        "request_id": rid(), "transaction_id": tx, "expected_revision": revision,
-        "operation": {"kind": "method_add", "owner_type": {"token": simple_token},
-                      "name": "Acc004GenericB", "signature": {
-                          "return_type": "System.Void", "has_this": False,
-                          "generic_parameters": [{"name": "T"}], "parameters": []},
-                      "attributes": 128},
-    })
-    object_ids = payload(applied).get("created_object_ids", [])
-    method_id = object_ids[0] if object_ids else ""
-    if method_id:
-        cons = call(client, "edit_apply", {
-            "request_id": rid(), "transaction_id": tx, "expected_revision": revision + 1,
-            "operation": {"kind": "generic_parameter_update", "target": {"object_id": method_id},
-                          "constraints": ["TestIL.Simple"]},
+    info = call(client, "get_type_info", {"assembly_name": "TestIL", "type_full_name": "TestIL.GenericMethodOwner`1"})
+    generics = info.get("GenericParameters", [])
+    check("C1 generic parameter discovered", bool(generics), str(info)[:200])
+    if generics:
+        run_transaction("C1 actual constraints", {
+            "kind": "generic_parameter_update", "target": {"token": "0x" + format(generics[0]["Token"], "08x")},
+            "constraints": ["System.IDisposable"],
         })
-        # object_id refers to the method; the generic itself is addressed by its own id only in the same batch; the harness proved this path — integration asserts via type-owner tokens instead.
-        check("C1 integration constraints addressable", cons.get("ok") or err_code(cons) in ("EDIT_VALIDATION_FAILED",),
-              f"code={err_code(cons)}")
-    call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx})
 
     # 2. Custom attribute: success + arity-mismatch illegal (slice-2 domain).
     run_transaction("C2 attribute add", {
@@ -188,7 +176,7 @@ def main() -> int:
     run_transaction("C3 impl illegal", {
         "kind": "method_update", "target": {"token": "0x" + format(inc, "08x")},
         "impl_attributes": 2048,
-    }, expect_reject="EDIT_VALIDATION_FAILED")
+    }, expect_reject="JSON_RPC_INVALID_PARAMS")
 
     # 4. Override: need two virtuals — fixture Refs has none documented; use harness-proven sample semantics via the same pipeline with type-level virtuals discovered from a virtual method.
     virtuals = call(client, "search_members", {"query": "GetScene", "assembly_name": "TestIL"})
@@ -206,9 +194,10 @@ def main() -> int:
     })
 
     # 5. Marshal: field simple + illegal custom.
-    fields = call(client, "get_type_fields", {"assembly_name": "TestIL", "type_full_name": "TestIL.Simple"})
-    field_rows = fields.get("items", []) if isinstance(fields, dict) else []
+    fields = call(client, "get_type_info", {"assembly_name": "TestIL", "type_full_name": "TestIL.Simple"})
+    field_rows = fields.get("Fields", []) if isinstance(fields, dict) else []
     field_token = next(("0x" + format(row["Token"], "08x") for row in field_rows if isinstance(row, dict) and row.get("IsStatic")), None)
+    check("C5/C8 static field discovered", bool(field_token), str(fields)[:200])
     if field_token:
         run_transaction("C5 marshal", {
             "kind": "field_update", "target": {"token": field_token},
@@ -217,7 +206,7 @@ def main() -> int:
         run_transaction("C5 marshal illegal", {
             "kind": "field_update", "target": {"token": field_token},
             "marshal": {"kind": "custom"},
-        }, expect_reject="EDIT_VALIDATION_FAILED")
+        }, expect_reject="JSON_RPC_INVALID_PARAMS")
         run_transaction("C5 marshal clear", {
             "kind": "field_update", "target": {"token": field_token}, "marshal": None,
         })
@@ -249,7 +238,7 @@ def main() -> int:
     run_transaction("C7 security illegal action", {
         "kind": "security_add", "parent": {"token": simple_token},
         "action": "grant", "xml": permission_xml,
-    }, expect_reject="EDIT_VALIDATION_FAILED")
+    }, expect_reject="JSON_RPC_INVALID_PARAMS")
     run_transaction("C7 security remove", {
         "kind": "security_remove", "parent": {"token": simple_token}, "action": "deny",
     })
