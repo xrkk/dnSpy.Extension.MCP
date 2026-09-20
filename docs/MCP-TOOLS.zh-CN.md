@@ -1,6 +1,6 @@
 # dnSpy MCP — 工具完整说明（中文）
 
-与线上 `tools/list` 注册表机检一致（通告 78 个工具；另有 8 个 `edit_test_*` 测试面有 schema 但不通告，且需 `DNMDP_TEST=1`）。本文档的全部计数来自 `tools/export_tool_registry.py` 导出快照，绝不手写。
+与线上 `tools/list` 注册表机检一致：双功能门启用时生产面 72 个（静态 32 + 调试 22 + 编辑 18）；`DNMCP_TEST=1` 验收进程另通告 6 个 `debug_test_*` 探针，形成 78 工具快照，8 个可调用 `edit_test_*` 测试缝仍不通告。本文档计数来自 `tools/export_tool_registry.py` 导出快照，绝不手写。
 
 另见：[README.zh-CN.md](../README.zh-CN.md) · [English reference](MCP-TOOLS.md)
 
@@ -12,11 +12,11 @@
 
 ## 2. 静态分析与代码生成（32 个工具）
 
-open_files · list_assemblies · get_assembly_info · list_types · get_type_info · list_methods · get_type_fields · get_type_property · decompile_method · decompile_type · decompile_member · search_string_constants · search_constants · search_arrays · find_references · find_overrides · find_derived_types · 类型关系导航 · rename_symbol_by_token · save_assembly · patch_method_il · force_return · nop_method · revert_method · generate_bepinex_plugin · generate_harmony_patch · 结构搜索 · Unity 场景/方法发现 · get_method_il · find_type_relationship · get_type_layout —— 每个工具的参数见 README §功能。
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 每个工具的参数见 README §功能。
 
-## 3. 仅启动式动态调试（28 个工具）
+## 3. 仅启动式动态调试（生产面 22 个；验收模式 28 个）
 
-debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy —— 加上 `DNMCP_TEST=1` 门禁的冻结测试面（debug_test_*）。启动是唯一执行门禁：静态工具绝不运行样本代码。
+debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy。验收模式另通告 `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`。启动是唯一执行门禁：静态工具绝不运行样本代码。
 
 ## 4. 事务式结构化编辑（通告 18 个）
 
@@ -26,7 +26,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 | --- | --- |
 | `edit_begin` | 为一个已加载纯托管单模块程序集取得进程级编辑租约；创建私有副本 |
 | `edit_status` | 不改变事务地查询状态/修订/指纹/容量/风险 |
-| `edit_apply` | 向私有副本应用 **37** 类操作之一（必须携带 `request_id` 与 `expected_revision`） |
+| `edit_apply` | 向私有副本应用 **39** 类操作之一（必须携带 `request_id` 与 `expected_revision`） |
 | `edit_review` | 审查固定修订；规范 diff + 必需风险确认 |
 | `edit_commit` | 线性化到实时模块 + 持久化检查点（单步可恢复） |
 | `edit_rollback` | 丢弃私有副本；释放租约 |
@@ -38,7 +38,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 | 工具 | 用途 |
 | --- | --- |
-| `edit_compile` | 经 dnSpy 公开 Roslyn 编译器编译 C#（程序集 + Portable PDB 留在内存；无 analyzer/generator/脚本面） |
+| `edit_compile` | 经 dnSpy 公开 Roslyn 编译器编译 C#；每个 `documents` 条目字段闭集为 `path` 与 `content`（程序集 + Portable PDB 留在内存；无 analyzer/generator/脚本面） |
 | `edit_import` | 把编译产物成员以冻结操作导入私有副本——结构化签名匹配、生成子树整体处理、全或无拒绝；符号行随体移植；保存镜像仅内嵌 PDB |
 | `edit_impact_scan` | 已加载模块范围的跨程序集影响（scope=loaded_modules）；入站引用转为需确认风险 |
 
@@ -46,15 +46,17 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`、`module_update`、`assembly_ref_update`、`entry_point_set`
 - `managed_resource_add/update/remove`、`win32_resource_add/update/remove`
-- `strong_name_remove`（证据门禁）
+- `strong_name_remove`（当前恒拒绝：缺少可信且绑定目标的因果证据源；ACC016 仍阻断）
 
-### 4.4 37 类操作清单
+### 4.4 39 类操作清单
 
-type_add/update/remove · method_add/update/remove · field_add/update/remove · property_add/update/remove · event_add/update/remove · parameter_add/update/remove · generic_parameter_add/update/remove · method_body_replace · attribute_add/remove · security_add/remove · assembly_update · module_update · assembly_ref_update · entry_point_set · managed_resource_add/update/remove · win32_resource_add/update/remove · strong_name_remove
+`type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
 
 ## 5. 错误码与恢复（冻结）
 
 `EditWire.Message` / `EditWire.Recovery` 为事实来源；稳定集合含 EDIT_TRANSACTION_BUSY、EDIT_TRANSACTION_NOT_FOUND、EDIT_OWNER_REQUIRED/MISMATCH、EDIT_REVISION_CONFLICT、EDIT_LIVE_MODULE_CONFLICT、EDIT_REVIEW_STALE、EDIT_VALIDATION_FAILED、EDIT_RISK_CONFIRMATION_REQUIRED、EDIT_CAPABILITY_UNAVAILABLE、EDIT_CAPACITY_EXCEEDED、EDIT_DEBUG_NOT_IDLE、EDIT_LIVE_STATE_UNKNOWN、EDIT_CHECKPOINT_INVALID/COMMIT_FAILED/CLEANUP_FAILED、EDIT_EXPORT_BLOCKED、EDIT_REPLAY_CONFIRMATION_REQUIRED/UNVERIFIED、EDIT_OPERATION_VERSION_UNSUPPORTED、EDIT_HISTORY_CONFLICT、EDIT_BRANCH_SELECTION_REQUIRED、EDIT_LINEAGE_DIVERGED、EDIT_SOURCE_IDENTITY_CONFLICT、EDIT_RECOVERY_NOT_FOUND、REQUEST_ID_REUSE。
+
+语法有效但版本未知的操作返回 `EDIT_OPERATION_VERSION_UNSUPPORTED`；畸形输入仍属于协议/schema 无效。v1 检查点只允许 exact；实时模块漂移后须显式接纳为新的 v2 谱系。v2 区分 `exact`、`validated_drift`、`unverified_drift`，迁移仍须明确确认。
 
 ## 6. 资源面
 

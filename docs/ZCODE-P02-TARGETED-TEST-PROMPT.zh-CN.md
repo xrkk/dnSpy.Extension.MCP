@@ -1,5 +1,7 @@
 # 第三方 AI：P02 事务内核、私有副本与常用结构化编辑定向验收提示词
 
+> 本文是 P02 阶段冻结回归入口；其中 5 个编辑工具、22 类操作和 59 工具总数只描述该阶段构建，不是当前发布注册表。当前发布面请以实时 `tools/list` 和完整验收提示词为准。
+
 把本提示词交给同时连接 Win10VM 管理 MCP 与 dnSpy MCP 的第三方智能体。人工只准备
 虚拟机、dnSpy/MCP 环境；部署、架构轮换、测试、证据和清理由 AI 完成。不得使用 curl、
 手写 JSON-RPC 或读取源码结果冒充真实运行证据。
@@ -31,7 +33,7 @@
 
 - 运行 `contract_source.py`、`validate_contract.py`、`test_validator_mutations.py` 和
   `write_evidence_index.py`；必须分别满足生成物无漂移、131/131、20/20 和索引一致。
-- `tools/list` 当前总数 59：32 旧静态 + 5 结构化编辑 + 22 debug。五个产品工具为
+- P02 阶段 `tools/list` 基线总数 59：32 旧静态 + 5 结构化编辑 + 22 debug。五个产品工具为
   `edit_begin/edit_status/edit_apply/edit_review/edit_rollback`；无 commit/export/checkpoint/raw。
 - 逐工具校验 input/output schema；向 operation 注入 `raw_metadata/pe_bytes/heap/rva/hex_patch`
   均须 `-32602` 且事务、revision、指纹不变。

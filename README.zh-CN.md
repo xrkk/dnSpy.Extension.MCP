@@ -23,7 +23,10 @@ English: see [README.md](README.md).
 
 ## 功能
 
-### MCP 工具（线上通告 78 个：静态/代码生成 32 + 动态调试 28 + 结构化编辑 18；另有 8 个 edit_test_* 工具有 schema 但不通告）
+### MCP 工具（双功能门启用时生产面 72 个：静态/代码生成 32 + 动态调试 22 + 结构化编辑 18）
+
+以 `DNMCP_TEST=1` 启动的验收进程另通告 6 个 `debug_test_*` 探针，因此其线上快照为 78 个；
+8 个可调用的 `edit_test_*` 测试缝仍不通告。
 
 #### 加载
 
@@ -75,7 +78,7 @@ English: see [README.md](README.md).
 **事务生命周期**
 1. **edit_begin** — 为一个已加载的纯托管、单模块程序集取得进程级编辑租约，并创建内存私有副本
 2. **edit_status** — 查询事务状态、修订号、指纹、容量和风险事实，不改变事务
-3. **edit_apply** — 向私有副本应用 37 类强类型元数据/方法体/资源操作；每次调用必须携带 `request_id` 与 `expected_revision`
+3. **edit_apply** — 向私有副本应用 39 类强类型元数据/方法体/资源操作；每次调用必须携带 `request_id` 与 `expected_revision`
 4. **edit_review** — 审查固定修订，执行写出/重载验证，返回规范 diff 和必需风险确认；可选地通过 dnSpy 调试器执行入口暂停验证
 5. **edit_commit** — 将已审查的私有修订线性化到实时模块并持久化其检查点（此后可 undo/redo/restore）
 6. **edit_rollback** — 丢弃私有副本并释放编辑租约，不改变 dnSpy 中的实时模块
@@ -83,7 +86,7 @@ English: see [README.md](README.md).
 8. **edit_recover** / **edit_accept_live** — 解决部分提交恢复状态；显式接纳 UI 已偏离的模块为新基线
 
 **编译 → 导入（C# 方法/类型编辑）**
-9. **edit_compile** — 经 dnSpy 公开 Roslyn 编译器编译 C#；程序集 + Portable PDB 留在内存并登记给导入器（无 analyzer/generator/脚本面）
+9. **edit_compile** — 经 dnSpy 公开 Roslyn 编译器编译 C#；每个 `documents` 条目字段闭集为 `path` + `content`，程序集 + Portable PDB 留在内存并登记给导入器（无 analyzer/generator/脚本面）
 10. **edit_import** — 以稳定身份匹配把编译产物成员导入事务私有副本为冻结结构化操作（结构化签名、生成子树整体处理、全或无拒绝）。符号行（序列点/作用域/自定义调试信息）随体移植，保存镜像保持**仅内嵌** Portable PDB
 11. **edit_impact_scan** — 跨程序集影响报告（scope=loaded_modules，绝不宣称全局完整）；入站引用转为需确认风险
 
@@ -93,9 +96,13 @@ English: see [README.md](README.md).
 **资源与大载荷**
 13. **edit_resource_import** — 服务端从 VM 文件路径读取资源字节并暂存为内嵌载荷操作（大载荷不进 MCP 请求正文；内联上限不变）
 14. **edit_resource_export** — 把已提交资源写到 ArtifactRoot 下并返回完整文件身份（路径/长度/SHA-256）
-15. *（edit_apply 种类）* `managed_resource_add/update/remove`、`win32_resource_add/update/remove` — 标准 `.resources` 条目编辑（标量/字符串/字节数组；自定义序列化对象仅元数据+整体替换——绝不反序列化）、图标组结构校验；`strong_name_remove` — 证据门禁的强名称移除（需一次性调试事件证明）
+15. *（edit_apply 种类）* `managed_resource_add/update/remove`、`win32_resource_add/update/remove` — 标准 `.resources` 条目编辑（标量/字符串/字节数组；自定义序列化对象仅元数据+整体替换——绝不反序列化）、图标组结构校验；`strong_name_remove` 当前因缺少可信且绑定目标的因果证据源而恒拒绝（ACC016 仍阻断）
 
-37 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数、程序集/模块身份、AssemblyRef、入口点、托管与 Win32 资源、强名称移除的新增/更新/删除，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。只读的**MCP Edit Explorer**窗口（View 菜单）展示事务、暂存操作、diff、风险与逐检查点的谱系详情；空闲时也可浏览历史。本地取消面向当前活动事务（属主在线即可，操作/提交执行期间除外；孤儿事务同样受操作/提交忙态守卫约束）——UI 不提供任何提交/恢复入口。
+39 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数、程序集/模块身份、AssemblyRef、入口点、托管与 Win32 资源、强名称移除、接口/引用新增，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。只读的**MCP Edit Explorer**窗口（View 菜单）展示事务、暂存操作、diff、风险与逐检查点的谱系详情；空闲时也可浏览历史。本地取消面向当前活动事务（属主在线即可，操作/提交执行期间除外；孤儿事务同样受操作/提交忙态守卫约束）——UI 不提供任何提交/恢复入口。
+
+语法有效但版本未知的操作返回 `EDIT_OPERATION_VERSION_UNSUPPORTED`；畸形输入仍属于
+schema/参数无效。v1 检查点只允许 exact；漂移须显式接纳为新的 v2 谱系，v2 记录
+`exact`、`validated_drift` 或 `unverified_drift`，迁移仍须明确确认。
 
 #### 代码生成
 
@@ -315,6 +322,12 @@ dnspy-mcp-client call list_assemblies --arguments '{"page_size":20}'
 dnSpy 实际广告的工具与资源原样暴露出来，并通过 Python 客户端转发调用。`.mcp.json`
 示例：
 
+首次初始化成功后，如果同一配置 URL 的监听器重置连接或明确拒绝未知会话 ID，桥接会
+自动建立新会话；仅 `ping`、`tools/list` 和 `edit_status` 会重试一次。其他请求保留原始
+错误且绝不重放，桥接也不会扫描或猜测新的主机或端口。恢复只接受包含新会话 ID 的
+完整 initialize 响应；initialize、initialized 通知及可选重试共用 15 秒单调时钟调度预算，
+每个请求最多 5 秒（配置的客户端超时更小时以其为准）。该预算不承诺硬取消持续分段返回字节的响应。
+
 ```json
 {
   "mcpServers": {
@@ -472,7 +485,7 @@ claude mcp list
 
 ## 已验证的兼容性
 
-- MCP `2025-06-18`：78 个工具、14 个具体资源、空的 `resources/templates/list` 页面。
+- MCP `2025-06-18`：双功能门启用时生产面 72 个工具；`DNMCP_TEST=1` 验收快照 78 个工具。两者均有 14 个具体资源及空的 `resources/templates/list` 页面。
 - 22 个 debug inputSchema 均为自包含扁平对象；outputSchema 描述完整的成功/失败 envelope，不依赖客户端无法解析的缺失 `$defs`。
 - `list_assemblies` 使用对象型 `structuredContent`：`{ "assemblies": [...] }`。
 - 引入结构化编辑前的 54 工具基线已在 Win10 VM x64 与 x86 实机完成 54/54 成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。

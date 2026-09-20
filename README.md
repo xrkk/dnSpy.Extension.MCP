@@ -23,7 +23,10 @@ From zero to "ask Claude about your assembly" in a few minutes:
 
 ## Features
 
-### MCP Tools (78 advertised on the wire: 32 static/codegen + 28 dynamic-debugging + 18 structured-edit; the 8 edit_test_* tools are schema'd but unadvertised)
+### MCP Tools (72 production tools with both feature gates enabled: 32 static/codegen + 22 dynamic-debugging + 18 structured-edit)
+
+Acceptance processes started with `DNMCP_TEST=1` additionally advertise 6 `debug_test_*` probes,
+so their wire snapshot contains 78 tools. The 8 callable `edit_test_*` seams remain unadvertised.
 
 #### Loading
 
@@ -75,7 +78,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 **Transaction lifecycle**
 1. **edit_begin** — acquire the process-wide edit lease for one loaded, pure-managed, single-module assembly and create a private in-memory copy
 2. **edit_status** — inspect transaction state, revision, fingerprints, capacity and outstanding risk facts without changing the transaction
-3. **edit_apply** — apply one of 37 typed metadata/body/resource operations to the private copy; every call carries `request_id` and `expected_revision`
+3. **edit_apply** — apply one of 39 typed metadata/body/resource operations to the private copy; every call carries `request_id` and `expected_revision`
 4. **edit_review** — validate the fixed revision, write/reload it, return canonical diffs and required risk confirmations, and optionally run an entry-pause validation through dnSpy's debugger
 5. **edit_commit** — linearize the reviewed private revision to the live module and persist its checkpoint (undo/redo/restore become available)
 6. **edit_rollback** — discard the private copy and release the edit lease without changing the live dnSpy module
@@ -83,7 +86,7 @@ From zero to "ask Claude about your assembly" in a few minutes:
 8. **edit_recover** / **edit_accept_live** — resolve partial-commit recovery states; explicitly accept a UI-diverged module as a new baseline
 
 **Compile → import (C# method/type editing)**
-9. **edit_compile** — compile C# through dnSpy's public Roslyn compiler; the assembly + Portable PDB stay in memory and are registered for the importer (no analyzer/generator/script surface)
+9. **edit_compile** — compile C# through dnSpy's public Roslyn compiler; each `documents` entry is closed to `path` + `content`, and the assembly + Portable PDB stay in memory for the importer (no analyzer/generator/script surface)
 10. **edit_import** — import compiled members into the transaction private copy as frozen structured operations with stable-identity matching (structured signatures, generated-subtree handling, all-or-nothing rejection). Symbol rows (sequence points, scopes, custom debug info) transfer with the body and the saved image keeps an **embedded-only** Portable PDB
 11. **edit_impact_scan** — cross-assembly impact report over the currently loaded modules (`scope=loaded_modules`, never a global-completeness claim); inbound references become confirmation-required risks
 
@@ -93,16 +96,21 @@ From zero to "ask Claude about your assembly" in a few minutes:
 **Resources & large payloads**
 13. **edit_resource_import** — read resource bytes from a VM file path server-side and stage them as an inline-payload operation (large payloads never ride the MCP request body; inline limits unchanged)
 14. **edit_resource_export** — write a committed resource below ArtifactRoot and return the full file identity (path/length/SHA-256)
-15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` — evidence-gated strong-name removal (one-time debug-event proof required)
+15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` is currently rejected because no trusted target-bound causal evidence source is available (ACC016 remains blocked)
 
-The 37 operation kinds cover add/update/remove for types, methods, fields, properties, events,
+The 39 operation kinds cover add/update/remove for types, methods, fields, properties, events,
 parameters, generic parameters, assembly/module identity, AssemblyRef, entry point, managed and
-Win32 resources, strong-name removal, plus whole method-body replacement. References use metadata
+Win32 resources, strong-name removal, interface/reference additions, plus whole method-body replacement. References use metadata
 tokens or transaction-scoped object IDs; raw PE/heap/RVA/hex editing is intentionally rejected.
 While a structured-edit transaction is active, legacy live write tools are rejected to prevent
 bypassing the transaction. A read-only **MCP Edit Explorer** window (View menu) shows the
 transaction, staged operations, diffs, risks and checkpoint lineage, with a guarded local cancel
 for the current transaction while its owner session may still be connected (disabled only while an operation or commit is executing); orphaned transactions obey the same operation/commit guard — the UI offers no commit/restore path.
+
+A syntactically valid operation with an unknown version returns
+`EDIT_OPERATION_VERSION_UNSUPPORTED`; malformed input remains schema/parameter invalid. v1
+checkpoints are exact-only. Drift must be explicitly accepted into a new v2 lineage; v2 records
+`exact`, `validated_drift`, or `unverified_drift`, and migration requires explicit confirmation.
 
 #### Codegen
 
@@ -325,6 +333,16 @@ For a host AI that only supports local stdio MCP servers, `dnspy-mcp-stdio` is a
 bridge: it exposes the exact tools/resources advertised by dnSpy and forwards calls through
 the Python client. Example `.mcp.json`:
 
+After a successful initialization, the bridge automatically creates a new session if the
+listener at the same configured URL resets the connection or explicitly rejects an unknown
+session ID. It retries only `ping`, `tools/list`, and `edit_status`, once. Every other request
+keeps its original error and is never replayed; the bridge never scans for or guesses a new
+host or port. Recovery accepts only a complete initialize response with a newly issued session
+ID. Its initialize, initialized notification, and optional retry share a 15-second monotonic
+dispatch budget, with each request capped at five seconds (or the configured client timeout if
+smaller). This bounds recovery dispatch; it is not a hard cancellation guarantee for a response
+that continues to trickle bytes.
+
 ```json
 {
   "mcpServers": {
@@ -438,7 +456,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 
 For a ZCode, Codex, or other third-party AI full-function acceptance run through the Python stdio
 client, use the Chinese [third-party full-function test prompt](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md).
-It covers two x64/x86 passes, exact fixtures and hashes, all 59 tools, reversible writes, dump,
+It covers two x64/x86 passes, exact fixtures and hashes, all 78 acceptance-mode tools, reversible writes, dump,
 request-id idempotency, and two-level value expansion.
 
 #### Claude Code
@@ -485,7 +503,9 @@ See the Streamable HTTP section above for the `~/.codex/config.toml` snippet.
 
 ## Verified compatibility
 
-- MCP `2025-06-18`: 59 tools, 14 concrete resources, and an empty `resources/templates/list` page.
+- MCP `2025-06-18`: 72 production tools when both feature gates are enabled; the
+  `DNMCP_TEST=1` acceptance snapshot has 78 tools. Both expose 14 concrete resources and an empty
+  `resources/templates/list` page.
 - All 22 debug input schemas are self-contained flat objects; output schemas describe the complete success/failure envelope without unresolved `$defs`.
 - `list_assemblies` returns object-shaped structured content: `{ "assemblies": [...] }`.
 - The pre-structured-edit 54-tool baseline completed 54/54 successful paths on real Win10 x64 and x86 runs, including two-level `debug_expand_value`, breakpoint hits, step/restart, module dump, and request-id idempotency.

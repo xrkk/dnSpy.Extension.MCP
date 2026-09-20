@@ -26,7 +26,8 @@ write tool (`patch_method_il`, `force_return`, `nop_method`, `revert_method_il`,
 
 ## Transactional structured editing
 
-Use the five `edit_*` product tools when an edit spans metadata objects or needs a review boundary:
+Use the 18 advertised `edit_*` product tools when an edit spans metadata objects or needs a review,
+commit, history or export boundary:
 
 1. `edit_begin(request_id, assembly_name[, module_mvid])` acquires the single process-wide lease and
    creates a private copy. It accepts only an initialized Streamable HTTP or legacy SSE owner.
@@ -34,19 +35,27 @@ Use the five `edit_*` product tools when an edit spans metadata objects or needs
    to that private copy. Carry forward the returned `work_revision`; never guess or auto-replay IDs.
 3. `edit_review(request_id, transaction_id, expected_revision[, dynamic_validation])` validates the
    fixed revision, performs a write/reload check and returns canonical diffs and risk IDs.
-4. `edit_status` is the recovery/read path. `edit_rollback` discards the private copy and releases the
-   lease without changing the live module.
+4. `edit_commit` linearizes a reviewed revision to the live module and persists its checkpoint;
+   `edit_rollback` discards an uncommitted private copy. Use `edit_status`/`edit_recover` for recovery.
+5. `edit_history`, `edit_undo`, `edit_redo`, `edit_restore` and `edit_export` navigate or export the
+   persistent lineage. `edit_accept_live` explicitly starts a new baseline after accepted UI drift.
 
-The 22 operation kinds are add/update/remove for types, methods, fields, properties, events,
-parameters and generic parameters, plus `method_body_replace`. A newly created object is addressed
+The 39 operation kinds cover types, methods, fields, properties, events, parameters, generic
+parameters, attributes, security, identities, entry point, resources, interface/reference additions,
+strong-name removal and `method_body_replace`. A newly created object is addressed
 by the returned transaction-scoped `object_id`; an existing object is addressed by its exact
 metadata token. Removal is only `reject_if_referenced`. Unknown raw fields such as `raw_metadata`,
 `pe_bytes`, `heap`, `rva` and `hex_patch` are rejected by the published schema.
 
-P02 intentionally has no product `commit`, `checkpoint`, `export`, Undo or Redo tool. A successful
-review still leaves every change private. Do not describe it as a saved or live edit; checkpointed
-commit/export arrives in P03. The old live write tools are blocked while a structured transaction is
-active, so do not mix the two workflows.
+`strong_name_remove` is presently always rejected: no trusted target-bound causal evidence source
+is available, so ACC016 remains blocked. The old live write tools are blocked while a structured
+transaction is active, so do not mix the two workflows.
+
+A syntactically valid operation with an unknown version returns
+`EDIT_OPERATION_VERSION_UNSUPPORTED`; malformed input remains schema/parameter invalid. v1
+checkpoints are exact-only. Drift requires explicit `edit_accept_live` into a new v2 lineage; v2
+distinguishes `exact`, `validated_drift` and `unverified_drift`, with explicit confirmation for
+migration. `edit_compile.documents` entries accept only `path` and `content`.
 
 Optional dynamic review is explicit. It is applicable only to an executable with an entry point,
 requires the debugger to be idle and the VMware/VirtualBox execution gate to allow execution, writes

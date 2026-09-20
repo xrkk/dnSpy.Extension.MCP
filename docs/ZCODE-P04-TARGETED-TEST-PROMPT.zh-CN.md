@@ -12,7 +12,7 @@
 
 ## 步骤
 
-1. 37 类操作中的 attribute/security/layout/marshal/pinvoke 种族；harness --advanced-metadata-matrix；非法属性位/版本文法拒绝。
+1. 当前 39 类操作中的 attribute/security/layout/marshal/pinvoke 种族；harness --advanced-metadata-matrix；非法属性位/版本文法拒绝。`interface_add`、`reference_add` 也必须出现在注册表/operation schema 中。
 2. 每个失败样本必须断言稳定错误码/状态/恢复建议三元组。
 3. 结束时清理：回滚或提交全部事务，终止全部调试会话，`edit_status` 必须 idle。
 

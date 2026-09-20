@@ -58,7 +58,7 @@
 1. 确认 initialize/server instructions 可用。
 2. 调用 `resources/list`，读取全部 14 个资源并逐 URI 记录非空证据。
 3. 调用 `resources/templates/list`，必须成功返回空 `resourceTemplates`，不能是 Unknown method。
-4. 获取实时 `tools/list`，必须恰好有 78 个通告工具：32 个静态/代码生成、28 个 `debug_*`、18 个 `edit_*`（另有 8 个 `edit_test_*` 测试面不通告，需 DNMCP_TEST=1）。以 `tools/export_tool_registry.py` 导出快照为计数事实来源。
+4. 以 `DNMCP_TEST=1` 启动并获取实时 `tools/list`，必须恰好有 78 个通告工具：32 个静态/代码生成、22 个生产 `debug_*`、6 个通告的 `debug_test_*` 验收探针、18 个 `edit_*`。另有 8 个可调用 `edit_test_*` 测试缝不通告；非测试生产面在双功能门启用时为 72 个。以 `tools/export_tool_registry.py` 导出快照为计数事实来源。
 5. 检查 22 个 debug inputSchema：字段必须直接可见且带类型，不得出现无法解析的 `#/$defs/...` 或 `unknown & unknown`。
 6. 检查 debug outputSchema：必须描述完整 envelope，至少包含 `schema_version`、`ok`、`debug_context`、`result`、`error`、`warnings`、`untrusted_sample_data`。
 7. 调用 `list_assemblies`，验证 `structuredContent` 顶层是对象 `{ assemblies: [...] }`，不是数组。源码类工具只要返回非空 text 即符合 MCP；`structuredContent` 对它们是可选项，不得误报缺陷。
@@ -81,8 +81,9 @@
 
 ### B2. 18 个事务式结构化编辑工具（通告面）
 
-在不启动调试器的情况下，对静态样本执行 `edit_begin`、`edit_status`、`edit_apply`、
-`edit_review`、`edit_rollback` 的真实成功路径：
+在不启动调试器的情况下，对静态样本执行全部 18 个通告 `edit_*` 工具的真实成功路径；
+生命周期至少覆盖 begin/status/apply/review/rollback、review 后 commit、history、undo/redo、
+restore/export/recover/accept_live，并覆盖 compile/import/impact_scan 与 resource import/export：
 
 1. begin 前记录 `Compute` 的实时 IL；begin 后记录 transaction ID、revision、source 和三组指纹。
 2. 用一个 `type_add`，再用返回的 object ID 执行 `type_update`，逐次携带新的唯一 request ID
@@ -92,10 +93,17 @@
 4. 用同一 request ID/同一载荷重放一次 apply，响应必须逐字节等价且 revision 不增加；同一
    request ID 改载荷必须是 `REQUEST_ID_REUSE`。
 5. 第二个 MCP 会话尝试 begin 必须得到 `EDIT_TRANSACTION_BUSY`；非所有者不能操作已有事务。
-6. rollback 后状态必须 idle，再次读取 `Compute` IL 与原始逐条一致。实时 `tools/list` 不得有
-   产品 commit/export/checkpoint/原始 PE 编辑工具。
+6. rollback 分支必须回到 idle 且实时 IL 与原始逐条一致；commit 分支须产生检查点并在
+   undo/redo/restore 后恢复预期 live/head。实时 `tools/list` 不得有原始 PE 编辑工具或 8 个
+   `edit_test_*` 测试缝。
 
-若当前宿主只给智能体一个 MCP 会话，第二会话所有权项记 BLOCKED 并明确写“宿主限制”；其余
+操作清单必须为 39 类，含 `interface_add`、`reference_add`。语法有效但版本未知返回
+`EDIT_OPERATION_VERSION_UNSUPPORTED`，畸形输入仍为 schema/参数无效。`edit_compile.documents`
+每项字段闭集只有 `path`、`content`。v1 检查点仅 exact；漂移须显式建立 v2 新谱系，v2 的
+`validated_drift`/`unverified_drift` 迁移均按契约要求明确确认。`strong_name_remove` 当前恒拒绝，
+必须把 ACC016 记 BLOCKED，不得用预期拒绝冒充成功路径。
+
+若当前宿主只给智能体一个 MCP 会话，第二会话所有权项记 BLOCKED 并明确写“宿主限制”；
 其余产品工具不得因此跳过。任何中途失败都必须尝试 `edit_rollback`，不能遗留活动编辑事务。
 
 ### C. 主动态样本的 22 工具完整生命周期
@@ -111,6 +119,13 @@
 9. 最后 `debug_terminate`，再次 `debug_status` 必须为 idle。
 
 如果 pause epoch 改变，旧 thread/frame/value handle 必须得到 `STALE_HANDLE` 或被主动丢弃；随后重新获取，不能把旧句柄错误当服务端缺陷。
+
+### C2. 6 个通告调试验收探针
+
+在 `DNMCP_TEST=1` 进程中逐项调用 `debug_test_spy`、`debug_test_flood`、`debug_test_start`、
+`debug_test_dump`、`debug_test_clock`、`debug_test_adapter`，按实时 schema 走一个有意义成功路径
+并恢复探针状态。`debug_test_settings/artifact/transport/environment` 是可调用但不通告的测试缝，
+不得计入 78 个通告工具。
 
 ### D. `debug_expand_value` 两层真实成功路径
 
@@ -131,9 +146,9 @@
 - 无论中途发生什么，只要启动了 debuggee，就必须清理断点、terminate，并确认 idle。
 - 不得输出 Token、Authorization header 或其他凭据。
 
-最终输出中文审计报告：逐项列出 14 个资源和 59 个工具的 PASS/FAIL/BLOCKED、关键真实证据、私有结构化编辑→审查→回滚、旧静态修改→验证→恢复、保存路径、环境门禁、动态状态时间线、断点/线程/栈/locals/memory/dump、两层 value expansion、幂等性和最终 idle。FAIL 与 BLOCKED 分开统计；明确声明是否覆盖原文件、是否留下测试进程、是否遗留活动编辑事务，以及本轮是 x64 还是 x86。
+最终输出中文审计报告：逐项列出 14 个资源和 78 个验收模式通告工具的 PASS/FAIL/BLOCKED、关键真实证据、私有结构化编辑→审查→回滚/提交与历史导航、旧静态修改→验证→恢复、保存路径、环境门禁、动态状态时间线、断点/线程/栈/locals/memory/dump、两层 value expansion、幂等性和最终 idle。FAIL 与 BLOCKED 分开统计；明确声明 ACC016 状态、是否覆盖原文件、是否留下测试进程、是否遗留活动编辑事务，以及本轮是 x64 还是 x86。
 
-通过标准：本轮 14/14 资源、59/59 工具 PASS，FAIL 0、BLOCKED 0，全部临时修改已恢复，原始样本未覆盖，结构化编辑与调试 coordinator 均为 idle。
+通过标准：除已知 ACC016 `strong_name_remove` 阻断须单列外，本轮 14/14 资源、78/78 通告工具均有实际结论且无其他 FAIL/BLOCKED；全部临时修改已恢复，原始样本未覆盖，结构化编辑与调试 coordinator 均为 idle。不得把该条件写成 ACC022 总体验收通过。
 
 ### 资源路径导入导出补充
 

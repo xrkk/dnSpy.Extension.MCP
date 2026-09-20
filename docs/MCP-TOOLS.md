@@ -1,6 +1,6 @@
 # dnSpy MCP — Complete Tool Reference (EN)
 
-Machine-checked against the live `tools/list` registry (78 advertised tools; 8 additional `edit_test_*` seams are schema'd but unadvertised and gated behind `DNMCP_TEST=1`). Counts in this document come from `tools/export_tool_registry.py`, never from hand edits.
+Machine-checked against `tools/list`: the production surface is 72 tools when both feature gates are enabled (32 static + 22 debug + 18 edit). A `DNMCP_TEST=1` acceptance process additionally advertises 6 `debug_test_*` probes, producing the 78-tool snapshot; 8 callable `edit_test_*` seams remain unadvertised. Counts come from `tools/export_tool_registry.py`, never from hand edits.
 
 See also: [README.md](../README.md) · [中文完整说明](MCP-TOOLS.zh-CN.md)
 
@@ -12,11 +12,11 @@ See also: [README.md](../README.md) · [中文完整说明](MCP-TOOLS.zh-CN.md)
 
 ## 2. Static analysis & codegen (32 tools)
 
-open_files · list_assemblies · get_assembly_info · list_types · get_type_info · list_methods · get_type_fields · get_type_property · decompile_method · decompile_type · decompile_member · search_string_constants · search_constants · search_arrays · find_references · find_overrides · find_derived_types · navigate_type relationship tools · rename_symbol_by_token · save_assembly · patch_method_il · force_return · nop_method · revert_method · generate_bepinex_plugin · generate_harmony_patch · search_structures · find_unity_scenes · find_unity_methods · get_method_il · find_type_relationship · get_type_layout — see README §Features for per-tool parameters.
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly — see README §Features for per-tool parameters.
 
-## 3. Launch-only dynamic debugging (28 tools)
+## 3. Launch-only dynamic debugging (22 production tools; 28 in acceptance mode)
 
-debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy — plus the frozen test seams (debug_test_*) gated by `DNMCP_TEST=1`. Launch is the only execution gate: static tools never run sample code.
+debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy. Acceptance mode additionally advertises `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`. Launch is the only execution gate: static tools never run sample code.
 
 ## 4. Transactional structured editing (18 advertised)
 
@@ -26,7 +26,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 | --- | --- |
 | `edit_begin` | Acquire the process-wide edit lease for one loaded pure-managed single-module assembly; create the private copy |
 | `edit_status` | State/revision/fingerprints/capacity/risks without mutation |
-| `edit_apply` | Apply one of **37** operation kinds to the private copy (`request_id` + `expected_revision` required) |
+| `edit_apply` | Apply one of **39** operation kinds to the private copy (`request_id` + `expected_revision` required) |
 | `edit_review` | Validate the fixed revision; canonical diffs + required risk confirmations |
 | `edit_commit` | Linearize to the live module + persist the checkpoint (one recoverable step) |
 | `edit_rollback` | Discard the private copy; release the lease |
@@ -38,7 +38,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 | Tool | Purpose |
 | --- | --- |
-| `edit_compile` | Compile C# through dnSpy's public Roslyn compiler (assembly + Portable PDB stay in memory; no analyzer/generator/script surface) |
+| `edit_compile` | Compile C# through dnSpy's public Roslyn compiler; each `documents` item is closed to `path` and `content` (assembly + Portable PDB stay in memory; no analyzer/generator/script surface) |
 | `edit_import` | Import compiled members into the private copy as frozen operations — structured-signature matching, generated-subtree handling, all-or-nothing rejection; symbol rows transfer; saved images keep an embedded-only PDB |
 | `edit_impact_scan` | Cross-assembly impact over the loaded modules (`scope=loaded_modules`); inbound references become confirmation-required risks |
 
@@ -46,15 +46,17 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`, `module_update`, `assembly_ref_update`, `entry_point_set`
 - `managed_resource_add/update/remove`, `win32_resource_add/update/remove`
-- `strong_name_remove` (evidence-gated)
+- `strong_name_remove` (currently always rejected: no trusted target-bound causal evidence source; ACC016 is blocked)
 
-### 4.4 The 37 operation kinds
+### 4.4 The 39 operation kinds
 
-type_add/update/remove · method_add/update/remove · field_add/update/remove · property_add/update/remove · event_add/update/remove · parameter_add/update/remove · generic_parameter_add/update/remove · method_body_replace · attribute_add/remove · security_add/remove · assembly_update · module_update · assembly_ref_update · entry_point_set · managed_resource_add/update/remove · win32_resource_add/update/remove · strong_name_remove
+`type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
 
 ## 5. Error codes and recovery (frozen)
 
 `EditWire.Message` / `EditWire.Recovery` are the source of truth; the stable set includes EDIT_TRANSACTION_BUSY, EDIT_TRANSACTION_NOT_FOUND, EDIT_OWNER_REQUIRED/MISMATCH, EDIT_REVISION_CONFLICT, EDIT_LIVE_MODULE_CONFLICT, EDIT_REVIEW_STALE, EDIT_VALIDATION_FAILED, EDIT_RISK_CONFIRMATION_REQUIRED, EDIT_CAPABILITY_UNAVAILABLE, EDIT_CAPACITY_EXCEEDED, EDIT_DEBUG_NOT_IDLE, EDIT_LIVE_STATE_UNKNOWN, EDIT_CHECKPOINT_INVALID/COMMIT_FAILED/CLEANUP_FAILED, EDIT_EXPORT_BLOCKED, EDIT_REPLAY_CONFIRMATION_REQUIRED/UNVERIFIED, EDIT_OPERATION_VERSION_UNSUPPORTED, EDIT_HISTORY_CONFLICT, EDIT_BRANCH_SELECTION_REQUIRED, EDIT_LINEAGE_DIVERGED, EDIT_SOURCE_IDENTITY_CONFLICT, EDIT_RECOVERY_NOT_FOUND, REQUEST_ID_REUSE.
+
+A syntactically valid operation with an unknown version returns `EDIT_OPERATION_VERSION_UNSUPPORTED`; malformed input remains protocol/schema invalid. Checkpoint v1 is exact-only. A drifted live module must be explicitly accepted into a new v2 lineage; v2 distinguishes `exact`, `validated_drift`, and `unverified_drift`, and migration still requires explicit confirmation.
 
 ## 6. Resources
 
