@@ -15,7 +15,6 @@ from urllib.request import ProxyHandler, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-DESKTOP_REGION = [0, 0, 1696, 903]
 
 from dnspy_mcp import DnSpyClient, DnSpyProtocolError  # noqa: E402
 from dnspy_mcp.client import _MISSING  # noqa: E402
@@ -87,27 +86,34 @@ def result_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _ps_json(client: DnSpyClient, script: str, timeout: int = 60) -> dict:
-    """Run a PowerShell snippet and extract its single JSON object result.
+def _ps_json(client: DnSpyClient, script: str, timeout: int = 60):
+    """Run a PowerShell snippet and return its COMPLETE JSON result.
 
-    The management endpoint may wrap stdout with CLIXML/progress noise, so the JSON
-    object is located by brace matching rather than parsed whole."""
+    The endpoint wraps stdout as {'result': 'Response: <payload>\n\nStatus Code: 0'};
+    the payload may be a top-level object OR array. The whole payload is parsed - never a
+    brace-matched first object that silently drops array items. Anything that is not valid
+    JSON raises (comm/parse failures are failures, not empty results)."""
     value = client.call_tool_json("PowerShell", {"command": script, "timeout": timeout})
     if isinstance(value, dict) and set(value) == {"result"} and isinstance(value["result"], str):
         value = value["result"]
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-    start = text.find("{")
-    while start != -1:
-        for end in range(len(text), start, -1):
-            candidate = text[start:end]
-            try:
-                parsed = json.loads(candidate)
-            except ValueError:
-                continue
-            if isinstance(parsed, dict):
-                return parsed
-        start = text.find("{", start + 1)
-    raise RuntimeError(f"no JSON object in PowerShell result: {text[:200]!r}")
+    marker = "Response: "
+    if marker in text:
+        head, _, tail = text.partition(marker)
+        payload, sep, _rest = tail.rpartition("Status Code:")
+        if not sep:
+            payload = tail
+        text = payload.strip()
+    try:
+        return json.loads(text)
+    except ValueError as ex:
+        raise RuntimeError(f"PowerShell result is not valid JSON: {text[:200]!r}") from ex
+
+
+# --- T039: explicit UI target ownership (no first-instance fallback) ---------------------
+#
+# Every UI operation must belong to one explicit target: a PID plus the canonical exe
+# path the caller expects. The pair is verified on the VM BEFORE any UI write.
 
 
 def resolve_target(client: DnSpyClient, pid: int, exe_path: str) -> dict:
@@ -160,14 +166,6 @@ def focus_target_window(client: DnSpyClient, target: dict) -> None:
         raise RuntimeError(f"UI target refused: could not focus pid={target['pid']} hwnd={target['hwnd']}")
 
 
-def snapshot(client: DnSpyClient, region: list[int]) -> str:
-    return result_text(client.call_tool_json("Snapshot", {
-        "use_vision": False,
-        "use_ui_tree": True,
-        "region": region,
-    }))
-
-
 def _guard(target: dict) -> str:
     return (
         "$p=Get-Process -Id " + str(int(target["pid"])) + " -ErrorAction SilentlyContinue;"
@@ -185,32 +183,204 @@ def _uia_prelude(target: dict) -> str:
     )
 
 
-def _owned_options_window(client: DnSpyClient, target: dict, timeout_s: float = 12.0) -> dict:
-    """Find the Options dialog INSIDE the verified target's own window tree (dnSpy hosts it
-    inside the main window, so ownership = descendant of the target's main window)."""
-    import time as _time
+# --- T039 R3: control-identity UI operations ---------------------------------------------
+#
+# Every control is located INSIDE the verified target's own UIA tree by structural
+# identity - AutomationId / ControlType / label-name association / RuntimeId - never by
+# desktop text coordinates falling inside a rectangle. The MCP settings page lives in a
+# McpSettingsControl custom element whose edits are distinguished by their preceding
+# TextBlock labels (主机：/端口：/允许的 CIDR：/Token 校验值：/产物目录：/允许的样本目录：),
+# its checkboxes by their names, and the OK button is a direct child of the Options
+# window named 确定(O)/OK. Ambiguous matches (multiple or zero candidates) are refused.
 
+LABELS = {
+    "host": ("主机：", "Host"),
+    "port": ("端口：", "Port"),
+    "cidr": ("允许的 CIDR：", "Allowed CIDR"),
+    "token": ("Token 校验值：", "Token verifier"),
+    "artifact": ("产物目录：", "Artifact"),
+    "sample": ("允许的样本目录：", "Allowed sample"),
+}
+CHECKBOXES = {
+    "enable_server": ("启用 MCP 服务器", "Enable MCP server"),
+    "require_token": ("要求 Bearer Token", "Require Bearer Token"),
+    "remote_host_only": ("远程主机仅限配置的 Host-Only 隔离网络", "Host-Only"),
+    "debug_tools": ("启用调试工具", "Debug tools"),
+    "dedicated_instance": ("此 dnSpy 实例专用于 MCP 调试", "dedicated"),
+    "local_override": ("物理机/未知环境", "physical/unknown"),
+}
+_OK_NAMES = ("确定", "OK")
+_OPTIONS_NAMES = ("选项", "Options")
+
+
+def _find_settings_root_fragment() -> str:
+    return (
+        "$ctrl=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ $_.Current.ClassName -eq 'McpSettingsControl' });"
+        "if($ctrl.Count -ne 1){ throw ('McpSettingsControl count=' + $ctrl.Count) }"
+        "$ctrl=$ctrl[0];"
+    )
+
+
+def _find_options_window_fragment() -> str:
+    return (
+        "$opts=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Window' -and "
+        "($_.Current.Name -match '^(选项|Options)') });"
+        "if($opts.Count -ne 1){ throw ('owned Options window count=' + $opts.Count) }"
+        "$opts=$opts[0];"
+    )
+
+
+def _control_row(el_var: str) -> str:
+    return ("$c=" + el_var + ".Current;"
+            "$rt=($(" + el_var + ".GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+            "$r=$c.BoundingRectangle;"
+            "[pscustomobject]@{id=$c.AutomationId;type=$c.ControlType.ProgrammaticName;name=$c.Name;"
+            "cls=$c.ClassName;rt=$rt;cx=[int]($r.X+$r.Width/2);cy=[int]($r.Y+$r.Height/2)}")
+
+
+def _edit_locator_fragment(field: str) -> str:
+    """PS fragment: set $hits[0] to the Edit whose preceding Text sibling carries the
+    field label (structural label association)."""
+    return (
+        "$kids=@($ctrl.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition));"
+        "$hits=@();for($i=1;$i -lt $kids.Count;$i++){"
+        "if($kids[$i].Current.ControlType.ProgrammaticName -eq 'ControlType.Edit'"
+        " -and $kids[$i-1].Current.ControlType.ProgrammaticName -eq 'ControlType.Text'){"
+        "$ln=$kids[$i-1].Current.Name;"
+        "foreach($want in @('" + "','".join(LABELS[field]) + "')){"
+        "if($ln -eq $want -or $ln -like ($want + '*')){ $hits += $kids[$i]; break } } } }"
+        "if($hits.Count -ne 1){ throw ('edit[" + field + "] candidates=' + $hits.Count) }"
+    )
+
+
+def _checkbox_locator_fragment(key: str) -> str:
+    """PS fragment: set $hits[0] to the checkbox matching the accessible name."""
+    return (
+        "$hits=@($ctrl.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.CheckBox' -and "
+        "($_.Current.Name -like '*" + CHECKBOXES[key][0] + "*' -or $_.Current.Name -like '*" + CHECKBOXES[key][1] + "*') });"
+        "if($hits.Count -ne 1){ throw ('checkbox[" + key + "] candidates=' + $hits.Count) }"
+    )
+
+
+def _ps_lit(value: object) -> str:
+    return str(value).replace("'", "''")
+
+
+def locate_edit(client: DnSpyClient, target: dict, field: str) -> dict:
+    """Locate a settings edit by its LABEL (preceding TextBlock sibling) and report its
+    value + RuntimeId. Structural association, not coordinates."""
+    if field not in LABELS:
+        raise RuntimeError(f"unknown settings field {field!r}")
     script = (
         _uia_prelude(target)
-        + "$hits=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
-        "[System.Windows.Automation.Condition]::TrueCondition)|"
-        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Window' -and $_.Current.Name -match '^(选项|Options)' });"
-        "if($hits.Count -ne 1){ [pscustomobject]@{found=$false;n=$hits.Count}|ConvertTo-Json -Compress }"
-        "else{ $r=$hits[0].Current.BoundingRectangle;"
-        "[pscustomobject]@{found=$true;n=1;name=$hits[0].Current.Name;cx=[int]($r.X+$r.Width/2);cy=[int]($r.Y+$r.Height/2)}|ConvertTo-Json -Compress }"
+        + _find_settings_root_fragment()
+        + _edit_locator_fragment(field)
+        + "$rt=(($hits[0].GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+        "$c=$hits[0].Current;"
+        "$v='';try{ $v=[string]$hits[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value }catch{};"
+        "[pscustomobject]@{field='" + field + "';value=$v;rt=$rt;id=$c.AutomationId;type=$c.ControlType.ProgrammaticName;name=$c.Name}|ConvertTo-Json -Compress"
     )
-    deadline = _time.time() + timeout_s
-    last = None
-    while _time.time() < deadline:
-        last = _ps_json(client, script)
-        if last.get("found"):
-            return last
-        _time.sleep(0.5)
-    raise RuntimeError(f"owned Options dialog not found for pid={target['pid']} (n={last.get('n') if last else '?'})")
+    return _ps_json(client, script)
+
+
+def locate_checkbox(client: DnSpyClient, target: dict, key: str) -> dict:
+    """Locate a settings checkbox by its accessible name; report its toggle state."""
+    if key not in CHECKBOXES:
+        raise RuntimeError(f"unknown checkbox {key!r}")
+    script = (
+        _uia_prelude(target)
+        + _find_settings_root_fragment()
+        + _checkbox_locator_fragment(key)
+        + "$rt=(($hits[0].GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+        "$c=$hits[0].Current;"
+        "$on='?';try{ $on=[string]($hits[0].GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState) }catch{};"
+        "[pscustomobject]@{key='" + key + "';toggle=$on;rt=$rt;id=$c.AutomationId;type=$c.ControlType.ProgrammaticName;name=$c.Name}|ConvertTo-Json -Compress"
+    )
+    return _ps_json(client, script)
+
+
+def locate_ok_button(client: DnSpyClient, target: dict) -> dict:
+    """The OK button is a DIRECT child of the owned Options window, named 确定/OK."""
+    script = (
+        _uia_prelude(target)
+        + _find_options_window_fragment()
+        + "$hits=@($opts.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Button' -and "
+        "($_.Current.Name -like '" + _OK_NAMES[0] + "*' -or $_.Current.Name -like '" + _OK_NAMES[1] + "*') });"
+        "if($hits.Count -ne 1){ throw ('OK button candidates=' + $hits.Count) }"
+        + _control_row("$hits[0]").replace("[pscustomobject]@{", "$row=[pscustomobject]@{")
+        + ";$row|ConvertTo-Json -Compress"
+    )
+    return _ps_json(client, script)
+
+
+def read_field_values(client: DnSpyClient, target: dict) -> dict:
+    """Snapshot every settings field (6 edits + 6 checkboxes) from its located control."""
+    out: dict[str, object] = {}
+    for field in LABELS:
+        out[field] = locate_edit(client, target, field).get("value", "")
+    for key in CHECKBOXES:
+        out[key] = locate_checkbox(client, target, key).get("toggle", "?")
+    return out
+
+
+def _set_edit_value(client: DnSpyClient, target: dict, field: str, value: str) -> None:
+    """Set an edit via its ValuePattern, commit focus, and verify FROM THE SAME CONTROL
+    (re-found by RuntimeId) that it holds exactly `value` - byte-exact, no filtering."""
+    script = (
+        _uia_prelude(target)
+        + _find_settings_root_fragment()
+        + _edit_locator_fragment(field)
+        + "$rt=(($hits[0].GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+        "$hits[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('" + _ps_lit(value) + "');"
+        "$main.SetFocus();Start-Sleep -Milliseconds 250;"
+        "$again=@($ctrl.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ (($_.GetRuntimeId()|ForEach-Object{$_}) -join '.') -eq $rt });"
+        "if($again.Count -ne 1){ throw ('re-find[" + field + "] by RuntimeId=' + $again.Count) }"
+        "$v='';try{ $v=[string]$again[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value }catch{};"
+        "if($v -cne '" + _ps_lit(value) + "'){ throw ('set[' + '" + field + "' + '] mismatch: got [' + $v + '] want [' + '" + _ps_lit(value) + "' + ']') }"
+        "[pscustomobject]@{set=$true;field='" + field + "';value=$v;rt=$rt}|ConvertTo-Json -Compress"
+    )
+    row = _ps_json(client, script)
+    if not row.get("set"):
+        raise RuntimeError(f"setting {field} failed: {row}")
+
+
+def _toggle_checkbox(client: DnSpyClient, target: dict, key: str, want_on: bool) -> None:
+    """Toggle via TogglePattern and verify the state FROM THE SAME control by RuntimeId."""
+    script = (
+        _uia_prelude(target)
+        + _find_settings_root_fragment()
+        + _checkbox_locator_fragment(key)
+        + "$rt=(($hits[0].GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+        "$pat=$hits[0].GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern);"
+        "$cur=[string]$pat.Current.ToggleState;"
+        "$want='" + ("On" if want_on else "Off") + "';"
+        "if($cur -ne $want){ $pat.Toggle(); Start-Sleep -Milliseconds 250 };"
+        "$again=@($ctrl.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ (($_.GetRuntimeId()|ForEach-Object{$_}) -join '.') -eq $rt });"
+        "if($again.Count -ne 1){ throw ('re-find checkbox[" + key + "]=' + $again.Count) }"
+        "$now=[string]$again[0].GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState;"
+        "if($now -ne $want){ throw ('toggle[" + key + '] now=' + "' + $now) }"
+        "[pscustomobject]@{toggled=$true;key='" + key + "';state=$now;rt=$rt}|ConvertTo-Json -Compress"
+    )
+    row = _ps_json(client, script)
+    if not row.get("toggled"):
+        raise RuntimeError(f"toggling {key} failed: {row}")
 
 
 def open_options(client: DnSpyClient, target: dict | None = None) -> dict:
-    """Open View->Options ON THE TARGET via its own menu bar; return the owned dialog info."""
+    """Open View->Options ON THE TARGET via its own menu; return the owned dialog info."""
     if target is None:
         raise RuntimeError("open_options refused: no explicit UI target supplied")
     menu = (
@@ -227,315 +397,168 @@ def open_options(client: DnSpyClient, target: dict | None = None) -> dict:
         "$opt=@($view.FindAll([System.Windows.Automation.TreeScope]::Subtree,"
         "[System.Windows.Automation.Condition]::TrueCondition)|Where-Object{ $_.Current.Name -match '^(选项|Options)' }|Select-Object -First 1);"
         "if($opt.Count -lt 1){ throw 'options menu item not found on target' }"
-        "$opt=$opt[0];"
-        "try{ $opt.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }catch{ throw 'options menu invoke failed' }"
+        "try{ $opt[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }catch{ throw 'options menu invoke failed' }"
         "[pscustomobject]@{invoked=$true}|ConvertTo-Json -Compress"
     )
     _ps_json(client, menu)
-    return _owned_options_window(client, target)
+    import time as _time
+    deadline = _time.time() + 12
+    while _time.time() < deadline:
+        if _options_window_present(client, target):
+            return {"pid": target["pid"], "options_window": "present"}
+        _time.sleep(0.5)
+    raise RuntimeError(f"owned Options dialog not found for pid={target['pid']}")
 
 
-def _verify_foreground_then_click(client: DnSpyClient, target: dict, x: int, y: int, what: str) -> None:
-    """Pre-click gate: foreground window must be the target's; the click lands on (x, y)
-    that came from an OWNED control's rectangle. No blind retries - a failed gate raises."""
-    script = (
-        _guard(target)
-        + "Add-Type -Namespace W -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();"
-        "[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x,int y);"
-        "[DllImport(\"user32.dll\")] public static extern void mouse_event(uint f,uint dx,uint dy,uint d,IntPtr e);';"
-        "Add-Type -Namespace W -Name U2 -MemberDefinition '[DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, ref uint pid);';"
-        "$fg=[W.U]::GetForegroundWindow();"
-        "$fgpid=0;"
-        "[void][W.U2]::GetWindowThreadProcessId($fg,[ref]$fgpid);"
-        "if($fgpid -ne $p.Id){ throw ('foreground window pid ' + $fgpid + ' is not the target ' + $p.Id) }"
-        "[pscustomobject]@{gated=$true;what='" + what + "'}|ConvertTo-Json -Compress"
-    )
-    row = _ps_json(client, script)
-    if not row.get("gated"):
-        raise RuntimeError(f"pre-click gate failed for {what!r}: {row}")
-    # gated: foreground is the target; click through the endpoint's injector at the same
-    # owned-control coordinates
-    client.call_tool_json("Click", {"loc": [int(x), int(y)]})
-
-
-def _owned_edits(client: DnSpyClient, target: dict) -> list[dict]:
-    """All Edit controls of the target-owned Options dialog with values and rectangles."""
+def _options_window_present(client: DnSpyClient, target: dict) -> bool:
     script = (
         _uia_prelude(target)
         + "$opts=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
         "[System.Windows.Automation.Condition]::TrueCondition)|"
-        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Window' -and $_.Current.Name -match '^(选项|Options)' });"
-        "if($opts.Count -ne 1){ throw ('owned options window count=' + $opts.Count) }"
-        "$edits=@($opts[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,"
-        "(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit))));"
-        "$rows=@();foreach($e in $edits){$v='';try{$v=[string]$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value}catch{};"
-        "$r=$e.Current.BoundingRectangle;"
-        "$rows+=[pscustomobject]@{value=$v;cx=[int]($r.X+$r.Width/2);cy=[int]($r.Y+$r.Height/2)}};"
-        "$rows|ConvertTo-Json -Depth 4 -Compress"
+        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Window' -and "
+        "($_.Current.Name -match '^(选项|Options)') });"
+        "[pscustomobject]@{n=$opts.Count}|ConvertTo-Json -Compress"
     )
-    row = _ps_json(client, script)
-    rows = row if isinstance(row, list) else [row]
-    return [r for r in rows if isinstance(r, dict) and "cx" in r]
+    return _ps_json(client, script).get("n") == 1
 
 
-def _owned_options_rect(client: DnSpyClient, target: dict) -> dict:
-    """The owned Options dialog's BoundingRectangle (left/top/right/bottom)."""
-    script = (
+def select_mcp_page(client: DnSpyClient, target: dict) -> None:
+    """Select the MCP settings tree page. The tree items are unnamed FastTextBlocks, so
+    the rows of the OWNED Options tree are invoked via UIA until the McpSettingsControl
+    appears in the target's tree - control identity, no coordinates."""
+    rows_script = (
         _uia_prelude(target)
-        + "$hits=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
-        "[System.Windows.Automation.Condition]::TrueCondition)|"
-        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Window' -and $_.Current.Name -match '^(选项|Options)' });"
-        "if($hits.Count -ne 1){ throw ('owned options window count=' + $hits.Count) }"
-        "$r=$hits[0].Current.BoundingRectangle;"
-        "[pscustomobject]@{found=$true;l=[int]$r.X;t=[int]$r.Y;rt=[int]$r.Right;b=[int]$r.Bottom}|ConvertTo-Json -Compress"
+        + _find_options_window_fragment()
+        + "$tree=@($opts.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+        "(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Tree))));"
+        "if($tree.Count -ne 1){ throw ('options tree count=' + $tree.Count) }"
+        "$items=@($tree[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+        "(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::TreeItem))));"
+        "$ids=@($items|ForEach-Object{ (($_.GetRuntimeId()|ForEach-Object{$_}) -join '.') });"
+        "[pscustomobject]@{count=$items.Count;ids=$ids}|ConvertTo-Json -Compress"
     )
-    row = _ps_json(client, script)
-    if not row.get("found"):
-        raise RuntimeError("owned Options rect unavailable")
-    return row
-
-
-def _label_inside_owned_rect(client: DnSpyClient, target: dict, label_regex: str,
-                             toggle_hint: bool = False) -> dict:
-    """Locate a labeled control for clicking, constrained to the owned Options dialog.
-
-    dnSpy's settings tree exposes unnamed FastTextBlock items, so the label comes from the
-    desktop snapshot text; the click is only allowed when the label's coordinates fall
-    INSIDE the owned dialog's UIA rectangle. Ownership therefore stays proven even though
-    the item itself has no accessible name."""
-    rect = _owned_options_rect(client, target)
-    tree = snapshot(client, DESKTOP_REGION)
-    for line in tree.splitlines():
-        if not re.search(label_regex, line, re.IGNORECASE):
-            continue
-        m = re.search(r"\((\d+),(\d+)\)", line)
-        if not m:
-            continue
-        x, y = int(m.group(1)), int(m.group(2))
-        if rect["l"] <= x <= rect["rt"] and rect["t"] <= y <= rect["b"]:
-            out = {"cx": x, "cy": y, "line": line.strip()[:120], "rect": rect}
-            if toggle_hint:
-                out["toggle_on"] = "[toggle:on]" in line.lower()
-            return out
-    raise RuntimeError(f"owned control not found inside the Options rect: {label_regex}")
-
-
-def _click_owned_control(client: DnSpyClient, target: dict, label_regex: str, what: str) -> dict:
-    ctl = _label_inside_owned_rect(client, target, label_regex, toggle_hint=True)
-    focus_target_window(client, target)
-    _verify_foreground_then_click(client, target, ctl["cx"], ctl["cy"], what)
-    return ctl
-
-
-def _click_owned_control(client: DnSpyClient, target: dict, name_regex: str, what: str) -> dict:
-    ctl = _label_inside_owned_rect(client, target, name_regex, toggle_hint=True)
-    focus_target_window(client, target)
-    _verify_foreground_then_click(client, target, ctl["cx"], ctl["cy"], what)
-    return ctl
-
-
-def _type_owned(client: DnSpyClient, target: dict, text: str, cx: int, cy: int, what: str) -> None:
-    """Verified keyboard input as ONE PowerShell operation: foreground gate, click on the
-    owned box, select-all and SendKeys the text - atomic so no interleaved desktop churn
-    (the management endpoint's own console writes) can steal focus between the click and
-    the keystrokes."""
-    safe = "".join(ch for ch in str(text) if ch.isalnum() or ch in ".-")
-    script = (
-        _guard(target)
-        + "Add-Type -AssemblyName System.Windows.Forms;"
-        + "Add-Type -Namespace W -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();"
-        "[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x,int y);"
-        "[DllImport(\"user32.dll\")] public static extern void mouse_event(uint f,uint dx,uint dy,uint d,IntPtr e);';"
-        "Add-Type -Namespace W -Name U2 -MemberDefinition '[DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, ref uint pid);';"
-        "$ws=New-Object -ComObject WScript.Shell;[void]$ws.AppActivate(" + str(int(target["pid"])) + ");Start-Sleep -Milliseconds 250;"
-        "$fg=[W.U]::GetForegroundWindow();$fgpid=0;[void][W.U2]::GetWindowThreadProcessId($fg,[ref]$fgpid);"
-        "if($fgpid -ne $p.Id){ throw ('foreground pid ' + $fgpid + ' not target') }"
-        "[void][W.U]::SetCursorPos(" + str(int(cx)) + "," + str(int(cy)) + ");"
-        "[W.U]::mouse_event(2,0,0,0,[IntPtr]::Zero);Start-Sleep -Milliseconds 60;[W.U]::mouse_event(4,0,0,0,[IntPtr]::Zero);"
-        "Start-Sleep -Milliseconds 150;"
-        "[System.Windows.Forms.SendKeys]::SendWait('^a');Start-Sleep -Milliseconds 40;"
-        "[System.Windows.Forms.SendKeys]::SendWait('" + safe + "');Start-Sleep -Milliseconds 200;"
-        "[pscustomobject]@{typed=$true;what='" + what + "'}|ConvertTo-Json -Compress"
-    )
-    row = _ps_json(client, script)
-    if not row.get("typed"):
-        raise RuntimeError(f"atomic type failed for {what!r}: {row}")
-    time.sleep(0.3)
-
-
-def _select_mcp_page(client: DnSpyClient, target: dict) -> None:
-    """Click the settings-tree rows of the OWNED Options dialog until the MCP page is
-    active. Rows are anonymous FastTextBlocks, so selection is verified the only reliable
-    way: the owned dialog's UIA edit list starts containing a numeric (port) edit."""
-    rect = _owned_options_rect(client, target)
-    tree = snapshot(client, DESKTOP_REGION)
-    rows: list[tuple[int, int]] = []
-    for line in tree.splitlines():
-        if "树视图项" not in line and "tree item" not in line.lower():
-            continue
-        m = re.search(r"\((\d+),(\d+)\)", line)
-        if not m:
-            continue
-        x, y = int(m.group(1)), int(m.group(2))
-        if rect["l"] <= x < rect["l"] + 240 and rect["t"] <= y <= rect["b"]:
-            if (x, y) not in rows:
-                rows.append((x, y))
-    if not rows:
-        raise RuntimeError("no settings-tree rows found inside the owned Options rect")
-    def mcp_page_visible() -> bool:
-        tr = snapshot(client, DESKTOP_REGION)
-        for ln in tr.splitlines():
-            if "启用 MCP" not in ln and "Enable MCP" not in ln:
-                continue
-            m = re.search(r"\((\d+),(\d+)\)", ln)
-            if not m:
-                continue
-            x, y = int(m.group(1)), int(m.group(2))
-            if rect["l"] <= x <= rect["rt"] and rect["t"] <= y <= rect["b"]:
-                return True
-        return False
-
-    for (x, y) in rows:
-        focus_target_window(client, target)
-        _verify_foreground_then_click(client, target, x, y, "settings tree row")
-        time.sleep(0.25)
-        if mcp_page_visible():
+    rows = _ps_json(client, rows_script)
+    if not rows.get("count"):
+        raise RuntimeError("no settings-tree rows in the owned Options dialog")
+    for rid in rows["ids"]:
+        invoke = (
+            _uia_prelude(target)
+            + _find_options_window_fragment()
+            + "$tree=@($opts.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+            "(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Tree))));"
+            "$hit=@($tree[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+            "(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::TreeItem)))|"
+            "Where-Object{ (($_.GetRuntimeId()|ForEach-Object{$_}) -join '.') -eq '" + str(rid) + "' });"
+            "if($hit.Count -ne 1){ throw ('row re-find=' + $hit.Count) }"
+            "$how='none';"
+            "try{ $hit[0].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); $how='selection' }catch{ "
+            "$r=$hit[0].Current.BoundingRectangle;"
+            "if($r.IsEmpty){ throw 'row rect empty' }"
+            "Add-Type -Namespace M -Name C -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x,int y);"
+            "[DllImport(\"user32.dll\")] public static extern void mouse_event(uint f,uint dx,uint dy,uint d,IntPtr e);';"
+            "$cx=[int]($r.X+$r.Width/2);$cy=[int]($r.Y+$r.Height/2);"
+            "[void][M.C]::SetCursorPos($cx,$cy);"
+            "[M.C]::mouse_event(2,0,0,0,[IntPtr]::Zero);Start-Sleep -Milliseconds 60;[M.C]::mouse_event(4,0,0,0,[IntPtr]::Zero);"
+            "Start-Sleep -Milliseconds 250;"
+            "Add-Type -AssemblyName UIAutomationClient;"
+            "$pt=New-Object System.Windows.Point($cx,$cy);"
+            "$from=[System.Windows.Automation.AutomationElement]::FromPoint($pt);"
+            "$frt=($from.GetRuntimeId()) -join '.';"
+            "if($frt -ne ((($hit[0].GetRuntimeId())|ForEach-Object{$_}) -join '.')){ throw ('FromPoint hit ' + $frt + ' is not the row') }"
+            "$how='click-verified' };"
+            "[pscustomobject]@{selected=$true;how=$how}|ConvertTo-Json -Compress"
+        )
+        _ps_json(client, invoke)
+        time.sleep(0.3)
+        probe = (
+            _uia_prelude(target)
+            + "$ctrl=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,"
+            "[System.Windows.Automation.Condition]::TrueCondition)|"
+            "Where-Object{ $_.Current.ClassName -eq 'McpSettingsControl' });"
+            "[pscustomobject]@{n=$ctrl.Count}|ConvertTo-Json -Compress"
+        )
+        if _ps_json(client, probe).get("n") == 1:
             return
-    raise RuntimeError("MCP settings page not reached: no tree row showed the MCP page")
+    raise RuntimeError("MCP settings page not reached: no tree row produced McpSettingsControl")
 
 
-def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int | None = None,
-                   target: dict | None = None) -> None:
-    """Drive the MCP settings page of the verified target: open Options via its own menu,
-    select the MCP page in the owned dialog's tree, type host/port into owned edits with
-    pre-input foreground verification, honor the loopback combination rules, apply OK."""
+def apply_settings(client: DnSpyClient, enable: bool | None = None, host: str = "",
+                   port: int | None = None, target: dict | None = None) -> None:
+    """Drive the MCP settings page of the verified target with control-identity writes.
+
+    host='' leaves the host (and its combination-dependent fields) untouched; port-only
+    applies do not modify host/CIDR/ack/local-override; enable=None (default) leaves the
+    high-risk local override untouched - only an explicit True/False toggles it; every
+    requested change is verified from the SAME
+    located control (RuntimeId) before the single OK invoke, all untouched fields are
+    compared before/after, and success requires the owned Options window to be GONE."""
     if target is None:
         raise RuntimeError("apply_settings refused: no explicit UI target supplied (pid + exe path)")
-    # re-verify the target at entry (stale/fake targets refused here, before any UI write)
     resolve_target(client, target["pid"], target["path"])
     open_options(client, target)
-    # MCP page: walk the owned dialog's tree rows until host/port edits appear
-    _select_mcp_page(client, target)
-    time.sleep(0.4)
-    # One full locate->type->verify->OK pass, retried once with fresh locators if any
-    # verification fails (each attempt re-locates; a failed verification aborts BEFORE the
-    # OK click, so no unverified state is ever committed).
-    last_err: Exception | None = None
-    for attempt in range(2):
-        try:
-            # host/port boxes expose their CURRENT values as word runs inside the owned rect:
-            # locate them by value (host text / numeric port), then type at those coordinates
-            rect = _owned_options_rect(client, target)
-            tr = snapshot(client, DESKTOP_REGION)
-            host_box = None
-            digit_words = []
-            for ln in tr.splitlines():
-                m = re.search(r"\((\d+),(\d+)\)", ln)
-                if not m:
-                    continue
-                x, y = int(m.group(1)), int(m.group(2))
-                if not (rect["l"] <= x <= rect["rt"] and rect["t"] <= y <= rect["b"]):
-                    continue
-                if '"localhost"' in ln or '"127.0.0.1"' in ln:
-                    host_box = (x, y)
-                m5 = re.search(r'word "(\d{2,5})"', ln)
-                if m5:
-                    digit_words.append((x, y, m5.group(1)))
-            if not host_box:
-                raise RuntimeError("owned host box not located by its current value")
-            # the port box is the digit word on the next row under the host box, near its
-            # column; hint-text digits (e.g. a CIDR /32 example) live elsewhere
-            port_candidates = [(x, y) for (x, y, v) in digit_words
-                               if host_box[1] + 8 <= y <= host_box[1] + 48 and abs(x - host_box[0]) <= 60]
-            if not port_candidates:
-                raise RuntimeError(f"owned port box not located under the host row (digits={digit_words!r})")
-            port_box = port_candidates[0]
-            # read the current values from the located words; only touch what actually changes
-            def word_at(x, y):
-                tr2 = snapshot(client, DESKTOP_REGION)
-                for ln in tr2.splitlines():
-                    m2 = re.search(r"\((\d+),(\d+)\)", ln)
-                    if m2 and int(m2.group(1)) == x and int(m2.group(2)) == y:
-                        m3 = re.search(r'"([^"]*)"', ln)
-                        return m3.group(1) if m3 else ""
-                return None
+    select_mcp_page(client, target)
+    before = read_field_values(client, target)
 
-            current_host = word_at(*host_box)
-            if host and (current_host or "").strip().casefold() != host.casefold():
-                _type_owned(client, target, host, host_box[0], host_box[1], "host box")
-            if port is not None and str(port) != (word_at(*port_box) or ""):
-                _type_owned(client, target, str(port), port_box[0], port_box[1], "port box")
-                # verify the typed value took: the port row (same y band, right of the tree
-                # column) must show the requested number before anything is committed
-                time.sleep(0.4)
-                tr3 = snapshot(client, DESKTOP_REGION)
-                typed_visible = False
-                for ln in tr3.splitlines():
-                    m4 = re.search(r"\((\d+),(\d+)\)", ln)
-                    if not m4:
-                        continue
-                    wx, wy = int(m4.group(1)), int(m4.group(2))
-                    if rect["l"] <= wx <= rect["rt"] and rect["t"] <= wy <= rect["b"] and f'word "{port}"' in ln:
-                        typed_visible = True
-                        break
-                if not typed_visible:
-                    raise RuntimeError(f"the typed port {port} is not visible inside the owned dialog - refusing to apply")
-            # loopback combination: empty CIDRs + no ack (only when a remote ack exists to undo)
-            try:
-                ack = _label_inside_owned_rect(client, target, "远程主机|Host-Only", toggle_hint=True)
-            except RuntimeError:
-                ack = None
-            if host in ("localhost", "127.0.0.1", "::1"):
-                # CIDR rows must be empty for loopback; clear only if the owned rows hold text
-                for e in _owned_edits(client, target):
-                    if e is host_box or e is port_box:
-                        continue
-                    if e["value"] and ("/" in e["value"] or e["value"].strip().isdigit() is False and "*" in e["value"]):
-                        _type_owned(client, target, "", e["cx"], e["cy"], "cidr edit clear")
-                if ack and ack.get("toggle_on"):
-                    _click_owned_control(client, target, "远程主机|Host-Only", "remote ack checkbox off")
-            else:
-                if ack and not ack.get("toggle_on"):
-                    _click_owned_control(client, target, "远程主机|Host-Only", "remote ack checkbox on")
-            # local override checkbox must match `enable`
-            ovr = _label_inside_owned_rect(client, target, "物理机|未知环境|physical/unknown", toggle_hint=True)
-            toggle_on = bool(ovr.get("toggle_on"))
-            if toggle_on != enable:
-                _click_owned_control(client, target, "物理机|未知环境|physical/unknown", "local override checkbox")
-            # OK button of the OWNED dialog, then it must close
-            # commit via the dialog's default accept button with the KEYBOARD: the
-            # endpoint's own console window can overlap the OK button and swallow clicks,
-            # while ENTER goes to the focused owned dialog directly. Gate: foreground must
-            # be the target and the owned dialog must still be present in its tree.
-            script = (
-                _guard(target)
-                + "Add-Type -AssemblyName System.Windows.Forms;"
-                + "Add-Type -Namespace W -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();';"
-                + "Add-Type -Namespace W -Name U2 -MemberDefinition '[DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, ref uint pid);';"
-                + "$fg=[W.U]::GetForegroundWindow();$fgpid=0;[void][W.U2]::GetWindowThreadProcessId($fg,[ref]$fgpid);"
-                + "if($fgpid -ne $p.Id){ throw ('foreground pid ' + $fgpid + ' not target') }"
-                + "[System.Windows.Forms.SendKeys]::SendWait('{ENTER}');"
-                + "[pscustomobject]@{entered=$true}|ConvertTo-Json -Compress"
-            )
-            _ps_json(client, script)
-            deadline = time.time() + 12
-            while time.time() < deadline:
-                try:
-                    _owned_options_window(client, target, timeout_s=0.2)
-                    time.sleep(0.4)
-                except RuntimeError:
-                    return  # owned dialog closed: committed
-            raise RuntimeError("owned Options dialog did not close after OK")
-            break
-        except RuntimeError as err:
-            last_err = err
-            try:
-                _owned_options_window(client, target, timeout_s=1.0)
-            except RuntimeError:
-                raise
-    else:
-        raise last_err  # type: ignore[misc]
+    changes: list[tuple[str, str, object]] = []
+    if host and before["host"] != host:
+        changes.append(("edit", "host", host))
+    if port is not None and str(before["port"]) != str(port):
+        changes.append(("edit", "port", str(port)))
 
+    # combination rules for the ack checkbox follow the FINAL host value
+    final_host = host if host else str(before["host"])
+    loopback = final_host.strip().casefold() in ("localhost", "127.0.0.1", "::1")
+    if loopback and before["remote_host_only"] == "On":
+        changes.append(("toggle", "remote_host_only", False))
+    if not loopback and before["remote_host_only"] != "On":
+        changes.append(("toggle", "remote_host_only", True))
+    if enable is not None and before["local_override"] != ("On" if enable else "Off"):
+        changes.append(("toggle", "local_override", bool(enable)))
+
+    for kind, key, value in changes:
+        if kind == "edit":
+            _set_edit_value(client, target, key, value)
+        else:
+            _toggle_checkbox(client, target, key, value)
+
+    # pre-commit readback: same controls; requested values present, everything else
+    # byte-identical to `before`
+    after = read_field_values(client, target)
+    for kind, key, value in changes:
+        got = after[key]
+        want = value if kind == "edit" else ("On" if value else "Off")
+        if str(got) != str(want):
+            raise RuntimeError(f"pre-commit readback mismatch for {key}: {got!r} != {want!r}")
+    touched = {key for _, key, _ in changes}
+    for key, val in before.items():
+        if key not in touched and str(after[key]) != str(val):
+            raise RuntimeError(f"untouched field {key} changed: {val!r} -> {after[key]!r}")
+
+    # commit: invoke the identified OK button of the owned Options window
+    ok_row = locate_ok_button(client, target)
+    ok_invoke = (
+        _uia_prelude(target)
+        + _find_options_window_fragment()
+        + "$hits=@($opts.FindAll([System.Windows.Automation.TreeScope]::Children,"
+        "[System.Windows.Automation.Condition]::TrueCondition)|"
+        "Where-Object{ $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Button' -and "
+        "($_.Current.Name -like '" + _OK_NAMES[0] + "*' -or $_.Current.Name -like '" + _OK_NAMES[1] + "*') });"
+        "if($hits.Count -ne 1){ throw ('OK button candidates=' + $hits.Count) }"
+        "$rt=(($hits[0].GetRuntimeId()|ForEach-Object{$_}) -join '.');"
+        "if($rt -ne '" + str(ok_row.get("rt")) + "'){ throw 'OK button identity changed between locate and invoke' }"
+        "try{ $hits[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }catch{ throw 'OK invoke failed' }"
+        "[pscustomobject]@{invoked=$true;rt=$rt}|ConvertTo-Json -Compress"
+    )
+    _ps_json(client, ok_invoke)
+
+    # success = the owned Options window is OBSERVED GONE (one identity check, no
+    # except-return swallowing of comm/parse errors)
+    deadline = time.time() + 12
+    while time.time() < deadline:
+        if not _options_window_present(client, target):
+            return
+        time.sleep(0.4)
+    raise RuntimeError("owned Options dialog still present after OK invoke")
 
 
 def main() -> int:

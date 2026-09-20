@@ -148,7 +148,7 @@ def fresh_dnspy(client: UiMcpClient, arch: str) -> bool:
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
     start_dnspy(client, arch)
-    apply_settings(client, True, "localhost",
+    apply_settings(client, None, "localhost",
                        target=find_target(client, r"C:\Tools\dnSpy\dnSpy.exe" if arch == "x64" else r"C:\Tools\dnSpy\dnSpy-x86.exe"))
     deadline = time.time() + 60
     while time.time() < deadline:

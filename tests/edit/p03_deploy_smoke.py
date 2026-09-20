@@ -25,7 +25,7 @@ def main() -> int:
     print("[2] enabling MCP server (loopback)", flush=True)
     from ui_apply_settings import find_target
     target = find_target(client, r"C:\Tools\dnSpy\dnSpy.exe")
-    apply_settings(client, True, "localhost", target=target)
+    apply_settings(client, None, "localhost", target=target)
     ready = powershell(client, (
         '$ready=$false; for($i=0;$i -lt 40;$i++){ '
         '& curl.exe -fsS --max-time 2 http://127.0.0.1:15378/health 2>$null | Out-Null; '
