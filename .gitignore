@@ -73,3 +73,5 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 build/
+/PLAN/2026.08.26/独立核验
+/.tmp
