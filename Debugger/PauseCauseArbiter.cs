@@ -25,6 +25,13 @@ public sealed class BreakInfoObservation {
 	public string? ThreadHandle { get; }
 	/// <summary>Registered live module handle for the event location, when it can be resolved.</summary>
 	public string? ModuleHandle { get; }
+	/// <summary>Internal exception facts retained from the debugger object. They are not
+	/// caller-supplied and support narrow server-side evidence gates.</summary>
+	internal string? ExceptionType { get; }
+	internal string? ExceptionMessage { get; }
+	internal int? ExceptionHResult { get; }
+	internal bool ExceptionFirstChance { get; }
+	internal bool ExceptionUnhandled { get; }
 
 	public BreakInfoObservation(string kind, int ordinal, string? ownedBreakpointId = null,
 		string? stepId = null, bool policyRequestedPause = false, string? stepKind = null,
@@ -37,6 +44,19 @@ public sealed class BreakInfoObservation {
 		PolicyRequestedPause = policyRequestedPause;
 		ThreadHandle = threadHandle;
 		ModuleHandle = moduleHandle;
+	}
+
+	internal BreakInfoObservation(string kind, int ordinal, string? ownedBreakpointId,
+		string? stepId, bool policyRequestedPause, string? stepKind, string? threadHandle,
+		string? moduleHandle, string? exceptionType, string? exceptionMessage,
+		int? exceptionHResult, bool exceptionFirstChance, bool exceptionUnhandled)
+		: this(kind, ordinal, ownedBreakpointId, stepId, policyRequestedPause, stepKind,
+			threadHandle, moduleHandle) {
+		ExceptionType = exceptionType;
+		ExceptionMessage = exceptionMessage;
+		ExceptionHResult = exceptionHResult;
+		ExceptionFirstChance = exceptionFirstChance;
+		ExceptionUnhandled = exceptionUnhandled;
 	}
 }
 

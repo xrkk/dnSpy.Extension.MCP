@@ -667,6 +667,12 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 	// gate already ran and removes the public key.
 	static EditOperationOutcome StrongNameRemove(ModuleDef module, JsonElement op) {
 		var assembly = module.Assembly ?? throw Validation("strong_name_remove", "module has no assembly row");
+		if (assembly.PublicKey is null || assembly.PublicKey.Data is null || assembly.PublicKey.Data.Length == 0
+			|| (assembly.Attributes & dnlib.DotNet.AssemblyAttributes.PublicKey) == 0)
+			throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+				["kind"] = "capability", ["capability"] = "strong_name_remove",
+				["reason"] = "the target assembly has no applicable strong-name public key",
+			});
 		if (op.TryGetProperty("dynamic_failure", out var evidence)) {
 			if (!evidence.TryGetProperty("session_id", out _))
 				Invalid("dynamic_failure", "the dynamic failure evidence must carry session_id and event_cursor");

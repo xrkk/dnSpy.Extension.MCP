@@ -127,7 +127,6 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	// CHK-007: last scanned inbound references keyed by risk_id for commit echo
 	readonly Dictionary<string, object?> LastInboundReferences = new(StringComparer.Ordinal);
 	// P08 one-time strong-name failure evidence: (session_id, event_cursor) -> consumed module mvid
-	readonly Dictionary<string, string> consumedStrongNameEvidence = new(StringComparer.Ordinal);
 
 	public string State { get { lock (gate) { ExpireLocked(); return state; } } }
 
@@ -834,6 +833,13 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	void ValidateStrongNameEvidence(Transaction tx, JsonElement op) {
 		if (!op.TryGetProperty("kind", out var kindValue) || kindValue.GetString() != "strong_name_remove")
 			return;
+		var assembly = tx.Workspace.PrivateModule.Assembly;
+		if (assembly?.PublicKey is null || assembly.PublicKey.Data is null || assembly.PublicKey.Data.Length == 0
+			|| (assembly.Attributes & dnlib.DotNet.AssemblyAttributes.PublicKey) == 0)
+			throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+				["kind"] = "capability", ["capability"] = "strong_name_remove",
+				["reason"] = "the target assembly has no applicable strong-name public key",
+			});
 		if (!op.TryGetProperty("dynamic_failure", out var evidence) || evidence.ValueKind != JsonValueKind.Object)
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "strong_name_remove requires a dynamic_failure evidence object"));
 		var sessionId = evidence.TryGetProperty("session_id", out var sessionValue) && sessionValue.ValueKind == JsonValueKind.String ? sessionValue.GetString()! : throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence session_id is missing"));
@@ -841,40 +847,11 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		if (cursor <= 0)
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence event_cursor must be a positive cursor"));
 		var claimedKind = evidence.TryGetProperty("event_kind", out var kindText) && kindText.ValueKind == JsonValueKind.String ? kindText.GetString()! : string.Empty;
-		var failureKinds = new[] { "start_failed", "process_exited", "exception", "module_load_failed" };
-		if (!failureKinds.Contains(claimedKind, StringComparer.Ordinal))
+		if (!string.Equals(claimedKind, "exception", StringComparison.Ordinal))
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-				"the evidence event kind must be a module load/validation failure: " + claimedKind));
-		var consumedKey = sessionId + ":" + cursor.ToString(System.Globalization.CultureInfo.InvariantCulture);
-		var targetMvid = tx.Workspace.ModuleMvid;
-		lock (consumedStrongNameEvidence) {
-			if (consumedStrongNameEvidence.ContainsKey(consumedKey))
-				throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence tuple was already consumed (one-time gate)"));
-			{
-				var read = debugSessions.ReadEventsForEvidence(sessionId, cursor - 1, 1, null);
-				var target = read?.Events.FirstOrDefault();
-				if (target == null)
-					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-						"no retained debug event exists at the evidence cursor " + cursor));
-				string retainedKind;
-				try {
-					using var eventDocument = System.Text.Json.JsonDocument.Parse(target);
-					retainedKind = eventDocument.RootElement.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == System.Text.Json.JsonValueKind.String
-						? kindElement.GetString()! : string.Empty;
-				}
-				catch (System.Text.Json.JsonException) { retainedKind = string.Empty; }
-				if (!string.Equals(retainedKind, claimedKind, StringComparison.Ordinal))
-					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-						"the retained event at cursor " + cursor + " is a '" + retainedKind + "' event, not '" + claimedKind + "'"));
-				// attribution: the one-time evidence tuple binds the retained event of THIS
-				// debug session (session_id at the exact cursor); the session's launch
-				// target is the tampered image by construction of the driver flow.
-				if (!target.Contains(sessionId, StringComparison.Ordinal))
-					throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-						"the retained event does not name the evidence session"));
-				consumedStrongNameEvidence[consumedKey] = targetMvid;
-			}
-		}
+				"the evidence event kind must be a retained CLR strong-name validation exception: " + claimedKind));
+		throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+			"the current debugger API exposes only the throwing module and exception sample data; it does not identify a CLR loader validation source or the assembly whose binding failed"));
 	}
 
 	// P08 edit_resource_import: reads VM file bytes server-side and stages the

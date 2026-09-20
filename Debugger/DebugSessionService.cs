@@ -3492,6 +3492,11 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				DbgThread? eventThread = null;
 				DbgModule? eventModule = null;
 				bool policyPause = false;
+				string? exceptionType = null;
+				string? exceptionMessage = null;
+				int? exceptionHResult = null;
+				bool exceptionFirstChance = false;
+				bool exceptionUnhandled = false;
 				if (info.Kind == DbgBreakInfoKind.Message && info.Data is DbgMessageEventArgs msg) {
 					switch (msg.Kind) {
 						case DbgMessageKind.BoundBreakpoint:
@@ -3536,12 +3541,20 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 							break;
 						case DbgMessageKind.ExceptionThrown:
 							kind = "exception";
-							if (msg is DbgMessageExceptionThrownEventArgs exArgs)
+							if (msg is DbgMessageExceptionThrownEventArgs exArgs) {
+								eventThread = exArgs.Exception.Thread;
+								eventModule = exArgs.Exception.Module;
+								exceptionType = exArgs.Exception.Id.HasName ? exArgs.Exception.Id.Name : null;
+								exceptionMessage = exArgs.Exception.Message;
+								exceptionHResult = exArgs.Exception.HResult;
+								exceptionFirstChance = exArgs.Exception.IsFirstChance;
+								exceptionUnhandled = exArgs.Exception.IsUnhandled || exArgs.Exception.IsSecondChance;
 								policyPause = policy switch {
 									"first_chance_and_unhandled" => true,
-									"unhandled" => exArgs.Exception.IsUnhandled || exArgs.Exception.IsSecondChance,
+									"unhandled" => exceptionUnhandled,
 									_ => false,
 								};
+							}
 							break;
 						case DbgMessageKind.Break:
 						case DbgMessageKind.ProgramBreak:
@@ -3554,7 +3567,8 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				var threadHandle = eventThread is null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
 				var moduleHandle = ModuleHandleOf(eventModule);
 				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause,
-					stepKind, threadHandle, moduleHandle));
+					stepKind, threadHandle, moduleHandle, exceptionType, exceptionMessage,
+					exceptionHResult, exceptionFirstChance, exceptionUnhandled));
 			}
 		}
 		return list;

@@ -60,6 +60,7 @@ public sealed class DebugSessionCoordinator {
 	bool restartReservation;
 	bool abandonedRestart;
 	long eventCursorCounter; // debug_context.event_cursor source
+	internal sealed class StrongNameFailureObservation { }
 
 	public DebugSessionCoordinator(Func<string>? newSessionId = null, Func<string>? utcNow = null, Func<DateTime>? wallClock = null) {
 		this.newSessionId = newSessionId ?? DefaultSessionId;
@@ -378,8 +379,14 @@ public sealed class DebugSessionCoordinator {
 	void WritePauseDetails(IReadOnlyList<BreakInfoObservation> breakInfos) {
 		foreach (var info in PauseCauseArbiter.DetailOrder(breakInfos)) {
 			switch (info.Kind) {
-				case PauseCauseArbiter.Exception:
-					WriteEvent(EventKinds.Exception, new { first_chance = false, unhandled = true, type = "exception", message = "", thread_handle = (string?)null }, untrusted: true);
+			case PauseCauseArbiter.Exception:
+					WriteEvent(EventKinds.Exception, new {
+						first_chance = info.ExceptionFirstChance,
+						unhandled = info.ExceptionUnhandled,
+						type = info.ExceptionType ?? "exception",
+						message = info.ExceptionMessage ?? string.Empty,
+						thread_handle = info.ThreadHandle,
+					}, untrusted: true);
 					break;
 				case PauseCauseArbiter.Breakpoint:
 					if (info.OwnedBreakpointId != null)
@@ -482,6 +489,11 @@ public sealed class DebugSessionCoordinator {
 			return null; // NOT_FOUND
 		}
 	}
+
+	/// <summary>The current dnSpy exception contract cannot attest a loader validation source
+	/// or name the failed binding target. Raw exception HRESULT/type/module facts therefore
+	/// never become strong-name authorization evidence.</summary>
+	internal StrongNameFailureObservation? ReadStrongNameFailure(string sessionId, long cursor) => null;
 
 	bool RetentionExpired => terminalAtUtc is { } t && (wallClock() - t) >= TerminalRetention;
 
