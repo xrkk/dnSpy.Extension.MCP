@@ -1,0 +1,23 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-016-CAUSAL",
+  "acc_id": "ACC-016",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "isolated T026 StrongHost.exe + InboundStrong.dll + UnsignedHost.exe",
+  "precondition": "fresh isolated VM fixture; no machine-level strong-name policy change",
+  "actions": [
+    "inspect original and default-edit export identity, public key token, flags, bytes and sn.exe verification",
+    "run the invalidly signed export directly without changing machine policy and record its actual outcome",
+    "launch the valid signed original through debug_launch and retain the complete process_exited event",
+    "prove that a normal application exit is not acceptable strong-name-removal evidence",
+    "if the product wrongly accepts it, inspect exact loaded inbound-reference impact and roll back without commit",
+    "prove an unsigned target returns an explicit capability limit instead of staging a no-op removal"
+  ],
+  "expected": "RACC-016: identity is preserved by default; unrelated exit evidence rejects; only attributable signature failure may create a separate branch; exact inbound risk is reported; inapplicable targets return EDIT_CAPABILITY_UNAVAILABLE",
+  "review": {
+    "owner": "T026",
+    "covered_acc": ["ACC-016"],
+    "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-016-CAUSAL"
+  }
+}

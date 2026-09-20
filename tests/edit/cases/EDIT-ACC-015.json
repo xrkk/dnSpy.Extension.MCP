@@ -13,9 +13,12 @@
   "no global-completeness wording anywhere in the report",
   "wrong transaction id and stale revision are structural errors and reject",
   "commit without the inbound risk confirmation is blocked; with confirmation the commit result echoes the confirmed ids",
+  "a schema-valid method body with a real IL stack underflow is rejected by structural validation; revision, live/private fingerprints and checkpoint-directory manifest remain unchanged",
+  "the commit result echoes the complete confirmed risk fact and exact affected-reference object from impact/review, and the committed package manifest is hashed",
+  "a dedicated P03StoreHarness structural-commit-guard probe supplies a confirmed-risk list but proves PrepareCommit replays and structurally rejects invalid IL before any staged/final package or live mutation",
   "an identity-free scan still carries scope+list (empty report is explicit)"
  ],
- "expected": "per OUT-007/CON-013/NON-017: explicit loaded-module scope, actual list, inbound references, confirmation round-trip",
+ "expected": "per OUT-007/CON-013/CON-017/NON-017: exact loaded-module scope and inbound fact, full confirmation round-trip, real structural error hard-blocked independently at apply and final commit preparation",
  "review": {
   "owner": "P07",
   "covered_acc": [
