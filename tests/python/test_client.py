@@ -203,6 +203,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(200, response.status)
         self.assertEqual(-32700, response.json()["error"]["code"])
 
+    def test_reused_direct_connection_applies_each_request_timeout(self) -> None:
+        client = DnSpyClient(self.url, timeout=40.0)
+        client.initialize(send_initialized=False)
+
+        client.raw_request("GET", path="health", timeout=0.25)
+
+        self.assertEqual(0.25, client._http_connection.timeout)
+        self.assertEqual(0.25, client._http_connection.sock.gettimeout())
+        client.close()
+
     def test_http_status_cli_maps_connection_failure_to_curl_000(self) -> None:
         with TemporaryDirectory() as directory:
             output = Path(directory) / "status.txt"

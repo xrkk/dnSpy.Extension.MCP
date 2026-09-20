@@ -328,13 +328,18 @@ class DnSpyClient:
         target = parsed.path or "/"
         if parsed.query:
             target += "?" + parsed.query
+        request_timeout = self.timeout if timeout is None else timeout
 
         with self._http_lock:
             connection = self._http_connection
             if connection is None:
                 connection_type = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
-                connection = connection_type(parsed.hostname, parsed.port, timeout=timeout or self.timeout)
+                connection = connection_type(parsed.hostname, parsed.port, timeout=request_timeout)
                 self._http_connection = connection
+            else:
+                connection.timeout = request_timeout
+                if connection.sock is not None:
+                    connection.sock.settimeout(request_timeout)
             try:
                 connection.request(method.upper(), target, body=data, headers=request_headers)
                 opened = connection.getresponse()
