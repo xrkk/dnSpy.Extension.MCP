@@ -12,6 +12,19 @@ def result_schema(tool):
     return SCHEMAS[tool]['outputSchema']['oneOf'][0]['properties']['result']
 
 class EditResponseContractTests(unittest.TestCase):
+    def test_new_operation_kinds_are_valid_outputs_and_unknown_kind_is_rejected(self):
+        apply = result_schema('edit_apply')['properties']
+        diff_schema = apply['diffs']['items']
+        for kind in ('interface_add', 'reference_add'):
+            jsonschema.Draft202012Validator(apply['kind']).validate(kind)
+            jsonschema.Draft202012Validator(diff_schema).validate(dict(
+                operation_index=0, kind=kind, target='0x09000001',
+                path=f'metadata/{kind}', before=None, after='Example.Target',
+                risk_ids=[]))
+        for schema in (apply['kind'], diff_schema['properties']['kind']):
+            with self.assertRaises(jsonschema.ValidationError):
+                jsonschema.Draft202012Validator(schema).validate('unknown_operation')
+
     def test_impact_response_without_apply_fields(self):
         payload = dict(transaction=TRANSACTION, impact=dict(scope='loaded_modules', modules=[],
             inbound_references=[], risk_ids=[], identity_operations=[]))

@@ -9578,7 +9578,9 @@
                           "win32_resource_add",
                           "win32_resource_update",
                           "win32_resource_remove",
-                          "strong_name_remove"
+                          "strong_name_remove",
+                          "interface_add",
+                          "reference_add"
                         ]
                       },
                       "operation_index": {
@@ -9687,7 +9689,9 @@
                     "win32_resource_add",
                     "win32_resource_update",
                     "win32_resource_remove",
-                    "strong_name_remove"
+                    "strong_name_remove",
+                    "interface_add",
+                    "reference_add"
                   ]
                 },
                 "operation_index": {
@@ -10057,11 +10061,13 @@
                           "win32_resource_add",
                           "win32_resource_update",
                           "win32_resource_remove",
-                          "strong_name_remove"
+                          "strong_name_remove",
+                          "interface_add",
+                          "reference_add"
                         ]
                       },
-                      "maxItems": 37,
-                      "minItems": 37,
+                      "maxItems": 39,
+                      "minItems": 39,
                       "type": "array",
                       "uniqueItems": true
                     },
@@ -10765,7 +10771,9 @@
                           "win32_resource_add",
                           "win32_resource_update",
                           "win32_resource_remove",
-                          "strong_name_remove"
+                          "strong_name_remove",
+                          "interface_add",
+                          "reference_add"
                         ]
                       },
                       "operation_index": {
@@ -16312,7 +16320,8 @@
                 "cleanup",
                 "navigate_forward",
                 "navigate_inverse",
-                "live_apply"
+                "live_apply",
+                "export_reload"
               ]
             }
           }
@@ -16384,7 +16393,11 @@
                     "prewrite",
                     "readback",
                     "finalize",
-                    "cleanup"
+                    "cleanup",
+                    "navigate_forward",
+                    "navigate_inverse",
+                    "live_apply",
+                    "export_reload"
                   ]
                 },
                 "armed": {
@@ -16988,7 +17001,9 @@
                           "win32_resource_add",
                           "win32_resource_update",
                           "win32_resource_remove",
-                          "strong_name_remove"
+                          "strong_name_remove",
+                          "interface_add",
+                          "reference_add"
                         ]
                       },
                       "operation_index": {
@@ -18176,7 +18191,9 @@
                           "win32_resource_add",
                           "win32_resource_update",
                           "win32_resource_remove",
-                          "strong_name_remove"
+                          "strong_name_remove",
+                          "interface_add",
+                          "reference_add"
                         ]
                       },
                       "operation_index": {
@@ -18285,7 +18302,9 @@
                     "win32_resource_add",
                     "win32_resource_update",
                     "win32_resource_remove",
-                    "strong_name_remove"
+                    "strong_name_remove",
+                    "interface_add",
+                    "reference_add"
                   ]
                 },
                 "operation_index": {

@@ -95,7 +95,16 @@ def main() -> int:
 
     operation_branches = schemas["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]
     actual_operations = [row["properties"]["kind"]["const"] for row in operation_branches]
-    check(actual_operations == OPERATIONS, "edit_apply:26-operation-order", failures)
+    check(actual_operations == OPERATIONS, "edit_apply:39-operation-order", failures)
+    output_operation_enums = []
+    for name in PRODUCT:
+        for node in walk(schemas[name]["outputSchema"]):
+            values = node.get("enum", []) if isinstance(node, dict) else []
+            if "type_add" in values:
+                output_operation_enums.append((name, values))
+    check(len(output_operation_enums) == 7, "outputs:operation-enum-count", failures)
+    for name, values in output_operation_enums:
+        check(values == actual_operations, f"{name}:output-operation-kinds", failures)
     barrier_names = schemas["edit_test_barrier"]["inputSchema"]["oneOf"][0]["properties"]["name"]["enum"]
     check(barrier_names == BARRIERS, "barrier:nine-names", failures)
     check(schemas["edit_begin"]["inputSchema"]["properties"].get("source_family_id", {}).get("pattern") == r"^family-[0-9a-f]{32}$", "begin:family-id", failures)
