@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using dnlib.DotNet;
 using dnSpy.Extension.MCP.Debugger;
@@ -783,6 +784,21 @@ internal sealed class EditHistoryModule : IDisposable {
 					&& envelopeFormat.ValueKind == JsonValueKind.String
 					&& envelopeFormat.GetString() != "dnspy.edit.op.v1")
 					throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+				// A well-typed future (kind, kind_version) pair is also a producer-
+				// version event.  Detect it before the frozen schema's enum rejects a
+				// future integer, while leaving missing/non-integer values to the
+				// structural validator below.  The capability table remains the one
+				// source of truth for both known kinds and their supported versions.
+				var unsupportedVersions = UnsupportedOperationVersionIndexes(operationDocument.RootElement);
+				if (unsupportedVersions.Count != 0) {
+					// Prove the rest of the frozen shape before assigning the version
+					// error.  Replacing only the already well-typed future integers keeps
+					// malformed/missing fields, resource limits, and envelope structure
+					// under the ordinary schema-corruption classification.
+					using var schemaDocument = OperationVersionSchemaDocument(operationDocument.RootElement, unsupportedVersions);
+					EditJsonSchemaValidator.ValidateValue(operationSchema, schemaDocument.RootElement, "checkpoint operation entry");
+					throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+				}
 				EditJsonSchemaValidator.ValidateValue(operationSchema, operationDocument.RootElement, "checkpoint operation entry");
 				op = JsonSerializer.Deserialize<EditCheckpointOperations>(bytes, EditWire.JsonOptions) ?? throw new JsonException();
 			}
@@ -798,6 +814,33 @@ internal sealed class EditHistoryModule : IDisposable {
 			CheckpointTimes = manifest.Checkpoints.ToDictionary(x => x.CheckpointId, x => entryTimes[x.OperationEntry], StringComparer.Ordinal),
 			PayloadBytes = manifest.Payloads.ToDictionary(x => x.Sha256, x => entries[x.Entry], StringComparer.Ordinal),
 			PackageBytes = package, PackageSha256 = EditWire.Sha256(package) };
+	}
+
+	static List<int> UnsupportedOperationVersionIndexes(JsonElement root) {
+		var result = new List<int>();
+		if (!root.TryGetProperty("operations", out var operations) || operations.ValueKind != JsonValueKind.Array) return result;
+		var index = 0;
+		foreach (var operation in operations.EnumerateArray()) {
+			if (operation.ValueKind == JsonValueKind.Object
+				&& operation.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
+				&& operation.TryGetProperty("kind_version", out var version) && version.ValueKind == JsonValueKind.Number
+				&& version.TryGetInt32(out var parsedVersion)
+				&& !EditOperationVersions.IsSupported(kind.GetString() ?? string.Empty, parsedVersion)) result.Add(index);
+			index++;
+		}
+		return result;
+	}
+
+	static JsonDocument OperationVersionSchemaDocument(JsonElement root, IReadOnlyList<int> unsupportedIndexes) {
+		var document = JsonNode.Parse(root.GetRawText())?.AsObject() ?? throw new JsonException();
+		var operations = document["operations"]?.AsArray() ?? throw new JsonException();
+		foreach (var index in unsupportedIndexes) {
+			var operation = operations[index]?.AsObject() ?? throw new JsonException();
+			var kind = operation["kind"]?.GetValue<string>() ?? string.Empty;
+			operation["kind_version"] = EditOperationVersions.IsSupported(kind, 1) ? 1
+				: EditOperationVersions.IsSupported(kind, 2) ? 2 : 1;
+		}
+		return JsonDocument.Parse(document.ToJsonString());
 	}
 
 	static byte[] BuildPackage(EditLoadedLineage lineage) {
@@ -870,8 +913,8 @@ internal sealed class EditHistoryModule : IDisposable {
 		for (var index = 0; index < entry.Operations.Count; index++) {
 			var operation = entry.Operations[index];
 			if (!EditHistoryIds.Is(operation.OperationId, "operation") || !operationIds.Add(operation.OperationId)
-				|| !EditOperationVersions.IsSupported(operation.Kind, operation.KindVersion) || (!EditWire.OperationKinds.Contains(operation.Kind, StringComparer.Ordinal)
-					&& operation.Kind != "legacy_symbol_rename")) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+				|| !EditOperationVersions.IsSupported(operation.Kind, operation.KindVersion))
+				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			if (!operation.Forward.TryGetValue("kind", out var forwardKind) || !string.Equals(ValueString(forwardKind), operation.Kind, StringComparison.Ordinal))
 				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			if (operation.PayloadSha256.Distinct(StringComparer.Ordinal).Count() != operation.PayloadSha256.Length
@@ -908,7 +951,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				&& string.Equals(ValueString(stateKind), "method_body_replace", StringComparison.Ordinal);
 			if (hits != 1 && !bodyShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID",
 				new Dictionary<string, object?> { ["kind"] = "envelope_shape", ["operation_kind"] = operation.Kind, ["state_keys"] = state.EnumerateObject().Select(x => x.Name).ToArray() });
-			if (operation.Kind == "legacy_symbol_rename") {
+			if (operation.Kind == EditOperationVersions.LegacySymbolRename) {
 				if (!state.TryGetProperty("legacy", out var legacy) || legacy.ValueKind != JsonValueKind.Object)
 					throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 				EditLegacyRenameOperation.ValidateShape(legacy);

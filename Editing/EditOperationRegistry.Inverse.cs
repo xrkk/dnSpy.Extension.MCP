@@ -13,7 +13,7 @@ internal static partial class EditOperationRegistry {
 	internal static Dictionary<string, object?> CompileInverse(ModuleDef before, JsonElement forward,
 		Dictionary<string, IMDTokenProvider> objects) {
 		var kind = RequiredString(forward, "kind");
-		if (kind == "legacy_symbol_rename") return new() { ["legacy"] = EditLegacyRenameOperation.Reverse(forward) };
+		if (kind == EditOperationVersions.LegacySymbolRename) return new() { ["legacy"] = EditLegacyRenameOperation.Reverse(forward) };
 		var inverse = new Dictionary<string, object?> { ["kind"] = kind };
 		if (forward.TryGetProperty("target", out var target)) inverse["target"] = target.Clone();
 		if (kind == "interface_add") return CaptureInterfaceAddState(before, forward, objects);

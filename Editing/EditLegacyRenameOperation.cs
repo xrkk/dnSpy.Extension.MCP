@@ -70,7 +70,7 @@ internal static class EditLegacyRenameOperation {
 			}
 		}
 		return new EditOperationOutcome {
-			Kind = "legacy_symbol_rename", Target = "0x" + token.ToString("x8"), Before = oldName, After = newName,
+			Kind = EditOperationVersions.LegacySymbolRename, Target = "0x" + token.ToString("x8"), Before = oldName, After = newName,
 			Undo = () => {
 				// A late drift must not leave an earlier reference half-restored.
 				for (var i = mutations.Count - 1; i >= 0; i--)
@@ -83,7 +83,7 @@ internal static class EditLegacyRenameOperation {
 
 	public static void ValidateShape(JsonElement operation) {
 		RequireOnly(operation, "kind", "target_kind", "definition", "references");
-		if (Text(operation, "kind") != "legacy_symbol_rename") Invalid();
+		if (Text(operation, "kind") != EditOperationVersions.LegacySymbolRename) Invalid();
 		var targetKind = Text(operation, "target_kind");
 		if (targetKind is not ("type" or "method" or "field")) Invalid();
 		var definition = operation.GetProperty("definition");
@@ -102,7 +102,7 @@ internal static class EditLegacyRenameOperation {
 		ValidateShape(operation);
 		var definition = operation.GetProperty("definition");
 		return new Dictionary<string, object?> {
-			["kind"] = "legacy_symbol_rename", ["target_kind"] = Text(operation, "target_kind"),
+			["kind"] = EditOperationVersions.LegacySymbolRename, ["target_kind"] = Text(operation, "target_kind"),
 			["definition"] = new Dictionary<string, object?> {
 				["token"] = Text(definition, "token"), ["old_name"] = Text(definition, "new_name"), ["new_name"] = Text(definition, "old_name"),
 			},

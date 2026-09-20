@@ -15,6 +15,7 @@ namespace dnSpy.Extension.MCP.Editing;
 internal static class EditOperationVersions {
 	internal const int V1 = 1;
 	internal const int V2 = 2;
+	internal const string LegacySymbolRename = "legacy_symbol_rename";
 
 	// Kinds whose first release is part of the v1 grammar.
 	static readonly HashSet<string> NewKinds = new(StringComparer.Ordinal) {
@@ -37,10 +38,16 @@ internal static class EditOperationVersions {
 	internal static bool IsV2CdiKind(string kind) =>
 		string.Equals(kind, "enc_state_map", StringComparison.Ordinal);
 
-	internal static bool IsKnownKind(string kind) => EditWire.OperationKinds.Contains(kind, StringComparer.Ordinal);
+	// The historical rename composite is persisted and replayed only by the
+	// compatibility adapter.  It belongs in the history version table, but not
+	// in EditWire.OperationKinds (the public edit_apply capability surface).
+	internal static bool IsKnownKind(string kind) =>
+		EditWire.OperationKinds.Contains(kind, StringComparer.Ordinal)
+		|| string.Equals(kind, LegacySymbolRename, StringComparison.Ordinal);
 
 	internal static bool IsSupported(string kind, int version) {
 		if (!IsKnownKind(kind)) return false;
+		if (string.Equals(kind, LegacySymbolRename, StringComparison.Ordinal)) return version == V1;
 		if (NewKinds.Contains(kind)) return version == V1;
 		if (V2Kinds.Contains(kind)) return version == V1 || version == V2;
 		return version == V1;

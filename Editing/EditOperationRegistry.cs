@@ -117,7 +117,7 @@ internal static partial class EditOperationRegistry {
 	public static EditOperationOutcome ApplyPersisted(ModuleDef module, JsonElement operation,
 		Dictionary<string, IMDTokenProvider> objects, int operationIndex) {
 		if (operation.ValueKind == JsonValueKind.Object && operation.TryGetProperty("kind", out var kind)
-			&& kind.ValueKind == JsonValueKind.String && kind.GetString() == "legacy_symbol_rename")
+			&& kind.ValueKind == JsonValueKind.String && kind.GetString() == EditOperationVersions.LegacySymbolRename)
 			return EditLegacyRenameOperation.Apply(module, operation);
 		return Apply(module, operation, objects, operationIndex);
 	}
