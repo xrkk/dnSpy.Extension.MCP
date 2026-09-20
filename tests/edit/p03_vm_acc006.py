@@ -6,8 +6,10 @@ the new entry actually runs (debug entry pause on the new entry method)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.request
@@ -22,15 +24,18 @@ URL = "http://127.0.0.1:15378/mcp"
 ARCH = os.environ.get("EDIT_ACC005_ARCH", "x64")
 FIXTURE = (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if ARCH == "x64"
            else r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost-x86\ImportHost.exe")
+LAUNCH_ROOT: str | None = None
 FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
 def configure_isolation(context) -> None:
-    global URL, ARCH, FIXTURE
+    global URL, ARCH, FIXTURE, LAUNCH_ROOT
+    context.validate()
     URL = context.mcp_url
     ARCH = context.architecture
     FIXTURE = context.fixture("ImportHost/ImportHost.exe" if ARCH == "x64" else "ImportHost-x86/ImportHost.exe")
+    LAUNCH_ROOT = context.fixture_output(f".acc006-launch/{context.run_id}/{ARCH}")
 
 
 def rid() -> str:
@@ -75,24 +80,191 @@ def envelope_error(envelope: dict) -> str:
     return str(error.get("code", "")) if isinstance(error, dict) else ""
 
 
-def main() -> int:
-    client = DnSpyClient(URL, client_name=f"p07-acc006-{ARCH}", timeout=120)
-    client.initialize()
-    call(client, "open_files", {"paths": [FIXTURE]})
+def _entry(rows: dict) -> dict | None:
+    items = rows.get("Items") or rows.get("items") or []
+    return next((item for item in items if isinstance(item, dict)
+                 and str(item.get("Name") or item.get("name")) == "Main"), None)
 
+
+def _fixture_facts(path: str) -> dict:
+    fixture = Path(path)
+    facts: dict = {"path": path, "exists": fixture.is_file()}
+    if not facts["exists"]:
+        return facts
+    facts["size"] = fixture.stat().st_size
+    digest = hashlib.sha256()
+    with fixture.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    facts["sha256"] = digest.hexdigest()
+    return facts
+
+
+class LaunchPreparationError(RuntimeError):
+    """The exported target cannot be copied into the authorized launch root safely."""
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_isolated_launch(exported: dict) -> tuple[str, dict]:
+    """Copy one verified export into this run's fail-closed AllowedSampleRoot child."""
+    if not LAUNCH_ROOT:
+        raise LaunchPreparationError("ACC006 requires an explicit isolation context and launch root")
+    output = payload(exported).get("output", {})
+    export_path = str(output.get("path", ""))
+    advertised_sha = str(output.get("sha256", "")).lower()
+    if not exported.get("ok") or not export_path:
+        raise LaunchPreparationError("edit_export did not return a successful output path")
+    if len(advertised_sha) != 64 or any(ch not in "0123456789abcdef" for ch in advertised_sha):
+        raise LaunchPreparationError("edit_export did not return a valid advertised SHA-256")
+    source = Path(export_path)
+    if not source.is_file():
+        raise LaunchPreparationError(f"export source is not a file: {source}")
+    source_sha_before = _sha256_file(source)
+    if source_sha_before != advertised_sha:
+        raise LaunchPreparationError(
+            f"advertised SHA does not match export source: advertised={advertised_sha} source={source_sha_before}")
+
+    launch_root = Path(LAUNCH_ROOT)
+    try:
+        launch_root.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as ex:
+        raise LaunchPreparationError(f"isolated launch directory already exists: {launch_root}") from ex
+    launch_path = launch_root / source.name
+    shutil.copyfile(source, launch_path)
+    source_sha_after = _sha256_file(source)
+    launch_sha = _sha256_file(launch_path)
+    if source_sha_after != source_sha_before:
+        raise LaunchPreparationError(
+            f"export source changed during copy: before={source_sha_before} after={source_sha_after}")
+    if launch_sha != advertised_sha:
+        raise LaunchPreparationError(
+            f"copied SHA does not match advertised SHA: advertised={advertised_sha} copied={launch_sha}")
+    facts = {
+        "original_export_path": str(source),
+        "actual_launch_path": str(launch_path),
+        "advertised_sha256": advertised_sha,
+        "source_sha256_before": source_sha_before,
+        "source_sha256_after": source_sha_after,
+        "launch_sha256": launch_sha,
+        "source_size": source.stat().st_size,
+        "launch_size": launch_path.stat().st_size,
+    }
+    return str(launch_path), facts
+
+
+def _tools_list_wire(client: DnSpyClient) -> str:
     body = json.dumps({"jsonrpc": "2.0", "id": 999, "method": "tools/list", "params": {}}).encode()
     request = urllib.request.Request(URL, data=body, headers={
         "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
         "Mcp-Session-Id": client.session_id})
     with urllib.request.urlopen(request, timeout=30) as response:
-        wire = response.read().decode("utf-8", "replace").replace(" ", "").replace("\n", "")
-    check("G1 identity ops advertised", '"assembly_update"' in wire and '"entry_point_set"' in wire, wire[:160])
+        return response.read().decode("utf-8", "replace").replace(" ", "").replace("\n", "")
 
-    methods = call(client, "list_methods", {"assembly_name": "ImportHost", "type_full_name": "ImportHost.Program"})
-    items = methods.get("Items") or methods.get("items") or []
-    entry = next((m for m in items if isinstance(m, dict) and str(m.get("Name") or m.get("name")) == "Main"), None)
-    check("L1 host entry listed", entry is not None, json.dumps(methods)[:200])
-    entry_token = f"0x{int(entry.get('Token') or entry.get('token')):08x}" if entry else ""
+
+def observe_loaded_entry(client, fixture: str, tools_list, *, delays=(0.1, 0.25, 0.5, 1.0),
+                         sleeper=time.sleep, monotonic=time.monotonic):
+    """Run the real ACC006 load prelude in its original observation order.
+
+    The first three externally visible operations are deliberately fixed:
+    ``open_files -> HTTP tools/list -> list_methods``. Diagnostics happen only
+    after that first query and never convert its result into a pass.
+    """
+    started = monotonic()
+    observations: list[dict] = []
+
+    def observed(step: str, detail: dict | None = None) -> None:
+        row = {"sequence": len(observations) + 1, "step": step,
+               "elapsed_ms": int(round((monotonic() - started) * 1000))}
+        if detail:
+            row.update(detail)
+        observations.append(row)
+
+    opened = call(client, "open_files", {"paths": [fixture]})
+    observed("open_files")
+    wire = tools_list()
+    observed("tools/list")
+    query = {"assembly_name": "ImportHost", "type_full_name": "ImportHost.Program"}
+    immediate = call(client, "list_methods", query)
+    observed("list_methods:first", {"entry_found": _entry(immediate) is not None})
+    entry = _entry(immediate)
+    attempts: list[dict] = []
+    recovered_after = 0
+    cumulative_delay_ms = 0
+    if entry is None:
+        for attempt, delay in enumerate(delays, 1):
+            sleeper(delay)
+            delay_ms = int(round(delay * 1000))
+            cumulative_delay_ms += delay_ms
+            response = call(client, "list_methods", query)
+            entry = _entry(response)
+            error = response.get("error") if isinstance(response, dict) else None
+            row = {
+                "attempt": attempt, "delay_ms": delay_ms,
+                "cumulative_delay_ms": cumulative_delay_ms,
+                "elapsed_ms": int(round((monotonic() - started) * 1000)),
+                "entry_found": entry is not None,
+                "error": error if isinstance(error, dict) else None,
+            }
+            attempts.append(row)
+            observed(f"list_methods:delayed:{attempt}", {
+                "delay_ms": delay_ms, "cumulative_delay_ms": cumulative_delay_ms,
+                "entry_found": entry is not None})
+            if entry is not None:
+                recovered_after = attempt
+                break
+    assemblies = call(client, "list_assemblies", {"name_filter": "ImportHost"})
+    observed("list_assemblies")
+    fixture_facts = _fixture_facts(fixture)
+    observed("fixture_facts")
+    return entry, wire, {
+        "fixture": fixture_facts,
+        "open_files": opened,
+        "list_assemblies": assemblies,
+        "immediate_methods": immediate,
+        "immediate_entry_found": _entry(immediate) is not None,
+        "recovered_after_attempt": recovered_after,
+        "retry_attempts": attempts,
+        "observations": observations,
+    }
+
+
+def run_load_stage(client, fixture: str, tools_list, **probe_options):
+    """Observe and grade the load prelude used by ``main`` itself."""
+    entry, wire, load_probe = observe_loaded_entry(
+        client, fixture, tools_list, **probe_options)
+    opened = load_probe["open_files"]
+    opened_count = int(opened.get("loaded_count", 0)) + int(opened.get("already_loaded_count", 0))
+    check("L0 fixture opened", opened_count == 1 and int(opened.get("failed_count", 0)) == 0,
+          json.dumps(opened)[:300])
+    check("G1 identity ops advertised", '"assembly_update"' in wire and '"entry_point_set"' in wire,
+          wire[:160])
+    check("L1 host entry listed immediately", bool(load_probe["immediate_entry_found"]),
+          json.dumps(load_probe["immediate_methods"])[:300])
+    print("INFO ACC006_LOAD_PROBE " + json.dumps(load_probe, sort_keys=True), flush=True)
+    return entry, wire, load_probe
+
+
+def main() -> int:
+    if not LAUNCH_ROOT:
+        check("C0 isolated launch root configured", False,
+              "ACC006 requires configure_isolation(context); legacy direct launch is disabled")
+        print(f"ACC006 FAIL passes={len(PASSES)} failures={FAILURES}", flush=True)
+        return 1
+    client = DnSpyClient(URL, client_name=f"p07-acc006-{ARCH}", timeout=120)
+    client.initialize()
+    entry, _, _ = run_load_stage(client, FIXTURE, lambda: _tools_list_wire(client))
+    if entry is None:
+        print(f"ACC006 FAIL passes={len(PASSES)} failures={FAILURES}", flush=True)
+        return 1
+
+    entry_token = f"0x{int(entry.get('Token') or entry.get('token')):08x}"
 
     begin = call(client, "edit_begin", {"assembly_name": "ImportHost", "request_id": rid()})
     tx_row = payload(begin).get("transaction", {})
@@ -158,17 +330,29 @@ def main() -> int:
     sha256 = str(output_row.get("sha256", ""))
     check("X1 export ok", bool(exported.get("ok")) and export_path.lower().endswith(".exe"), json.dumps(exported)[:240])
 
+    try:
+        launch_path, launch_facts = prepare_isolated_launch(exported)
+    except (LaunchPreparationError, OSError) as ex:
+        check("X2 isolated launch copy verified", False, str(ex))
+        print("INFO ACC006_LAUNCH_COPY " + json.dumps({
+            "original_export_path": export_path, "advertised_sha256": sha256,
+            "error": str(ex)}, sort_keys=True), flush=True)
+        print(f"ACC006 FAIL passes={len(PASSES)} failures={FAILURES}", flush=True)
+        return 1
+    check("X2 isolated launch copy verified", True)
+    print("INFO ACC006_LAUNCH_COPY " + json.dumps(launch_facts, sort_keys=True), flush=True)
+
     # authoritative readback: reload the exported image through dnSpy and read
     # identity + entry point from the reloaded module via list_types/get_method_il
     # is name-based; the entry launch below proves the entry row at runtime, and
     # the harness --identity-matrix proves file-level fields headlessly.
-    reopened = call(client, "open_files", {"paths": [export_path]})
+    reopened = call(client, "open_files", {"paths": [launch_path]})
     check("L2 exported image reopened", "error" not in reopened, json.dumps(reopened)[:200])
 
     # B1: launch the exported exe; the entry pause frame must be Main (the
     # entry_point_set target) — the entry actually runs to the expected code.
     launch_env = call(client, "debug_launch", {
-        "request_id": rid(), "target_path": export_path, "expected_sha256": sha256,
+        "request_id": rid(), "target_path": launch_path, "expected_sha256": sha256,
         "launch_mode": "net48-exe", "architecture": ARCH, "break_kind": "entry"})
     launch = payload(launch_env)
     session_id = str(launch.get("session_id", ""))

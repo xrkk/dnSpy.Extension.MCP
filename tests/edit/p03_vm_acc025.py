@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-"""ACC-025 end-to-end evidence on the real dnSpy MCP listener (round 52):
-external live divergence via the registered UI seam, diverged begin with zero
-side effects, wrong-fingerprint accept rejection, explicit accept_live linking
-the superseded lineage, old-package readability, and a forged-operation-free
-new root checkpoint."""
+"""ACC-025 through dnSpy's native Edit Type dialog on an isolated instance.
+
+The test-only lineage seam is never the source of the accepted change.  After
+the native UI change has independently been observed by list_types and rejected
+by edit_begin, a mutate/restore pair is used only as a read-back probe for the
+otherwise non-public live fingerprint required by edit_accept_live.  The pair
+must restore to the same UI-modified state before acceptance.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import subprocess
 import sys
 import uuid
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -20,12 +27,22 @@ URL = "http://127.0.0.1:15378/mcp"
 FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"
 FAILURES: list[str] = []
 PASSES: list[str] = []
+DEPLOYMENT_ROOT = ""
+ARCH = "x64"
+OUTPUT_ROOT = ""
+PACKAGE_ROOT = ""
 
 
 def configure_isolation(context) -> None:
-    global URL, FIXTURE
+    global URL, FIXTURE, DEPLOYMENT_ROOT, ARCH, OUTPUT_ROOT, PACKAGE_ROOT
+    if not context.ui_deployment_root:
+        raise ValueError("ui_deployment_root is required for EDIT-ACC-025 isolation")
     URL = context.mcp_url
     FIXTURE = context.fixture("TestIL.dll")
+    DEPLOYMENT_ROOT = context.ui_deployment_root
+    ARCH = context.architecture
+    OUTPUT_ROOT = str(Path(context.artifact_root) / "ui-evidence")
+    PACKAGE_ROOT = context.artifact_root
 
 
 def rid() -> str:
@@ -71,10 +88,124 @@ def err_details(envelope: dict) -> dict:
     return details if isinstance(details, dict) else {}
 
 
+def file_sha256(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def powershell(script: str) -> str:
+    process = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    if process.returncode:
+        raise RuntimeError(process.stderr[-1800:] or process.stdout[-1800:])
+    return process.stdout.strip()
+
+
+def native_type_rename(old_name: str, new_name: str, output: Path) -> dict:
+    """Select a real type node, open dnSpy's Edit Type dialog, and press OK."""
+    pid = int((Path(DEPLOYMENT_ROOT) / ARCH / "pid.txt").read_text(encoding="utf-8"))
+    output.mkdir(parents=True, exist_ok=False)
+    before_png = str(output / "native-tree-before.png").replace("'", "''")
+    open_png = str(output / "native-open-file.png").replace("'", "''")
+    token_png = str(output / "native-search-assemblies.png").replace("'", "''")
+    dialog_png = str(output / "native-edit-type-dialog.png").replace("'", "''")
+    after_png = str(output / "native-tree-after.png").replace("'", "''")
+    script = r"""
+$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new()
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Windows.Forms
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class NativeWindow {
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+ [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hWnd, int id);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SetWindowText(IntPtr hWnd, string text);
+ [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+ [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+ [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+}
+'@
+$root=[System.Windows.Automation.AutomationElement]::RootElement
+$pidCondition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty,PIDVALUE)
+function Shot($element,$path){$b=$element.Current.BoundingRectangle;$img=[Drawing.Bitmap]::new([int]$b.Width,[int]$b.Height);$g=[Drawing.Graphics]::FromImage($img);$g.CopyFromScreen([int]$b.X,[int]$b.Y,0,0,$img.Size);$img.Save($path,[Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$img.Dispose()}
+$proc=Get-Process -Id PIDVALUE;$main=[System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+if($null -eq $main){throw 'dnSpy main window missing'}
+[NativeWindow]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)|Out-Null;$main.SetFocus();Shot $main 'BEFOREPNG'
+# Use dnSpy's native File/Open route so the module has a real active document
+# tab; MCP open_files alone intentionally does not fabricate a UI selection.
+$openCommand=$main.FindFirst([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,'Open'))
+if($null -eq $openCommand){throw 'native Open toolbar command missing'};$openCommand.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+$openDialog=$null
+for($n=0;$n -lt 30 -and $null -eq $openDialog;$n++){
+ Start-Sleep -Milliseconds 150
+ $proc.Refresh();$candidate=[System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+ if($null -ne $candidate -and $candidate.Current.NativeWindowHandle -ne $main.Current.NativeWindowHandle -and $candidate.Current.Name -match '打开|Open'){$openDialog=$candidate}
+ if($null -eq $openDialog){$openDialog=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Window))|Where-Object {$_.Current.Name -match '打开|Open'})[0]}
+}
+if($null -eq $openDialog){throw 'native File Open dialog did not open'}
+$openHwnd=[IntPtr]$openDialog.Current.NativeWindowHandle;$openButtonHwnd=[NativeWindow]::GetDlgItem($openHwnd,1)
+$fileNameElement=[System.Windows.Automation.AutomationElement]::FocusedElement
+$openButtonElement=$openDialog.FindFirst([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,'1'))
+if($openButtonHwnd -eq [IntPtr]::Zero -or $null -eq $fileNameElement -or $null -eq $openButtonElement){throw 'native File Open controls missing'}
+[NativeWindow]::SetForegroundWindow($openHwnd)|Out-Null;[System.Windows.Forms.SendKeys]::SendWait('^a');[System.Windows.Forms.SendKeys]::SendWait('FIXTUREPATH');[System.Windows.Forms.SendKeys]::SendWait('{TAB}');Start-Sleep -Milliseconds 150
+Shot $openDialog 'OPENPNG';$openButtonElement.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke();Start-Sleep -Milliseconds 1200
+$openStill=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Window))|Where-Object {$_.Current.Name -match '打开|Open'}).Count
+if($openStill -ne 0){throw 'native File Open did not close after Open invoke'}
+[NativeWindow]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)|Out-Null;$main.SetFocus()
+# Select the type through dnSpy's native Search Assemblies view. The search
+# result activation establishes the real Assembly Explorer/type selection.
+[System.Windows.Forms.SendKeys]::SendWait('^+k');Start-Sleep -Milliseconds 500;$searchEdit=[System.Windows.Automation.AutomationElement]::FocusedElement;$searchEdit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('TestIL.Simple');Start-Sleep -Milliseconds 1500;Shot $main 'TOKENPNG'
+$simpleResult=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,'Simple'))|Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem})[0]
+if($null -ne $simpleResult){$simpleResult.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select();$simpleResult.SetFocus();[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')}else{[System.Windows.Forms.SendKeys]::SendWait('{DOWN 8}{ENTER}')};Start-Sleep -Milliseconds 1600;[System.Windows.Forms.SendKeys]::SendWait('^%l');Start-Sleep -Milliseconds 500
+$tokenTitle='Search Assemblies (Ctrl+Shift+K)'
+[System.Windows.Forms.SendKeys]::SendWait('%{ENTER}')
+$dialog=$null
+for($n=0;$n -lt 30 -and $null -eq $dialog;$n++){
+ Start-Sleep -Milliseconds 150
+ $proc.Refresh();$candidate=[System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+ if($null -ne $candidate -and $candidate.Current.NativeWindowHandle -ne $main.Current.NativeWindowHandle -and $candidate.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)).Count -ge 2){$dialog=$candidate}
+ if($null -eq $dialog){$dialog=@($main.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Window))|Where-Object {$_.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)).Count -ge 2})[0]}
+}
+if($null -eq $dialog){throw 'native Edit Type dialog did not open'}
+$focused=[System.Windows.Automation.AutomationElement]::FocusedElement
+$editElements=@($dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)))
+$nameEdit=@($editElements|Where-Object {$_.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value -ceq 'OLDNAME'})[0]
+if($null -eq $nameEdit){$vals=@($editElements|ForEach-Object {$_.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value});throw ('Edit Type Name field with expected value missing; title='+$dialog.Current.Name+'; values='+($vals -join '|'))}
+$value=$nameEdit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);$oldValue=$value.Current.Value
+$edits=@($editElements|ForEach-Object {[ordered]@{name=$_.Current.Name;value=$_.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value;automation_id=$_.Current.AutomationId}})
+$buttons=@($dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Button)))
+$dialogTitle=$dialog.Current.Name;Shot $dialog 'DIALOGPNG';$value.SetValue('NEWNAME');Start-Sleep -Milliseconds 100
+$ok=@($buttons|Where-Object {$_.Current.Name -match '确定|OK'})[0];if($null -eq $ok){throw 'Edit Type OK button missing'};$okName=$ok.Current.Name;$ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 500
+Start-Sleep -Milliseconds 350;Shot $main 'AFTERPNG'
+[ordered]@{process_id=PIDVALUE;main_window=$main.Current.Name;selection_route=@{native_open='FIXTUREPATH';search_shortcut='Ctrl+Shift+K';search_query='TestIL.Simple';result_selection='UIA ListItem named Simple (keyboard fallback: Down x8)';assembly_explorer_focus='Ctrl+Alt+L';search_view=$tokenTitle};selected_tree_item='OLDNAME';shortcut='Alt+Enter';dialog_title=$dialogTitle;focused_control_type=$focused.Current.ControlType.ProgrammaticName;focused_value_before=$oldValue;focused_value_after='NEWNAME';default_button=$okName;textboxes=$edits;screenshots=@('BEFOREPNG','OPENPNG','TOKENPNG','DIALOGPNG','AFTERPNG')}|ConvertTo-Json -Depth 8 -Compress
+""".replace("PIDVALUE", str(pid)).replace("FIXTUREPATH", str(FIXTURE).replace("'", "''")).replace("OLDNAME", old_name).replace("NEWNAME", new_name).replace(
+        "BEFOREPNG", before_png).replace("OPENPNG", open_png).replace("TOKENPNG", token_png).replace("DIALOGPNG", dialog_png).replace("AFTERPNG", after_png)
+    facts = json.loads(powershell(script))
+    (output / "native-edit-type.uia.json").write_text(
+        json.dumps(facts, ensure_ascii=False, indent=2), encoding="utf-8")
+    return facts
+
+
+def type_names(client: DnSpyClient) -> set[str]:
+    response = call(client, "list_types", {"assembly_name": "TestIL", "page_size": 1000})
+    rows = response.get("items") if isinstance(response, dict) else None
+    if not isinstance(rows, list):
+        rows = payload(response).get("items", [])
+    return {str(row.get("name", row.get("Name", ""))) for row in rows if isinstance(row, dict)}
+
+
 def main() -> int:
     client = DnSpyClient(URL, client_name="p03-vm-acc025")
     client.initialize()
     call(client, "open_files", {"paths": [FIXTURE]})
+
+    output = Path(OUTPUT_ROOT or Path(FIXTURE).parent) / ("acc025-" + ARCH + "-" + uuid.uuid4().hex)
+    fixture_sha_before = file_sha256(FIXTURE)
 
     # Precondition: an active lineage must exist; create one through a real
     # commit when the store is empty so the driver is self-contained.
@@ -90,7 +221,7 @@ def main() -> int:
         applied0 = call(client, "edit_apply", {
             "request_id": rid(), "transaction_id": tx0["transaction_id"],
             "expected_revision": tx0.get("work_revision", 0),
-            "operation": {"kind": "type_update", "target": {"token": "0x02000002"}, "name": "Acc025Seed"},
+            "operation": {"kind": "module_update", "name": "Acc025SeedModule"},
         })
         review0 = call(client, "edit_review", {
             "request_id": rid(), "transaction_id": tx0["transaction_id"],
@@ -102,7 +233,7 @@ def main() -> int:
             "expected_revision": tx0.get("work_revision", 0) + 1,
             "review_id": review0_core.get("review_id", ""),
             "review_revision": review0_core.get("review_revision", 0),
-            "confirmed_risk_ids": [],
+            "confirmed_risk_ids": review0_core.get("required_confirmation_ids", []),
         })
         check("A0 seed lineage committed", bool(commit0.get("ok")), json.dumps(commit0)[:240])
         hist = payload(call(client, "edit_history", {}))
@@ -118,10 +249,22 @@ def main() -> int:
     old_count = int(active[0].get("checkpoint_count", 0))
     print(f"INFO old lineage={old_lineage_id} family={old_family_id} head={old_head} checkpoints={old_count}", flush=True)
 
-    # External (no-transaction) live mutation through the registered seam.
-    mutation = payload(call(client, "edit_test_lineage_mutation", {"action": "mutate", "assembly_name": "TestIL"}))
-    diverged_fp = str(mutation.get("after_fingerprint", ""))
-    check("A2 seam mutate returned diverged fingerprint", len(diverged_fp) == 64, json.dumps(mutation)[:200])
+    # Establish the exact pre-UI live fingerprint, then leave no transaction.
+    probe = call(client, "edit_begin", {"assembly_name": "TestIL", "request_id": rid()})
+    probe_tx = payload(probe).get("transaction", {})
+    before_fp = str(payload(probe).get("source", {}).get("live_fingerprint", ""))
+    check("A2 pre-UI fingerprint observed", len(before_fp) == 64 and bool(probe_tx.get("transaction_id")), json.dumps(probe)[:240])
+    if probe_tx.get("transaction_id"):
+        rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": probe_tx["transaction_id"]})
+        check("A2 no active transaction before native UI", bool(rolled.get("ok")), json.dumps(rolled)[:180])
+
+    native_name = "T018Ui" + ("64" if ARCH == "x64" else "86")
+    names_before = type_names(client)
+    ui_facts = native_type_rename("Simple", native_name, output)
+    names_after = type_names(client)
+    check("A2 native Edit Type UIA action recorded", ui_facts.get("shortcut") == "Alt+Enter" and ui_facts.get("focused_value_before") == "Simple", json.dumps(ui_facts)[:300])
+    check("A2 native UI rename visible in live module", "Simple" in names_before and native_name in names_after and "Simple" not in names_after, f"before={sorted(names_before)} after={sorted(names_after)}")
+    check("A2 native UI leaves fixture bytes unchanged", file_sha256(FIXTURE) == fixture_sha_before, f"before={fixture_sha_before} after={file_sha256(FIXTURE)}")
 
     # begin must reject with EDIT_LINEAGE_DIVERGED and zero side effects.
     begin = call(client, "edit_begin", {"assembly_name": "TestIL", "request_id": rid()})
@@ -136,6 +279,18 @@ def main() -> int:
     status = payload(call(client, "edit_status", {}))
     check("A3 begin zero side effects", status.get("state") == "idle" and not status.get("busy"),
           json.dumps(status)[:200])
+
+    # Read back the already-diverged live fingerprint without attributing the
+    # change to the test seam: begin rejected before this probe, and the probe's
+    # own mutation is restored before accept_live.
+    observation_mutate = payload(call(client, "edit_test_lineage_mutation", {"action": "mutate", "assembly_name": "TestIL"}))
+    observation_restore = payload(call(client, "edit_test_lineage_mutation", {"action": "restore", "assembly_name": "TestIL"}))
+    diverged_fp = str(observation_mutate.get("before_fingerprint", ""))
+    check("A3 fingerprint probe restored native UI state",
+          len(diverged_fp) == 64 and observation_restore.get("restored") is True
+          and observation_restore.get("after_fingerprint") == diverged_fp and diverged_fp != before_fp
+          and native_name in type_names(client),
+          json.dumps({"mutate": observation_mutate, "restore": observation_restore})[:360])
 
     # accept_live with the WRONG fingerprint must be refused without effects.
     wrong = call(client, "edit_accept_live", {
@@ -177,6 +332,28 @@ def main() -> int:
     single_root = len(new_rows) == 1 and isinstance(new_rows[0], dict) and new_rows[0].get("parent_checkpoint_id") is None
     check("A7 new lineage single root without parent", single_root, json.dumps(new_rows)[:300])
 
+    # Inspect the exact accepted-baseline package bytes: its only operation
+    # entry is empty and its baseline contains the native UI type name.
+    package_match = None
+    for package in Path(PACKAGE_ROOT).rglob("*.dnspy-mcp-checkpoints"):
+        with zipfile.ZipFile(package) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            if manifest.get("lineage_id") != new_lineage_id:
+                continue
+            node = manifest["checkpoints"][0]
+            operations = json.loads(archive.read(node["operation_entry"]))
+            baseline = archive.read("baseline/module.bin")
+            package_match = {"path": str(package), "sha256": file_sha256(package), "manifest": manifest,
+                             "operations": operations, "baseline_has_native_name": native_name.encode("utf-8") in baseline}
+            break
+    (output / "accepted-package.json").write_text(json.dumps(package_match, ensure_ascii=False, indent=2), encoding="utf-8")
+    check("A7 accepted root has no forged semantic operations",
+          isinstance(package_match, dict) and package_match["operations"].get("operations") == [],
+          json.dumps(package_match, default=str)[:300])
+    check("A7 accepted baseline carries native UI rename",
+          isinstance(package_match, dict) and package_match["baseline_has_native_name"] and native_name in type_names(client),
+          json.dumps(package_match, default=str)[:260])
+
     # The superseded link is visible from the new lineage summary.
     hist_final = payload(call(client, "edit_history", {}))
     rows_final = hist_final.get("lineages", []) if isinstance(hist_final.get("lineages"), list) else []
@@ -189,10 +366,18 @@ def main() -> int:
     begin_ok = bool(begin2.get("ok"))
     check("A9 begin usable after accept", begin_ok, json.dumps(begin2)[:240])
     if begin_ok:
+        check("A9 new baseline fingerprint is accepted UI fingerprint",
+              payload(begin2).get("source", {}).get("live_fingerprint") == diverged_fp,
+              json.dumps(payload(begin2).get("source", {}))[:220])
         tx2 = payload(begin2).get("transaction", {}).get("transaction_id", "")
         rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx2})
         check("A9 rollback after accept", bool(rolled.get("ok")), json.dumps(rolled)[:200])
 
+    (output / "summary.json").write_text(json.dumps({"arch": ARCH, "fixture": FIXTURE,
+        "fixture_sha256_before": fixture_sha_before, "fixture_sha256_after": file_sha256(FIXTURE),
+        "native_name": native_name, "before_live_fingerprint": before_fp,
+        "accepted_live_fingerprint": diverged_fp, "passes": PASSES, "failures": FAILURES}, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"EVIDENCE {output}", flush=True)
     print(f"ACC025 {'PASS' if not FAILURES else 'FAIL'} passes={len(PASSES)} failures={FAILURES}", flush=True)
     return 0 if not FAILURES else 1
 

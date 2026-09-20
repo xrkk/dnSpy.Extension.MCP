@@ -128,7 +128,9 @@
               "win32_resource_add",
               "win32_resource_update",
               "win32_resource_remove",
-              "strong_name_remove"
+              "strong_name_remove",
+              "interface_add",
+              "reference_add"
             ],
             "dynamic_validation": true,
             "test_apply_restore": true

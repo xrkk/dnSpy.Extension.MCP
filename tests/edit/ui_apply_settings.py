@@ -132,6 +132,8 @@ def open_options(client: DnSpyClient) -> None:
         client.call_tool_json("App", {"mode": "switch", "name": "dnSpy"})
         time.sleep(0.5)
         tree = snapshot(client, DESKTOP_REGION)
+        if options_dialog_present(tree):
+            return
         if attempt % 2 == 0:
             view = menu_location(tree, ("\u89c6\u56fe(V)", "View"))
             client.call_tool_json("Click", {"loc": view})

@@ -118,7 +118,7 @@ def main():
  try:
   check('open_fixture',call(c,'open_files',{'paths':[str(fixture)]}).get('ok',True))
   v=ui('idle');assert_capacity(c,v,'idle');check('U2 real explorer window',bool(v));shot('idle')
-  tx,rev=begin(c);a=apply(c,tx,rev,'UiStaged');check('stage operation',a.get('ok'),a)
+  tx,rev=begin(c);cancel_baseline=payload(calls[-1]['response']).get('source',{}).get('live_fingerprint','');a=apply(c,tx,rev,'UiStaged');check('stage operation',a.get('ok'),a)
   rev=payload(a).get('transaction',{}).get('work_revision',rev+1)
   v=waitui('editing',lambda v:tx in v['state'] and any('module_update' in s for s in v['items']))
   st=call(c,'edit_status',{});check('W2 exact state and transaction',payload(st).get('state',st.get('state'))=='editing' and tx in v['state'],dict(mcp=st,ui=v))
@@ -129,6 +129,9 @@ def main():
   ps(base+"(ById 'McpEditCancelButton').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke();")
   v=waitui('canceled',lambda v:'idle' in v['state']);st=call(c,'edit_status',{});gone=apply(c,tx,rev,'MustFail')
   check('W5 UI rollback same owner', 'idle' in v['state'] and payload(st).get('state',st.get('state'))=='idle' and gone.get('error',{}).get('code')=='EDIT_TRANSACTION_NOT_FOUND',dict(ui=v,mcp=st,gone=gone));shot('canceled')
+  clean=call(c,'edit_begin',dict(assembly_name='TestIL',request_id=rid()));clean_tx=payload(clean).get('transaction',{}).get('transaction_id','')
+  check('W5 canceled private edit did not pollute live',clean.get('ok') and len(cancel_baseline)==64 and payload(clean).get('source',{}).get('live_fingerprint')==cancel_baseline,dict(before=cancel_baseline,after=payload(clean).get('source',{}).get('live_fingerprint')))
+  if clean_tx:call(c,'edit_rollback',dict(request_id=rid(),transaction_id=clean_tx))
   tx,rev=begin(c);call(c,'edit_test_barrier',{'action':'arm','name':'apply_before_mutation'})
   response=[];thread=threading.Thread(target=lambda:response.append(apply(c,tx,rev,'BusyUi')),daemon=True);thread.start()
   observer=DnSpyClient(url,client_name='ui-observer',timeout=140);observer.initialize()

@@ -27,17 +27,17 @@ class UiEvidenceArchitectureTests(unittest.TestCase):
                         return 0
 
                     module = types.SimpleNamespace(call=lambda *_: {}, DnSpyClient=type('Client', (), {}), main=main)
-                    with patch.dict(os.environ, {'DNMCP_UI_ARCH': 'previous-value'}), patch.object(runner.importlib, 'import_module', return_value=module):
-                        status, _ = runner.run_case('EDIT-ACC-018', 'architecture-regression', Path(temporary), arch)
-                        self.assertEqual(seen, [arch])
-                        self.assertEqual(os.environ['DNMCP_UI_ARCH'], 'previous-value')
-                        self.assertEqual(status, 'fail' if fails else 'pass')
+                    for case_id in ('EDIT-ACC-018', 'EDIT-ACC-025'):
+                        with self.subTest(case_id=case_id), patch.dict(os.environ, {'DNMCP_UI_ARCH': 'previous-value', 'DNMCP_UI_DEPLOYMENT_ROOT': 'test-ui-root'}):
+                            status, _ = runner.run_case(case_id, 'architecture-regression-'+case_id, Path(temporary), arch, module_loader=lambda _: module)
+                            self.assertEqual(seen[-1:], [arch])
+                            self.assertEqual(os.environ['DNMCP_UI_ARCH'], 'previous-value')
+                            self.assertEqual(status, 'fail' if fails else 'pass')
 
     def test_missing_environment_is_not_created_permanently(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
             module = types.SimpleNamespace(call=lambda *_: {}, DnSpyClient=type('Client', (), {}), main=lambda: 1)
-            with patch.object(runner.importlib, 'import_module', return_value=module):
-                runner.run_case('EDIT-ACC-018', 'architecture-regression', Path(temporary), 'x86')
+            runner.run_case('EDIT-ACC-025', 'architecture-regression', Path(temporary), 'x86', module_loader=lambda _: module)
             self.assertNotIn('DNMCP_UI_ARCH', os.environ)
 
 

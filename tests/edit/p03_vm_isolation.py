@@ -90,11 +90,33 @@ class IsolationContext:
     def fixture(self, relative: str) -> str:
         return str(_path(self.fixture_root) / relative)
 
+    def fixture_output(self, relative: str) -> str:
+        """Return a writable fixture child only when that root is isolated too."""
+        self.validate()
+        root = _require_path("isolation_root", self.isolation_root, writable=True)
+        fixture_root = _require_path("fixture_root", self.fixture_root, writable=True)
+        _below("fixture_root", fixture_root, root)
+        parent = _path(fixture_root)
+        child = PureWindowsPath(relative) if isinstance(parent, PureWindowsPath) else Path(relative)
+        if child.is_absolute() or ".." in child.parts:
+            raise IsolationError("fixture output must be relative and contain no parent traversal")
+        output = str(parent / child)
+        _below("fixture output", output, fixture_root)
+        return output
+
     def work_file(self, name: str) -> str:
         return str(_path(self.work_root) / name)
 
     def plan(self, case_id: str, *, harness: bool, requires_ui: bool) -> dict[str, object]:
         self.validate(require_ui=requires_ui)
+        writes = [self.artifact_root, self.checkpoint_store, self.work_root]
+        cleanup = [self.artifact_root + "\\edit-tests\\" + self.run_id]
+        if case_id in ("EDIT-ACC-005", "EDIT-ACC-006", "EDIT-ACC-016-CAUSAL"):
+            launch_case = case_id.removeprefix("EDIT-").lower().replace("-", "")
+            launch_root = self.fixture_output(
+                f".{launch_case}-launch/{self.run_id}/{self.architecture}")
+            writes.append(launch_root)
+            cleanup.append(launch_root)
         return {
             "case_id": case_id,
             "architecture": self.architecture,
@@ -107,8 +129,8 @@ class IsolationContext:
             "harness_dir": self.harness_dir if harness else None,
             "dotnet_host": self.dotnet_host if harness else None,
             "ui_deployment_root": self.ui_deployment_root if requires_ui else None,
-            "writes": [self.artifact_root, self.checkpoint_store, self.work_root],
-            "cleanup": [self.artifact_root + "\\edit-tests\\" + self.run_id],
+            "writes": writes,
+            "cleanup": cleanup,
             "rpc": not harness,
             "subprocess": "P03StoreHarness.dll" if harness else None,
         }
