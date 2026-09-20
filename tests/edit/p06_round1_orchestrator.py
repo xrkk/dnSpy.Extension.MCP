@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_p01_vm_tests import UiMcpClient, powershell, start_dnspy, VM_URL  # noqa: E402
-from ui_apply_settings import apply_settings  # noqa: E402
+from ui_apply_settings import apply_settings, find_target  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DEST = r"C:\Tools\dnspy-mcp-edit-tests\p03-integration-r1"
@@ -148,7 +148,7 @@ def fresh_dnspy(client: UiMcpClient, arch: str) -> bool:
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
     start_dnspy(client, arch)
-    apply_settings(client, True, "localhost")
+    apply_settings(client, True, "localhost", target=find_target(client, r"C:\Tools\dnSpy\dnSpy.exe"))
     deadline = time.time() + 60
     while time.time() < deadline:
         if health_up(client):

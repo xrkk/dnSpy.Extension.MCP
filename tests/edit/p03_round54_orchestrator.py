@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_p01_vm_tests import UiMcpClient, powershell, VM_URL  # noqa: E402
-from ui_apply_settings import apply_settings  # noqa: E402
+from ui_apply_settings import apply_settings, find_target  # noqa: E402
 
 SIGNAL_DIR = r"C:\Tools\dnspy-mcp-edit-tests\p03-integration-r1\ui-signals"
 PHASES = 6
@@ -75,14 +75,14 @@ def main() -> int:
             # every existing session (probe evidence: old session reset with
             # WinError 10054). Unticking the local override does NOT stop an
             # already-running server, so disable/enable is not the mechanism.
-            apply_settings(client, True, "localhost", 15378)
+            apply_settings(client, True, "localhost", 15378, target=find_target(client, r"C:\\Tools\\dnSpy\\dnSpy.exe"))
             up = wait_health(client, want=True, timeout=60)
             print(f"[phase {index}] up={up}", flush=True)
             ok = up
         except Exception as ex:  # noqa: BLE001
             print(f"[phase {index}] restart failed: {ex}", flush=True)
             try:
-                apply_settings(client, True, "localhost", 15378)
+                apply_settings(client, True, "localhost", 15378, target=find_target(client, r"C:\\Tools\\dnSpy\\dnSpy.exe"))
                 wait_health(client, want=True, timeout=90)
             except Exception:  # noqa: BLE001
                 pass

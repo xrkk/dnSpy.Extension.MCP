@@ -283,10 +283,14 @@ def apply_ui_settings(enable: str, host: str = "") -> None:
                 return
             time.sleep(0.1)
         raise TimeoutError(f"AI UI apply acknowledgement timed out: {request}")
-    command = [sys.executable, str(ROOT / "tests/edit/ui_apply_settings.py"), "--enable", enable]
-    if host:
-        command.extend(["--host", host])
-    subprocess.run(command, check=True)
+    # The CLI driver now requires an explicit --target-pid/--target-exe and refuses to
+    # guess an instance; this legacy fallback has no target context, so fail loudly and
+    # direct the operator to the UI-signal mechanism above instead of driving a random
+    # dnSpy window.
+    raise RuntimeError(
+        "apply_ui_settings fallback refused: ui_apply_settings.py now requires an explicit "
+        "UI target; set UI_SIGNAL_DIR to use the acknowledgement flow instead"
+    )
 
 
 def restart_dnspy_process(old: DnSpyClient, url: str) -> DnSpyClient:

@@ -115,6 +115,88 @@ def is_mcp_settings_page(tree: str) -> bool:
     return matching_line(tree, ("\u542f\u7528 MCP \u670d\u52a1\u5668", "Enable MCP server")) is not None
 
 
+# --- T039: explicit UI target ownership (no first-instance fallback) -----------------
+#
+# Every UI operation must belong to one explicit target: a PID plus the canonical exe path
+# the caller expects. The pair is verified on the VM BEFORE any UI write; a missing PID, a
+# dead process, an unreadable path, a path mismatch or a window-less process refuses the
+# operation. The historical "Get-Process dnSpy | Select-Object -First 1" pattern could
+# silently drive an unrelated (e.g. protected) instance and is removed.
+
+
+def _ps_json(client: DnSpyClient, script: str, timeout: int = 60) -> dict:
+    """Run a PowerShell snippet and extract its single JSON object result.
+
+    The management endpoint may wrap stdout with CLIXML/progress noise, so the JSON
+    object is located by brace matching rather than parsed whole."""
+    value = client.call_tool_json("PowerShell", {"command": script, "timeout": timeout})
+    if isinstance(value, dict) and set(value) == {"result"} and isinstance(value["result"], str):
+        value = value["result"]
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    start = text.find("{")
+    while start != -1:
+        for end in range(len(text), start, -1):
+            candidate = text[start:end]
+            try:
+                parsed = json.loads(candidate)
+            except ValueError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        start = text.find("{", start + 1)
+    raise RuntimeError(f"no JSON object in PowerShell result: {text[:200]!r}")
+
+
+def resolve_target(client: DnSpyClient, pid: int, exe_path: str) -> dict:
+    """Verify the (pid, exe_path) pair on the VM; return pid/path/hwnd or raise."""
+    if pid is None or not exe_path:
+        raise RuntimeError("UI target refused: no explicit target (pid + exe path) supplied")
+    script = (
+        "$ErrorActionPreference='Stop';"
+        "$p=Get-Process -Id " + str(int(pid)) + " -ErrorAction SilentlyContinue;"
+        "if(-not $p){ [pscustomobject]@{ok=$false;reason='no-such-pid';path=$null;hwnd=0}|ConvertTo-Json -Compress; exit }"
+        "$path=$p.Path;"
+        "if(-not $path){ [pscustomobject]@{ok=$false;reason='path-unreadable';path=$null;hwnd=0}|ConvertTo-Json -Compress; exit }"
+        "$expect='" + str(exe_path).replace("'", "''") + "';"
+        "$match=($path -ieq $expect);"
+        "$hwnd=if($p.MainWindowHandle){[int64]$p.MainWindowHandle}else{0};"
+        "[pscustomobject]@{ok=($match -and $hwnd -ne 0);reason=if(-not $match){'path-mismatch'}elseif($hwnd -eq 0){'no-main-window'}else{'ok'};path=$path;hwnd=$hwnd}|ConvertTo-Json -Compress"
+    )
+    row = _ps_json(client, script)
+    if not row.get("ok"):
+        raise RuntimeError(f"UI target refused: pid={pid} exe={exe_path!r} reason={row.get('reason')} actual={row.get('path')!r}")
+    return {"pid": int(pid), "path": row["path"], "hwnd": row["hwnd"]}
+
+
+def find_target(client: DnSpyClient, exe_path: str) -> dict:
+    """Locate the SINGLE windowed process whose path equals exe_path (ambiguity refuses)."""
+    script = (
+        "$ErrorActionPreference='Stop';"
+        "$rows=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -and $_.Path -ieq '" + str(exe_path).replace("'", "''") + "' -and $_.MainWindowHandle -ne 0 } | "
+        "ForEach-Object { [pscustomobject]@{pid=$_.Id;hwnd=[int64]$_.MainWindowHandle} });"
+        "[pscustomobject]@{count=$rows.Count;rows=$rows}|ConvertTo-Json -Depth 4 -Compress"
+    )
+    row = _ps_json(client, script)
+    if row.get("count") != 1:
+        raise RuntimeError(f"UI target refused: expected exactly 1 windowed process at {exe_path!r}, found {row.get('count')}")
+    return {"pid": row["rows"][0]["pid"], "path": exe_path, "hwnd": row["rows"][0]["hwnd"]}
+
+
+def focus_target_window(client: DnSpyClient, target: dict) -> None:
+    """Bring the verified target window to the foreground (PID-scoped, no name switching)."""
+    script = (
+        "$ErrorActionPreference='Stop';"
+        "$ws=New-Object -ComObject WScript.Shell;"
+        "$ok=$ws.AppActivate(" + str(int(target["pid"])) + ");"
+        "Start-Sleep -Milliseconds 400;"
+        "[pscustomobject]@{focused=[bool]$ok}|ConvertTo-Json -Compress"
+    )
+    row = _ps_json(client, script)
+    if not row.get("focused"):
+        raise RuntimeError(f"UI target refused: could not focus pid={target['pid']} hwnd={target['hwnd']}")
+
+
 def options_dialog_present(tree: str) -> bool:
     return re.search(r'(?:window|\u7a97\u53e3) "(?:\u9009\u9879|Options)"', tree, re.IGNORECASE) is not None
 
@@ -127,9 +209,11 @@ def snapshot(client: DnSpyClient, region: list[int]) -> str:
     }))
 
 
-def open_options(client: DnSpyClient) -> None:
+def open_options(client: DnSpyClient, target: dict | None = None) -> None:
+    if target is None:
+        raise RuntimeError("open_options refused: no explicit UI target supplied")
+    focus_target_window(client, target)
     for attempt in range(4):
-        client.call_tool_json("App", {"mode": "switch", "name": "dnSpy"})
         time.sleep(0.5)
         tree = snapshot(client, DESKTOP_REGION)
         if options_dialog_present(tree):
@@ -164,9 +248,11 @@ def open_options(client: DnSpyClient) -> None:
 
 
 UIA_LOCATE_HOST_PORT = r'''
+param([int]$TargetPid)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-$proc=Get-Process dnSpy -ErrorAction Stop | Select-Object -First 1
+$proc=Get-Process -Id $TargetPid -ErrorAction Stop
+if($proc.Path -eq $null){ throw 'target path unreadable' }
 $main=[System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
 $opts=$null
 foreach($name in @('选项','Options')){
@@ -229,8 +315,17 @@ if($null -ne $ack){
 
 
 
-def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int | None = None) -> None:
-    open_options(client)
+def _uia_locate_script(target: dict) -> str:
+    return UIA_LOCATE_HOST_PORT.replace("param([int]$TargetPid)", "param([int]$TargetPid)  # " + str(target["pid"])) + "\n"
+
+
+def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int | None = None,
+                   target: dict | None = None) -> None:
+    """Drive the MCP settings page. `target` (from resolve_target/find_target) is REQUIRED:
+    every window/control this touches must belong to that exact pid+exe pair."""
+    if target is None:
+        raise RuntimeError("apply_settings refused: no explicit UI target supplied (pid + exe path)")
+    open_options(client, target)
     tree = snapshot(client, DESKTOP_REGION)
     item_lines = [line for line in tree.splitlines()
                   if "\u6811\u89c6\u56fe\u9879" in line or "tree item" in line.lower()]
@@ -263,7 +358,7 @@ def apply_settings(client: DnSpyClient, enable: bool, host: str = "", port: int 
     import re as _re
     if host or port is not None:
         try:
-            located = client.call_tool_json("PowerShell", {"command": UIA_LOCATE_HOST_PORT, "timeout": 60})
+            located = client.call_tool_json("PowerShell", {"command": _uia_locate_script(target), "timeout": 60})
             located_text = located if isinstance(located, str) else str(located)
             host_m = _re.search(r"hostrect:(\d+),(\d+)", located_text)
             port_m = _re.search(r"portrect:(\d+),(\d+)", located_text)
@@ -387,11 +482,21 @@ def main() -> int:
     parser.add_argument("--host", default="")
     parser.add_argument("--port", type=int)
     parser.add_argument("--ui-url", default="http://192.168.204.240:28787/mcp")
+    parser.add_argument("--target-pid", type=int, default=None,
+                        help="required: PID of the exact dnSpy instance to drive")
+    parser.add_argument("--target-exe", default=None,
+                        help="required: canonical exe path that must match the target PID")
     args = parser.parse_args()
 
+    if args.target_pid is None or not args.target_exe:
+        raise SystemExit(
+            "refused: an explicit UI target is required (--target-pid PID --target-exe PATH); "
+            "this helper no longer falls back to the first dnSpy process"
+        )
     client = UiMcpClient.connect(args.ui_url, client_name="dnspy-p01-ui-driver", timeout=30)
     try:
-        apply_settings(client, args.enable == "true", args.host, args.port)
+        target = resolve_target(client, args.target_pid, args.target_exe)
+        apply_settings(client, args.enable == "true", args.host, args.port, target=target)
     finally:
         client.close()
     return 0
