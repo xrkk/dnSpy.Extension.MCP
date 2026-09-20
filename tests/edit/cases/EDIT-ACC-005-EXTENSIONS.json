@@ -1,0 +1,19 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-005-EXTENSIONS",
+  "acc_id": "ACC-005",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "isolated TestIL.dll plus test-only Roslyn analyzer/source-generator and .csx sentinels",
+  "driver": "p03_vm_acc005_extensions.py",
+  "precondition": "positive controls executed in separate test-tool processes; product marker directory empty; current DLL in a fresh isolated dnSpy instance",
+  "actions": [
+    "inspect the live edit_compile input schema and require the exact ordinary-compilation/document field sets",
+    "submit analyzer, source-generator, build-task and script-path fields and require rejection without marker creation",
+    "submit script compilation/document modes and require schema rejection",
+    "submit #load and #r directives through edit_class and require ordinary-compilation diagnostics without script execution",
+    "supply the real analyzer/generator assembly through references_override and require successful metadata-only compilation without activation",
+    "compare ArtifactRoot and recursive isolation-root PDB snapshots before and after compilation"
+  ],
+  "expected": "all activation surfaces reject or remain regular compilation; positive-control sentinels are usable but no product marker is created; metadata reference reading is non-executing; compile payload stays in memory and no independent PDB appears"
+}

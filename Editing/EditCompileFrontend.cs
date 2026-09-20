@@ -86,6 +86,9 @@ internal sealed class EditCompileFrontend : IMcpToolProvider, IDisposable {
 		var documents = new List<CompilerDocumentInfo>();
 		foreach (var row in documentsElement.EnumerateArray()) {
 			if (row.ValueKind != JsonValueKind.Object) throw new ArgumentException("documents entries must be objects", "documents");
+			foreach (var property in row.EnumerateObject())
+				if (property.Name is not "path" and not "content")
+					throw new ArgumentException("Unknown edit_compile documents field: " + property.Name, "documents");
 			var content = RequiredString(row, "content");
 			if (content.Length > MaxDocumentChars) throw new ArgumentException("document content exceeds " + MaxDocumentChars, "documents");
 			documents.Add(new CompilerDocumentInfo(content, RequiredString(row, "path")));
