@@ -38,6 +38,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 	// artifact row -> operation reference text ("0x…" for an existing target
 	// row, "obj-…" for a row created by an earlier operation of this import)
 	readonly Dictionary<IMDTokenProvider, string> referenceText = new(ReferenceTextComparer.Instance);
+	readonly ModuleDef? referenceSourceModule;
 	readonly HashSet<string> createdTypeNames = new(StringComparer.Ordinal);
 	readonly Dictionary<TypeDef, TypeDef?> generatedTargets = new(ReferenceTextComparer.Instance);
 	readonly Dictionary<string, string> memberRefCache = new(StringComparer.Ordinal);
@@ -70,11 +71,16 @@ internal sealed class EditCSharpImporter : IDisposable {
 		public string Target = string.Empty;
 	}
 
-	public EditCSharpImporter(ModuleDef artifact, ModuleDef target, Dictionary<string, IMDTokenProvider> objectIds, int baseOperationIndex) {
+	public EditCSharpImporter(ModuleDef artifact, ModuleDef target, Dictionary<string, IMDTokenProvider> objectIds, int baseOperationIndex, ModuleDef? referenceSourceModule = null) {
 		this.artifact = artifact;
 		this.target = target;
 		this.objectIds = objectIds;
 		this.baseOperationIndex = baseOperationIndex;
+		// T036: the live dnSpy module supplies the assembly resolver used ONLY
+		// to READ metadata of referenced assemblies (type forwarders). Optional
+		// and absent for every existing caller — the gate then simply never
+		// proves equivalence and keeps full identity.
+		this.referenceSourceModule = referenceSourceModule;
 		matcher = new EditImportMatcher(artifact, target);
 	}
 
@@ -428,6 +434,27 @@ internal sealed class EditCSharpImporter : IDisposable {
 	}
 
 	string BindTypeRef(TypeRef reference) {
+		// T036: an artifact type scoped to the ARTIFACT's own corlib assembly
+		// (e.g. Roslyn bound System.Text.StringBuilder to the process
+		// mscorlib) must not inject a second, differently-identified corlib
+		// row into a target whose own corlib resolves elsewhere (e.g. the
+		// netstandard facade) — the written image would then reload with a
+		// different corlib selection and every primitive-typed row would flip
+		// in the strong projection (T035: commit-time rejection). Rebinding to
+		// the TARGET's corlib row is allowed ONLY on a proven type-forwarder
+		// equivalence: the target corlib assembly's metadata must forward the
+		// exact type, through a non-cyclic unambiguous chain, to a terminal
+		// assembly whose FULL identity (name/version/culture/key) equals the
+		// artifact scope's and which really defines the type. Anything less —
+		// no resolver, unresolved assemblies, missing/ambiguous/cyclic
+		// forwarders, identity mismatch — keeps the historical full-identity
+		// binding. Names alone never prove equivalence.
+		if (reference.ResolutionScope is AssemblyRef artifactCorlibScope
+			&& TargetCorLibRebindProven(artifactCorlibScope, reference)) {
+			var targetCorlib = target.CorLibTypes.AssemblyRef;
+			return SynthesizeTypeRef(reference.Namespace?.String ?? string.Empty,
+				reference.Name.String, ScopeDescriptor(targetCorlib), reference.FullName);
+		}
 		// A compile artifact references the target assembly like any other
 		// reference assembly; those rows rebind to the target definitions.
 		if (reference.ResolutionScope is AssemblyRef scope && string.Equals(scope.Name, TargetAssemblyName, StringComparison.OrdinalIgnoreCase)) {
@@ -443,6 +470,254 @@ internal sealed class EditCSharpImporter : IDisposable {
 			_ => throw Reject("reference", "the type reference scope is outside the importable domain: " + reference.FullName),
 		};
 		return SynthesizeTypeRef(reference.Namespace?.String ?? string.Empty, reference.Name.String, scopeDescriptor, reference.FullName);
+	}
+
+	static CorLibTypeSig? CorLibSig(ICorLibTypes types, ElementType element) => element switch {
+		ElementType.Void => types.Void,
+		ElementType.Boolean => types.Boolean,
+		ElementType.Char => types.Char,
+		ElementType.I1 => types.SByte,
+		ElementType.U1 => types.Byte,
+		ElementType.I2 => types.Int16,
+		ElementType.U2 => types.UInt16,
+		ElementType.I4 => types.Int32,
+		ElementType.U4 => types.UInt32,
+		ElementType.I8 => types.Int64,
+		ElementType.U8 => types.UInt64,
+		ElementType.R4 => types.Single,
+		ElementType.R8 => types.Double,
+		ElementType.String => types.String,
+		ElementType.TypedByRef => types.TypedReference,
+		ElementType.I => types.IntPtr,
+		ElementType.U => types.UIntPtr,
+		ElementType.Object => types.Object,
+		_ => null,
+	};
+
+	static bool SameAssemblyIdentity(AssemblyRef left, AssemblyRef right) =>
+		string.Equals(left.Name?.String, right.Name?.String, StringComparison.OrdinalIgnoreCase)
+		&& left.Version == right.Version
+		&& string.Equals(left.Culture?.String ?? string.Empty, right.Culture?.String ?? string.Empty, StringComparison.Ordinal)
+		&& (left.PublicKeyOrToken?.Data ?? Array.Empty<byte>()).SequenceEqual(right.PublicKeyOrToken?.Data ?? Array.Empty<byte>());
+
+	/// <summary>T036 corlib rebind proof. True only when (a) the artifact scope
+	/// IS the artifact module's own corlib assembly and the target resolves a
+	/// DIFFERENT corlib assembly, (b) the target's corlib assembly metadata is
+	/// resolvable and forwards the exact type through a legal, non-cyclic,
+	/// unambiguous ExportedType chain whose every hop's RESOLVED assembly
+	/// identity matches its request, to a terminal assembly with the artifact
+	/// scope's FULL identity that really defines the type with the same nested
+	/// name. The resolver is BORROWED from the live module context: nothing it
+	/// returns is disposed here. Pure metadata reads; no target code executes.</summary>
+	bool TargetCorLibRebindProven(AssemblyRef artifactScope, TypeRef reference) {
+		var artifactCorlib = artifact.CorLibTypes.AssemblyRef;
+		if (artifactCorlib == null || !SameAssemblyIdentity(artifactScope, artifactCorlib)) return false;
+		var targetCorlib = target.CorLibTypes.AssemblyRef;
+		if (targetCorlib == null || SameAssemblyIdentity(artifactScope, targetCorlib)) return false;
+		var resolver = referenceSourceModule?.Context?.AssemblyResolver;
+		if (resolver == null) return false;
+
+		// Borrowed resolver: resolved modules are owned by the live module's
+		// context and must stay readable for later imports — never disposed here.
+		ModuleDef? Resolve(AssemblyRef row) {
+			try {
+				var assembly = resolver.Resolve(row, referenceSourceModule!);
+				if (assembly == null) return null;
+				// K2: the resolved assembly's ACTUAL identity must match the request
+				// (dnlib public-key/token semantics), not just carry the request's name.
+				if (!ResolvedIdentityMatches(assembly, row)) return null;
+				return assembly.ManifestModule;
+			}
+			catch { return null; }
+		}
+
+		// K2: prove the ARTIFACT side really resolves the reference to a terminal
+		// TypeDef through its own scope before comparing anything. The resolved
+		// module is BORROWED from the live context — never disposed here.
+		var artifactTerminal = Resolve(artifactScope);
+		if (artifactTerminal == null) return false;
+		var artifactDefinition = FindUniqueDefinition(artifactTerminal, reference);
+		if (artifactDefinition == null) return false;
+
+		// K3: walk the target corlib's LEGAL forwarder chain hop by hop. The
+		// cycle set keys on FULL identity (name+version+key), so a legal chain
+		// that revisits a simple name with a different version is NOT a cycle.
+		var seen = new HashSet<string>(StringComparer.Ordinal);
+		var currentRequest = targetCorlib;
+		ModuleDef? currentModule = null;
+		for (var depth = 0; depth < 8; depth++) {
+			if (!seen.Add(FullIdentityKey(currentRequest))) return false;  // cycle
+			currentModule ??= Resolve(currentRequest);
+			if (currentModule == null) return false;
+			ExportedType? match = null;
+			foreach (var forwarded in currentModule.ExportedTypes) {
+				if (!forwarded.IsForwarder) continue;  // K3: only legal forwarders
+				if (!string.Equals(forwarded.TypeName?.String ?? "", reference.Name.String, StringComparison.Ordinal)) continue;
+				if (!string.Equals(forwarded.TypeNamespace?.String ?? "", reference.Namespace?.String ?? string.Empty, StringComparison.Ordinal)) continue;
+				if (match != null) return false;  // ambiguous
+				match = forwarded;
+			}
+			if (match == null) return false;
+			if (match.Implementation is not AssemblyRef next) return false;  // no TypeRef pseudo-hops
+			var nextModule = Resolve(next);
+			if (nextModule == null) return false;
+			if (SameAssemblyIdentity(next, artifactScope)) {
+				// Terminal: the resolved module must really define the full nested
+				// identity, and be THE SAME RESOLVED MODULE the artifact side
+				// resolved to (same actual ModuleDef instance, or a provably same
+				// source: equal MVID and matching definition token).
+				var terminalDefinition = FindUniqueDefinition(nextModule, reference);
+				return terminalDefinition != null
+					&& SameDefinitionIdentity(artifactDefinition, terminalDefinition)
+					&& SameTerminalModule(artifactTerminal, nextModule, artifactDefinition, terminalDefinition);
+			}
+			currentRequest = next;
+			currentModule = nextModule;
+		}
+		return false;
+	}
+
+	static bool ResolvedIdentityMatches(AssemblyDef assembly, AssemblyRef request) {
+		if (!string.Equals(assembly.Name?.String, request.Name?.String, StringComparison.OrdinalIgnoreCase)) return false;
+		// Culture must match exactly (empty == neutral).
+		if (!string.Equals(assembly.Culture?.String ?? string.Empty, request.Culture?.String ?? string.Empty, StringComparison.Ordinal)) return false;
+		// A missing requested version is NOT a wildcard: the resolved assembly
+		// must carry a version and it must equal the request when the request
+		// has one; a versionless request only accepts a versionless definition.
+		var resolvedVersion = assembly.Version;
+		var requestedVersion = request.Version;
+		if (requestedVersion is null || resolvedVersion is null) {
+			if (requestedVersion is not null || resolvedVersion is not null) return false;
+		}
+		else if (resolvedVersion != requestedVersion) return false;
+		var requestKey = request.PublicKeyOrToken;
+		var resolvedKey = assembly.PublicKeyOrToken;
+		// dnlib semantics: a request with a public key can match a token-only
+		// definition (the token is the key's hash); identical kinds compare raw.
+		// Explicit unsigned semantics: only a request with NO key material may
+		// match a definition with NO key material; a signed side never matches
+		// an unsigned side.
+		if (requestKey == null || resolvedKey == null) return requestKey == null && resolvedKey == null;
+		if (requestKey.Data.AsSpan().SequenceEqual(resolvedKey.Data.AsSpan())) return true;
+		return requestKey.Token is { } expected && resolvedKey.Token is { } actual && expected.Data.AsSpan().SequenceEqual(actual.Data.AsSpan());
+	}
+
+	/// <summary>Find the unique type definition matching the reference's
+	/// namespace/name at the TOP level of the declaring chain. A nested
+	/// reference must arrive with its declaring path bound through the parent
+	/// (callers bind parents first); searching GetTypes for any same-named
+	/// nested row is NOT proof, so nested references without a bound parent
+	/// path are rejected here.</summary>
+	static TypeDef? FindUniqueDefinition(ModuleDef module, TypeRef reference) {
+		var namespaceText = reference.Namespace?.String ?? string.Empty;
+		var nameText = reference.Name.String;
+		TypeDef? found = null;
+		foreach (var type in module.GetTypes()) {
+			if (type.DeclaringType != null) continue;  // nested rows never satisfy a top-level lookup
+			if (!string.Equals(type.Namespace?.String ?? string.Empty, namespaceText, StringComparison.Ordinal)) continue;
+			if (!string.Equals(type.Name?.String, nameText, StringComparison.Ordinal)) continue;
+			if (found != null) return null;  // duplicate top-level definitions: ambiguous
+			found = type;
+		}
+		return found;
+	}
+
+	static string FullIdentityKey(AssemblyRef row) =>
+		(row.Name?.String ?? "").ToLowerInvariant() + "|" + (row.Version?.ToString() ?? "") + "|"
+		+ (row.Culture?.String ?? "").ToLowerInvariant() + "|"
+		+ NormalizedToken(row.PublicKeyOrToken);
+
+	/// <summary>Normalized public-key-token text: a full key and its token form
+	/// are the same identity (the token IS the key's hash), so both collapse to
+	/// the token bytes.</summary>
+	static string NormalizedToken(PublicKeyBase? key) {
+		if (key == null) return "";
+		var data = key.Data ?? Array.Empty<byte>();
+		if (key.Token is { } token) return BitConverter.ToString(token.Data ?? Array.Empty<byte>()).Replace("-", "");
+		// full public key: compute the token form (SHA-1 of the key, last 8 bytes)
+		using var sha = System.Security.Cryptography.SHA1.Create();
+		var hash = sha.ComputeHash(data);
+		return BitConverter.ToString(hash, hash.Length - 8, 8).Replace("-", "");
+	}
+
+	/// <summary>Terminal module identity (minimal conservative form): both
+	/// sides must resolve to THE SAME actual ModuleDef instance AND the same
+	/// actual TypeDef instance. A different instance is never proven to be the
+	/// same fixed metadata source — identical MVID/token do not constitute
+	/// proof, so such cases keep the original full-identity path.</summary>
+	static bool SameTerminalModule(ModuleDef artifactSide, ModuleDef targetSide, TypeDef artifactDefinition, TypeDef targetDefinition) {
+		return ReferenceEquals(artifactSide, targetSide) && ReferenceEquals(artifactDefinition, targetDefinition);
+	}
+
+	static bool SameDefinitionIdentity(TypeDef left, TypeDef right) {
+		// Full nested identity: walk to top comparing names at each level.
+		var a = left; var b = right;
+		while (a != null && b != null) {
+			if (!string.Equals(a.Name?.String, b.Name?.String, StringComparison.Ordinal)) return false;
+			if (!string.Equals(a.Namespace?.String ?? "", b.Namespace?.String ?? "", StringComparison.Ordinal)) return false;
+			a = a.DeclaringType; b = b.DeclaringType;
+		}
+		return a == null && b == null;
+	}
+
+	/// <summary>True when <paramref name="reference"/> IS the artifact module's
+	/// built-in corlib row for a CLI primitive type. Identity is established by
+	/// row identity against the artifact's own CorLibTypes set, or — for an
+	/// equivalent duplicate row — by being scoped to the artifact's corlib
+	/// assembly instance while carrying that built-in's exact System name. A
+	/// user-defined cross-assembly type named like a primitive never matches:
+	/// its scope is a different assembly, and non-primitive System.* types
+	/// (classes like System.Console) are not in the CorLibTypes set at all.</summary>
+	static bool ArtifactCorLibElement(ModuleDef artifact, TypeRef reference, out ElementType elementType) {
+		elementType = default;
+		var corlib = artifact.CorLibTypes;
+		var corlibAssembly = corlib.AssemblyRef;
+		foreach (var candidate in CorLibElements) {
+			var builtIn = CorLibSig(corlib, candidate);
+			var builtInRow = builtIn?.TypeDefOrRef as TypeRef;
+			if (builtInRow == null) continue;
+			if (ReferenceEquals(builtInRow, reference)) {
+				elementType = candidate;
+				return true;
+			}
+			if (reference.ResolutionScope is AssemblyRef scope && ReferenceEquals(scope, corlibAssembly)
+				&& string.Equals(reference.Namespace?.String ?? string.Empty, "System", StringComparison.Ordinal)
+				&& string.Equals(reference.Name?.String ?? string.Empty, builtInRow.Name?.String ?? string.Empty, StringComparison.Ordinal)
+				&& string.Equals(builtInRow.Namespace?.String ?? string.Empty, "System", StringComparison.Ordinal)) {
+				elementType = candidate;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static readonly ElementType[] CorLibElements = {
+		ElementType.Void, ElementType.Boolean, ElementType.Char, ElementType.I1, ElementType.U1,
+		ElementType.I2, ElementType.U2, ElementType.I4, ElementType.U4, ElementType.I8, ElementType.U8,
+		ElementType.R4, ElementType.R8, ElementType.String, ElementType.TypedByRef, ElementType.I,
+		ElementType.U, ElementType.Object,
+	};
+
+	/// <summary>T034 capture hook, passed only to the importer's explicit
+	/// EditStructuredSignatureCodec.Capture call sites. Invoked solely from the
+	/// CorLibTypeSig branch — the signature context a plain row binder cannot
+	/// recover — it binds a confirmed CLI built-in primitive (by element
+	/// identity, never by System.* name) to the TARGET's corlib representation:
+	/// same primitive name scoped to the target's corlib assembly, through the
+	/// materializable SynthesizeTypeRef path (persisted-row reuse or an
+	/// explicit reference_add; never an on-demand CorLibTypes row with a
+	/// synthetic token). Everything else keeps the historical full-identity
+	/// binding, so plain ClassOrValueTypeSig rows and cross-assembly same-name
+	/// types are untouched.</summary>
+	string? BindCorLibForCapture(CorLibTypeSig core) {
+		if (core.TypeDefOrRef is not TypeRef reference) return null;
+		if (!ArtifactCorLibElement(artifact, reference, out var elementType)) return null;
+		var builtIn = CorLibSig(target.CorLibTypes, elementType);
+		if (builtIn?.TypeDefOrRef is not TypeRef targetRow) return null;
+		return SynthesizeTypeRef(targetRow.Namespace?.String ?? string.Empty,
+			targetRow.Name.String,
+			ScopeDescriptor(target.CorLibTypes.AssemblyRef),
+			reference.FullName);
 	}
 
 	Dictionary<string, object?> ModuleScope(ModuleRef module) {
@@ -522,7 +797,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 			["owner"] = RowDescriptor(Bind(owner)),
 			["name"] = member.Name.String,
 			["signature"] = JsonSerializer.SerializeToElement(
-				NormalizeCall(EditStructuredSignatureCodec.Capture((CallingConventionSig)(member.IsMethodRef ? member.MethodSig! : member.FieldSig!), BindForCapture)), EditWire.JsonOptions),
+				NormalizeCall(EditStructuredSignatureCodec.Capture((CallingConventionSig)(member.IsMethodRef ? member.MethodSig! : member.FieldSig!), BindForCapture, BindCorLibForCapture)), EditWire.JsonOptions),
 		};
 		return EmitReferenceAdd(descriptor, member.FullName);
 	}
@@ -567,7 +842,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 			["owner"] = RowDescriptor(BindDefinition(owner)),
 			["name"] = name,
 			["signature"] = JsonSerializer.SerializeToElement(
-				NormalizeCall(EditStructuredSignatureCodec.Capture(signature, BindForCapture)), EditWire.JsonOptions),
+				NormalizeCall(EditStructuredSignatureCodec.Capture(signature, BindForCapture, BindCorLibForCapture)), EditWire.JsonOptions),
 		};
 		return EmitReferenceAdd(descriptor, fullName);
 	}
@@ -914,7 +1189,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 	/// <summary>Loss-free capture of a signature with every reference planned
 	/// (existing target rows, batch rows or synthesized reference rows).</summary>
 	EditStructuredSignatureCodec.TypeNode CaptureNode(TypeSig signature) =>
-		EditStructuredSignatureCodec.Capture(signature, BindForCapture) is { } node ? NormalizeNode(node) : throw Reject("signature", "a signature is missing");
+		EditStructuredSignatureCodec.Capture(signature, BindForCapture, BindCorLibForCapture) is { } node ? NormalizeNode(node) : throw Reject("signature", "a signature is missing");
 
 	/// <summary>Resolve owner sentinels (rows created by the operation under
 	/// construction) to ownerless nodes; a sentinel in a reference position is a
@@ -955,7 +1230,7 @@ internal sealed class EditCSharpImporter : IDisposable {
 			var text = BindForCapture(row);
 			if (!text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) sawObject = true;
 			return text;
-		});
+		}, BindCorLibForCapture);
 		if (sawObject || forceStructured)
 			return TypeEntry(NormalizeNode(node));
 		try {

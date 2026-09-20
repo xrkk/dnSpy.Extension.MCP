@@ -689,7 +689,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			var creation = new ModuleCreationOptions { TryToLoadPdbFromDisk = false };
 			if (artifact.Pdb.Length != 0) creation.PdbFileOrData = artifact.Pdb;
 			using var artifactModule = ModuleDefMD.Load(artifact.Assembly, creation);
-			using var importer = new EditCSharpImporter(artifactModule, tx.Workspace.PrivateModule, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count);
+			using var importer = new EditCSharpImporter(artifactModule, tx.Workspace.PrivateModule, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count, tx.Workspace.LiveModule);
 			var plan = importer.Compile(targets);  // pure: any rejection lands here, before private writes
 			var newDiffs = new List<Dictionary<string, object?>>();
 			var createdIds = new List<string>();

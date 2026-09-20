@@ -38,21 +38,29 @@ internal static class EditStructuredSignatureCodec {
 		public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
 	}
 
-	public static TypeNode Capture(TypeSig type, Func<IMDTokenProvider, string> bind) => CaptureType(type, bind, new HashSet<object>(ReferenceComparer.Instance));
-	public static CallNode Capture(CallingConventionSig sig, Func<IMDTokenProvider, string> bind) => CaptureCall(sig, bind, new HashSet<object>(ReferenceComparer.Instance));
-	static TypeNode CaptureType(TypeSig type, Func<IMDTokenProvider, string> bind, HashSet<object> active) {
+	/// <summary>T034 import-only capture hook: invoked only from the
+	/// CorLibTypeSig branch, with the signature context the plain row binder
+	/// cannot recover. Returning a binding string uses it for that node;
+	/// returning null keeps the historical full-identity binding. The default
+	/// (no hook) leaves every caller's behavior byte-for-byte unchanged.</summary>
+	public delegate string? CorLibBindHook(CorLibTypeSig core);
+
+	public static TypeNode Capture(TypeSig type, Func<IMDTokenProvider, string> bind, CorLibBindHook? corlibBind = null) => CaptureType(type, bind, corlibBind, new HashSet<object>(ReferenceComparer.Instance));
+	public static CallNode Capture(CallingConventionSig sig, Func<IMDTokenProvider, string> bind, CorLibBindHook? corlibBind = null) => CaptureCall(sig, bind, corlibBind, new HashSet<object>(ReferenceComparer.Instance));
+	static TypeNode CaptureType(TypeSig type, Func<IMDTokenProvider, string> bind, CorLibBindHook? corlibBind, HashSet<object> active) {
 		if (type == null || !active.Add(type)) throw new InvalidDataException("Null or cyclic type signature");
 		try {
-			TypeNode Child(TypeSig value) => CaptureType(value, bind, active);
+			TypeNode Child(TypeSig value) => CaptureType(value, bind, corlibBind, active);
 			var node = new TypeNode { Kind = type.GetType().Name };
 			switch (type) {
-			case CorLibTypeSig core: node.Value = (uint)core.ElementType; node.Reference = bind(core.TypeDefOrRef); break;
+			case CorLibTypeSig core: node.Value = (uint)core.ElementType;
+				node.Reference = corlibBind?.Invoke(core) ?? bind(core.TypeDefOrRef); break;
 			case ClassOrValueTypeSig reference: node.Reference = bind(reference.TypeDefOrRef); break;
 			case GenericSig generic:
 				node.Value = generic.Number;
 				node.Owner = generic.OwnerType != null ? bind(generic.OwnerType) : generic.OwnerMethod != null ? bind(generic.OwnerMethod) : null;
 				break;
-			case FnPtrSig pointer: node.Call = CaptureCall(pointer.Signature, bind, active); break;
+			case FnPtrSig pointer: node.Call = CaptureCall(pointer.Signature, bind, corlibBind, active); break;
 			case GenericInstSig instance: node.Children = new[] { Child(instance.GenericType) }.Concat(instance.GenericArguments.Select(Child)).ToArray(); break;
 			case ModifierSig modifier: node.Reference = bind(modifier.Modifier); node.Children = new[] { Child(modifier.Next) }; break;
 			case ArraySig array: node.Value = array.Rank; node.Sizes = array.Sizes.ToArray(); node.Bounds = array.LowerBounds.ToArray(); node.Children = new[] { Child(array.Next) }; break;
@@ -66,10 +74,10 @@ internal static class EditStructuredSignatureCodec {
 		}
 		finally { active.Remove(type); }
 	}
-	static CallNode CaptureCall(CallingConventionSig sig, Func<IMDTokenProvider, string> bind, HashSet<object> active) {
+	static CallNode CaptureCall(CallingConventionSig sig, Func<IMDTokenProvider, string> bind, CorLibBindHook? corlibBind, HashSet<object> active) {
 		if (sig == null || !active.Add(sig)) throw new InvalidDataException("Null or cyclic calling signature");
 		try {
-			TypeNode Child(TypeSig type) => CaptureType(type, bind, active);
+			TypeNode Child(TypeSig type) => CaptureType(type, bind, corlibBind, active);
 			var node = new CallNode { Kind = sig.GetType().Name, Convention = (byte)sig.GetCallingConvention(), Extra = sig.ExtraData == null ? null : (byte[])sig.ExtraData.Clone() };
 			switch (sig) {
 			case FieldSig field: node.Result = Child(field.Type); break;
