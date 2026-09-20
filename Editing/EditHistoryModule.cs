@@ -567,7 +567,8 @@ internal sealed class EditHistoryModule : IDisposable {
 			["next_cursor"] = offset + rows.Length < lineages.Length ? EncodeCursor(offset + rows.Length) : null };
 	}
 
-	public EditOutputResult Export(EditReplayAssessment replay, string? requestedPath, string sourcePath) {
+	public EditOutputResult Export(EditReplayAssessment replay, string? requestedPath, string sourcePath,
+		Action<string>? beforeDiskReload = null) {
 		if (replay.Classification != "exact") throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 		using var module = ModuleDefMD.Load(replay.Bytes);
 		EditStructuralValidator.Validate(module);
@@ -576,7 +577,20 @@ internal sealed class EditHistoryModule : IDisposable {
 		EditStructuralValidator.Validate(reloaded);
 		if (EditWire.Sha256(readback) != replay.ImageSha256 || SemanticDigest(replay.Lineage.Manifest.Format, reloaded) != replay.SemanticFingerprint)
 			throw new EditDomainException("EDIT_EXPORT_BLOCKED");
-		return WriteValidatedOutput(replay.Bytes, requestedPath ?? replay.Lineage.Manifest.DefaultOutput.RelativePath, sourcePath);
+		var validation = new EditOutputValidation(beforeDiskReload, stream => {
+			try {
+				using var staged = ModuleDefMD.Load(stream);
+				EditStructuralValidator.Validate(staged);
+				if (stream.CanSeek) stream.Position = 0;
+				using var copy = new MemoryStream(); stream.CopyTo(copy);
+				if (EditWire.Sha256(copy.ToArray()) != replay.ImageSha256
+					|| SemanticDigest(replay.Lineage.Manifest.Format, staged) != replay.SemanticFingerprint)
+					throw new InvalidDataException("staged export identity mismatch");
+			}
+			catch (EditDomainException ex) when (ex.Code == "EDIT_EXPORT_BLOCKED") { throw; }
+			catch (Exception) { throw new EditDomainException("EDIT_EXPORT_BLOCKED"); }
+		});
+		return WriteValidatedOutput(replay.Bytes, requestedPath ?? replay.Lineage.Manifest.DefaultOutput.RelativePath, sourcePath, validation);
 	}
 
 	public EditOutputResult ExportResource(byte[] bytes, string path, string sourcePath) {
@@ -585,7 +599,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		return WriteValidatedOutput(bytes, path, sourcePath);
 	}
 
-	EditOutputResult WriteValidatedOutput(byte[] bytes, string path, string sourcePath) {
+	EditOutputResult WriteValidatedOutput(byte[] bytes, string path, string sourcePath, EditOutputValidation? validation = null) {
 		if (!string.IsNullOrEmpty(sourcePath) && Path.IsPathRooted(path)
 			&& string.Equals(Path.GetFullPath(path), Path.GetFullPath(sourcePath), StringComparison.OrdinalIgnoreCase))
 			throw new EditDomainException("EDIT_EXPORT_BLOCKED");
@@ -597,7 +611,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			if (sourceIdentity != null && outputIdentity != null && sourceIdentity.VolumeSerial == outputIdentity.VolumeSerial
 				&& sourceIdentity.FileId == outputIdentity.FileId) throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 		}
-		return Store.WriteOutputAtomic(path, bytes, exists);
+		return Store.WriteOutputAtomic(path, bytes, exists, validation);
 	}
 
 	public void BindHead(ModuleDef module, EditLoadedLineage lineage) => processBindings[module] = new EditHistoryBinding {

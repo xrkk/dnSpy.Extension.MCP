@@ -24,7 +24,16 @@ internal interface IEditCheckpointStore : IDisposable {
 	void FinalizeTemp(EditOwnedTemp temp, bool replaceExisting);
 	void DeleteTemp(EditOwnedTemp temp);
 	bool Matches(EditOwnedTemp temp);
-	EditOutputResult WriteOutputAtomic(string relativeOrAbsolutePath, byte[] bytes, bool replaceExisting);
+	EditOutputResult WriteOutputAtomic(string relativeOrAbsolutePath, byte[] bytes, bool replaceExisting, EditOutputValidation? validation = null);
+}
+
+internal sealed class EditOutputValidation {
+	public EditOutputValidation(Action<string>? beforeDiskReload, Action<Stream> validate) {
+		BeforeDiskReload = beforeDiskReload;
+		Validate = validate ?? throw new ArgumentNullException(nameof(validate));
+	}
+	public Action<string>? BeforeDiskReload { get; }
+	public Action<Stream> Validate { get; }
 }
 
 internal sealed class EditStoreObject {
@@ -171,7 +180,7 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 		catch { return false; }
 	}
 
-	public EditOutputResult WriteOutputAtomic(string relativeOrAbsolutePath, byte[] bytes, bool replaceExisting) {
+	public EditOutputResult WriteOutputAtomic(string relativeOrAbsolutePath, byte[] bytes, bool replaceExisting, EditOutputValidation? validation = null) {
 		ThrowIfDisposed();
 		if (bytes.LongLength > ArtifactStoreLedger.MaxFileBytes)
 			throw Capacity("export_file_bytes", bytes.LongLength, ArtifactStoreLedger.MaxFileBytes);
@@ -194,6 +203,16 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 				stream.Write(bytes, 0, bytes.Length); stream.Flush(true);
 			}
 			var staged = Observe(temp);
+			if (validation != null) {
+				validation.BeforeDiskReload?.Invoke(temp);
+				using (var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read,
+					64 * 1024, FileOptions.SequentialScan))
+					validation.Validate(stream);
+				var validated = Observe(temp);
+				if (validated.FileId != staged.FileId || validated.Length != staged.Length || validated.Sha256 != staged.Sha256)
+					throw new EditDomainException("EDIT_EXPORT_BLOCKED");
+				staged = validated;
+			}
 			if (replaceExisting) File.Replace(temp, final, null, true);
 			else File.Move(temp, final);
 			var committed = Observe(final);
@@ -329,6 +348,7 @@ internal sealed class InMemoryEditCheckpointStore : IEditCheckpointStore {
 	internal int FinalCount => finals.Count;
 	internal IReadOnlyList<string> ListFinalIds() => finals.Keys.ToArray();
 	internal byte[] FinalBytes(string lineageId) => ReadFinal(lineageId);
+	internal string OutputFileId(string path) => outputs.TryGetValue(path, out var entry) ? entry.FileId : throw new FileNotFoundException();
 	public string ArtifactRoot { get; }
 	public InMemoryEditCheckpointStore(string artifactRoot = @"C:\artifacts") => ArtifactRoot = artifactRoot;
 
@@ -364,8 +384,9 @@ internal sealed class InMemoryEditCheckpointStore : IEditCheckpointStore {
 		bytes = Array.Empty<byte>(); return false;
 	}
 
-	public EditOutputResult WriteOutputAtomic(string path, byte[] bytes, bool replaceExisting) {
+	public EditOutputResult WriteOutputAtomic(string path, byte[] bytes, bool replaceExisting, EditOutputValidation? validation = null) {
 		Fault("finalize"); if (!replaceExisting && outputs.ContainsKey(path)) throw new IOException("output exists");
+		if (validation != null) using (var stream = new MemoryStream(bytes, writable: false)) validation.Validate(stream);
 		var fileId = (++identity).ToString("x32"); outputs[path] = ((byte[])bytes.Clone(), fileId);
 		return new EditOutputResult { Path = path, Length = bytes.LongLength, Sha256 = EditWire.Sha256(bytes), FileId = fileId };
 	}

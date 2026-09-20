@@ -348,6 +348,10 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				acquired = true;
 				lock (gate) pendingRequestKey = requestKey;
 			}
+			if (toolName == "edit_export") lock (gate) {
+				ExpireLocked();
+				if (ExportRecoveryBlockedLocked()) throw new EditDomainException("EDIT_EXPORT_BLOCKED");
+			}
 			if (requestKey != null && requestPayload != null && CacheableCommand(toolName)
 				&& commandCache.TryReplay(requestKey, requestPayload, out var cached))
 				return EditWire.Result(ParseEnvelope(cached));
@@ -487,6 +491,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	internal Dictionary<string, object?> ExecuteLegacyExport(Dictionary<string, object>? sourceArgs, McpCallContext context) {
 		if (!operationGate.Wait(0)) throw new EditDomainException("EDIT_TRANSACTION_BUSY");
 		try {
+			lock (gate) if (ExportRecoveryBlockedLocked()) throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 			RequireOwnerContext(context); RequireIdleForHistoryMutation();
 			if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
 				throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
@@ -527,7 +532,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			if (replay.Classification != "exact" || replay.SemanticFingerprint != workspace.CurrentLiveSemanticFingerprintFor(lineage.Manifest.Format)
 				|| replay.ImageSha256 != workspace.CurrentLiveImageSha256())
 				throw new EditDomainException("EDIT_EXPORT_BLOCKED");
-			var output = history.Export(replay, OptionalArgument(sourceArgs, "output_path"), workspace.FilePath);
+			var output = history.Export(replay, OptionalArgument(sourceArgs, "output_path"), workspace.FilePath,
+				TestMode ? CorruptExportTempIfArmed : null);
 			return EditWire.Success("idle", new Dictionary<string, object?> {
 				["checkpoint"] = CheckpointResult(lineage, lineage.Manifest.HeadCheckpointId),
 				["history"] = LineageResult(lineage), ["output"] = OutputResult(output), ["replay"] = ReplayResult(replay),
@@ -1220,7 +1226,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var lineage = history.Load(lineageId); var live = FindLoadedModule(lineage.Manifest.SourceIdentity.OriginMvid);
 		var replay = history.Assess(lineageId, checkpointId, live == null ? string.Empty : EditFingerprint.Compute(live));
 		if (replay.Classification != "exact") throw new EditDomainException("EDIT_EXPORT_BLOCKED");
-		var output = history.Export(replay, OptionalArgument(args, "output_path"), live?.Location ?? string.Empty);
+		var output = history.Export(replay, OptionalArgument(args, "output_path"), live?.Location ?? string.Empty,
+			TestMode ? CorruptExportTempIfArmed : null);
 		return EditWire.Success("idle", new Dictionary<string, object?> {
 			["checkpoint"] = CheckpointResult(lineage, checkpointId), ["output"] = OutputResult(output), ["replay"] = ReplayResult(replay),
 		});
@@ -1825,7 +1832,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 
 	Dictionary<string, object?> TestStorageFault(Dictionary<string, object>? args) {
 		RequireTest(); var action = EditWire.String(args, "action");
-		if (action == "arm") { var stage = EditWire.String(args, "stage"); if (stage is not ("prewrite" or "readback" or "finalize" or "cleanup" or "navigate_forward" or "navigate_inverse" or "live_apply")) throw new ArgumentException("unknown storage stage", "stage"); armedStorageFault = stage; if (stage == "navigate_inverse") navigateInverseFailure = true; }
+		if (action == "arm") { var stage = EditWire.String(args, "stage"); if (stage is not ("prewrite" or "readback" or "finalize" or "cleanup" or "navigate_forward" or "navigate_inverse" or "live_apply" or "export_reload")) throw new ArgumentException("unknown storage stage", "stage"); armedStorageFault = stage; if (stage == "navigate_inverse") navigateInverseFailure = true; }
 		else if (action == "reset") { armedStorageFault = null; navigateInverseFailure = false; }
 		else throw new ArgumentException("action must be arm or reset", "action");
 		return EditWire.Success(state, new Dictionary<string, object?> { ["action"] = action, ["stage"] = armedStorageFault, ["armed"] = armedStorageFault != null });
@@ -1927,6 +1934,19 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		if (!string.Equals(armedStorageFault, stage, StringComparison.Ordinal)) return;
 		armedStorageFault = null; throw new EditDomainException(stage == "cleanup" ? "EDIT_CHECKPOINT_CLEANUP_FAILED" : "EDIT_CHECKPOINT_COMMIT_FAILED",
 			new Dictionary<string, object?> { ["kind"] = "injected_storage_fault", ["stage"] = stage });
+	}
+
+	bool ExportRecoveryBlockedLocked() => state == "live_state_unknown" || state == "committed_without_checkpoint" || partial != null;
+
+	void CorruptExportTempIfArmed(string path) {
+		lock (gate) {
+			if (!string.Equals(armedStorageFault, "export_reload", StringComparison.Ordinal)) return;
+			armedStorageFault = null;
+		}
+		using var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read);
+		stream.SetLength(0);
+		stream.Write(new byte[] { 0x44, 0x4e, 0x4d, 0x43, 0x50 }, 0, 5);
+		stream.Flush(true);
 	}
 
 	void RequireIdleForHistoryMutation() {
