@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using dnlib.DotNet;
+using dnlib.DotNet.Pdb;
 
 namespace dnSpy.Extension.MCP.Editing;
 
@@ -343,7 +344,22 @@ internal static partial class EditOperationRegistry {
 				if (inverse.TryGetValue("release_documents", out var release)) absent["release_documents"] = release;
 				return absent;
 			}
-			inverse["body"] = McpTools.StructuredBody(value);
+			var body = McpTools.StructuredBody(value);
+			// StructuredBody is the legacy IL representation.  A compiled history
+			// inverse must additionally preserve the complete P06 body symbol state,
+			// otherwise undoing a second import of the same source silently drops the
+			// first node's sequence points/scope and fails the semantic gate.
+			var capturedPoints = EditPdbTransferCodec.CapturePoints(value.Body);
+			if (capturedPoints.Count != 0) body["sequence_points"] = capturedPoints;
+			var imports = new Dictionary<string, EditPdbTransferCodec.ImportScopeRow>();
+			var scope = EditPdbTransferCodec.CaptureScope(value.Body, imports);
+			if (scope != null) {
+				body["scope"] = scope;
+				if (imports.Count != 0) body["import_scopes"] = EditPdbTransferCodec.ToWireRows(imports);
+			}
+			inverse["body"] = body;
+			var debug = EditPdbTransferCodec.CaptureMethodDebugInfo(value, InverseBinder(before, objects));
+			if (debug.Count != 0) inverse["custom_debug_infos"] = debug;
 			break;
 		}
 		case "parameter_add":
@@ -522,10 +538,20 @@ internal static partial class EditOperationRegistry {
 		if (inverse.TryGetProperty("absent_body", out var absentBody)) {
 			var method = Ref<MethodDef>(module, absentBody, objects);
 			var previous = method.Body;
+			var previousDebug = method.CustomDebugInfos.ToArray();
 			method.Body = null;
-			ReleaseRecordedDocuments(module, inverse);
-			return new EditOperationOutcome { Kind = "method_body_replace", Undo = () => method.Body = previous };
+			method.CustomDebugInfos.Clear();
+			var removedDocuments = ReleaseRecordedDocuments(module, inverse);
+			return new EditOperationOutcome { Kind = "method_body_replace", Undo = () => {
+				RestoreRecordedDocuments(module, removedDocuments);
+				method.Body = previous;
+				method.CustomDebugInfos.Clear();
+				foreach (var row in previousDebug) method.CustomDebugInfos.Add(row);
+			} };
 		}
+		if (inverse.TryGetProperty("kind", out var inverseKind) && inverseKind.GetString() == "method_body_replace"
+			&& inverse.TryGetProperty("body", out _))
+			return ApplyCompiledBodyInverse(module, inverse, objects, index);
 		if (inverse.TryGetProperty("assembly_update_state", out var assemblyState)) {
 			var assembly = module.Assembly ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			var oldName = assembly.Name; var oldVersion = assembly.Version; var oldCulture = assembly.Culture;
@@ -1090,14 +1116,52 @@ internal static partial class EditOperationRegistry {
 	// Release PdbState documents the forward body registered when no live
 	// sequence point references them anymore (persisted-inverse counterpart of
 	// the forward-side release).
-	static void ReleaseRecordedDocuments(ModuleDef module, JsonElement inverse) {
+	static EditOperationOutcome ApplyCompiledBodyInverse(ModuleDef module, JsonElement inverse,
+		Dictionary<string, IMDTokenProvider> objects, int index) {
+		var operation = JsonSerializer.Deserialize<Dictionary<string, object?>>(inverse.GetRawText(), EditWire.JsonOptions)
+			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+		operation.Remove("custom_debug_infos");
+		using var document = JsonDocument.Parse(JsonSerializer.Serialize(operation, EditWire.JsonOptions));
+		var applied = Apply(module, document.RootElement, objects, index);
+		var method = Ref<MethodDef>(module, inverse.GetProperty("target"), objects);
+		PdbDocument[] removedDocuments = Array.Empty<PdbDocument>();
+		try {
+			if (inverse.TryGetProperty("custom_debug_infos", out var rowsElement)) {
+				var rows = JsonSerializer.Deserialize<EditPdbTransferCodec.CdiRow[]>(rowsElement.GetRawText(), EditWire.JsonOptions)
+					?? Array.Empty<EditPdbTransferCodec.CdiRow>();
+				EditPdbTransferCodec.ApplyMethodDebugInfo(module, method, rows,
+					text => ResolveInverseReference(module, text, objects));
+			}
+			else method.CustomDebugInfos.Clear();
+			removedDocuments = ReleaseRecordedDocuments(module, inverse);
+		}
+		catch {
+			RestoreRecordedDocuments(module, removedDocuments);
+			applied.Undo();
+			throw;
+		}
+		return new EditOperationOutcome { Kind = applied.Kind, Target = applied.Target, Before = applied.Before,
+			After = applied.After, Risks = applied.Risks, Undo = () => {
+				RestoreRecordedDocuments(module, removedDocuments);
+				applied.Undo();
+			} };
+	}
+
+	static PdbDocument[] ReleaseRecordedDocuments(ModuleDef module, JsonElement inverse) {
 		var state = module.PdbState;
-		if (state == null || !inverse.TryGetProperty("release_documents", out var rows) || rows.ValueKind != JsonValueKind.Array) return;
+		if (state == null || !inverse.TryGetProperty("release_documents", out var rows) || rows.ValueKind != JsonValueKind.Array)
+			return Array.Empty<PdbDocument>();
+		var removed = new List<PdbDocument>();
 		foreach (var row in rows.EnumerateArray()) {
 			var name = row.GetProperty("name").GetString();
+			var hash = row.TryGetProperty("hash", out var hashValue) && hashValue.ValueKind == JsonValueKind.String
+				? hashValue.GetString() : null;
 			dnlib.DotNet.Pdb.PdbDocument? match = null;
 			foreach (var document in state.Documents)
-				if (string.Equals(document.Url, name, StringComparison.Ordinal)) { match = document; break; }
+				if (string.Equals(document.Url, name, StringComparison.Ordinal)
+					&& (hash == null || string.Equals(Convert.ToBase64String(document.CheckSum ?? Array.Empty<byte>()), hash, StringComparison.Ordinal))) {
+					match = document; break;
+				}
 			if (match == null) continue;
 			bool Referenced() {
 				foreach (var type in module.GetTypes())
@@ -1108,8 +1172,18 @@ internal static partial class EditOperationRegistry {
 					}
 				return false;
 			}
-			if (!Referenced()) state.Remove(match);
+			if (!Referenced()) { state.Remove(match); removed.Add(match); }
 		}
+		return removed.ToArray();
+	}
+
+	static void RestoreRecordedDocuments(ModuleDef module, IEnumerable<PdbDocument> documents) {
+		var rows = documents as PdbDocument[] ?? documents.ToArray();
+		if (rows.Length == 0) return;
+		if (module.PdbState == null) module.SetPdbState(new dnlib.DotNet.Pdb.PdbState(module, dnlib.DotNet.Pdb.PdbFileKind.EmbeddedPortablePDB));
+		var state = module.PdbState!;
+		foreach (var document in rows)
+			if (!state.Documents.Contains(document)) state.Add(document);
 	}
 
 	static IHasCustomAttribute AttributeRestoreTarget(ModuleDef module, JsonElement reference, Dictionary<string, IMDTokenProvider> objects) {
