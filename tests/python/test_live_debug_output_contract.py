@@ -7,6 +7,7 @@ and actual structuredContent against outputSchema across all 22 debug tools.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import unittest
@@ -24,6 +25,35 @@ DEBUG_TARGET_SHA256 = os.getenv("DNSPY_MCP_DEBUG_TARGET_SHA256")
 DEBUG_ARCH = os.getenv("DNSPY_MCP_DEBUG_ARCH", "x64")
 EXPAND_TARGET = os.getenv("DNSPY_MCP_EXPAND_TARGET")
 EXPAND_TARGET_SHA256 = os.getenv("DNSPY_MCP_EXPAND_TARGET_SHA256")
+EXPAND_MANIFEST = os.getenv("DNSPY_MCP_EXPAND_MANIFEST")
+
+
+def load_expand_locator(manifest_path: str, expected_sha256: str) -> dict:
+    """Load the T038 expand-fixture manifest and validate it against the deployed fixture.
+
+    The manifest is produced by tests/debug/fixtures-src/build-expand-manifest from the
+    exact built bytes (SHA-256-bound) and carries the semantic breakpoint (the KeepLive
+    call site in Main) instead of a hard-coded method token / IL offset. A manifest whose
+    SHA does not match the deployed fixture, or whose breakpoint offset is not an
+    instruction boundary of the recorded method, is rejected here rather than silently
+    sending an invalid breakpoint to the server.
+    """
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    if manifest.get("schema_version") != "dnspy.expand-fixture-manifest.v1":
+        raise ValueError("unsupported manifest schema_version")
+    if str(manifest.get("sha256", "")).casefold() != str(expected_sha256).casefold():
+        raise ValueError(
+            f"manifest sha256 {manifest.get('sha256')} does not match the deployed fixture {expected_sha256}"
+        )
+    token = str(manifest.get("method_token", ""))
+    if not (len(token) == 10 and token.startswith("0x")):
+        raise ValueError(f"malformed method_token in manifest: {token!r}")
+    offset = manifest.get("breakpoint", {}).get("il_offset")
+    boundaries = manifest.get("main_il_boundaries") or []
+    if not isinstance(offset, int) or offset not in boundaries:
+        raise ValueError(f"breakpoint il_offset {offset!r} is not a recorded instruction boundary")
+    return manifest
 
 
 @unittest.skipUnless(
@@ -295,8 +325,9 @@ class LiveDebugOutputContractTests(unittest.TestCase):
         self.assertEqual([], self.failures)
 
     @unittest.skipUnless(
-        EXPAND_TARGET and EXPAND_TARGET_SHA256,
-        "set DNSPY_MCP_EXPAND_TARGET and DNSPY_MCP_EXPAND_TARGET_SHA256 to run value checks",
+        EXPAND_TARGET and EXPAND_TARGET_SHA256 and EXPAND_MANIFEST,
+        "set DNSPY_MCP_EXPAND_TARGET, DNSPY_MCP_EXPAND_TARGET_SHA256 and "
+        "DNSPY_MCP_EXPAND_MANIFEST to run value checks",
     )
     def test_live_locals_and_two_level_expansion_conform_to_published_schemas(self) -> None:
         launch = self.call(
@@ -334,6 +365,7 @@ class LiveDebugOutputContractTests(unittest.TestCase):
                 "limit": 100,
             },
         )["result"]["next_cursor"]
+        locator = load_expand_locator(str(EXPAND_MANIFEST), str(EXPAND_TARGET_SHA256))
         breakpoint = self.call(
             "debug_set_breakpoint",
             {
@@ -344,8 +376,8 @@ class LiveDebugOutputContractTests(unittest.TestCase):
                 "module_handle": module["module_handle"],
                 "module_sha256": module["sha256"],
                 "mvid": module["mvid"],
-                "method_token": "0x06000002",
-                "il_offset": 82,
+                "method_token": locator["method_token"],
+                "il_offset": locator["breakpoint"]["il_offset"],
                 "enabled": True,
             },
         )
@@ -410,7 +442,7 @@ class LiveDebugOutputContractTests(unittest.TestCase):
             (
                 item
                 for item in stack["result"]["items"]
-                if item.get("location", {}).get("method_token") == "0x06000002"
+                if item.get("location", {}).get("method_token") == locator["method_token"]
             ),
             stack["result"]["items"][0],
         )
@@ -555,3 +587,66 @@ class LiveDebugOutputContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExpandManifestLoaderTests(unittest.TestCase):
+    """Negative/positive checks for the T038 expand-fixture locator (runs without a VM).
+
+    Proves that a wrong SHA, a malformed token and a non-boundary offset are each rejected
+    before anything is sent to the debug server, and that a well-formed manifest binds the
+    recorded method token and IL offset to the deployed fixture.
+    """
+
+    @staticmethod
+    def _write_manifest(tmpdir: str, **overrides):
+        manifest = {
+            "schema_version": "dnspy.expand-fixture-manifest.v1",
+            "fixture": "ExpandValuesFixture-x64.exe",
+            "sha256": "a" * 64,
+            "mvid": "39a1ac13-eb69-4e84-9769-31c3024e4b5b",
+            "entry_type": "ExpandValuesFixtureNs.ExpandValuesFixture",
+            "entry_type_token": "0x02000003",
+            "method": "Main",
+            "method_token": "0x06000003",
+            "breakpoint": {"il_offset": 107, "rationale": "call KeepLive", "is_instruction_boundary": True},
+            "main_il_boundaries": [0, 1, 2, 107, 108],
+            "node_type": "ExpandValuesFixtureNs.ExpandNode",
+            "local_name": "expandPayload",
+        }
+        manifest.update(overrides)
+        path = os.path.join(tmpdir, "m.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+        return path
+
+    def setUp(self) -> None:
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_valid_manifest_loads(self) -> None:
+        path = self._write_manifest(self.tmp.name)
+        manifest = load_expand_locator(path, "A" * 64)
+        self.assertEqual("0x06000003", manifest["method_token"])
+        self.assertEqual(107, manifest["breakpoint"]["il_offset"])
+
+    def test_wrong_sha_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name)
+        with self.assertRaisesRegex(ValueError, "sha256"):
+            load_expand_locator(path, "b" * 64)
+
+    def test_malformed_token_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, method_token="06000003")
+        with self.assertRaisesRegex(ValueError, "method_token"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_non_boundary_offset_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, breakpoint={"il_offset": 82, "rationale": "x"})
+        with self.assertRaisesRegex(ValueError, "boundary"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_unsupported_schema_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, schema_version="other.v0")
+        with self.assertRaisesRegex(ValueError, "schema_version"):
+            load_expand_locator(path, "a" * 64)
