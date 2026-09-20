@@ -419,7 +419,10 @@ def _options_window_present(client: DnSpyClient, target: dict) -> bool:
         "($_.Current.Name -match '^(选项|Options)') });"
         "[pscustomobject]@{n=$opts.Count}|ConvertTo-Json -Compress"
     )
-    return _ps_json(client, script).get("n") == 1
+    count = _ps_json(client, script).get("n")
+    if type(count) is not int or count not in (0, 1):
+        raise RuntimeError(f"ambiguous or malformed Options count: {count!r}")
+    return count == 1
 
 
 def select_mcp_page(client: DnSpyClient, target: dict) -> None:
@@ -457,14 +460,14 @@ def select_mcp_page(client: DnSpyClient, target: dict) -> None:
             "Add-Type -Namespace M -Name C -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x,int y);"
             "[DllImport(\"user32.dll\")] public static extern void mouse_event(uint f,uint dx,uint dy,uint d,IntPtr e);';"
             "$cx=[int]($r.X+$r.Width/2);$cy=[int]($r.Y+$r.Height/2);"
-            "[void][M.C]::SetCursorPos($cx,$cy);"
-            "[M.C]::mouse_event(2,0,0,0,[IntPtr]::Zero);Start-Sleep -Milliseconds 60;[M.C]::mouse_event(4,0,0,0,[IntPtr]::Zero);"
-            "Start-Sleep -Milliseconds 250;"
             "Add-Type -AssemblyName UIAutomationClient;"
             "$pt=New-Object System.Windows.Point($cx,$cy);"
             "$from=[System.Windows.Automation.AutomationElement]::FromPoint($pt);"
             "$frt=($from.GetRuntimeId()) -join '.';"
             "if($frt -ne ((($hit[0].GetRuntimeId())|ForEach-Object{$_}) -join '.')){ throw ('FromPoint hit ' + $frt + ' is not the row') }"
+            "[void][M.C]::SetCursorPos($cx,$cy);"
+            "[M.C]::mouse_event(2,0,0,0,[IntPtr]::Zero);Start-Sleep -Milliseconds 60;[M.C]::mouse_event(4,0,0,0,[IntPtr]::Zero);"
+            "Start-Sleep -Milliseconds 250;"
             "$how='click-verified' };"
             "[pscustomobject]@{selected=$true;how=$how}|ConvertTo-Json -Compress"
         )
@@ -508,9 +511,9 @@ def apply_settings(client: DnSpyClient, enable: bool | None = None, host: str = 
     # combination rules for the ack checkbox follow the FINAL host value
     final_host = host if host else str(before["host"])
     loopback = final_host.strip().casefold() in ("localhost", "127.0.0.1", "::1")
-    if loopback and before["remote_host_only"] == "On":
+    if host and loopback and before["remote_host_only"] == "On":
         changes.append(("toggle", "remote_host_only", False))
-    if not loopback and before["remote_host_only"] != "On":
+    if host and not loopback and before["remote_host_only"] != "On":
         changes.append(("toggle", "remote_host_only", True))
     if enable is not None and before["local_override"] != ("On" if enable else "Off"):
         changes.append(("toggle", "local_override", bool(enable)))
