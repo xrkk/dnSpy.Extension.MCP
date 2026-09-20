@@ -39,12 +39,22 @@ if str(DRIVER_DIR) not in sys.path:
     sys.path.insert(0, str(DRIVER_DIR))
 
 CASE_MODULES = {
+    "EDIT-ACC-016-CAUSAL": "p03_vm_acc016_causal",
+    "EDIT-ACC-005-EXTENSIONS": "p03_vm_acc005_extensions",
+    "EDIT-ACC-012": "p03_vm_acc012",
+    "EDIT-ACC-012-SOURCE": "p03_vm_acc012_source",
+    "EDIT-ACC-002-LIFECYCLE": "p03_vm_acc002_lifecycle",
+    "EDIT-ACC-002-LISTENER": "p03_vm_acc002_listener",
     "EDIT-ACC-019": "p03_vm_acc019b",
     "EDIT-ACC-025": "p03_vm_acc025",
     "EDIT-ACC-013": "p03_vm_acc013",
+    "EDIT-ACC-013-VERSION-V1": "p03_vm_acc013_version",
+    "EDIT-ACC-013-VERSION-V2": "p03_vm_acc013_version",
     "EDIT-ACC-014": "p03_vm_acc014b",
+    "EDIT-ACC-014-FORMAL": "p03_vm_acc014_formal",
     "EDIT-ACC-020": "p03_vm_acc020",
     "EDIT-ACC-024": "p03_vm_acc024c",
+    "EDIT-ACC-024-FORMAL": "p03_vm_acc024_formal",
     "EDIT-ACC-004": "p03_vm_acc004",
     "EDIT-ACC-005": "p03_vm_acc005full",
     "EDIT-ACC-006": "p03_vm_acc006",
@@ -117,7 +127,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64",
     if isolation is not None:
         try:
             # Configuration is validated before a driver import or evidence write.
-            isolation.validate(require_ui=case_id == "EDIT-ACC-018")
+            isolation.validate(require_ui=case_id in ("EDIT-ACC-018", "EDIT-ACC-025"))
             validate_invocation(isolation, run_id, artifact_root, arch, case_id)
         except IsolationError as ex:
             return blocked_summary(case_id, run_id, artifact_root, arch, str(ex))
@@ -159,7 +169,7 @@ def run_case(case_id: str, run_id: str, artifact_root: Path, arch: str = "x64",
         return outcome
 
     previous_ui_arch = os.environ.get("DNMCP_UI_ARCH")
-    legacy_ui_arch = case_id == "EDIT-ACC-018" and isolation is None
+    legacy_ui_arch = case_id in ("EDIT-ACC-018", "EDIT-ACC-025") and isolation is None
     if legacy_ui_arch:
         os.environ["DNMCP_UI_ARCH"] = arch
     started = time.time()
@@ -341,7 +351,7 @@ def main() -> int:
             return 2
         try:
             plans = [isolation.plan(case, harness=case in HARNESS_CASES,
-                                    requires_ui=case == "EDIT-ACC-018") for case in args.case]
+                                    requires_ui=case in ("EDIT-ACC-018", "EDIT-ACC-025")) for case in args.case]
         except IsolationError as ex:
             print(f"isolation configuration blocked: {ex}", file=sys.stderr)
             return 2
