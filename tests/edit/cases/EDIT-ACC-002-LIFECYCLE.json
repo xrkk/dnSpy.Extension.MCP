@@ -1,0 +1,24 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-002-LIFECYCLE",
+  "acc_id": "ACC-002/ACC-019",
+  "target_architecture": "transport-shared-x64-host",
+  "tfm": "net48",
+  "fixture": "isolated TestIL.dll",
+  "driver": "p03_vm_acc002_lifecycle.py",
+  "precondition": "DNMCP_TEST=1; dedicated dnSpy process; host UI orchestrator services listener signals",
+  "actions": [
+    "DELETE an owner with an uncommitted transaction",
+    "wait more than 600 real monotonic seconds without owner business requests",
+    "keep one stdio process and pipe alive while restarting the listener at the same URL",
+    "require that same bridge to initialize automatically, then prove all 16 slots are reusable",
+    "restart the listener with a committed_without_checkpoint record and recover from a fresh session",
+    "drop edit_apply response after server processing, then change port and explicitly initialize the new URL without retry, replay, or address guessing"
+  ],
+  "expected": "RACC-002/RACC-019 lifecycle closes transactions and sessions without losing committed or partial state; the same stdio process automatically reinitializes at an unchanged URL; changed ports are explicit and never retry or replay uncertain mutations",
+  "review": {
+    "owner": "T016",
+    "covered_acc": ["ACC-002", "ACC-019"],
+    "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-002-LIFECYCLE"
+  }
+}

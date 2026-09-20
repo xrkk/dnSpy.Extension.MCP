@@ -1,0 +1,18 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-002-LISTENER",
+  "acc_id": "ACC-002/ACC-019",
+  "target_architecture": "transport-shared-x64-host",
+  "tfm": "net48",
+  "fixture": "isolated TestIL.dll",
+  "driver": "p03_vm_acc002_listener.py",
+  "precondition": "DNMCP_TEST=1; dedicated dnSpy process; host UI orchestrator services listener signals",
+  "actions": [
+    "restart the listener at the same URL while preserving the same stdio process and pipes",
+    "prove old sessions invalid and all 16 slots reusable",
+    "restart with a partial record and recover from a fresh session",
+    "drop a server-processed edit_apply response, change and explicitly restore the listener port without retry, replay, or address guessing"
+  ],
+  "expected": "listener Stop/Start closes sessions while preserving committed and partial process state; one unchanged stdio process automatically reinitializes, while changed-port uncertain mutations are not retried, replayed, or sent to a guessed address",
+  "review": {"owner": "T016", "covered_acc": ["ACC-002", "ACC-019"], "evidence_runner": "p03_vm_edit_acc_evidence.py --case EDIT-ACC-002-LISTENER"}
+}
