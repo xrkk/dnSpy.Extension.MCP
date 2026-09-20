@@ -24,12 +24,10 @@ namespace dnSpy.Extension.MCP.Editing;
 [ExportMenuItem(OwnerGuid = MenuConstants.APP_MENU_VIEW_GUID, Group = MenuConstants.GROUP_APP_MENU_VIEW_WINDOWS, Order = 90000, Header = "MCP Edit Explorer")]
 internal sealed class EditExplorerMenuItem : MenuItemBase {
 	readonly EditTransactionCoordinator coordinator;
-	readonly EditExplorerWindow window;
 
 	[ImportingConstructor]
 	public EditExplorerMenuItem(EditTransactionCoordinator coordinator) {
 		this.coordinator = coordinator;
-		window = new EditExplorerWindow(coordinator);
 	}
 
 	public override void Execute(IMenuItemContext context) => EditExplorerWindow.ShowSingle(coordinator);
