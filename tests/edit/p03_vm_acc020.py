@@ -102,16 +102,22 @@ def main() -> int:
         "assembly_name": "TestIL", "target_kind": "method", "token": echo_token, "new_name": "EchoRenamed",
     })
     rename_text = as_text(renamed)
-    check("C1 rename ok", "EchoRenamed" in rename_text or "checkpoint" in rename_text, rename_text[:240])
+    rename_projection = renamed if isinstance(renamed, dict) and err_code(renamed) == "" else {}
+    check("C1 rename ok",
+          rename_projection.get("changed") is True
+          and rename_projection.get("new_name") == "EchoRenamed"
+          and isinstance(rename_projection.get("checkpoint"), dict),
+          rename_text[:240])
     caller = call(client, "get_method_il", {
         "assembly_name": "TestIL", "type_full_name": "TestIL.GenericMethodCaller", "method_name": "Call",
     })
     caller_il = as_text(caller)
     check("C1 generic MemberRef updated", "EchoRenamed" in caller_il, caller_il[:200])
-    rename_projection = rename_text
     check("C1 legacy projection carries checkpoint history",
-          "checkpoint" in rename_projection and "compatibility_warning" in rename_projection,
-          rename_projection[:200])
+          isinstance(rename_projection.get("checkpoint"), dict)
+          and isinstance(rename_projection.get("history"), dict)
+          and isinstance(rename_projection.get("compatibility_warning"), str),
+          rename_text[:200])
 
     history = payload(call(client, "edit_history", {}))
     lineages = [row for row in history.get("lineages", []) if isinstance(row, dict)]

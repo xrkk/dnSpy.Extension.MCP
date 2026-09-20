@@ -1,0 +1,17 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-012-SOURCE",
+  "acc_id": "ACC-012/ACC-029-source-boundary",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48 production dnSpy plugin through real MCP",
+  "fixture": "isolated ImportHost executable",
+  "driver": "p03_vm_acc012_source.py",
+  "precondition": "fresh per-architecture isolation root and checkpoint store",
+  "actions": [
+    "Compile and import the exact same C# document into two committed checkpoints through edit_compile/edit_import",
+    "Parse the physical checkpoint ZIP and prove raw C# documents and compile artifacts are not checkpoint payloads by contract",
+    "Prove the normalized source-derived method body has one physical payload entry referenced by both nodes",
+    "Restore both nodes and verify the imported IL semantics"
+  ],
+  "expected": "source text remains process-memory-only; its frozen method body is content-addressed once and both checkpoints restore the compiled behavior"
+}

@@ -1,0 +1,14 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-013-VERSION-V2",
+  "acc_id": "ACC-013",
+  "target_architecture": "x64-and-x86",
+  "driver": "p03_vm_acc013_version.py",
+  "precondition": "same isolated store after VERSION-V1, fresh owned dnSpy process binding, actual alternate writer helper deployed",
+  "actions": [
+    "create a real v2 commit and prove exact replay",
+    "use an actual alternate dnlib writer image to prove validated_drift; reject without confirmation then create an exact migration child with confirmation",
+    "prove unverified_drift refusal and unknown package/kind/kind_version fail closed with live and disk snapshots"
+  ],
+  "expected": "v2 exact/validated/unverified states and migration topology match RACC-013; future versions have zero side effects"
+}

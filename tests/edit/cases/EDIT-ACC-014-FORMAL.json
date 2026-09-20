@@ -1,0 +1,17 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-014-FORMAL",
+  "acc_id": "ACC-014",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "isolated TestIL.dll",
+  "driver": "p03_vm_acc014_formal.py",
+  "precondition": "DNMCP_TEST=1; fresh isolated dnSpy; dedicated ArtifactRoot",
+  "actions": [
+    "commit and export the exact checkpoint to its default work output",
+    "export the same checkpoint to an explicit isolated output path",
+    "record the missing staged-output reload-validation injection capability without substituting another fault",
+    "attempt default and explicit export in committed_without_checkpoint and live_state_unknown"
+  ],
+  "expected": "valid exports preserve the source and match disk SHA; reload-validation failure preserves old bytes; invalid states return EDIT_EXPORT_BLOCKED exactly"
+}

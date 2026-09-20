@@ -160,12 +160,14 @@ internal static class ResourceMatrixProbe {
 		Reject("{\"kind\":\"strong_name_remove\"}");
 		Reject("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"s\",\"event_cursor\":0,\"event_kind\":\"start_failed\"}}");
 		{
-			// unsigned fixture: the operation is a byte no-op; prove the exact
-			// inverse-image invariant and the public-key clearing semantics on a
-			// stamped key (a pseudo RSA blob suffices — no signing involved)
+			// An unsigned assembly is inapplicable rather than a successful no-op.
+			Reject("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"none\",\"event_cursor\":1,\"event_kind\":\"exception\"}}");
+			// Prove inverse fidelity on a registry-level stamped key. The coordinator
+			// owns the real dynamic-evidence gate exercised by EDIT-ACC-016-CAUSAL.
 			var key = new byte[] { 0x52, 0x53, 0x41, 0x32, 0x01, 0x02, 0x03 };
 			module.Assembly!.PublicKey = new dnlib.DotNet.PublicKey(key);
-			var strongOutcome = Apply("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"none\",\"event_cursor\":1,\"event_kind\":\"start_failed\"}}");
+			module.Assembly.Attributes |= dnlib.DotNet.AssemblyAttributes.PublicKey;
+			var strongOutcome = Apply("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"none\",\"event_cursor\":1,\"event_kind\":\"exception\"}}");
 			// dnlib keeps a PublicKey wrapper after clearing; the DATA is what the
 			// metadata column holds (empty after removal, restored by undo)
 			var dataAfter = module.Assembly?.PublicKey?.Data is { Length: > 0 };
@@ -173,6 +175,7 @@ internal static class ResourceMatrixProbe {
 			strongOutcome.Undo();
 			if (!(module.Assembly?.PublicKey?.Data is { Length: > 0 })) throw new InvalidOperationException("strong_name undo did not restore the key");
 			module.Assembly!.PublicKey = null;
+			module.Assembly.Attributes &= ~dnlib.DotNet.AssemblyAttributes.PublicKey;
 		}
 
 		// ---- 6) rejects with zero image change

@@ -27,6 +27,23 @@ internal static class T004ImportProbe {
 		if (args.Length is 2 or 3 && args[0] == "package") { CheckPackageNavigation(args[1], args.Length == 3 ? args[2] : null); return failures == 0 ? 0 : 1; }
 		if (args.Length == 2 && args[0] == "dump") { Dump(args[1]); return 0; }
 		if (args.Length == 2 && args[0] == "repro") { Repro(args[1]); return 0; }
+		if (args.Length == 3 && args[0] == "repeat-history") {
+			try {
+				var fixtures = Path.GetFullPath(args[1]);
+				var bin = Path.Combine(fixtures, "bin");
+				BuildFixture(Path.Combine(fixtures, "T004Target.csproj"), bin);
+				BuildFixture(Path.Combine(fixtures, "T004Artifact.csproj"), bin);
+				RepeatedReplacementHistory(Path.Combine(bin, "T004Target.dll"), Path.Combine(bin, "T004Artifact.dll"));
+				Console.WriteLine(failures == 0 ? "REPEAT-HISTORY PASS" : "REPEAT-HISTORY FAIL failures=" + failures);
+				return failures == 0 ? 0 : 1;
+			}
+			catch (Exception ex) {
+				Console.Error.WriteLine(ex);
+				if (ex is EditDomainException domain) Console.WriteLine("DOMAIN-DETAIL " + EditWire.CanonicalPayload(domain.Details));
+				Console.WriteLine("REPEAT-HISTORY FAIL failures=" + (failures + 1));
+				return 1;
+			}
+		}
 		if (args.Length != 3 || args[0] != "run") throw new ArgumentException("usage: T004ImportProbe run <fixturesDir> <productDir> | dump <artifact>");
 		try {
 			Run(args[1], args[2]);
@@ -540,6 +557,92 @@ internal static class T004ImportProbe {
 	}
 
 	// ---------------------------------------------------------- history chain
+
+	// T023: two distinct history nodes may legitimately import the same compiled
+	// method body and PDB document.  The persisted inverse of the second replace
+	// must restore the first node's body, sequence points and method CDI exactly;
+	// this drives the production importer, inverse compiler and LCA navigator.
+	static void RepeatedReplacementHistory(string targetPath, string artifactPath) {
+		using var catalog = new EditSchemaCatalog();
+		var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "t023-repeat-history"));
+		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+		using var live = Load(targetPath);
+
+		(string lineage, string checkpoint, string fingerprint, string image, string symbols) Commit(string version) {
+			using var workspace = EditWorkspace.CreateForTesting(live);
+			IReadOnlyList<EditCSharpImporter.PlanRow> plan;
+			using (var artifact = Load(artifactPath))
+			using (var importer = new EditCSharpImporter(artifact, workspace.PrivateModule, workspace.ObjectIds, 0))
+				plan = importer.Compile(Targets(("TestIL.Simple::Inc(System.Int32)", "replace_body")));
+			var operations = plan.Select(row => EditWire.CanonicalPayload(row.Operation)).ToList();
+			operations.Add(JsonSerializer.Serialize(new Dictionary<string, object?> {
+				["kind"] = "assembly_update", ["version"] = version,
+			}, EditWire.JsonOptions));
+			for (var index = 0; index < operations.Count; index++) {
+				using var operation = JsonDocument.Parse(operations[index]);
+				EditOperationRegistry.Apply(workspace.PrivateModule, operation.RootElement, workspace.ObjectIds, index);
+				workspace.NormalizedOperations.Add(operations[index]);
+			}
+			var binding = history.ResolveBegin(workspace, null);
+			var prepared = history.PrepareCommit(workspace, binding, workspace.NormalizedOperations,
+				"review-t023-" + version, 1, Array.Empty<string>());
+			var liveMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+			for (var index = 0; index < operations.Count; index++) {
+				using var operation = JsonDocument.Parse(operations[index]);
+				EditOperationRegistry.ApplyPersisted(live, operation.RootElement, liveMap, index);
+			}
+			history.Finalize(prepared, live);
+			return (prepared.Lineage.Manifest.LineageId, prepared.PostHeadCheckpointId,
+				EditFingerprint.Compute(live), EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)), SymbolSummary(live));
+		}
+
+		static string SymbolSummary(ModuleDef module) {
+			var method = module.GetTypes().SelectMany(type => type.Methods)
+				.Single(value => value.FullName == "System.Int32 TestIL.Simple::Inc(System.Int32)");
+			var points = method.Body!.Instructions.Where(instruction => instruction.SequencePoint?.Document != null)
+				.Select(instruction => instruction.SequencePoint!.Document.Url).ToArray();
+			return "points=" + points.Length + ";documents=" + string.Join(",", points.Distinct(StringComparer.Ordinal))
+				+ ";state_documents=" + (module.PdbState?.Documents.Count() ?? 0) + ";cdi=" + method.CustomDebugInfos.Count;
+		}
+
+		var first = Commit("1.0.0.1");
+		var second = Commit("1.0.0.2");
+		Check(first.lineage == second.lineage, "repeated source commits share lineage");
+		Check(first.symbols.Contains("points=", StringComparison.Ordinal) && !first.symbols.Contains("points=0;", StringComparison.Ordinal),
+			"first import retains sequence points");
+
+		void Navigate(string from, string target, string expectedFingerprint, string expectedImage, string expectedSymbols, string label) {
+			var lineage = history.Load(first.lineage);
+			var write = history.PrepareHeadMove(first.lineage, from, target, label);
+			var plan = history.PlanNavigation(lineage, from, target);
+			plan.Apply(live);
+			history.Finalize(write, live);
+			Check(EditFingerprint.Compute(live) == expectedFingerprint, label + " fingerprint");
+			Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == expectedImage, label + " image");
+			Check(SymbolSummary(live) == expectedSymbols, label + " symbols");
+		}
+
+		// Exercise the navigation compensation returned to the coordinator: a
+		// finalize/storage failure after the live apply must recover C2 exactly.
+		var recovery = history.PlanNavigation(history.Load(first.lineage), second.checkpoint, first.checkpoint).Apply(live);
+		Check(EditFingerprint.Compute(live) == first.fingerprint && SymbolSummary(live) == first.symbols,
+			"C2-to-C1 provisional apply");
+		recovery();
+		Check(EditFingerprint.Compute(live) == second.fingerprint
+			&& EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == second.image
+			&& SymbolSummary(live) == second.symbols, "C2-to-C1 compensation restores C2");
+
+		Navigate(second.checkpoint, first.checkpoint, first.fingerprint, first.image, first.symbols, "C2-to-C1");
+		var third = Commit("1.0.0.3");
+		var branched = history.Load(first.lineage);
+		Check(branched.Checkpoint(third.checkpoint).ParentCheckpointId == first.checkpoint,
+			"same-source commit after undo forms branch from C1");
+		Check(branched.Manifest.Payloads.Count == 1 && branched.PayloadBytes.Count == 1,
+			"repeated source body remains one physical payload across branch");
+		Navigate(third.checkpoint, second.checkpoint, second.fingerprint, second.image, second.symbols, "branch-C3-to-C2");
+		Console.WriteLine("CASE repeated-replacement-history c1=" + first.symbols + " c2=" + second.symbols
+			+ " payloads=" + branched.Manifest.Payloads.Count);
+	}
 
 	static void HistoryChain(string plainPath, string artifactPath, bool loadPdb) {
 		using var catalog = new EditSchemaCatalog();

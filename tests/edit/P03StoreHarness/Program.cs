@@ -16,6 +16,8 @@ using dnSpy.Extension.MCP.Transport;
 static class Program {
 	static int Main(string[] args) {
 		try {
+		if (args.Length == 2 && args[1] == "--export") { Environment.SetEnvironmentVariable("DNMCP_TEST", "1"); TestExport(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--tail-inverses") { TestTailInverses(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--image-spike") { TestImageEncodingSpike(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--tombstone-gate") { TestTombstoneGate(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--dual-tool-classification") { TestDualToolClassification(args[0]); return 0; }
@@ -57,6 +59,9 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--resource-payload-dedup") { ResourcePayloadDedupProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--cdi-guard-content") { CdiGuardProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--owner-version") { OwnerVersionProbe.Run(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--legacy-history") { LegacyHistoryProbe.Run(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--structural-commit-guard") { StructuralCommitGuardProbe.Run(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--strong-name-evidence") { StrongNameEvidenceProbe.Run(); return 0; }
 		if (args.Length >= 2 && args[1] == "--owner-version-child") { OwnerVersionProbe.RunChildCase(args[2]); return 0; }
 			if (args.Length != 1 || !File.Exists(args[0])) throw new ArgumentException("usage: P03StoreHarness <managed-fixture>");
 			Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
@@ -651,6 +656,24 @@ static class Program {
 		var explicitResult = history.Export(exact, "explicit/export.dll", Path.GetFullPath(fixture));
 		Check(store.OutputBytes("explicit/export.dll", out var explicitBytes) && explicitBytes.SequenceEqual(exact.Bytes), "explicit output bytes");
 
+		// The store must validate the staged bytes before replacing an existing
+		// output. A rejected staged image cannot change either bytes or identity.
+		var validatorCalled = false;
+		var explicitFileId = store.OutputFileId("explicit/export.dll");
+		try {
+			store.WriteOutputAtomic("explicit/export.dll", exact.Bytes, true, new EditOutputValidation(
+				null, stream => { validatorCalled = true; throw new InvalidDataException("rejected staged image"); }));
+			throw new Exception("staged validator rejection not observed");
+		}
+		catch (InvalidDataException) { }
+		Check(validatorCalled, "staged validator invoked");
+		Check(store.OutputBytes("explicit/export.dll", out var afterValidationFault)
+			&& afterValidationFault.SequenceEqual(explicitBytes), "validator rejection preserves old output bytes");
+		Check(store.OutputFileId("explicit/export.dll") == explicitFileId, "validator rejection preserves old output identity");
+		var afterValidationResult = store.WriteOutputAtomic("explicit/export.dll", explicitBytes, true,
+			new EditOutputValidation(null, stream => Check(stream.Length == explicitBytes.LongLength, "validator sees staged bytes")));
+		Check(afterValidationResult.FileId != explicitResult.FileId, "successful replacement changes output identity");
+
 		// source protection: explicit request to overwrite the source file itself
 		try { history.Export(exact, Path.GetFullPath(fixture), Path.GetFullPath(fixture)); throw new Exception("source overwrite accepted"); }
 		catch (EditDomainException ex) when (ex.Code == "EDIT_EXPORT_BLOCKED") { }
@@ -700,6 +723,38 @@ static class Program {
 			Check(ReferenceEquals(method.ParamDefs.Single(p => p.Sequence == 1), originalParam), "tail restore preserves cached parameter object");
 			Check(ReferenceEquals(genericOwner.GenericParameters[0], generic), "tail restore preserves cached generic object");
 		}
+		var chainedBefore = EditFingerprint.Compute(module);
+		var chainedMap = new Dictionary<string, IMDTokenProvider>();
+		using (var add = JsonDocument.Parse(JsonSerializer.Serialize(new {
+			kind = "parameter_add", owner_method = methodRef, parameter_index = 1, name = "ephemeral", parameter_type = "System.Int32",
+		})))
+		using (var remove = JsonDocument.Parse(JsonSerializer.Serialize(new {
+			kind = "parameter_remove", parameter_target = new { object_id = "obj-000-00" }, remove_mode = "reject_if_referenced",
+		}))) {
+			var addOutcome = EditOperationRegistry.Apply(module, add.RootElement, chainedMap, 0);
+			var removeOutcome = EditOperationRegistry.Apply(module, remove.RootElement, chainedMap, 1);
+			removeOutcome.Undo();
+			addOutcome.Undo();
+		}
+		Check(EditFingerprint.Compute(module) == chainedBefore, "same-session added parameter remove/restore");
+		var rollbackMap = new Dictionary<string, IMDTokenProvider>();
+		EditOperationOutcome? rollbackAdd = null, rollbackRemove = null;
+		try {
+			using var add = JsonDocument.Parse(JsonSerializer.Serialize(new {
+				kind = "parameter_add", owner_method = methodRef, parameter_index = 1, name = "rollback", parameter_type = "System.Int32",
+			}));
+			using var remove = JsonDocument.Parse(JsonSerializer.Serialize(new {
+				kind = "parameter_remove", parameter_target = new { object_id = "obj-000-00" }, remove_mode = "reject_if_referenced",
+			}));
+			rollbackAdd = EditOperationRegistry.Apply(module, add.RootElement, rollbackMap, 0);
+			rollbackRemove = EditOperationRegistry.Apply(module, remove.RootElement, rollbackMap, 1);
+			throw new IOException("injected downstream failure");
+		}
+		catch (IOException) {
+			rollbackRemove!.Undo();
+			rollbackAdd!.Undo();
+		}
+		Check(EditFingerprint.Compute(module) == chainedBefore, "same-session added parameter error rollback");
 		var oldBody = method.Body;
 		method.Body = null;
 		var absent = EditFingerprint.Compute(module);
@@ -716,7 +771,7 @@ static class Program {
 			Check(method.Body == null && EditFingerprint.Compute(module) == absent, "absent body inverse");
 		}
 		method.Body = oldBody;
-		Console.WriteLine("PASS tail-inverses parameter+generic add/remove cached_identity=true absent_body=true");
+		Console.WriteLine("PASS tail-inverses parameter+generic add/remove chained-added-parameter=true error-rollback=true cached_identity=true absent_body=true");
 	}
 
 	static void TestReloadedTailInverses(string fixture) {

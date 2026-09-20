@@ -1,0 +1,17 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-012",
+  "acc_id": "ACC-012/ACC-029",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48 production dnSpy plugin through the real MCP loopback",
+  "fixture": "isolated TestIL.dll",
+  "driver": "p03_vm_acc012.py",
+  "precondition": "fresh per-architecture isolation root, checkpoint store, settings and MCP port",
+  "actions": [
+    "Commit repeated method-body and managed-resource payloads through edit_begin/apply/review/commit and archive every package generation",
+    "Parse the actual checkpoint ZIP manifest, operation envelopes and payload entries; assert content hashes, references, one baseline and one final package",
+    "Restore an old checkpoint, commit a sibling branch, then restore both branch tips and verify distinct live content and fingerprints",
+    "Retain raw MCP responses, whole package bytes, directory snapshots and entry SHA/length manifests"
+  ],
+  "expected": "one package per lineage, content-addressed payload reuse, preserved branch graph and byte-verifiable recovery with no orphan temp"
+}

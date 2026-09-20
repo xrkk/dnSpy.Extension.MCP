@@ -7,7 +7,8 @@ Covers the audited ACC-005 clauses: diagnostics/imports succeed; fields/methods/
 EH/generics/symbols correct (IL reference mapping, sequence points readable after
 reload); generated subtrees (async/iterator state machines) land whole; no
 sidecar PDB; forbidden extension fields rejected upstream (P05); ambiguous/
-explicit-mismatch/unresolved-reference imports reject with zero side effects; a
+explicit-mismatch/unmapped-artifact-reference imports reject with zero side effects;
+supported external references are synthesized exactly and rollback cleanly; a
 real debugger breakpoint hits the imported kickoff method at IL 0.  The
 compile-only clauses were proven by p03_vm_acc005 (P05, run-id prefix
 p05-compile-); this driver's evidence uses run-id prefix p06-import-.
@@ -15,8 +16,10 @@ p05-compile-); this driver's evidence uses run-id prefix p06-import-.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.request
@@ -31,15 +34,18 @@ URL = "http://127.0.0.1:15378/mcp"
 ARCH = os.environ.get("EDIT_ACC005_ARCH", "x64")
 FIXTURE = (r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost\ImportHost.exe" if ARCH == "x64"
            else r"C:\Tools\mcp-repo\tests\fixtures\bin\ImportHost-x86\ImportHost.exe")
+LAUNCH_ROOT: str | None = None
 FAILURES: list[str] = []
 PASSES: list[str] = []
 
 
 def configure_isolation(context) -> None:
-    global URL, ARCH, FIXTURE
+    global URL, ARCH, FIXTURE, LAUNCH_ROOT
+    context.validate()
     URL = context.mcp_url
     ARCH = context.architecture
     FIXTURE = context.fixture("ImportHost/ImportHost.exe" if ARCH == "x64" else "ImportHost-x86/ImportHost.exe")
+    LAUNCH_ROOT = context.fixture_output(f".acc005-launch/{context.run_id}/{ARCH}")
 
 # EditClass compilation of the same ImportHost.Machines class: edited bodies for
 # the iterator/async kickoffs (20/200 constants), plus new members (generic
@@ -77,13 +83,26 @@ namespace ImportHost
 }
 """
 
-# Unresolved-reference sample: System.Random rows do not exist in the host.
+# Supported external-reference sample: P06 v2 requires reference_add to
+# synthesize the System.Random scope/type/member rows missing from the host.
 GHOST_SOURCE = """namespace ImportHost
 {
     public class Machines
     {
         public static int counter;
         public int Dice() => new System.Random(4).Next();
+    }
+}
+"""
+
+# Truly unmapped reference: the imported method refers to an artifact-local
+# type that is neither present in the target nor included in this import plan.
+INVALID_REFERENCE_SOURCE = """namespace ImportHost
+{
+    public class MissingDependency { }
+    public class Machines
+    {
+        public MissingDependency Missing() => new MissingDependency();
     }
 }
 """
@@ -136,7 +155,70 @@ def core(envelope: dict) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+class LaunchPreparationError(RuntimeError):
+    """The exported target cannot be copied into the authorized launch root safely."""
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_isolated_launch(exported: dict) -> tuple[str, dict]:
+    """Copy one verified export into this run's fail-closed AllowedSampleRoot child."""
+    if not LAUNCH_ROOT:
+        raise LaunchPreparationError("ACC005 requires an explicit isolation context and launch root")
+    output = payload(exported).get("output", {})
+    export_path = str(output.get("path", ""))
+    advertised_sha = str(output.get("sha256", "")).lower()
+    if not exported.get("ok") or not export_path:
+        raise LaunchPreparationError("edit_export did not return a successful output path")
+    if len(advertised_sha) != 64 or any(ch not in "0123456789abcdef" for ch in advertised_sha):
+        raise LaunchPreparationError("edit_export did not return a valid advertised SHA-256")
+    source = Path(export_path)
+    if not source.is_file():
+        raise LaunchPreparationError(f"export source is not a file: {source}")
+    source_sha_before = _sha256_file(source)
+    if source_sha_before != advertised_sha:
+        raise LaunchPreparationError(
+            f"advertised SHA does not match export source: advertised={advertised_sha} source={source_sha_before}")
+
+    launch_root = Path(LAUNCH_ROOT)
+    try:
+        launch_root.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as ex:
+        raise LaunchPreparationError(f"isolated launch directory already exists: {launch_root}") from ex
+    launch_path = launch_root / source.name
+    shutil.copyfile(source, launch_path)
+    source_sha_after = _sha256_file(source)
+    launch_sha = _sha256_file(launch_path)
+    if source_sha_after != source_sha_before:
+        raise LaunchPreparationError(
+            f"export source changed during copy: before={source_sha_before} after={source_sha_after}")
+    if launch_sha != advertised_sha:
+        raise LaunchPreparationError(
+            f"copied SHA does not match advertised SHA: advertised={advertised_sha} copied={launch_sha}")
+    return str(launch_path), {
+        "original_export_path": str(source),
+        "actual_launch_path": str(launch_path),
+        "advertised_sha256": advertised_sha,
+        "source_sha256_before": source_sha_before,
+        "source_sha256_after": source_sha_after,
+        "launch_sha256": launch_sha,
+        "source_size": source.stat().st_size,
+        "launch_size": launch_path.stat().st_size,
+    }
+
+
 def main() -> int:
+    if not LAUNCH_ROOT:
+        check("C0 isolated launch root configured", False,
+              "ACC005 requires configure_isolation(context); legacy direct launch is disabled")
+        print(f"ACC005F FAIL passes={len(PASSES)} failures={FAILURES}", flush=True)
+        return 1
     client = DnSpyClient(URL, client_name=f"p06-acc005full-{ARCH}", timeout=120)
     client.initialize()
     call(client, "open_files", {"paths": [FIXTURE]})
@@ -180,7 +262,9 @@ def main() -> int:
     happy_id = compile_call(EDIT_SOURCE)
     check("C1 edited class compiled", happy_id.startswith("compile-"), happy_id)
     ghost_id = compile_call(GHOST_SOURCE)
-    check("C2 ghost class compiled", ghost_id.startswith("compile-"), ghost_id)
+    check("C2 external-reference class compiled", ghost_id.startswith("compile-"), ghost_id)
+    invalid_reference_id = compile_call(INVALID_REFERENCE_SOURCE)
+    check("C3 unmapped-reference class compiled", invalid_reference_id.startswith("compile-"), invalid_reference_id)
 
     def import_call(compile_id: str, targets: list, revision_value: int) -> dict:
         return call(client, "edit_import", {
@@ -200,12 +284,42 @@ def main() -> int:
     check("R1 mismatched explicit target rejected", envelope_error(mismatch) == "EDIT_HISTORY_CONFLICT", json.dumps(mismatch)[:240])
     check("R1 zero side effects", private_fingerprint() == baseline_private, private_fingerprint())
 
-    # R2 unresolved reference: a member the host has no rows for.
-    unresolved = import_call(ghost_id, [
+    # R2 remains the negative reference case required by ACC-005: an
+    # artifact-local type not included in the plan cannot bind to the target.
+    unmapped = import_call(invalid_reference_id, [
+        {"compiled": "ImportHost.Machines::Missing()", "action": "add"},
+    ], revision)
+    check("R2 unmapped artifact reference rejected", envelope_error(unmapped) == "EDIT_VALIDATION_FAILED", json.dumps(unmapped)[:240])
+    check("R2 zero side effects", private_fingerprint() == baseline_private, private_fingerprint())
+
+    # R3 is the supported P06 v2 external-reference path.  System.Random is
+    # absent from the host metadata, so the importer must synthesize explicit
+    # reference_add rows and advance the revision by exactly the emitted rows.
+    external = import_call(ghost_id, [
         {"compiled": "ImportHost.Machines::Dice()", "action": "add"},
     ], revision)
-    check("R2 unresolved reference rejected", envelope_error(unresolved) == "EDIT_VALIDATION_FAILED", json.dumps(unresolved)[:240])
-    check("R2 zero side effects", private_fingerprint() == baseline_private, private_fingerprint())
+    external_row = payload(external).get("import", {})
+    external_rows = external_row.get("rows", []) if isinstance(external_row, dict) else []
+    external_kinds = [str(item.get("kind")) for item in external_rows if isinstance(item, dict)]
+    external_members = [str(item.get("artifact_member")) for item in external_rows if isinstance(item, dict)]
+    external_revision = int(payload(external).get("transaction", {}).get("work_revision", revision))
+    check("R3 external reference import supported", bool(external.get("ok")) and "method_add" in external_kinds,
+          json.dumps(external)[:1200])
+    check("R3 exact synthesized reference rows", external_kinds.count("reference_add") >= 1
+          and any("System.Random" in member for member in external_members), str(external_rows))
+    check("R3 exact revision advance", external_revision == revision + len(external_rows)
+          and int(payload(external).get("operation_count", -1)) == len(external_rows), json.dumps(external)[:600])
+
+    rolled_back = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx})
+    check("R3 rollback supported import", bool(rolled_back.get("ok")) and bool(payload(rolled_back).get("rolled_back")),
+          json.dumps(rolled_back)[:300])
+    begin = call(client, "edit_begin", {"assembly_name": "ImportHost", "request_id": rid()})
+    tx_row = payload(begin).get("transaction", {})
+    tx = str(tx_row.get("transaction_id", ""))
+    revision = int(tx_row.get("work_revision", 0))
+    baseline_private = str(payload(begin).get("fingerprints", {}).get("private", ""))
+    check("R3 rollback returns clean transaction", bool(tx) and revision == 0
+          and private_fingerprint() == baseline_private, json.dumps(begin)[:400])
 
     # I1 happy import — cell ② auto-match replaces both kickoff bodies (the
     # generated async/iterator subtrees land whole) and cell ③ adds the generic
@@ -283,14 +397,23 @@ def main() -> int:
             siblings = []
     check("X1 no sidecar pdb", bool(export_path) and not sibling_pdb, str(siblings))
 
-    # L2 reload: open the exported image (byte-level embedded symbol proof).
-    reopened = call(client, "open_files", {"paths": [export_path]})
+    # L2 reload from a verified, run-scoped copy below AllowedSampleRoot.  The
+    # product export response and original export bytes remain untouched.
+    try:
+        launch_path, launch_facts = prepare_isolated_launch(exported)
+    except LaunchPreparationError as ex:
+        check("X2 isolated launch copy verified", False, str(ex))
+        print(f"ACC005F FAIL passes={len(PASSES)} failures={FAILURES}", flush=True)
+        return 1
+    check("X2 isolated launch copy verified", True)
+    print("INFO ACC005_LAUNCH_COPY " + json.dumps(launch_facts, sort_keys=True), flush=True)
+    reopened = call(client, "open_files", {"paths": [launch_path]})
     check("L2 exported image reopened", "error" not in reopened, json.dumps(reopened)[:200])
 
     # B1 real breakpoint: launch the exported exe, break on the imported async
     # kickoff at IL 0, and observe breakpoint_hit with a matching frame.
     launch_env = call(client, "debug_launch", {
-        "request_id": rid(), "target_path": export_path, "expected_sha256": sha256,
+        "request_id": rid(), "target_path": launch_path, "expected_sha256": sha256,
         "launch_mode": "net48-exe", "architecture": ARCH, "break_kind": "entry"})
     launch = payload(launch_env)
     session_id = str(launch.get("session_id", ""))

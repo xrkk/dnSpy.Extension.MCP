@@ -1,0 +1,17 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-024-FORMAL",
+  "acc_id": "ACC-024",
+  "target_architecture": "x64-and-x86",
+  "tfm": "net48",
+  "fixture": "isolated TestIL.dll",
+  "driver": "p03_vm_acc024_formal.py",
+  "precondition": "DNMCP_TEST=1; fresh isolated dnSpy; dedicated ArtifactRoot",
+  "actions": [
+    "inject the checkpoint finalize failure after live application",
+    "close the owner and query the identical partial from a new session",
+    "attempt default/explicit edit_export and default/explicit legacy save_assembly before recovery",
+    "retry checkpoint, capture node set/head/package SHA/live fingerprint, replay the identical recovery request, and compare every observable"
+  ],
+  "expected": "true committed_without_checkpoint survives reconnect; every assembly export returns EDIT_EXPORT_BLOCKED; retry is idempotent with no extra node, package, or live mutation"
+}

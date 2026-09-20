@@ -1,0 +1,14 @@
+{
+  "suite": "structured-edit-p03",
+  "case_id": "EDIT-ACC-013-VERSION-V1",
+  "acc_id": "ACC-013",
+  "target_architecture": "x64-and-x86",
+  "driver": "p03_vm_acc013_version.py",
+  "precondition": "fresh isolated store; real pre-T003 v1 packages and their baseline fixture deployed byte-exact",
+  "actions": [
+    "assess the real historical v1 package as exact",
+    "assess the real historical same-weak-semantic image drift as unverified and reject apply even with confirmation",
+    "explicitly accept the live module and prove a new v2 lineage supersedes, but does not rewrite, the v1 lineage"
+  ],
+  "expected": "v1 exact remains compatible; all v1 image drift is unverified; only explicit accept_live creates a linked v2 baseline"
+}
