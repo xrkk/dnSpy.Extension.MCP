@@ -6,13 +6,9 @@ using System.Text.Json;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 
-// T038: emits the metadata manifest the shared live-contract test consumes instead of a
-// hard-coded method token / IL offset. The chosen breakpoint is semantic: the IL offset of
-// the `call KeepLive` instruction in Main — at that point every field of `expandPayload`
-// (including the child object) is assigned and the local is still live (it is the call's
-// argument). Everything the test needs to know is derived from the actual built bytes and
-// bound to the file's SHA-256; a manifest whose SHA does not match the deployed fixture is
-// rejected by the test, as is a non-boundary offset.
+// Emit a SHA-256/MVID-bound manifest for the shared expansion test. The anchor is
+// KeepLive entry, where the caller's fully populated payload is available as a parameter.
+// Main's call-site offset and boundaries are reference metadata only.
 //
 // Usage: dotnet run -c Release -- <path-to-ExpandValuesFixture.exe> [out.json]
 
@@ -32,8 +28,6 @@ var main = fixtureType.FindMethod("Main") ?? throw new InvalidOperationException
 var keep = fixtureType.FindMethod("KeepLive") ?? throw new InvalidOperationException("KeepLive not found");
 if (main.Body is null || keep.Body is null) throw new InvalidOperationException("method bodies missing");
 
-// Instruction boundaries of Main (every instruction start is a boundary; the manifest lists
-// them so the test can reject an offset that is not one).
 // The anchor method is KeepLive; its OWN instruction boundaries are the only valid
 // breakpoint offsets for the manifest (mixing in Main's would let a Main-only offset
 // pass validation for a KeepLive anchor - the exact gap T038 R2 closes).
@@ -96,4 +90,4 @@ File.WriteAllText(outPath, JsonSerializer.Serialize(manifest, new JsonSerializer
 Console.WriteLine($"manifest written: {outPath}");
 Console.WriteLine($"anchor: {anchorMethod} entry (own boundaries={boundaries.Count}); "
     + $"Main kept as reference only (boundaries={mainBoundaries.Count}, keep-call offset={callOffset})");
-Console.WriteLine($"sha256={sha256} mvid={mvid} method_token=0x{main.MDToken.Raw:X8} il_offset={callOffset}");
+Console.WriteLine($"sha256={sha256} mvid={mvid} method_token=0x{anchorToken:X8} il_offset={anchorOffset}");
