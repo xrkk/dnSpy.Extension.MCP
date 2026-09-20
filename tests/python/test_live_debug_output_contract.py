@@ -28,32 +28,79 @@ EXPAND_TARGET_SHA256 = os.getenv("DNSPY_MCP_EXPAND_TARGET_SHA256")
 EXPAND_MANIFEST = os.getenv("DNSPY_MCP_EXPAND_MANIFEST")
 
 
+METHOD_TOKEN_CHARS = set("0123456789abcdefABCDEF")
+
+
 def load_expand_locator(manifest_path: str, expected_sha256: str) -> dict:
     """Load the T038 expand-fixture manifest and validate it against the deployed fixture.
 
     The manifest is produced by tests/debug/fixtures-src/build-expand-manifest from the
-    exact built bytes (SHA-256-bound) and carries the semantic breakpoint (the KeepLive
-    call site in Main) instead of a hard-coded method token / IL offset. A manifest whose
-    SHA does not match the deployed fixture, or whose breakpoint offset is not an
-    instruction boundary of the recorded method, is rejected here rather than silently
-    sending an invalid breakpoint to the server.
+    exact built bytes (SHA-256-bound) and carries the semantic breakpoint (KeepLive's
+    entry, where its fully-built ``expandPayload`` parameter is live) instead of a
+    hard-coded method token / IL offset. Everything a bad manifest could get wrong is
+    rejected here before anything reaches the debug server:
+
+    - schema must be exactly dnspy.expand-fixture-manifest.v2;
+    - sha256 must be 64 hex chars and match the deployed fixture (case-insensitive);
+    - mvid must be a parseable UUID (the live test also binds it to the loaded module);
+    - method_token must be ``0x`` + exactly 8 hex digits, a MethodDef table token
+      (table byte 0x06) with a non-zero RID - a TypeDef token like 0x02000001 or a
+      zero RID like 0x06000000 is rejected;
+    - breakpoint il_offset must be a true int (bool is explicitly rejected - ``True``
+      would compare equal to boundary 1 in Python), non-negative, and one of the TARGET
+      method's own instruction boundaries (``method_il_boundaries``); Main's boundaries
+      live in a separate reference-only field and never validate an anchor.
     """
     with open(manifest_path, "r", encoding="utf-8") as handle:
         manifest = json.load(handle)
-    if manifest.get("schema_version") != "dnspy.expand-fixture-manifest.v1":
+    if manifest.get("schema_version") != "dnspy.expand-fixture-manifest.v2":
         raise ValueError("unsupported manifest schema_version")
-    if str(manifest.get("sha256", "")).casefold() != str(expected_sha256).casefold():
+    sha = str(manifest.get("sha256", ""))
+    if len(sha) != 64 or not set(sha) <= set("0123456789abcdefABCDEF"):
+        raise ValueError(f"malformed sha256 in manifest: {sha!r}")
+    if sha.casefold() != str(expected_sha256).casefold():
         raise ValueError(
-            f"manifest sha256 {manifest.get('sha256')} does not match the deployed fixture {expected_sha256}"
+            f"manifest sha256 {sha} does not match the deployed fixture {expected_sha256}"
         )
+    try:
+        uuid.UUID(str(manifest.get("mvid", "")))
+    except (AttributeError, ValueError) as ex:
+        raise ValueError(f"malformed mvid in manifest: {manifest.get('mvid')!r}") from ex
     token = str(manifest.get("method_token", ""))
-    if not (len(token) == 10 and token.startswith("0x")):
+    if (
+        len(token) != 10
+        or not token.startswith("0x")
+        or not set(token[2:]) <= METHOD_TOKEN_CHARS
+    ):
         raise ValueError(f"malformed method_token in manifest: {token!r}")
+    if token[2:4].casefold() != "06":
+        raise ValueError(f"method_token is not a MethodDef token: {token!r}")
+    if int(token[2:], 16) & 0x00FFFFFF == 0:
+        raise ValueError(f"method_token has a zero RID: {token!r}")
     offset = manifest.get("breakpoint", {}).get("il_offset")
-    boundaries = manifest.get("main_il_boundaries") or []
-    if not isinstance(offset, int) or offset not in boundaries:
-        raise ValueError(f"breakpoint il_offset {offset!r} is not a recorded instruction boundary")
+    # bool is an int subclass: True would equal boundary 1, so the type check is exact.
+    if type(offset) is not int or offset < 0:
+        raise ValueError(f"breakpoint il_offset {offset!r} must be a non-negative int (not bool)")
+    boundaries = manifest.get("method_il_boundaries") or []
+    if offset not in boundaries:
+        raise ValueError(
+            f"breakpoint il_offset {offset!r} is not an instruction boundary of the anchor method"
+        )
     return manifest
+
+
+def verify_manifest_matches_module(manifest: dict, module: dict) -> None:
+    """Bind the validated manifest to the live module the debugger actually loaded.
+
+    The fixture SHA-256 has already been matched against the module by the caller's
+    module selection; this closes the loop on the remaining identity: the manifest's
+    recorded MVID must equal the live module's MVID, so a manifest built from a
+    different build of an otherwise identical file cannot steer the breakpoint.
+    """
+    mvid = str(manifest.get("mvid", "")).casefold()
+    live = str(module.get("mvid", "")).casefold()
+    if not live or mvid != live:
+        raise ValueError(f"manifest mvid {mvid!r} does not match the live module mvid {live!r}")
 
 
 @unittest.skipUnless(
@@ -366,6 +413,7 @@ class LiveDebugOutputContractTests(unittest.TestCase):
             },
         )["result"]["next_cursor"]
         locator = load_expand_locator(str(EXPAND_MANIFEST), str(EXPAND_TARGET_SHA256))
+        verify_manifest_matches_module(locator, module)
         breakpoint = self.call(
             "debug_set_breakpoint",
             {
@@ -585,33 +633,33 @@ class LiveDebugOutputContractTests(unittest.TestCase):
         self.assertEqual([], self.failures)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ExpandManifestLoaderTests(unittest.TestCase):
     """Negative/positive checks for the T038 expand-fixture locator (runs without a VM).
 
-    Proves that a wrong SHA, a malformed token and a non-boundary offset are each rejected
-    before anything is sent to the debug server, and that a well-formed manifest binds the
-    recorded method token and IL offset to the deployed fixture.
+    The key counterexamples below were first demonstrated RED against the R1 loader
+    (see fixture-t038-r02/red/red-evidence.txt in the acceptance archive): a non-hex
+    token 0xZZZZZZZZ, a TypeDef token 0x02000001, a zero-RID 0x06000000 and a
+    Main-only boundary were all wrongly accepted. The v2 loader rejects each class.
     """
 
     @staticmethod
     def _write_manifest(tmpdir: str, **overrides):
         manifest = {
-            "schema_version": "dnspy.expand-fixture-manifest.v1",
+            "schema_version": "dnspy.expand-fixture-manifest.v2",
             "fixture": "ExpandValuesFixture-x64.exe",
             "sha256": "a" * 64,
             "mvid": "39a1ac13-eb69-4e84-9769-31c3024e4b5b",
             "entry_type": "ExpandValuesFixtureNs.ExpandValuesFixture",
             "entry_type_token": "0x02000003",
-            "method": "Main",
-            "method_token": "0x06000003",
-            "breakpoint": {"il_offset": 107, "rationale": "call KeepLive", "is_instruction_boundary": True},
-            "main_il_boundaries": [0, 1, 2, 107, 108],
+            "method": "KeepLive",
+            "method_token": "0x06000002",
+            "breakpoint": {"il_offset": 0, "rationale": "KeepLive entry", "is_instruction_boundary": True},
+            "method_il_boundaries": [0, 1, 2, 4],
+            "reference_main_il_boundaries": [0, 5, 10, 107, 110],
+            "main_keep_call_il_offset": 107,
             "node_type": "ExpandValuesFixtureNs.ExpandNode",
             "local_name": "expandPayload",
+            "anchor_frame_kind": "parameter",
         }
         manifest.update(overrides)
         path = os.path.join(tmpdir, "m.json")
@@ -628,25 +676,81 @@ class ExpandManifestLoaderTests(unittest.TestCase):
     def test_valid_manifest_loads(self) -> None:
         path = self._write_manifest(self.tmp.name)
         manifest = load_expand_locator(path, "A" * 64)
-        self.assertEqual("0x06000003", manifest["method_token"])
-        self.assertEqual(107, manifest["breakpoint"]["il_offset"])
+        self.assertEqual("0x06000002", manifest["method_token"])
+        self.assertEqual(0, manifest["breakpoint"]["il_offset"])
 
     def test_wrong_sha_rejected(self) -> None:
         path = self._write_manifest(self.tmp.name)
-        with self.assertRaisesRegex(ValueError, "sha256"):
+        with self.assertRaisesRegex(ValueError, "match the deployed fixture"):
             load_expand_locator(path, "b" * 64)
 
-    def test_malformed_token_rejected(self) -> None:
-        path = self._write_manifest(self.tmp.name, method_token="06000003")
-        with self.assertRaisesRegex(ValueError, "method_token"):
+    def test_malformed_sha_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, sha256="xyz")
+        with self.assertRaisesRegex(ValueError, "malformed sha256"):
             load_expand_locator(path, "a" * 64)
 
-    def test_non_boundary_offset_rejected(self) -> None:
-        path = self._write_manifest(self.tmp.name, breakpoint={"il_offset": 82, "rationale": "x"})
-        with self.assertRaisesRegex(ValueError, "boundary"):
+    def test_non_hex_token_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, method_token="0xZZZZZZZZ")
+        with self.assertRaisesRegex(ValueError, "malformed method_token"):
             load_expand_locator(path, "a" * 64)
 
-    def test_unsupported_schema_rejected(self) -> None:
-        path = self._write_manifest(self.tmp.name, schema_version="other.v0")
+    def test_wrong_table_token_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, method_token="0x02000001")
+        with self.assertRaisesRegex(ValueError, "MethodDef"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_zero_rid_token_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, method_token="0x06000000")
+        with self.assertRaisesRegex(ValueError, "zero RID"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_bool_offset_rejected_even_when_equal_to_boundary(self) -> None:
+        # True == 1 and 1 IS a boundary here; only the exact type check rejects it.
+        path = self._write_manifest(self.tmp.name, breakpoint={"il_offset": True})
+        with self.assertRaisesRegex(ValueError, "non-negative int"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_negative_offset_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, breakpoint={"il_offset": -1})
+        with self.assertRaisesRegex(ValueError, "non-negative int"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_main_only_boundary_rejected_for_anchor(self) -> None:
+        # 107 exists only in reference_main_il_boundaries (a Main offset); the anchor
+        # is KeepLive, so it must not validate.
+        path = self._write_manifest(self.tmp.name, breakpoint={"il_offset": 107})
+        with self.assertRaisesRegex(ValueError, "not an instruction boundary of the anchor method"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_malformed_mvid_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, mvid="not-a-uuid")
+        with self.assertRaisesRegex(ValueError, "malformed mvid"):
+            load_expand_locator(path, "a" * 64)
+
+    def test_v1_schema_rejected(self) -> None:
+        path = self._write_manifest(self.tmp.name, schema_version="dnspy.expand-fixture-manifest.v1")
         with self.assertRaisesRegex(ValueError, "schema_version"):
             load_expand_locator(path, "a" * 64)
+
+
+class ExpandManifestModuleBindingTests(unittest.TestCase):
+    """verify_manifest_matches_module: the manifest's MVID must equal the live module's."""
+
+    def test_matching_module_accepted(self) -> None:
+        manifest = {"mvid": "39A1AC13-EB69-4E84-9769-31C3024E4B5B"}
+        module = {"mvid": "39a1ac13-eb69-4e84-9769-31c3024e4b5b"}
+        verify_manifest_matches_module(manifest, module)  # must not raise
+
+    def test_mismatching_module_mvid_rejected(self) -> None:
+        manifest = {"mvid": "39a1ac13-eb69-4e84-9769-31c3024e4b5b"}
+        module = {"mvid": "52d6ef29-e684-4ea9-bf69-b35d39c57c93"}
+        with self.assertRaisesRegex(ValueError, "does not match the live module"):
+            verify_manifest_matches_module(manifest, module)
+
+    def test_missing_module_mvid_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not match the live module"):
+            verify_manifest_matches_module({"mvid": "39a1ac13-eb69-4e84-9769-31c3024e4b5b"}, {})
+
+
+if __name__ == "__main__":
+    unittest.main()
