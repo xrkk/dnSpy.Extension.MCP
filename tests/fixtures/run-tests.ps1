@@ -7,7 +7,7 @@
   1. Builds TestIL.dll fixture (via build-fixture.ps1).
   2. Deploys the just-built MCP extension DLL into dnSpy's Extensions folder.
   3. Launches dnSpy (net10.0-windows release build) with TestIL.dll preloaded.
-  4. Waits for /health on the configured port (default 15378, with +N fallback).
+  4. Waits for /health on the configured port (exact port; no fallback scan).
   5. Walks through a sequence of list_methods / decompile_method / get_method_il /
      patch_method_il / revert_method_il / save_assembly calls, asserting expected
      responses and on-disk state.
@@ -15,8 +15,8 @@
   Each step prints PASS/FAIL. Non-zero exit code on first FAIL.
 
 .PARAMETER Port
-  First port to probe (default 15378). Falls back to 15378..15397 if dnSpy landed
-  on a later port due to the in-use fallback.
+  The one port this suite talks to (default 15378). It must equal the committed
+  snapshot's Port inside -SettingsFile; an occupied port aborts the run.
 
 .PARAMETER DnSpyExe
   Path to dnSpy.exe. Defaults to the Release/net10.0-windows build in-tree.
@@ -160,10 +160,39 @@ if (Test-Path $pdb) { Copy-Item $pdb $extDeployDir -Force }
 
 # ----- step 4: launch dnSpy with the fixture preloaded -----
 Write-Host "[4] Launching dnSpy + loading $testDll"
-if (-not (Test-Path $SettingsFile)) { throw "SettingsFile not found: $SettingsFile (must carry the MCP section with a committed snapshot for port $Port)" }
+
+# Pre-launch validation. The committed snapshot inside SettingsFile is the authority for
+# the port and the isolated roots; a mismatch or an already-occupied port means refusing
+# BEFORE deploying over anyone or sending a single request. Ownership of an existing
+# listener is deliberately NOT guessed from an HTTP 200 (http.sys/PID4 is not dnSpy):
+# anything already listening on the port aborts the run.
+[xml]$sx = Get-Content -LiteralPath $SettingsFile
+$sxNode = $sx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
+if (-not $sxNode) { throw "SettingsFile carries no MCP settings section: $SettingsFile" }
+$snap = $sxNode.GetAttribute('SettingsSnapshotJson')
+if (-not $snap) { throw "SettingsFile carries no committed snapshot (SettingsSnapshotJson): $SettingsFile" }
+try { $snapObj = $snap | ConvertFrom-Json } catch { throw "SettingsFile committed snapshot is not valid JSON: $SettingsFile" }
+if ([int]$snapObj.Port -ne $Port) { throw "SettingsFile committed snapshot Port=$($snapObj.Port) does not match -Port $Port" }
+if ("$($snapObj.EnableServer)" -ne 'true') { throw "SettingsFile committed snapshot has EnableServer=false" }
+if (-not $snapObj.AllowedSampleRoot -or -not $snapObj.ArtifactRoot) { throw "SettingsFile committed snapshot lacks AllowedSampleRoot/ArtifactRoot" }
+Write-Host "  Settings snapshot verified: port $($snapObj.Port), sample root $($snapObj.AllowedSampleRoot)"
+$portTaken = $false
+try { $tcp = New-Object Net.Sockets.TcpClient; $tcp.Connect('127.0.0.1', $Port); $portTaken = $tcp.Connected; $tcp.Close() } catch { }
+if ($portTaken) { throw "port $Port is already in use - refusing to launch or talk to an unattributed listener" }
+
 # Quote the paths: Start-Process does not auto-quote -ArgumentList entries, so a path
 # containing spaces would reach dnSpy split at the space.
 $dnSpyProc = Start-Process -FilePath $dnSpyExeFull -ArgumentList @('--multiple', '--settings-file', "`"$SettingsFile`"", "`"$testDll`"") -WindowStyle Hidden -PassThru
+# Launch identity for verified cleanup: pid + exe + UTC creation ticks captured now; the
+# finally block only stops a process that still matches ALL THREE.
+$dnSpyIdentity = $null
+try {
+    $lp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyProc.Id) -ErrorAction Stop
+    $dnSpyIdentity = @{ pid = $dnSpyProc.Id; exe = "$($lp.ExecutablePath)".ToLowerInvariant(); ticks = [long]$lp.CreationDate.ToUniversalTime().Ticks }
+} catch { throw "launched dnSpy exited before its identity could be recorded" }
+
+try
+{
 
 # Poll for /health on the EXACT configured port only. The old +N scan could latch onto an
 # unrelated instance that happened to be listening; the explicit SettingsFile snapshot is
@@ -200,7 +229,7 @@ if (-not $found)
         Write-Host "  its absence proves nothing. Deploy a Debug build to get startup telemetry."
     }
     Write-Host "================================================" -ForegroundColor Yellow
-    throw "MCP server never came up on ports $Port..$($Port+19) — see DIAGNOSTIC above"
+    throw "MCP server never came up on port $Port — see DIAGNOSTIC above"
 }
 Write-Host "  MCP server is up on port $script:Port"
 
@@ -219,12 +248,14 @@ function Initialize-McpSession
     $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "initialize RPC error: $($jr.error.message)" }
+    $negotiated = "$($jr.result.protocolVersion)"
+    if (-not $negotiated) { throw "initialize response carried no protocolVersion (negotiation failed)" }
     $sid = $resp.Headers['Mcp-Session-Id']
     if (-not $sid) { throw "initialize response carried no Mcp-Session-Id header" }
     $script:McpSessionId = @($sid)[0]
     $notif = @{ jsonrpc='2.0'; method='notifications/initialized' } | ConvertTo-Json -Depth 5 -Compress
     Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $notif -UseBasicParsing | Out-Null
-    Write-Host "  MCP session initialized (id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
+    Write-Host "  MCP session initialized (protocol $negotiated, id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
 }
 Initialize-McpSession
 
@@ -246,8 +277,6 @@ if (-not $loaded) { throw "TestIL never appeared in list_assemblies — did dnSp
 Write-Host "  TestIL assembly is loaded"
 Write-Host ""
 
-try
-{
     # ----- step 5-7: reads on TestIL.Simple -----
     Write-Host "[5] list_methods on TestIL.Simple"
     $listed = Rpc 'list_methods' @{ assembly_name='TestIL'; type_full_name='TestIL.Simple' }
@@ -1174,10 +1203,35 @@ finally
 {
     Write-Host ""
     Write-Host "===== SUMMARY: $pass pass / $fail fail ====="
-    if (-not $KeepDnSpy -and $dnSpyProc -and -not $dnSpyProc.HasExited)
+    # Session teardown per the project client protocol: DELETE the transport session
+    # (safe even after a hard failure; skipped when no session was ever allocated).
+    if ($script:McpSessionId)
     {
-        Write-Host "Stopping dnSpy PID $($dnSpyProc.Id)"
-        try { Stop-Process -Id $dnSpyProc.Id -Force -ErrorAction SilentlyContinue } catch { }
+        try {
+            Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Delete -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -UseBasicParsing -TimeoutSec 5 | Out-Null
+            Write-Host "MCP session closed"
+        } catch { Write-Host "MCP session close failed (server may already be gone): $($_.Exception.Message)" }
+        $script:McpSessionId = $null
+    }
+    # Cleanup kills ONLY this run's launched process and only while its identity still
+    # matches pid + exe + UTC creation ticks recorded at launch. A recycled PID or a
+    # different binary is never touched.
+    if (-not $KeepDnSpy -and $dnSpyProc -and $dnSpyIdentity)
+    {
+        $stillOurs = $false
+        try {
+            $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyIdentity.pid) -ErrorAction Stop
+            $stillOurs = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $dnSpyIdentity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $dnSpyIdentity.ticks)
+        } catch { }
+        if ($stillOurs)
+        {
+            Write-Host "Stopping dnSpy PID $($dnSpyIdentity.pid) (identity verified)"
+            try { Stop-Process -Id $dnSpyIdentity.pid -Force -ErrorAction SilentlyContinue } catch { }
+        }
+        elseif (-not $dnSpyProc.HasExited)
+        {
+            Write-Host "dnSpy PID $($dnSpyIdentity.pid) failed the identity re-check - NOT stopping it"
+        }
     }
     elseif ($KeepDnSpy -and $dnSpyProc)
     {
