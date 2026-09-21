@@ -98,6 +98,17 @@ function RpcText([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
     return $jr.result.content[0].text
 }
+# Returns the full envelope (including error objects) without throwing - for negative
+# controls that must inspect the rejection itself.
+function Rpc-Raw([string]$tool, [hashtable]$arguments)
+{
+    if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
+    $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
+    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
+    $jr = $resp.Content | ConvertFrom-Json
+    $text = $jr.result.content[0].text
+    return ($text | ConvertFrom-Json)
+}
 
 # ---- MCP session helper (invoked by the main flow below; also loadable via -ProbeMode) ----
 $script:McpSessionId = $null
@@ -271,6 +282,7 @@ try { $snapObj = $snap | ConvertFrom-Json } catch { throw "SettingsFile committe
 if ([int]$snapObj.Port -ne $Port) { throw "SettingsFile committed snapshot Port=$($snapObj.Port) does not match -Port $Port" }
 if ("$($snapObj.EnableServer)" -ne 'true') { throw "SettingsFile committed snapshot has EnableServer=false" }
 if (-not $snapObj.AllowedSampleRoot -or -not $snapObj.ArtifactRoot) { throw "SettingsFile committed snapshot lacks AllowedSampleRoot/ArtifactRoot" }
+$ArtifactRoot = "$($snapObj.ArtifactRoot)"
 
 # Path-boundary checks are segment-wise (never a raw StartsWith prefix): normalize to
 # full paths, trim trailing separators, compare case-insensitively, and treat containment
@@ -477,33 +489,57 @@ Write-Host ""
     $originalOperand = ($il.instructions | Where-Object { $_.index -eq $loadOneIdx }).operand
     Assert (($restored.opcode -eq $originalOpcode) -and ($restored.operand -eq $originalOperand)) "AddOne instruction restored to original shape" "restored=$($restored.opcode)/$($restored.operand) original=$originalOpcode/$originalOperand"
 
-    # ----- step 10: save to a side path (non-destructive) -----
+    # ----- step 10: save to an explicit ArtifactRoot path (P03 contract: explicit
+    # outputs live only under ArtifactRoot; the source sample is never touched) -----
     Write-Host ""
-    Write-Host "[10] re-apply patch + save_assembly to side path"
+    Write-Host "[10] re-apply patch + save_assembly to explicit ArtifactRoot path"
     Rpc 'patch_method_il' @{
         assembly_name='TestIL'; type_full_name='TestIL.Simple'; method_name='AddOne';
         edits=@(@{ op='replace'; index=$loadOneIdx; opcode='ldc.i4'; operand='int:41' })
     } | Out-Null
-    $sidePath = Join-Path (Split-Path $testDll -Parent) 'TestIL.patched.dll'
-    if (Test-Path $sidePath) { Remove-Item $sidePath -Force }
-    $saved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$sidePath }
-    Assert ((Test-Path $sidePath)) "side-path file written"
-    Assert ($saved.backup_path -eq $null) "no backup for side-path save"
+    $artifactOut = Join-Path $ArtifactRoot 'TestIL.patched.dll'
+    if (Test-Path $artifactOut) { Remove-Item $artifactOut -Force }
+    $sourceHashBeforeSave = Get-FileSha256 $testDll
+    $saved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$artifactOut }
+    Assert ((Test-Path $saved.saved_to) -and ((Get-Item $saved.saved_to).FullName -eq (Get-Item $artifactOut).FullName)) "explicit save written under ArtifactRoot at saved_to" "saved_to=$($saved.saved_to)"
+    Assert ($saved.backup_path -eq $null) "no backup for explicit save"
     Assert ($saved.bytes_written -gt 0) "bytes_written > 0"
+    Assert ($saved.sha256 -and ([string]$saved.sha256).Length -eq 64) "response carries sha256"
+    Assert ($saved.file_id) "response carries file_id"
+    Assert ($saved.lineage_id -and $saved.checkpoint_id) "response carries lineage_id + checkpoint_id"
+    Assert ($saved.source_preserved -eq $true) "source_preserved = true"
+    Assert ((Get-FileSha256 $testDll) -eq $sourceHashBeforeSave) "source sample bytes unchanged by explicit save"
 
     # Prove the IL change is persisted on disk.
-    $verify = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$sidePath') | Out-Null; [TestIL.Simple]::AddOne(10)"
-    Assert ($verify -eq '51') "AddOne(10) on disk returns 51 (was 11 before patch)" "got $verify"
+    $verify = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$($saved.saved_to)') | Out-Null; [TestIL.Simple]::AddOne(10)"
+    Assert ($verify -eq '51') "AddOne(10) on exported file returns 51 (was 11 before patch)" "got $verify"
 
-    # ----- step 11: overwrite original with backup -----
+    # Contract negative controls: the source path and the sample directory stay illegal
+    # output targets and are rejected with zero side effects.
+    $rejectSource = Rpc-Raw 'save_assembly' @{ assembly_name='TestIL'; output_path=$testDll }
+    Assert ($rejectSource.ok -eq $false -and $rejectSource.error.code -eq 'EDIT_EXPORT_BLOCKED') "output_path == source sample is rejected" "code=$($rejectSource.error.code)"
+    $rejectSampleDir = Rpc-Raw 'save_assembly' @{ assembly_name='TestIL'; output_path=(Join-Path (Split-Path $testDll -Parent) 'must-not-exist.dll') }
+    Assert ($rejectSampleDir.ok -eq $false -and $rejectSampleDir.error.code -eq 'EDIT_EXPORT_BLOCKED') "output under the sample directory is rejected" "code=$($rejectSampleDir.error.code)"
+    Assert (-not (Test-Path (Join-Path (Split-Path $testDll -Parent) 'must-not-exist.dll'))) "rejected sample-dir output wrote nothing"
+    Assert ((Get-FileSha256 $testDll) -eq $originalHash) "source sample still matches pre-patch bytes after rejections"
+
+    # ----- step 11: default-output save (P03: single default artifact, atomically
+    # replaced on re-save; the source sample is never backed up or overwritten) -----
     Write-Host ""
-    Write-Host "[11] save_assembly overwriting original (backup-then-overwrite)"
-    $savedOver = Rpc 'save_assembly' @{ assembly_name='TestIL' }
-    Assert ($savedOver.backup_path -ne $null -and (Test-Path $savedOver.backup_path)) "backup exists" "backup=$($savedOver.backup_path)"
-    $backupHash = Get-FileSha256 $savedOver.backup_path
-    Assert ($backupHash -eq $originalHash) "backup SHA matches pre-patch bytes" "backup=$backupHash original=$originalHash"
-    $newHash = Get-FileSha256 $testDll
-    Assert ($newHash -ne $originalHash) "original file bytes changed"
+    Write-Host "[11] save_assembly default output (atomic replace, source preserved)"
+    $savedDefault = Rpc 'save_assembly' @{ assembly_name='TestIL' }
+    Assert ($savedDefault.saved_to -and (Test-Path $savedDefault.saved_to)) "default output written at saved_to" "saved_to=$($savedDefault.saved_to)"
+    Assert ((Get-Item $savedDefault.saved_to).FullName.StartsWith((Get-Item $ArtifactRoot).FullName.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) "default output lives under ArtifactRoot"
+    Assert ($savedDefault.backup_path -eq $null) "no backup for default save"
+    Assert ($savedDefault.source_preserved -eq $true) "source_preserved = true (default)"
+    Assert ((Get-FileSha256 $testDll) -eq $originalHash) "original file bytes unchanged (never overwritten)"
+    $defaultVerify = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$($savedDefault.saved_to)') | Out-Null; [TestIL.Simple]::AddOne(10)"
+    Assert ($defaultVerify -eq '51') "default output loads and AddOne(10) = 51" "got $defaultVerify"
+    # Re-save the default: same unique path, content replaced atomically, still loads.
+    $savedDefault2 = Rpc 'save_assembly' @{ assembly_name='TestIL' }
+    Assert ($savedDefault2.saved_to -and ((Get-Item $savedDefault2.saved_to).FullName -eq (Get-Item $savedDefault.saved_to).FullName)) "default re-save replaces the same unique path" "first=$($savedDefault.saved_to) second=$($savedDefault2.saved_to)"
+    $defaultVerify2 = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$($savedDefault2.saved_to)') | Out-Null; [TestIL.Simple]::AddOne(10)"
+    Assert ($defaultVerify2 -eq '51') "replaced default output loads and AddOne(10) = 51" "got $defaultVerify2"
 
     Write-Host ""
     Write-Host "[12] cleanup revert (drop snapshot)"
@@ -1317,9 +1353,11 @@ Write-Host ""
 
     Write-Host ""
     Write-Host "[RT-7] save_assembly persists all renamed metadata and dependent signatures"
-    $renamedPath = Join-Path (Split-Path $testDll -Parent) 'TestIL.renamed.dll'
+    $renamedPath = Join-Path $ArtifactRoot 'TestIL.renamed.dll'
     if (Test-Path $renamedPath) { Remove-Item $renamedPath -Force }
-    Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$renamedPath } | Out-Null
+    $renamedSaved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$renamedPath }
+    $renamedPath = $renamedSaved.saved_to
+    Assert ($renamedPath -and (Test-Path $renamedPath)) "renamed export written under ArtifactRoot at saved_to" "saved_to=$renamedPath"
     $renameProbe = & powershell -NoProfile -Command "`$a=[Reflection.Assembly]::LoadFile('$renamedPath'); (`$a.GetType('TestIL.DecoratedRenamed') -ne `$null); `$a.GetType('TestIL.BigEnumRenamed').IsEnum; `$a.GetType('TestIL.Patchable').GetMethod('GetBigEnum').ReturnType.FullName; [string]::Join(',', [Enum]::GetNames(`$a.GetType('TestIL.ObfuscatedLicenseState'))); (`$a.GetType('TestIL.Simple').GetMethod('Increment') -ne `$null); `$a.GetType('TestIL.Refs').GetMethod('CallsAddOne').Invoke(`$null, @()); `$a.GetType('TestIL.GenericMethodCaller').GetMethod('Call').Invoke(`$null, @())"
     Assert ($renameProbe[0] -eq 'True') "renamed class exists in saved assembly" "probe=$($renameProbe -join ',')"
     Assert ($renameProbe[1] -eq 'True') "renamed enum exists and remains an enum in saved assembly" "probe=$($renameProbe -join ',')"
