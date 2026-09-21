@@ -70,47 +70,6 @@ function Get-FileSha256([string]$Path) {
 
 if (-not $DnSpyExe) { $DnSpyExe = Join-Path $fixtureDir "..\..\..\..\dnSpy\dnSpy\bin\Release\$Tfm\dnSpy.exe" }
 
-$extDir = Split-Path $fixtureDir -Parent | Split-Path -Parent
-$binFixture = Join-Path $fixtureDir 'bin'
-$testDll = Join-Path $binFixture 'TestIL.dll'
-if (-not $FixtureDll) { $FixtureDll = Join-Path $fixtureDir 'bin\TestIL.dll' }
-$testDll = $FixtureDll
-$extDllSrc = Join-Path $extDir "bin\Release\$Tfm\dnSpy.Extension.MCP.x.dll"
-$resolved = Resolve-Path $DnSpyExe -ErrorAction SilentlyContinue
-if (-not $resolved) {
-    $hint = if ($Tfm -eq 'net48') { './build.ps1 -NoMsbuild -buildtfm netframework' } else { './build.ps1 -NoMsbuild -buildtfm net' }
-    throw "dnSpy.exe not found at $DnSpyExe. Build the Release/$Tfm distribution first: $hint"
-}
-$dnSpyExeFull = $resolved.Path
-
-# Discover dnSpy's ACTUAL extension directory instead of hard-coding it. dnSpy loads *.x.dll from
-# its BinDirectory (where dnSpy.dll lives) and from <BinDirectory>\Extensions\<name>\. Depending on
-# how the app was built (plain layout vs build.ps1's rearranged bin\ subfolder) BinDirectory is
-# either the exe's own folder or a bin\ subfolder — a hard-coded 'bin\Extensions' silently breaks
-# when the layout changes (issue: the extension deploys to a folder dnSpy never scans, so it's
-# never loaded, the server never starts, and — because Release builds don't write the disk log —
-# there's no trace; the only symptom is "server never came up"). Anchor on where dnSpy's OWN
-# extensions (e.g. dnSpy.Analyzer.x.dll) actually sit.
-function Resolve-DnSpyBinDirectory([string]$exePath)
-{
-    $exeDir = Split-Path $exePath -Parent
-    # BinDirectory is the directory that contains dnSpy.dll next to the marker extension.
-    foreach ($candidate in @($exeDir, (Join-Path $exeDir 'bin'))) {
-        # dnSpy.dll is absent in single-exe distributions; the analyzer extension plus the
-        # extensions folder is the reliable marker of the directory extensions load from.
-        if ((Test-Path (Join-Path $candidate 'dnSpy.Analyzer.x.dll')) -and
-            (Test-Path (Join-Path $candidate 'Extensions'))) {
-            return $candidate
-        }
-    }
-    throw "Could not locate dnSpy's BinDirectory (dnSpy.dll + dnSpy.Analyzer.x.dll) under $exeDir. Is this a complete dnSpy build?"
-}
-$dnSpyBinDir = Resolve-DnSpyBinDirectory $dnSpyExeFull
-$extDeployDir = Join-Path $dnSpyBinDir 'Extensions\dnSpy.Extension.MCP'
-Write-Host "  dnSpy BinDirectory: $dnSpyBinDir"
-Write-Host "  Extension deploy dir: $extDeployDir"
-
-$pass = 0; $fail = 0
 function Assert($condition, [string]$label, [string]$detail = '')
 {
     if ($condition) { Write-Host "  PASS  $label" -ForegroundColor Green; $script:pass++ }
@@ -174,28 +133,126 @@ function Initialize-McpSession
     Write-Host "  MCP session initialized (protocol $negotiated, id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
 }
 
+
+# ---- failure-path teardown, extracted so regression tests exercise the REAL code ----
+# Session teardown per the project client protocol: DELETE the transport session (safe
+# even after a hard failure; skipped when no session was ever allocated).
+function Close-McpSessionBestEffort
+{
+    if (-not $script:McpSessionId) { return }
+    try {
+        Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Delete -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -UseBasicParsing -TimeoutSec 5 | Out-Null
+        Write-Host "MCP session closed"
+    } catch { Write-Host "MCP session close failed (server may already be gone): $($_.Exception.Message)" }
+    $script:McpSessionId = $null
+}
+# Cleanup kills ONLY this run's launched process and only while its identity still matches
+# pid + exe + UTC creation ticks recorded at launch. A recycled PID or a different binary
+# is never touched; a failed re-check never claims the process exited.
+function Stop-LaunchedDnSpyVerified
+{
+    param($Proc, $Identity, [switch]$Keep)
+    if (-not $Keep -and $Proc -and $Identity)
+    {
+        $stillOurs = $false
+        try {
+            $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $Identity.pid) -ErrorAction Stop
+            $stillOurs = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $Identity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $Identity.ticks)
+        } catch { }
+        if ($stillOurs)
+        {
+            Write-Host "Stopping dnSpy PID $($Identity.pid) (identity verified)"
+            try { Stop-Process -Id $Identity.pid -Force -ErrorAction SilentlyContinue } catch { }
+        }
+        elseif (-not $Proc.HasExited)
+        {
+            Write-Host "dnSpy PID $($Identity.pid) failed the identity re-check - NOT stopping it"
+        }
+    }
+    elseif ($Keep -and $Proc)
+    {
+        Write-Host "Leaving dnSpy (PID $($Proc.Id)) running per -KeepDnSpy"
+    }
+}
+function Complete-StaticE2ERun
+{
+    param($Proc, $Identity, [switch]$KeepDnSpy)
+    Close-McpSessionBestEffort
+    Stop-LaunchedDnSpyVerified -Proc $Proc -Identity $Identity -Keep:$KeepDnSpy
+}
+
+function Normalize-BoundaryPath([string]$Path_) {
+    return ([IO.Path]::GetFullPath($Path_).TrimEnd('\','/') + '\').ToLowerInvariant()
+}
+# Containment = child starts with the parent path PLUS a separator, and is at least as
+# long: recognizes a single-character child directory while never matching the parent
+# itself (parent == child is the equality gate's job, checked separately).
+function Test-PathContains([string]$Parent, [string]$Child) {
+    $pp = Normalize-BoundaryPath $Parent
+    $cp = [IO.Path]::GetFullPath($Child).TrimEnd('\','/').ToLowerInvariant()
+    return ($cp.StartsWith($pp, [StringComparison]::OrdinalIgnoreCase) -and $cp.Length -ge $pp.Length)
+}
+# A reparse point anywhere in a path's ancestry can redirect it under someone else's tree:
+# ownership becomes uncertain, and uncertain paths are rejected (never guessed).
+function Test-UncertainPathAncestry([string]$Path_) {
+    $full = [IO.Path]::GetFullPath($Path_)
+    $parts = $full.Split('\')
+    $built = @()
+    for ($i = 1; $i -lt $parts.Count; $i++) {
+        $built += $parts[$i]
+        $seg = $parts[0] + '\' + ($built -join '\')
+        try {
+            $item = Get-Item -LiteralPath $seg -Force -ErrorAction Stop
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $true }
+        } catch { }
+    }
+    return $false
+}
+
 if ($ProbeMode) { return }
 
 
-# ----- step 1: build fixture -----
-if (-not $SkipBuild)
-{
-    Write-Host "[1] Building TestIL.dll fixture"
-    & (Join-Path $fixtureDir 'build-fixture.ps1') -Clean
-    Write-Host ""
-
-    Write-Host "[2] Building MCP extension (Release)"
-    Push-Location $extDir
-    try { & dotnet build -c Release --nologo -v q; if ($LASTEXITCODE -ne 0) { throw "extension build failed" } }
-    finally { Pop-Location }
-    Write-Host ""
+$extDir = Split-Path $fixtureDir -Parent | Split-Path -Parent
+$binFixture = Join-Path $fixtureDir 'bin'
+$extDllSrc = Join-Path $extDir "bin\Release\$Tfm\dnSpy.Extension.MCP.x.dll"
+$resolved = Resolve-Path $DnSpyExe -ErrorAction SilentlyContinue
+if (-not $resolved) {
+    $hint = if ($Tfm -eq 'net48') { './build.ps1 -NoMsbuild -buildtfm netframework' } else { './build.ps1 -NoMsbuild -buildtfm net' }
+    throw "dnSpy.exe not found at $DnSpyExe. Build the Release/$Tfm distribution first: $hint"
 }
+$dnSpyExeFull = $resolved.Path
 
-if (-not (Test-Path $testDll)) { throw "Fixture DLL missing: $testDll" }
-if (-not (Test-Path $extDllSrc)) { throw "Extension DLL missing: $extDllSrc" }
+# Discover dnSpy's ACTUAL extension directory instead of hard-coding it. dnSpy loads *.x.dll from
+# its BinDirectory (where dnSpy.dll lives) and from <BinDirectory>\Extensions\<name>\. Depending on
+# how the app was built (plain layout vs build.ps1's rearranged bin\ subfolder) BinDirectory is
+# either the exe's own folder or a bin\ subfolder — a hard-coded 'bin\Extensions' silently breaks
+# when the layout changes (issue: the extension deploys to a folder dnSpy never scans, so it's
+# never loaded, the server never starts, and — because Release builds don't write the disk log —
+# there's no trace; the only symptom is "server never came up"). Anchor on where dnSpy's OWN
+# extensions (e.g. dnSpy.Analyzer.x.dll) actually sit.
+function Resolve-DnSpyBinDirectory([string]$exePath)
+{
+    $exeDir = Split-Path $exePath -Parent
+    # BinDirectory is the directory that contains dnSpy.dll next to the marker extension.
+    foreach ($candidate in @($exeDir, (Join-Path $exeDir 'bin'))) {
+        # dnSpy.dll is absent in single-exe distributions; the analyzer extension plus the
+        # extensions folder is the reliable marker of the directory extensions load from.
+        if ((Test-Path (Join-Path $candidate 'dnSpy.Analyzer.x.dll')) -and
+            (Test-Path (Join-Path $candidate 'Extensions'))) {
+            return $candidate
+        }
+    }
+    throw "Could not locate dnSpy's BinDirectory (dnSpy.dll + dnSpy.Analyzer.x.dll) under $exeDir. Is this a complete dnSpy build?"
+}
+$dnSpyBinDir = Resolve-DnSpyBinDirectory $dnSpyExeFull
+$extDeployDir = Join-Path $dnSpyBinDir 'Extensions\dnSpy.Extension.MCP'
+Write-Host "  dnSpy BinDirectory: $dnSpyBinDir"
+Write-Host "  Extension deploy dir: $extDeployDir"
 
-$originalHash = Get-FileSha256 $testDll
-Write-Host "[*] Fixture SHA256 (pre-patch): $originalHash"
+$pass = 0; $fail = 0
+$testDll = Join-Path $binFixture 'TestIL.dll'
+if (-not $FixtureDll) { $FixtureDll = Join-Path $fixtureDir 'bin\TestIL.dll' }
+$testDll = $FixtureDll
 
 # ----- step 3: pre-flight validation (read-only; strictly BEFORE any build/copy/
 # delete/launch). The committed snapshot in SettingsFile is what the product loader
@@ -218,18 +275,13 @@ if (-not $snapObj.AllowedSampleRoot -or -not $snapObj.ArtifactRoot) { throw "Set
 # Path-boundary checks are segment-wise (never a raw StartsWith prefix): normalize to
 # full paths, trim trailing separators, compare case-insensitively, and treat containment
 # as parent-path + separator + remainder.
-function Normalize-BoundaryPath([string]$Path_) {
-    return ([IO.Path]::GetFullPath($Path_).TrimEnd('\','/') + '\').ToLowerInvariant()
-}
-function Test-PathContains([string]$Parent, [string]$Child) {
-    $pp = Normalize-BoundaryPath $Parent; $cp = [IO.Path]::GetFullPath($Child).TrimEnd('\','/').ToLowerInvariant()
-    return ($cp.StartsWith($pp, [StringComparison]::OrdinalIgnoreCase) -and $cp.Length -gt $pp.Length)
-}
+
 $rootSample = "$($snapObj.AllowedSampleRoot)"
 $rootArtifact = "$($snapObj.ArtifactRoot)"
 $rootPlugin = $dnSpyBinDir   # extension deploy target; derived from the dnSpy exe we drive
 foreach ($r in @(@('sample root', $rootSample), @('artifact root', $rootArtifact), @('plugin root', $rootPlugin))) {
     if (-not (Test-Path -LiteralPath $r[1] -PathType Container)) { throw "$($r[0]) does not exist or is not a directory: $($r[1])" }
+    if (Test-UncertainPathAncestry $r[1]) { throw "$($r[0]) passes through a reparse point - ownership uncertain, refusing: $($r[1])" }
 }
 $npSample = Normalize-BoundaryPath $rootSample; $npArtifact = Normalize-BoundaryPath $rootArtifact; $npPlugin = Normalize-BoundaryPath $rootPlugin
 if ($npSample -eq $npArtifact -or $npSample -eq $npPlugin -or $npArtifact -eq $npPlugin) { throw "sample/artifact/plugin roots must be pairwise distinct (got: $npSample | $npArtifact | $npPlugin)" }
@@ -244,6 +296,27 @@ Write-Host "  Settings snapshot verified: port $($snapObj.Port), sample root $ro
 $portTaken = $false
 try { $tcp = New-Object Net.Sockets.TcpClient; $tcp.Connect('127.0.0.1', $Port); $portTaken = $tcp.Connected; $tcp.Close() } catch { }
 if ($portTaken) { throw "port $Port is already in use - refusing to launch or talk to an unattributed listener" }
+
+
+# ----- step 1: build fixture -----
+if (-not $SkipBuild)
+{
+    Write-Host "[1] Building TestIL.dll fixture"
+    & (Join-Path $fixtureDir 'build-fixture.ps1') -Clean
+    Write-Host ""
+
+    Write-Host "[2] Building MCP extension (Release)"
+    Push-Location $extDir
+    try { & dotnet build -c Release --nologo -v q; if ($LASTEXITCODE -ne 0) { throw "extension build failed" } }
+    finally { Pop-Location }
+    Write-Host ""
+}
+
+if (-not (Test-Path $testDll)) { throw "Fixture DLL missing: $testDll" }
+if (-not (Test-Path $extDllSrc)) { throw "Extension DLL missing: $extDllSrc" }
+
+$originalHash = Get-FileSha256 $testDll
+Write-Host "[*] Fixture SHA256 (pre-patch): $originalHash"
 
 # ----- step 4: deploy extension (only after validation passed) -----
 Write-Host "[3] Deploying extension → $extDeployDir"
@@ -269,7 +342,7 @@ try
         $lp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyProc.Id) -ErrorAction Stop
         $dnSpyIdentity = @{ pid = $dnSpyProc.Id; exe = "$($lp.ExecutablePath)".ToLowerInvariant(); ticks = [long]$lp.CreationDate.ToUniversalTime().Ticks }
     } catch {
-        Write-Warning "could not record launched dnSpy identity (PID $($dnSpyProc.Id)); it will NOT be stopped automatically"
+        throw "could not record launched dnSpy identity (PID $($dnSpyProc.Id)) - blocking before any tool call; the finally will still attempt verified cleanup"
     }
 
 # Poll for /health on the EXACT configured port only. The old +N scan could latch onto an
@@ -310,6 +383,17 @@ if (-not $found)
     throw "MCP server never came up on port $Port — see DIAGNOSTIC above"
 }
 Write-Host "  MCP server is up on port $script:Port"
+
+    # Before Initialize or ANY Rpc: health being up does not prove OUR process is the one
+    # answering - a foreign instance could have taken the port after our launch died.
+    # Identity (pid+exe+ticks) must still match the process we launched.
+    if (-not $dnSpyIdentity) { throw "no recorded launch identity - refusing any tool call" }
+    $identityOk = $false
+    try {
+        $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyIdentity.pid) -ErrorAction Stop
+        $identityOk = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $dnSpyIdentity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $dnSpyIdentity.ticks)
+    } catch { }
+    if (-not $identityOk) { throw "launched dnSpy no longer matches its recorded identity - refusing any tool call" }
 Initialize-McpSession
 
 # Wait for TestIL to actually appear in the tree. dnSpy loads CLI-provided files
@@ -329,17 +413,6 @@ while ((Get-Date) -lt $deadline -and -not $loaded)
 if (-not $loaded) { throw "TestIL never appeared in list_assemblies — did dnSpy fail to load the fixture?" }
 Write-Host "  TestIL assembly is loaded"
 Write-Host ""
-
-    # Before the first tool call, re-verify the launched process: health being up does
-    # not prove OUR process is the one answering - a foreign instance could have taken
-    # the port after our launch died. Identity (pid+exe+ticks) must still match.
-    if (-not $dnSpyIdentity) { throw "no recorded launch identity - refusing to send tool calls" }
-    $identityOk = $false
-    try {
-        $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyIdentity.pid) -ErrorAction Stop
-        $identityOk = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $dnSpyIdentity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $dnSpyIdentity.ticks)
-    } catch { }
-    if (-not $identityOk) { throw "launched dnSpy no longer matches its recorded identity - refusing tool calls" }
 
     # ----- step 5-7: reads on TestIL.Simple -----
     Write-Host "[5] list_methods on TestIL.Simple"
@@ -411,7 +484,7 @@ Write-Host ""
         assembly_name='TestIL'; type_full_name='TestIL.Simple'; method_name='AddOne';
         edits=@(@{ op='replace'; index=$loadOneIdx; opcode='ldc.i4'; operand='int:41' })
     } | Out-Null
-    $sidePath = Join-Path $binFixture 'TestIL.patched.dll'
+    $sidePath = Join-Path (Split-Path $testDll -Parent) 'TestIL.patched.dll'
     if (Test-Path $sidePath) { Remove-Item $sidePath -Force }
     $saved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$sidePath }
     Assert ((Test-Path $sidePath)) "side-path file written"
@@ -1244,7 +1317,7 @@ Write-Host ""
 
     Write-Host ""
     Write-Host "[RT-7] save_assembly persists all renamed metadata and dependent signatures"
-    $renamedPath = Join-Path $binFixture 'TestIL.renamed.dll'
+    $renamedPath = Join-Path (Split-Path $testDll -Parent) 'TestIL.renamed.dll'
     if (Test-Path $renamedPath) { Remove-Item $renamedPath -Force }
     Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$renamedPath } | Out-Null
     $renameProbe = & powershell -NoProfile -Command "`$a=[Reflection.Assembly]::LoadFile('$renamedPath'); (`$a.GetType('TestIL.DecoratedRenamed') -ne `$null); `$a.GetType('TestIL.BigEnumRenamed').IsEnum; `$a.GetType('TestIL.Patchable').GetMethod('GetBigEnum').ReturnType.FullName; [string]::Join(',', [Enum]::GetNames(`$a.GetType('TestIL.ObfuscatedLicenseState'))); (`$a.GetType('TestIL.Simple').GetMethod('Increment') -ne `$null); `$a.GetType('TestIL.Refs').GetMethod('CallsAddOne').Invoke(`$null, @()); `$a.GetType('TestIL.GenericMethodCaller').GetMethod('Call').Invoke(`$null, @())"
@@ -1267,40 +1340,7 @@ finally
 {
     Write-Host ""
     Write-Host "===== SUMMARY: $pass pass / $fail fail ====="
-    # Session teardown per the project client protocol: DELETE the transport session
-    # (safe even after a hard failure; skipped when no session was ever allocated).
-    if ($script:McpSessionId)
-    {
-        try {
-            Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Delete -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -UseBasicParsing -TimeoutSec 5 | Out-Null
-            Write-Host "MCP session closed"
-        } catch { Write-Host "MCP session close failed (server may already be gone): $($_.Exception.Message)" }
-        $script:McpSessionId = $null
-    }
-    # Cleanup kills ONLY this run's launched process and only while its identity still
-    # matches pid + exe + UTC creation ticks recorded at launch. A recycled PID or a
-    # different binary is never touched.
-    if (-not $KeepDnSpy -and $dnSpyProc -and $dnSpyIdentity)
-    {
-        $stillOurs = $false
-        try {
-            $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyIdentity.pid) -ErrorAction Stop
-            $stillOurs = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $dnSpyIdentity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $dnSpyIdentity.ticks)
-        } catch { }
-        if ($stillOurs)
-        {
-            Write-Host "Stopping dnSpy PID $($dnSpyIdentity.pid) (identity verified)"
-            try { Stop-Process -Id $dnSpyIdentity.pid -Force -ErrorAction SilentlyContinue } catch { }
-        }
-        elseif (-not $dnSpyProc.HasExited)
-        {
-            Write-Host "dnSpy PID $($dnSpyIdentity.pid) failed the identity re-check - NOT stopping it"
-        }
-    }
-    elseif ($KeepDnSpy -and $dnSpyProc)
-    {
-        Write-Host "Leaving dnSpy (PID $($dnSpyProc.Id)) running per -KeepDnSpy"
-    }
+    Complete-StaticE2ERun -Proc $dnSpyProc -Identity $dnSpyIdentity -KeepDnSpy:$KeepDnSpy
 }
 
 if ($fail -ne 0) { exit 1 } else { exit 0 }
