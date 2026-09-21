@@ -756,7 +756,7 @@ function Run-ACC001 {
         New-Item -ItemType Directory -Force -Path $extDest | Out-Null
         Copy-Item $m.env.extension_dll -Destination (Join-Path $extDest 'dnSpy.Extension.MCP.x.dll') -Force
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Repo 'tests\fixtures\bin') | Out-Null
-        Copy-Item $m.env.testil_dll -Destination (Join-Path $script:Repo 'tests\fixtures\bin\TestIL.dll') -Force
+        Copy-Item $m.env.testil_dll -Destination (Join-Path $m.env.sample_root 'TestIL.dll') -Force
         $fixOut = "fixture staged from $($m.env.testil_dll)" 
     # [3] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
     # the WPF thread (spy start_thread_is_wpf==1) and drive object work through the
@@ -787,7 +787,7 @@ function Run-ACC001 {
         # run and restored afterwards by Ensure-CanonicalDnSpy.
         Stop-DnSpyAndTargets
         Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' 3100 $m.env.sample_root $m.env.artifact_root)
-        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 -SettingsFile ([Environment]::ExpandEnvironmentVariables($m.env.settings_xml)) *>&1
+        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 -SettingsFile ([Environment]::ExpandEnvironmentVariables($m.env.settings_xml)) -FixtureDll (Join-Path $m.env.sample_root 'TestIL.dll') *>&1
         "$static" | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')

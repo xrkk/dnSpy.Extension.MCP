@@ -37,6 +37,13 @@ param(
     # config is never touched by this suite.
     [Parameter(Mandatory = $true)]
     [string]$SettingsFile,
+    # Define the MCP session/Rpc helper functions and exit WITHOUT deploying, launching
+    # or running any business step. Regression probes dot-source with -ProbeMode, set
+    # $script:Port, and then exercise THIS script's own functions.
+    [switch]$ProbeMode,
+    # Explicit fixture DLL to preload (must live inside the snapshot's AllowedSampleRoot).
+    # Defaults to the in-tree build output for local runs.
+    [string]$FixtureDll = '',
     # Which dnSpy distribution to drive. net48 is not just a second build of the same thing: it
     # resolves System.Text.Json from NuGet instead of the BCL and binds assemblies by exact
     # version with no redirects, so runtime faults that net10 rolls forward past (issue #21) only
@@ -66,6 +73,8 @@ if (-not $DnSpyExe) { $DnSpyExe = Join-Path $fixtureDir "..\..\..\..\dnSpy\dnSpy
 $extDir = Split-Path $fixtureDir -Parent | Split-Path -Parent
 $binFixture = Join-Path $fixtureDir 'bin'
 $testDll = Join-Path $binFixture 'TestIL.dll'
+if (-not $FixtureDll) { $FixtureDll = Join-Path $fixtureDir 'bin\TestIL.dll' }
+$testDll = $FixtureDll
 $extDllSrc = Join-Path $extDir "bin\Release\$Tfm\dnSpy.Extension.MCP.x.dll"
 $resolved = Resolve-Path $DnSpyExe -ErrorAction SilentlyContinue
 if (-not $resolved) {
@@ -112,7 +121,7 @@ function Rpc([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
     if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
@@ -124,12 +133,49 @@ function RpcText([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
     if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
     return $jr.result.content[0].text
 }
+
+# ---- MCP session helper (invoked by the main flow below; also loadable via -ProbeMode) ----
+$script:McpSessionId = $null
+$script:McpProtocolVersion = $null
+# Protocol versions this client understands (the transport implements the 2025-03-26
+# Streamable HTTP revision; 2025-06-18 is the negotiated default).
+$script:SupportedProtocolVersions = @('2025-06-18', '2025-03-26')
+
+# ----- MCP session: the edit-owner contract (CON008) admits write transactions only on an
+# initialized transport session. Negotiate once, capture the server-assigned session id,
+# notify readiness, and carry the id on every subsequent call. No automatic re-init or
+# write replay on failure: a lost session surfaces as a hard error.
+$script:McpSessionId = $null
+function Initialize-McpSession
+{
+    # The transport routes Streamable-HTTP (session-allocating) vs legacy plain-JSON on the
+    # Accept header: clients must offer text/event-stream (McpServer's POST disambiguation).
+    $init = @{ jsonrpc='2.0'; id=1; method='initialize'; params=@{
+        protocolVersion='2025-06-18'; capabilities=@{};
+        clientInfo=@{ name='static-e2e-run-tests'; version='1.0' } } } | ConvertTo-Json -Depth 10 -Compress
+    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing
+    $jr = $resp.Content | ConvertFrom-Json
+    if ($jr.error) { throw "initialize RPC error: $($jr.error.message)" }
+    $negotiated = "$($jr.result.protocolVersion)"
+    if (-not $negotiated) { throw "initialize response carried no protocolVersion (negotiation failed)" }
+    if ($script:SupportedProtocolVersions -notcontains $negotiated) { throw "server negotiated unsupported protocolVersion '$negotiated' (client supports: $($script:SupportedProtocolVersions -join ', '))" }
+    $script:McpProtocolVersion = $negotiated
+    $sid = $resp.Headers['Mcp-Session-Id']
+    if (-not $sid) { throw "initialize response carried no Mcp-Session-Id header" }
+    $script:McpSessionId = @($sid)[0]
+    $notif = @{ jsonrpc='2.0'; method='notifications/initialized' } | ConvertTo-Json -Depth 5 -Compress
+    Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $notif -UseBasicParsing | Out-Null
+    Write-Host "  MCP session initialized (protocol $negotiated, id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
+}
+
+if ($ProbeMode) { return }
+
 
 # ----- step 1: build fixture -----
 if (-not $SkipBuild)
@@ -151,21 +197,14 @@ if (-not (Test-Path $extDllSrc)) { throw "Extension DLL missing: $extDllSrc" }
 $originalHash = Get-FileSha256 $testDll
 Write-Host "[*] Fixture SHA256 (pre-patch): $originalHash"
 
-# ----- step 3: deploy extension -----
-Write-Host "[3] Deploying extension → $extDeployDir"
-if (-not (Test-Path $extDeployDir)) { New-Item -ItemType Directory -Path $extDeployDir | Out-Null }
-Copy-Item $extDllSrc $extDeployDir -Force
-$pdb = [System.IO.Path]::ChangeExtension($extDllSrc, '.pdb')
-if (Test-Path $pdb) { Copy-Item $pdb $extDeployDir -Force }
-
-# ----- step 4: launch dnSpy with the fixture preloaded -----
-Write-Host "[4] Launching dnSpy + loading $testDll"
-
-# Pre-launch validation. The committed snapshot inside SettingsFile is the authority for
-# the port and the isolated roots; a mismatch or an already-occupied port means refusing
-# BEFORE deploying over anyone or sending a single request. Ownership of an existing
-# listener is deliberately NOT guessed from an HTTP 200 (http.sys/PID4 is not dnSpy):
-# anything already listening on the port aborts the run.
+# ----- step 3: pre-flight validation (read-only; strictly BEFORE any build/copy/
+# delete/launch). The committed snapshot in SettingsFile is what the product loader
+# actually activates (McpSettingsSnapshot.Recover: committed is authoritative, pending
+# never overrides it), so validating it validates the effective configuration.
+$item = Get-Item -LiteralPath $SettingsFile -ErrorAction Stop
+if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "SettingsFile is a reparse point (junction/symlink) - refusing: $SettingsFile" }
+if ($item.Attributes -band [IO.FileAttributes]::Directory) { throw "SettingsFile is a directory: $SettingsFile" }
+try { $null = [IO.File]::OpenRead($SettingsFile).Close() } catch { throw "SettingsFile is not readable: $SettingsFile" }
 [xml]$sx = Get-Content -LiteralPath $SettingsFile
 $sxNode = $sx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
 if (-not $sxNode) { throw "SettingsFile carries no MCP settings section: $SettingsFile" }
@@ -175,24 +214,63 @@ try { $snapObj = $snap | ConvertFrom-Json } catch { throw "SettingsFile committe
 if ([int]$snapObj.Port -ne $Port) { throw "SettingsFile committed snapshot Port=$($snapObj.Port) does not match -Port $Port" }
 if ("$($snapObj.EnableServer)" -ne 'true') { throw "SettingsFile committed snapshot has EnableServer=false" }
 if (-not $snapObj.AllowedSampleRoot -or -not $snapObj.ArtifactRoot) { throw "SettingsFile committed snapshot lacks AllowedSampleRoot/ArtifactRoot" }
-Write-Host "  Settings snapshot verified: port $($snapObj.Port), sample root $($snapObj.AllowedSampleRoot)"
+
+# Path-boundary checks are segment-wise (never a raw StartsWith prefix): normalize to
+# full paths, trim trailing separators, compare case-insensitively, and treat containment
+# as parent-path + separator + remainder.
+function Normalize-BoundaryPath([string]$Path_) {
+    return ([IO.Path]::GetFullPath($Path_).TrimEnd('\','/') + '\').ToLowerInvariant()
+}
+function Test-PathContains([string]$Parent, [string]$Child) {
+    $pp = Normalize-BoundaryPath $Parent; $cp = [IO.Path]::GetFullPath($Child).TrimEnd('\','/').ToLowerInvariant()
+    return ($cp.StartsWith($pp, [StringComparison]::OrdinalIgnoreCase) -and $cp.Length -gt $pp.Length)
+}
+$rootSample = "$($snapObj.AllowedSampleRoot)"
+$rootArtifact = "$($snapObj.ArtifactRoot)"
+$rootPlugin = $dnSpyBinDir   # extension deploy target; derived from the dnSpy exe we drive
+foreach ($r in @(@('sample root', $rootSample), @('artifact root', $rootArtifact), @('plugin root', $rootPlugin))) {
+    if (-not (Test-Path -LiteralPath $r[1] -PathType Container)) { throw "$($r[0]) does not exist or is not a directory: $($r[1])" }
+}
+$npSample = Normalize-BoundaryPath $rootSample; $npArtifact = Normalize-BoundaryPath $rootArtifact; $npPlugin = Normalize-BoundaryPath $rootPlugin
+if ($npSample -eq $npArtifact -or $npSample -eq $npPlugin -or $npArtifact -eq $npPlugin) { throw "sample/artifact/plugin roots must be pairwise distinct (got: $npSample | $npArtifact | $npPlugin)" }
+if (Test-PathContains $rootSample $rootArtifact -or (Test-PathContains $rootArtifact $rootSample)) { throw "sample root and artifact root must not contain each other" }
+if (Test-PathContains $rootSample $rootPlugin -or (Test-PathContains $rootPlugin $rootSample)) { throw "sample root and plugin root must not contain each other" }
+if (Test-PathContains $rootArtifact $rootPlugin -or (Test-PathContains $rootPlugin $rootArtifact)) { throw "artifact root and plugin root must not contain each other" }
+if (-not (Test-PathContains $rootSample $testDll)) { throw "fixture DLL must live inside the sample root (fixture: $testDll, sample root: $rootSample)" }
+Write-Host "  Settings snapshot verified: port $($snapObj.Port), sample root $rootSample, artifact root $rootArtifact"
+
+# Port occupied by ANYONE (we never attribute an existing listener from an HTTP 200;
+# http.sys/PID4 ownership proves nothing) -> refuse before any deploy/request/launch.
 $portTaken = $false
 try { $tcp = New-Object Net.Sockets.TcpClient; $tcp.Connect('127.0.0.1', $Port); $portTaken = $tcp.Connected; $tcp.Close() } catch { }
 if ($portTaken) { throw "port $Port is already in use - refusing to launch or talk to an unattributed listener" }
 
-# Quote the paths: Start-Process does not auto-quote -ArgumentList entries, so a path
-# containing spaces would reach dnSpy split at the space.
-$dnSpyProc = Start-Process -FilePath $dnSpyExeFull -ArgumentList @('--multiple', '--settings-file', "`"$SettingsFile`"", "`"$testDll`"") -WindowStyle Hidden -PassThru
-# Launch identity for verified cleanup: pid + exe + UTC creation ticks captured now; the
-# finally block only stops a process that still matches ALL THREE.
-$dnSpyIdentity = $null
-try {
-    $lp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyProc.Id) -ErrorAction Stop
-    $dnSpyIdentity = @{ pid = $dnSpyProc.Id; exe = "$($lp.ExecutablePath)".ToLowerInvariant(); ticks = [long]$lp.CreationDate.ToUniversalTime().Ticks }
-} catch { throw "launched dnSpy exited before its identity could be recorded" }
+# ----- step 4: deploy extension (only after validation passed) -----
+Write-Host "[3] Deploying extension → $extDeployDir"
+if (-not (Test-Path $extDeployDir)) { New-Item -ItemType Directory -Path $extDeployDir | Out-Null }
+Copy-Item $extDllSrc $extDeployDir -Force
+$pdb = [System.IO.Path]::ChangeExtension($extDllSrc, '.pdb')
+if (Test-Path $pdb) { Copy-Item $pdb $extDeployDir -Force }
 
+# ----- step 5: launch dnSpy with the fixture preloaded -----
+Write-Host "[4] Launching dnSpy + loading $testDll"
+$dnSpyProc = $null
+$dnSpyIdentity = $null
 try
 {
+    # Quote the paths: Start-Process does not auto-quote -ArgumentList entries, so a
+    # path containing spaces would reach dnSpy split at the space.
+    $dnSpyProc = Start-Process -FilePath $dnSpyExeFull -ArgumentList @('--multiple', '--settings-file', "`"$SettingsFile`"", "`"$testDll`"") -WindowStyle Hidden -PassThru
+    # Launch identity for verified cleanup: pid + exe + UTC creation ticks captured now;
+    # the finally block only stops a process that still matches ALL THREE. If the identity
+    # cannot be recorded the run still goes to the finally - it never pretends the process
+    # exited, and it never kills an unverified PID.
+    try {
+        $lp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyProc.Id) -ErrorAction Stop
+        $dnSpyIdentity = @{ pid = $dnSpyProc.Id; exe = "$($lp.ExecutablePath)".ToLowerInvariant(); ticks = [long]$lp.CreationDate.ToUniversalTime().Ticks }
+    } catch {
+        Write-Warning "could not record launched dnSpy identity (PID $($dnSpyProc.Id)); it will NOT be stopped automatically"
+    }
 
 # Poll for /health on the EXACT configured port only. The old +N scan could latch onto an
 # unrelated instance that happened to be listening; the explicit SettingsFile snapshot is
@@ -232,31 +310,6 @@ if (-not $found)
     throw "MCP server never came up on port $Port — see DIAGNOSTIC above"
 }
 Write-Host "  MCP server is up on port $script:Port"
-
-# ----- MCP session: the edit-owner contract (CON008) admits write transactions only on an
-# initialized transport session. Negotiate once, capture the server-assigned session id,
-# notify readiness, and carry the id on every subsequent call. No automatic re-init or
-# write replay on failure: a lost session surfaces as a hard error.
-$script:McpSessionId = $null
-function Initialize-McpSession
-{
-    # The transport routes Streamable-HTTP (session-allocating) vs legacy plain-JSON on the
-    # Accept header: clients must offer text/event-stream (McpServer's POST disambiguation).
-    $init = @{ jsonrpc='2.0'; id=1; method='initialize'; params=@{
-        protocolVersion='2025-06-18'; capabilities=@{};
-        clientInfo=@{ name='static-e2e-run-tests'; version='1.0' } } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing
-    $jr = $resp.Content | ConvertFrom-Json
-    if ($jr.error) { throw "initialize RPC error: $($jr.error.message)" }
-    $negotiated = "$($jr.result.protocolVersion)"
-    if (-not $negotiated) { throw "initialize response carried no protocolVersion (negotiation failed)" }
-    $sid = $resp.Headers['Mcp-Session-Id']
-    if (-not $sid) { throw "initialize response carried no Mcp-Session-Id header" }
-    $script:McpSessionId = @($sid)[0]
-    $notif = @{ jsonrpc='2.0'; method='notifications/initialized' } | ConvertTo-Json -Depth 5 -Compress
-    Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $notif -UseBasicParsing | Out-Null
-    Write-Host "  MCP session initialized (protocol $negotiated, id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
-}
 Initialize-McpSession
 
 # Wait for TestIL to actually appear in the tree. dnSpy loads CLI-provided files
@@ -276,6 +329,17 @@ while ((Get-Date) -lt $deadline -and -not $loaded)
 if (-not $loaded) { throw "TestIL never appeared in list_assemblies — did dnSpy fail to load the fixture?" }
 Write-Host "  TestIL assembly is loaded"
 Write-Host ""
+
+    # Before the first tool call, re-verify the launched process: health being up does
+    # not prove OUR process is the one answering - a foreign instance could have taken
+    # the port after our launch died. Identity (pid+exe+ticks) must still match.
+    if (-not $dnSpyIdentity) { throw "no recorded launch identity - refusing to send tool calls" }
+    $identityOk = $false
+    try {
+        $cp = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $dnSpyIdentity.pid) -ErrorAction Stop
+        $identityOk = ("$($cp.ExecutablePath)".ToLowerInvariant() -eq $dnSpyIdentity.exe) -and ([long]$cp.CreationDate.ToUniversalTime().Ticks -eq $dnSpyIdentity.ticks)
+    } catch { }
+    if (-not $identityOk) { throw "launched dnSpy no longer matches its recorded identity - refusing tool calls" }
 
     # ----- step 5-7: reads on TestIL.Simple -----
     Write-Host "[5] list_methods on TestIL.Simple"
