@@ -251,7 +251,15 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 	}
 
 	void EnsurePathBelowArtifactRoot(string directory) {
-		if (!IsBelowRoot(directory, ArtifactRoot)) throw new EditDomainException("EDIT_EXPORT_BLOCKED");
+		// The artifact root itself is a legal output directory: IsBelowRoot is strict
+		// containment (the child must be longer than root + separator), so the root
+		// compares equal, not below. An explicit output_path written directly into the
+		// artifact root (no subdirectory) previously tripped this gate and was rejected
+		// as EDIT_EXPORT_BLOCKED even though the path check above had just accepted it.
+		var normalized = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+		var root = Path.GetFullPath(ArtifactRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+		if (!IsBelowRoot(directory, ArtifactRoot) && !normalized.Equals(root, StringComparison.OrdinalIgnoreCase))
+			throw new EditDomainException("EDIT_EXPORT_BLOCKED");
 		var relative = directory.Substring(ArtifactRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 		var current = ArtifactRoot;
 		foreach (var part in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
