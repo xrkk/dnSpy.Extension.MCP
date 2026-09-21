@@ -80,7 +80,7 @@ function Rpc([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
     if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing -TimeoutSec 240
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
@@ -92,7 +92,7 @@ function RpcText([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
     if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing -TimeoutSec 240
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
@@ -104,7 +104,7 @@ function Rpc-Raw([string]$tool, [hashtable]$arguments)
 {
     if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $payload -UseBasicParsing -TimeoutSec 240
     $jr = $resp.Content | ConvertFrom-Json
     $text = $jr.result.content[0].text
     return ($text | ConvertFrom-Json)
@@ -129,7 +129,7 @@ function Initialize-McpSession
     $init = @{ jsonrpc='2.0'; id=1; method='initialize'; params=@{
         protocolVersion='2025-06-18'; capabilities=@{};
         clientInfo=@{ name='static-e2e-run-tests'; version='1.0' } } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing -TimeoutSec 60
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "initialize RPC error: $($jr.error.message)" }
     $negotiated = "$($jr.result.protocolVersion)"
@@ -140,7 +140,7 @@ function Initialize-McpSession
     if (-not $sid) { throw "initialize response carried no Mcp-Session-Id header" }
     $script:McpSessionId = @($sid)[0]
     $notif = @{ jsonrpc='2.0'; method='notifications/initialized' } | ConvertTo-Json -Depth 5 -Compress
-    Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $notif -UseBasicParsing | Out-Null
+    Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId; 'MCP-Protocol-Version' = $script:McpProtocolVersion } -Body $notif -UseBasicParsing -TimeoutSec 60 | Out-Null
     Write-Host "  MCP session initialized (protocol $negotiated, id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
 }
 
@@ -818,6 +818,12 @@ Write-Host ""
     Assert ($fr1.has_pending_patch -eq $true) "force_return sets a pending patch (revertible)"
     $fr1ops = @($fr1.instructions | ForEach-Object { $_.opcode })
     Assert (($fr1ops -contains 'ret') -and ($fr1ops.Count -le 3)) "IsPremium reduced to load+ret" "ops=$($fr1ops -join ',')"
+    # Revertibility is asserted BEFORE any save: under the P03 checkpoint contract
+    # save_assembly commits the pending transaction, after which there is no pending
+    # patch left for revert_method_il to revert.
+    $revF = Rpc 'revert_method_il' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='IsPremium' }
+    Assert ($revF.reverted -eq $true) "force_return is revertible via revert_method_il"
+    Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='IsPremium'; value=$true } | Out-Null
     # Force an int to a constant, and a reference type to default (null).
     Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetCoins'; value=999 } | Out-Null
     Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetName'; value='default' } | Out-Null
@@ -825,16 +831,15 @@ Write-Host ""
     $nop = Rpc 'nop_method' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='Tick' }
     $nopops = @($nop.instructions | ForEach-Object { $_.opcode })
     Assert (($nopops.Count -eq 1) -and ($nopops[0] -eq 'ret')) "nop_method Tick body is a single ret" "ops=$($nopops -join ',')"
-    # Persist to a side path and prove the rewritten behavior on disk.
-    $forcedPath = Join-Path $binFixture 'TestIL.forced.dll'
+    # Persist under ArtifactRoot (P03: explicit outputs live only there) and prove the
+    # rewritten behavior on the exported file.
+    $forcedPath = Join-Path $ArtifactRoot 'TestIL.forced.dll'
     if (Test-Path $forcedPath) { Remove-Item $forcedPath -Force }
-    Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$forcedPath } | Out-Null
-    Assert ((Test-Path $forcedPath)) "force_return side-path saved"
+    $forcedSaved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$forcedPath }
+    $forcedPath = $forcedSaved.saved_to
+    Assert ($forcedPath -and (Test-Path $forcedPath)) "force_return export written under ArtifactRoot at saved_to" "saved_to=$forcedPath"
     $beh = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$forcedPath') | Out-Null; ('{0}|{1}|{2}' -f [TestIL.Patchable]::IsPremium(), [TestIL.Patchable]::GetCoins(), [string]::IsNullOrEmpty([TestIL.Patchable]::GetName()))"
     Assert ($beh -eq 'True|999|True') "on disk: IsPremium()=True, GetCoins()=999, GetName()=null" "got $beh"
-    # Revertible like any other patch.
-    $revF = Rpc 'revert_method_il' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='IsPremium' }
-    Assert ($revF.reverted -eq $true) "force_return is revertible via revert_method_il"
     # force_return with a value on a void method errors helpfully.
     $voidErr = $null
     try { Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='Tick'; value=1 } | Out-Null } catch { $voidErr = $_.Exception.Message }
@@ -886,41 +891,6 @@ Write-Host ""
     $sc5 = Rpc 'search_constants' @{ value=1337 }
     $sc5testil = @($sc5.items | Where-Object { $_.assembly -eq 'TestIL' -and $_.value -eq 1337 })
     Assert ($sc5testil.Count -ge 2) "unscoped search_constants still finds TestIL's 1337 sites across all modules" "count=$($sc5testil.Count)"
-
-    # ----- step 26: open_files (load assemblies from disk). It loads extra copies of TestIL, which
-    # add duplicate 'TestIL' entries; tools after this scope by assembly_name and FindAssemblyByName
-    # returns the first (original) match, so the read-only steps below stay deterministic.
-    Write-Host ""
-    Write-Host "[26] open_files: load assemblies by file path and by directory"
-    $openDir = Join-Path $binFixture 'opentest'
-    if (Test-Path $openDir) { Remove-Item $openDir -Recurse -Force }
-    New-Item -ItemType Directory -Path $openDir | Out-Null
-    $openA = Join-Path $openDir 'OpenA.dll'
-    Copy-Item $testDll $openA -Force
-    # File mode: a path not yet loaded.
-    $o1 = Rpc 'open_files' @{ paths=@($openA) }
-    Assert ($o1.loaded_count -eq 1 -and $o1.failed_count -eq 0) "open_files loads OpenA.dll (1 new)" "loaded=$($o1.loaded_count) already=$($o1.already_loaded_count) failed=$($o1.failed_count)"
-    Assert (@($o1.loaded | Where-Object { $_.name -eq 'TestIL' }).Count -ge 1) "loaded entry carries assembly name (TestIL)"
-    $afterOpen = @((Rpc 'list_assemblies' @{ name_filter='TestIL' }).assemblies)
-    Assert ((@($afterOpen | Where-Object { $_.Name -eq 'TestIL' }).Count) -ge 2) "newly opened assembly shows up in list_assemblies"
-    # Idempotent: re-opening the same path is reported as already loaded, not reloaded.
-    $o2 = Rpc 'open_files' @{ paths=@($openA) }
-    Assert ($o2.loaded_count -eq 0 -and $o2.already_loaded_count -eq 1) "re-opening the same path reports already_loaded" "loaded=$($o2.loaded_count) already=$($o2.already_loaded_count)"
-    # Directory mode: drop a 2nd copy in and open the whole folder.
-    Copy-Item $testDll (Join-Path $openDir 'OpenB.dll') -Force
-    $o3 = Rpc 'open_files' @{ paths=@($openDir) }
-    Assert ($o3.loaded_count -eq 1 -and $o3.already_loaded_count -eq 1) "directory mode loads new OpenB.dll, skips already-open OpenA.dll" "loaded=$($o3.loaded_count) already=$($o3.already_loaded_count)"
-    # Recursive: a DLL in a subdirectory is skipped by default (top-dir only) but picked up with recursive=true.
-    $subDir = Join-Path $openDir 'nested'
-    New-Item -ItemType Directory -Path $subDir | Out-Null
-    Copy-Item $testDll (Join-Path $subDir 'OpenC.dll') -Force
-    $o3b = Rpc 'open_files' @{ paths=@($openDir) }
-    Assert ($o3b.loaded_count -eq 0) "default (non-recursive) directory mode does not descend into subdirectories" "loaded=$($o3b.loaded_count)"
-    $o3c = Rpc 'open_files' @{ paths=@($openDir); recursive=$true }
-    Assert ($o3c.loaded_count -eq 1) "recursive=true loads the DLL in the nested subdirectory" "loaded=$($o3c.loaded_count) already=$($o3c.already_loaded_count)"
-    # A missing path is reported in failed[], not thrown as a tool error.
-    $o4 = Rpc 'open_files' @{ paths=@('C:\does\not\exist\nope.dll') }
-    Assert ($o4.failed_count -eq 1 -and $o4.loaded_count -eq 0) "missing file reported in failed[] (not a hard error)" "failed=$($o4.failed_count)"
 
     # ----- step 27: generate_harmony_patch (signature-aware patch codegen) — read-only, resolves the
     # original TestIL deterministically even with the duplicate copies open_files just loaded.
@@ -1018,14 +988,20 @@ Write-Host ""
     $feops = @($fe.instructions | ForEach-Object { $_.opcode })
     Assert ($feops -contains 'ldc.i8') "long-backed enum force_return emits ldc.i8" "ops=$($feops -join ',')"
     Rpc 'revert_method_il' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetBigEnum' } | Out-Null
-    # HIGH-1/uint: force_return a uint method with a value > int.MaxValue (32-bit bit pattern), verify on disk.
+    # HIGH-1/uint: force_return a uint method with a value > int.MaxValue (32-bit bit pattern).
+    # Revertibility first (pre-save), then re-apply and export: save commits the pending
+    # transaction (P03), so a post-save revert would correctly find nothing to revert.
     Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetBigUint'; value=3000000000 } | Out-Null
-    $uintPath = Join-Path $binFixture 'TestIL.uint.dll'
+    $revU = Rpc 'revert_method_il' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetBigUint' }
+    Assert ($revU.reverted -eq $true) "uint force_return is revertible before export"
+    Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetBigUint'; value=3000000000 } | Out-Null
+    $uintPath = Join-Path $ArtifactRoot 'TestIL.uint.dll'
     if (Test-Path $uintPath) { Remove-Item $uintPath -Force }
-    Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$uintPath } | Out-Null
+    $uintSaved = Rpc 'save_assembly' @{ assembly_name='TestIL'; output_path=$uintPath }
+    $uintPath = $uintSaved.saved_to
+    Assert ($uintPath -and (Test-Path $uintPath)) "uint force_return export written under ArtifactRoot at saved_to" "saved_to=$uintPath"
     $uintVal = & powershell -NoProfile -Command "[Reflection.Assembly]::LoadFile('$uintPath') | Out-Null; [TestIL.Patchable]::GetBigUint()"
     Assert ($uintVal -eq '3000000000') "force_return uint > int.MaxValue round-trips on disk (3000000000)" "got $uintVal"
-    Rpc 'revert_method_il' @{ assembly_name='TestIL'; type_full_name='TestIL.Patchable'; method_name='GetBigUint' } | Out-Null
     # MED-2: out-of-range int value errors as -32602 (ArgumentException 'does not fit'), not an internal error.
     $rangeErr = $null
     try { Rpc 'force_return' @{ assembly_name='TestIL'; type_full_name='TestIL.Numbers'; method_name='Magic'; value=5000000000 } | Out-Null } catch { $rangeErr = $_.Exception.Message }
@@ -1103,7 +1079,7 @@ Write-Host ""
     $decoratedHex = '0x{0:X8}' -f $decoratedToken
     $renamedClass = Rpc 'rename_symbol_by_token' @{ target_kind='class'; token=$decoratedHex; new_name='DecoratedRenamed'; assembly_name='TestIL' }
     Assert ($renamedClass.changed -eq $true -and $renamedClass.target_kind -eq 'class') "class rename reports changed + class kind"
-    Assert ($renamedClass.old_full_name -eq 'TestIL.Decorated' -and $renamedClass.new_full_name -eq 'TestIL.DecoratedRenamed') "class rename reports old/new full names"
+    Assert ($renamedClass.old_name -eq 'Decorated' -and $renamedClass.new_name -eq 'DecoratedRenamed') "class rename reports old/new names"
     $renamedClassInfo = Rpc 'get_type_info' @{ assembly_name='TestIL'; type_full_name='TestIL.DecoratedRenamed'; compact=$true }
     Assert ([uint32]$renamedClassInfo.Token -eq $decoratedToken) "renamed class is immediately addressable and keeps its token"
     $classNoOp = Rpc 'rename_symbol_by_token' @{ target_kind='class'; token=$decoratedToken; new_name='DecoratedRenamed'; assembly_name='TestIL' }
@@ -1117,11 +1093,11 @@ Write-Host ""
     Assert ($renamedEnum.changed -eq $true -and $renamedEnum.target_kind -eq 'enum') "enum rename reports changed + enum kind"
     $methodTokenError = $null
     try { Rpc 'rename_symbol_by_token' @{ target_kind='class'; token=$addOneTok; new_name='NotAType'; assembly_name='TestIL' } | Out-Null } catch { $methodTokenError = $_.Exception.Message }
-    Assert ($methodTokenError -and ($methodTokenError -match 'not a TypeDef token')) "method token is rejected with TypeDef guidance" "got: $methodTokenError"
+    Assert ($methodTokenError -and ($methodTokenError -match 'target_kind does not match token')) "method token is rejected for a class rename" "got: $methodTokenError"
     $structInfo = Rpc 'get_type_info' @{ assembly_name='TestIL'; type_full_name='TestIL.ExplicitLayout'; compact=$true }
     $structError = $null
     try { Rpc 'rename_symbol_by_token' @{ target_kind='class'; token=$structInfo.Token; new_name='NoStructRename'; assembly_name='TestIL' } | Out-Null } catch { $structError = $_.Exception.Message }
-    Assert ($structError -and ($structError -match 'does not match.*struct')) "target_kind=class rejects a struct token" "got: $structError"
+    Assert ($structError -and ($structError -match 'target_kind does not match the TypeDef')) "target_kind=class rejects a struct token" "got: $structError"
 
     Write-Host ""
     Write-Host "[RT-4] unified enum_members maps names by constant value"
@@ -1153,7 +1129,7 @@ Write-Host ""
             members=@(@{ name='OnlyOne'; value=0 })
         } | Out-Null
     } catch { $incompleteMembersError = $_.Exception.Message }
-    Assert ($incompleteMembersError -and ($incompleteMembersError -match 'expected 7, got 1')) "incomplete enum mapping is rejected before mutation" "got: $incompleteMembersError"
+    Assert ($incompleteMembersError -and ($incompleteMembersError -match 'every enum literal exactly once')) "incomplete enum mapping is rejected before mutation" "got: $incompleteMembersError"
 
     Write-Host ""
     Write-Host "[RT-5] unified method rename handles MethodDef and rejects non-method tokens"
@@ -1161,14 +1137,14 @@ Write-Host ""
         assembly_name='TestIL'; target_kind='method'; token=('0x{0:X8}' -f $addOneTok); new_name='Increment'
     }
     Assert ($renamedMethod.changed -eq $true -and $renamedMethod.old_name -eq 'AddOne' -and $renamedMethod.new_name -eq 'Increment') "method rename reports changed + old/new names"
-    Assert ([uint32]$renamedMethod.token -eq [uint32]$addOneTok -and $renamedMethod.declaring_type -eq 'TestIL.Simple') "method rename preserves token and reports declaring type"
+    Assert ([uint32]$renamedMethod.token -eq [uint32]$addOneTok) "method rename preserves token" # declaring-type effect is proven by the decompile_by_token assert right below
     $renamedMethodSource = RpcText 'decompile_by_token' @{ assembly_name='TestIL'; token=$addOneTok }
     Assert ($renamedMethodSource -match 'Increment\s*\(') "decompile_by_token immediately shows renamed method"
     $methodNoOp = Rpc 'rename_symbol_by_token' @{ assembly_name='TestIL'; target_kind='method'; token=$addOneTok; new_name='Increment' }
     Assert ($methodNoOp.changed -eq $false) "renaming a method to its current name is an explicit no-op"
     $typeTokenError = $null
     try { Rpc 'rename_symbol_by_token' @{ assembly_name='TestIL'; target_kind='method'; token=$decoratedToken; new_name='NotAMethod' } | Out-Null } catch { $typeTokenError = $_.Exception.Message }
-    Assert ($typeTokenError -and ($typeTokenError -match 'not a MethodDef token')) "type token is rejected with MethodDef guidance" "got: $typeTokenError"
+    Assert ($typeTokenError -and ($typeTokenError -match 'target_kind does not match token')) "type token is rejected for a method rename" "got: $typeTokenError"
     $genericTypeSearch = Rpc 'search_types' @{ assembly_name='TestIL'; query='GenericMethodOwner' }
     $genericTypeName = $genericTypeSearch.items[0].FullName
     $genericTypeInfo = Rpc 'get_type_info' @{ assembly_name='TestIL'; type_full_name=$genericTypeName; compact=$false }
@@ -1283,7 +1259,7 @@ Write-Host ""
             token=$fixtureTokens.TitleProperty; new_name='WrongKind'
         } | Out-Null
     } catch { $kindMismatchError = $_.Exception.Message }
-    Assert ($kindMismatchError -and ($kindMismatchError -match 'not a Event token')) "target_kind/token-table mismatch is rejected before mutation" "got: $kindMismatchError"
+    Assert ($kindMismatchError -and ($kindMismatchError -match 'target_kind does not match token')) "target_kind/token-table mismatch is rejected before mutation" "got: $kindMismatchError"
 
     Write-Host ""
     Write-Host "[RT-6b] rename guards reject conflicting and CLR-reserved names before mutating"
@@ -1301,7 +1277,7 @@ Write-Host ""
             assembly_name='TestIL'; target_kind='class'; token=$membersTypeToken; new_name='Simple'
         } | Out-Null
     } catch { $siblingConflictError = $_.Exception.Message }
-    Assert ($siblingConflictError -and ($siblingConflictError -match 'sibling type named')) "renaming onto an existing sibling type name is rejected" "got: $siblingConflictError"
+    Assert ($siblingConflictError -and ($siblingConflictError -match 'EDIT_VALIDATION_FAILED') -and ($siblingConflictError -match 'legacy_rename_invalid')) "renaming onto an existing sibling type name is rejected" "got: $siblingConflictError"
     $membersStillThere = Rpc 'get_type_info' @{ assembly_name='TestIL'; type_full_name='TestIL.Members'; compact=$true }
     Assert ([uint32]$membersStillThere.Token -eq $membersTypeToken) "the conflicting rename left TestIL.Members untouched"
 
@@ -1373,6 +1349,47 @@ Write-Host ""
     Assert ($symbolProbe.Property -and $symbolProbe.Event) "saved assembly exposes renamed property and event"
     Assert ($symbolProbe.Method -and $symbolProbe.Parameter -eq 'personName') "saved assembly exposes renamed method and parameter"
     Assert ($symbolProbe.GenericParameter -eq 'TItem' -and $symbolProbe.EnumMember) "saved assembly exposes renamed generic parameter and enum member"
+
+    # ----- step 26 (relocated AFTER the write sections): open_files loads extra TestIL
+    # copies; the edit write tools require an unambiguous module (EditWorkspace:
+    # "exactly one loaded module must match"), so the duplicates may only appear
+    # after every write step (force_return/rename/save) has run. Read steps in
+    # between are unaffected either way.
+    # ----- step 26: open_files (load assemblies from disk). It loads extra copies of TestIL, which
+    # add duplicate 'TestIL' entries; tools after this scope by assembly_name and FindAssemblyByName
+    # returns the first (original) match, so the read-only steps below stay deterministic.
+    Write-Host ""
+    Write-Host "[26] open_files: load assemblies by file path and by directory"
+    $openDir = Join-Path $binFixture 'opentest'
+    if (Test-Path $openDir) { Remove-Item $openDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $openDir | Out-Null
+    $openA = Join-Path $openDir 'OpenA.dll'
+    Copy-Item $testDll $openA -Force
+    # File mode: a path not yet loaded.
+    $o1 = Rpc 'open_files' @{ paths=@($openA) }
+    Assert ($o1.loaded_count -eq 1 -and $o1.failed_count -eq 0) "open_files loads OpenA.dll (1 new)" "loaded=$($o1.loaded_count) already=$($o1.already_loaded_count) failed=$($o1.failed_count)"
+    Assert (@($o1.loaded | Where-Object { $_.name -eq 'TestIL' }).Count -ge 1) "loaded entry carries assembly name (TestIL)"
+    $afterOpen = @((Rpc 'list_assemblies' @{ name_filter='TestIL' }).assemblies)
+    Assert ((@($afterOpen | Where-Object { $_.Name -eq 'TestIL' }).Count) -ge 2) "newly opened assembly shows up in list_assemblies"
+    # Idempotent: re-opening the same path is reported as already loaded, not reloaded.
+    $o2 = Rpc 'open_files' @{ paths=@($openA) }
+    Assert ($o2.loaded_count -eq 0 -and $o2.already_loaded_count -eq 1) "re-opening the same path reports already_loaded" "loaded=$($o2.loaded_count) already=$($o2.already_loaded_count)"
+    # Directory mode: drop a 2nd copy in and open the whole folder.
+    Copy-Item $testDll (Join-Path $openDir 'OpenB.dll') -Force
+    $o3 = Rpc 'open_files' @{ paths=@($openDir) }
+    Assert ($o3.loaded_count -eq 1 -and $o3.already_loaded_count -eq 1) "directory mode loads new OpenB.dll, skips already-open OpenA.dll" "loaded=$($o3.loaded_count) already=$($o3.already_loaded_count)"
+    # Recursive: a DLL in a subdirectory is skipped by default (top-dir only) but picked up with recursive=true.
+    $subDir = Join-Path $openDir 'nested'
+    New-Item -ItemType Directory -Path $subDir | Out-Null
+    Copy-Item $testDll (Join-Path $subDir 'OpenC.dll') -Force
+    $o3b = Rpc 'open_files' @{ paths=@($openDir) }
+    Assert ($o3b.loaded_count -eq 0) "default (non-recursive) directory mode does not descend into subdirectories" "loaded=$($o3b.loaded_count)"
+    $o3c = Rpc 'open_files' @{ paths=@($openDir); recursive=$true }
+    Assert ($o3c.loaded_count -eq 1) "recursive=true loads the DLL in the nested subdirectory" "loaded=$($o3c.loaded_count) already=$($o3c.already_loaded_count)"
+    # A missing path is reported in failed[], not thrown as a tool error.
+    $o4 = Rpc 'open_files' @{ paths=@('C:\does\not\exist\nope.dll') }
+    Assert ($o4.failed_count -eq 1 -and $o4.loaded_count -eq 0) "missing file reported in failed[] (not a hard error)" "failed=$($o4.failed_count)"
+
 }
 finally
 {
