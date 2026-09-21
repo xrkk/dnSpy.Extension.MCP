@@ -32,6 +32,11 @@
 param(
     [int]$Port = 15378,
     [string]$DnSpyExe,
+    # Explicit own settings file for the launched dnSpy (must already carry the MCP section
+    # with a committed snapshot for -Port). The old APPDATA rewrite is gone: shared user
+    # config is never touched by this suite.
+    [Parameter(Mandatory = $true)]
+    [string]$SettingsFile,
     # Which dnSpy distribution to drive. net48 is not just a second build of the same thing: it
     # resolves System.Text.Json from NuGet instead of the BCL and binds assemblies by exact
     # version with no redirects, so runtime faults that net10 rolls forward past (issue #21) only
@@ -58,20 +63,6 @@ function Get-FileSha256([string]$Path) {
 
 if (-not $DnSpyExe) { $DnSpyExe = Join-Path $fixtureDir "..\..\..\..\dnSpy\dnSpy\bin\Release\$Tfm\dnSpy.exe" }
 
-# Force dnSpy's MCP server onto the port we want by rewriting the persisted setting.
-# The GUID must match McpSettingsImpl's SETTINGS_GUID.
-function Set-McpPortInSettings([int]$p)
-{
-    $cfg = Join-Path $env:APPDATA 'dnSpy\dnSpy.xml'
-    if (-not (Test-Path $cfg)) { return }
-    [xml]$doc = Get-Content -Raw -Path $cfg
-    $sect = $doc.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
-    if ($sect -eq $null) { return }
-    $sect.SetAttribute('Port', "$p")
-    $sect.SetAttribute('EnableServer', 'True')
-    $doc.Save($cfg)
-    Write-Host "  dnSpy.xml: set MCP Port=$p, EnableServer=True"
-}
 $extDir = Split-Path $fixtureDir -Parent | Split-Path -Parent
 $binFixture = Join-Path $fixtureDir 'bin'
 $testDll = Join-Path $binFixture 'TestIL.dll'
@@ -119,8 +110,9 @@ function Assert($condition, [string]$label, [string]$detail = '')
 
 function Rpc([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
+    if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $payload -UseBasicParsing
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
@@ -130,8 +122,9 @@ function Rpc([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 
 function RpcText([string]$tool, [hashtable]$arguments, [int]$p = $script:Port)
 {
+    if (-not $script:McpSessionId) { throw "Tool $tool called without an initialized MCP session" }
     $payload = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{ name=$tool; arguments=$arguments } } | ConvertTo-Json -Depth 10 -Compress
-    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Body $payload -UseBasicParsing
+    $resp = Invoke-WebRequest -Uri "http://localhost:$p/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $payload -UseBasicParsing
     $jr = $resp.Content | ConvertFrom-Json
     if ($jr.error) { throw "Tool $tool RPC error: $($jr.error.message)" }
     if ($jr.result.isError -eq $true) { throw "Tool $tool returned error: $($jr.result.content[0].text)" }
@@ -167,26 +160,24 @@ if (Test-Path $pdb) { Copy-Item $pdb $extDeployDir -Force }
 
 # ----- step 4: launch dnSpy with the fixture preloaded -----
 Write-Host "[4] Launching dnSpy + loading $testDll"
-Set-McpPortInSettings $Port
-# Quote the fixture path: Start-Process does not auto-quote -ArgumentList entries, so a
-# path containing spaces (e.g. C:\Users\Rui Li\...) would reach dnSpy split at the space
-# and the fixture would silently fail to load.
-$dnSpyProc = Start-Process -FilePath $dnSpyExeFull -ArgumentList "`"$testDll`"" -WindowStyle Hidden -PassThru
+if (-not (Test-Path $SettingsFile)) { throw "SettingsFile not found: $SettingsFile (must carry the MCP section with a committed snapshot for port $Port)" }
+# Quote the paths: Start-Process does not auto-quote -ArgumentList entries, so a path
+# containing spaces would reach dnSpy split at the space.
+$dnSpyProc = Start-Process -FilePath $dnSpyExeFull -ArgumentList @('--multiple', '--settings-file', "`"$SettingsFile`"", "`"$testDll`"") -WindowStyle Hidden -PassThru
 
-# Poll for /health on the configured port with +N fallback (McpServer's FindAvailablePort tries up to 20).
+# Poll for /health on the EXACT configured port only. The old +N scan could latch onto an
+# unrelated instance that happened to be listening; the explicit SettingsFile snapshot is
+# the single source of truth for the port now.
 $found = $false
 $deadline = (Get-Date).AddSeconds(45)
 while ((Get-Date) -lt $deadline -and -not $found)
 {
-    for ($p = $Port; $p -lt $Port + 20; $p++)
+    try
     {
-        try
-        {
-            $h = Invoke-WebRequest -Uri "http://localhost:$p/health" -UseBasicParsing -TimeoutSec 1
-            if ($h.StatusCode -eq 200) { $script:Port = $p; $found = $true; break }
-        }
-        catch { }
+        $h = Invoke-WebRequest -Uri "http://localhost:$Port/health" -UseBasicParsing -TimeoutSec 1
+        if ($h.StatusCode -eq 200) { $found = $true }
     }
+    catch { }
     if (-not $found) { Start-Sleep -Milliseconds 500 }
 }
 if (-not $found)
@@ -212,6 +203,30 @@ if (-not $found)
     throw "MCP server never came up on ports $Port..$($Port+19) — see DIAGNOSTIC above"
 }
 Write-Host "  MCP server is up on port $script:Port"
+
+# ----- MCP session: the edit-owner contract (CON008) admits write transactions only on an
+# initialized transport session. Negotiate once, capture the server-assigned session id,
+# notify readiness, and carry the id on every subsequent call. No automatic re-init or
+# write replay on failure: a lost session surfaces as a hard error.
+$script:McpSessionId = $null
+function Initialize-McpSession
+{
+    # The transport routes Streamable-HTTP (session-allocating) vs legacy plain-JSON on the
+    # Accept header: clients must offer text/event-stream (McpServer's POST disambiguation).
+    $init = @{ jsonrpc='2.0'; id=1; method='initialize'; params=@{
+        protocolVersion='2025-06-18'; capabilities=@{};
+        clientInfo=@{ name='static-e2e-run-tests'; version='1.0' } } } | ConvertTo-Json -Depth 10 -Compress
+    $resp = Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream' } -Body $init -UseBasicParsing
+    $jr = $resp.Content | ConvertFrom-Json
+    if ($jr.error) { throw "initialize RPC error: $($jr.error.message)" }
+    $sid = $resp.Headers['Mcp-Session-Id']
+    if (-not $sid) { throw "initialize response carried no Mcp-Session-Id header" }
+    $script:McpSessionId = @($sid)[0]
+    $notif = @{ jsonrpc='2.0'; method='notifications/initialized' } | ConvertTo-Json -Depth 5 -Compress
+    Invoke-WebRequest -Uri "http://localhost:$($script:Port)/" -Method Post -ContentType 'application/json' -Headers @{ Accept = 'application/json, text/event-stream'; 'Mcp-Session-Id' = $script:McpSessionId } -Body $notif -UseBasicParsing | Out-Null
+    Write-Host "  MCP session initialized (id length $($(($script:McpSessionId) | Measure-Object -Character).Characters))"
+}
+Initialize-McpSession
 
 # Wait for TestIL to actually appear in the tree. dnSpy loads CLI-provided files
 # asynchronously, so the health port can come up before the assembly is indexed.

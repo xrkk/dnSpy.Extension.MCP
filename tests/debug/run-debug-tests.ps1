@@ -787,7 +787,7 @@ function Run-ACC001 {
         # run and restored afterwards by Ensure-CanonicalDnSpy.
         Stop-DnSpyAndTargets
         Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' 3100 $m.env.sample_root $m.env.artifact_root)
-        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 2>&1
+        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 -SettingsFile ([Environment]::ExpandEnvironmentVariables($m.env.settings_xml)) *>&1
         "$static" | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')
