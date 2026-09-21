@@ -22,8 +22,7 @@ function Record([string]$Name, [bool]$Pass, [string]$Detail = '') {
 . (Join-Path $fixtureDir 'run-tests.ps1') -ProbeMode -SettingsFile $SettingsFile -DnSpyExe $DnSpyExe
 
 # ---- T1 containment matrix (item 3) ----
-$root = [IO.Path]::GetTempPath().TrimEnd('\') + '\e2e-boundary-test'
-if (Test-Path $root) { Remove-Item $root -Recurse -Force }
+$root = Join-Path ([IO.Path]::GetTempPath()) ('e2e-boundary-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path "$root\sample\a" | Out-Null   # 'a': single-char child
 Record 'contains: parent holds single-char child' (Test-PathContains "$root\sample" "$root\sample\a")
 Record 'contains: reverse direction is false' (-not (Test-PathContains "$root\sample\a" "$root\sample"))
@@ -47,8 +46,8 @@ try {
 $runner = Join-Path $fixtureDir '..\debug\run-debug-tests.ps1'
 $runnerText = Get-Content $runner -Raw
 Record 'entry: ACC-001 passes -SettingsFile from the manifest' ($runnerText -match '-SettingsFile \(\[Environment\]::ExpandEnvironmentVariables\(\$m\.env\.settings_xml\)\)')
-Record 'entry: ACC-001 passes -FixtureDll from the sample root' ($runnerText -match "-FixtureDll \(Join-Path \$m\.env\.sample_root 'TestIL\.dll'\)")
-Record 'entry: handler stages TestIL into the sample root' ($runnerText -match "Copy-Item \$m\.env\.testil_dll -Destination \(Join-Path \$m\.env\.sample_root 'TestIL\.dll'\)")
+Record 'entry: ACC-001 passes -FixtureDll from the sample root' ($runnerText -match '-FixtureDll \(Join-Path \$m\.env\.sample_root ''TestIL\.dll''\)')
+Record 'entry: handler stages TestIL into the sample root' ($runnerText -match 'Copy-Item \$m\.env\.testil_dll -Destination \(Join-Path \$m\.env\.sample_root ''TestIL\.dll''\)')
 
 # ---- T4 deterministic fake session matrix (item 6): init ok -> initialized 204 -> one stale write 404 ----
 if ($FakeServicePy -and (Test-Path $FakeServicePy)) {
