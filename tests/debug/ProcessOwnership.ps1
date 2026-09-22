@@ -122,12 +122,30 @@ function Stop-VerifiedDebugProcess {
         return $false
     }
     Stop-Process -Id ([int]$Identity.pid) -Force -ErrorAction Stop
-    Wait-Process -Id ([int]$Identity.pid) -Timeout 15 -ErrorAction SilentlyContinue
-    if ($null -ne (Get-Process -Id ([int]$Identity.pid) -ErrorAction SilentlyContinue)) {
-        throw "owned PID $($Identity.pid) did not exit after Stop-Process"
+    # Stop-Process can return before the process disappears from the Windows process table.
+    # Poll the full identity rather than trusting a cached Process.HasExited or a bare PID: a
+    # reused PID means our process is gone and must never grant authority over the replacement.
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline) {
+        if ($null -eq (Get-Process -Id ([int]$Identity.pid) -ErrorAction SilentlyContinue)) {
+            $Identity.stopped = $true
+            return $true
+        }
+        try {
+            $afterStop = Get-DebugProcessIdentity ([int]$Identity.pid)
+            if ($afterStop.exe -ne "$($Identity.exe)" -or [long]$afterStop.ticks -ne [long]$Identity.ticks) {
+                $Identity.stopped = $true
+                return $true
+            }
+        } catch {
+            if ($null -eq (Get-Process -Id ([int]$Identity.pid) -ErrorAction SilentlyContinue)) {
+                $Identity.stopped = $true
+                return $true
+            }
+        }
+        Start-Sleep -Milliseconds 100
     }
-    $Identity.stopped = $true
-    return $true
+    throw "owned PID $($Identity.pid) did not exit after Stop-Process"
 }
 
 function Stop-DebugOwnedProcess {

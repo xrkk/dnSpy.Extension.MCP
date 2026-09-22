@@ -82,6 +82,9 @@ finally {
     }
 }
 
+$remaining = @($started | Where-Object { $null -ne (Get-Process -Id $_.Id -ErrorAction SilentlyContinue) })
+Record 'all test-owned processes cleaned after finally' ($remaining.Count -eq 0) ("remaining=" + (@($remaining | ForEach-Object Id) -join ','))
+
 $failed = @($results | Where-Object { -not $_.pass }).Count
 if ($OutJson) { $results | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $OutJson -Encoding UTF8 }
 $results | Format-Table -AutoSize
