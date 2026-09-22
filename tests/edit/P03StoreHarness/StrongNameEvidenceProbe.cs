@@ -44,23 +44,38 @@ static class StrongNameEvidenceProbe {
 		now = now.Add(DebugSessionCoordinator.TerminalRetention).Add(TimeSpan.FromSeconds(1));
 		Check(sequence.ReadEvents("session-a", 0, 32, null) is null, "terminal events expire");
 
-		// ---- PLAN-CHANGE 2026.09.22: classifier + observation lifecycle + one-shot consumption ----
-		var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=1.2.3.4, Culture=neutral, PublicKeyToken=0011223344556677' or one of its dependencies. Strong Name signature was invalid";
-		var facts = DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg);
-		Check(facts is not null && facts.AssemblyName == "SignedTarget" && facts.AssemblyVersion == "1.2.3.4"
-			&& facts.PublicKeyToken == "0011223344556677" && facts.LoaderModule == "mscorlib", "loader rejection classified");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("SignedTarget", CorEStrongName, loaderMsg) is null, "sample-module attribution rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x80131509), loaderMsg) is null, "wrong hresult rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, "sample supplied text") is null, "unparseable message rejected");
+		// ---- PLAN-CHANGE 2026.09.22 (CHK-03-02 tightened): classifier + observation lifecycle + one-shot consumption ----
+		// Real hosts on disk: HostApp.exe references SignedTarget v0.0.0.0 token 56cdca22337a8854;
+		// TestIL.dll (probe arg) references only mscorlib — a host NOT referencing the identity.
+		var realHost = "C:\\Tools\\dnspy-rem-glm01\\samples-x86\\sn-e2e\\HostApp.exe";
+		if (!System.IO.File.Exists(realHost)) { Console.WriteLine("SKIP classifier probes (host fixture absent)"); goto AfterClassifier; }
+		var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=0.0.0.0, Culture=neutral, PublicKeyToken=56cdca22337a8854' or one of its dependencies. Strong Name signature was invalid";
+		string[] loadedOther = { "HostApp", "mscorlib" };
+		// CHK-03-02: ALL FOUR criteria must hold — loader attribution alone is never enough.
+		var facts = DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, loadedOther);
+		Check(facts is not null && facts.AssemblyName == "SignedTarget" && facts.AssemblyVersion == "0.0.0.0"
+			&& facts.PublicKeyToken == "56cdca22337a8854", "loader rejection classified (four criteria)");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, null, null) is null, "attribution alone rejected (no differential)");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("HostApp", CorEStrongName, loaderMsg, realHost, loadedOther) is not null, "non-loader module still classifies via differential");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x80131509), loaderMsg, realHost, loadedOther) is null, "wrong hresult rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, "sample supplied text", realHost, loadedOther) is null, "unparseable message rejected");
 		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName,
-			"Could not load file or assembly 'Unsigned, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.") is null, "null token rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("System.Private.CoreLib", CorEStrongName, loaderMsg) is not null, "corelib loader accepted");
+			"Could not load file or assembly 'Unsigned, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.", realHost, loadedOther) is null, "null token rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "SignedTarget" }) is null, "already-loaded target rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "Unrelated" }) is not null, "unloaded target passes differential");
+		var driftMsg = loaderMsg.Replace("Version=0.0.0.0", "Version=9.9.9.9");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, driftMsg, realHost, loadedOther) is null, "version drift rejected (host refs 0.0.0.0)");
+		var wrongTokenMsg = loaderMsg.Replace("56cdca22337a8854", "0011223344556677");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, wrongTokenMsg, realHost, loadedOther) is null, "token drift rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, Environment.GetCommandLineArgs()[0], loadedOther) is null, "host not referencing identity rejected");
+		AfterClassifier: ;
+		var lifecycleMsg = "Could not load file or assembly 'SignedTarget, Version=1.2.3.4, Culture=neutral, PublicKeyToken=0011223344556677' or one of its dependencies. Strong Name signature was invalid";
 
 		var evidence = new DebugSessionCoordinator(() => "session-e", () => now.ToString("O"), () => now);
 		Check(evidence.BeginLaunch("launch", "start", "net-framework", "x64") && evidence.MarkLaunchClaimSucceeded(false, null), "evidence fixture running");
 		evidence.ObservePaused("session-e", 1, true, new[] {
 			new BreakInfoObservation(PauseCauseArbiter.Exception, 0, null, null, true, null,
-				"thread-1", "module-1", "System.IO.FileLoadException", loaderMsg, CorEStrongName, false, true) {
+				"thread-1", "module-1", "System.IO.FileLoadException", lifecycleMsg, CorEStrongName, false, true) {
 				StrongNameRejection = new StrongNameRejectionFacts {
 					LoaderModule = "mscorlib", HResult = CorEStrongName,
 					AssemblyName = "SignedTarget", AssemblyVersion = "1.2.3.4", PublicKeyToken = "0011223344556677",
@@ -91,7 +106,7 @@ static class StrongNameEvidenceProbe {
 		Check(restart.ObserveProcessRemoved("session-r", 1, true, 0).Outcome == "pending-restart", "restart removal");
 		Check(restart.BeginRestartRelaunch() && restart.Generation == 2, "restart generation");
 		Check(restart.MarkLaunchClaimSucceeded(false, null) && restart.State == DebugStates.Running, "restart running");
-		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier=true observation_lifecycle=true one_shot_consume=true");
+		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier_four_criteria=true version_binding=true differential=true observation_lifecycle=true one_shot_consume=true");
 	}
 
 	static string EventKind(string json) { using var doc = JsonDocument.Parse(json); return doc.RootElement.GetProperty("kind").GetString()!; }

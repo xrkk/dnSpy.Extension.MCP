@@ -37,8 +37,6 @@ public sealed class BreakInfoObservation {
 	/// strong-name failure HRESULT, and the loader message names the rejected assembly
 	/// identity. Never caller-suppliable.</summary>
 	internal StrongNameRejectionFacts? StrongNameRejection { get; set; }
-	/// <summary>Diagnostic note from the classifier (DNMCP_TEST-era probes); not gate input.</summary>
-	internal string? StrongNameGateNote { get; set; }
 
 	public BreakInfoObservation(string kind, int ordinal, string? ownedBreakpointId = null,
 		string? stepId = null, bool policyRequestedPause = false, string? stepKind = null,

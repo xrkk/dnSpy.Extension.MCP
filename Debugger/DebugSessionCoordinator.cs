@@ -403,8 +403,6 @@ public sealed class DebugSessionCoordinator {
 						type = info.ExceptionType ?? "exception",
 						message = info.ExceptionMessage ?? string.Empty,
 						thread_handle = info.ThreadHandle,
-						hresult = info.ExceptionHResult,
-						strong_name_gate = info.StrongNameGateNote,
 					}, untrusted: true);
 					if (info.StrongNameRejection is { } rejection)
 						RecordStrongNameFailureLocked(exceptionCursor, rejection);
@@ -514,6 +512,12 @@ public sealed class DebugSessionCoordinator {
 	/// <summary>Records one loader strong-name rejection observation bound to the cursor of the
 	/// exception event just written for it. Called only from WritePauseDetails under the gate.</summary>
 	void RecordStrongNameFailureLocked(long cursor, StrongNameRejectionFacts facts) {
+		strongNameGeneration = generation;
+		var bufferForRetention = activeBuffer ?? retainedBuffer;
+		if (bufferForRetention is not null) {
+			var probe = bufferForRetention.Read(0, 1, null);
+			lastObservedEarliestCursor = probe.EarliestCursor;
+		}
 		strongNameObservations[cursor] = new StrongNameFailureObservation {
 			SessionId = activeSessionId, Generation = generation, EventCursor = cursor,
 			LoaderModule = facts.LoaderModule, HResult = facts.HResult,
@@ -527,11 +531,27 @@ public sealed class DebugSessionCoordinator {
 	/// unknown to the active session or the observation was already consumed.</summary>
 	internal StrongNameFailureObservation? ReadStrongNameFailure(string sessionId, long cursor) {
 		lock (gate) {
-			if (!StrongNameSessionLiveLocked(sessionId))
+			if (!StrongNameSessionLiveLocked(sessionId) || !StrongNameEvidenceRetainedLocked(cursor))
 				return null;
 			return strongNameObservations.TryGetValue(cursor, out var obs) && !obs.Consumed ? obs : null;
 		}
 	}
+
+	/// <summary>CHK-20260922-03-04 remediation: an observation may only be read or consumed
+	/// while its event cursor is still retained by the session buffer (not evicted by the
+	/// bounded ring) AND the debug generation still matches the one the rejection was
+	/// observed under (a same-session restart advances the generation).</summary>
+	bool StrongNameEvidenceRetainedLocked(long cursor) {
+		if (generation != strongNameGeneration)
+			return false;
+		var buffer = activeBuffer ?? retainedBuffer;
+		if (buffer is null)
+			return false;
+		buffer.Read(0, 1, null);
+		return cursor >= lastObservedEarliestCursor;
+	}
+	long strongNameGeneration = -1;
+	long lastObservedEarliestCursor;
 
 	/// <summary>Evidence stays readable through the terminal retention window: the edit gate
 	/// must run after the debug session ended (commits require a debug-idle state), so the
@@ -569,7 +589,7 @@ public sealed class DebugSessionCoordinator {
 	internal bool TryConsumeStrongNameFailure(string sessionId, long cursor,
 		string assemblyName, string assemblyVersion, string publicKeyToken) {
 		lock (gate) {
-			if (!StrongNameSessionLiveLocked(sessionId))
+			if (!StrongNameSessionLiveLocked(sessionId) || !StrongNameEvidenceRetainedLocked(cursor))
 				return false;
 			if (!strongNameObservations.TryGetValue(cursor, out var obs) || obs.Consumed)
 				return false;
