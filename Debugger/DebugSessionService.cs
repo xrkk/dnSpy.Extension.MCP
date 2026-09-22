@@ -3573,7 +3573,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				}
 				if (eventThread is not null && eventModule is null)
 					eventModule = TopFrameModule(eventThread);
-				var threadHandle = eventThread is not null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
+				var threadHandle = eventThread is null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
 				var moduleHandle = ModuleHandleOf(eventModule);
 				var strongNameFacts = ClassifyLoaderStrongNameRejection(eventModule?.Name, exceptionHResult, exceptionMessage,
 					hostTargetPathForDiff, loadedModuleNamesForDiff);
