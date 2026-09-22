@@ -78,11 +78,63 @@ function Register-AuthoritativeDebugTarget {
     $identity = Get-DebugProcessIdentity ([int]$OwnedProcess.pid)
     $expected = ConvertTo-CanonicalExecutablePath $ExpectedExe
     $reported = ConvertTo-CanonicalExecutablePath "$($OwnedProcess.filename)"
-    if ($identity.exe -ne $expected -or $reported -ne $expected -or
-        $identity.start_time_utc_ms -ne "$($OwnedProcess.start_time_utc)") {
-        throw "authoritative target identity mismatch for session $SessionId generation $Generation PID $($OwnedProcess.pid)"
+    $reportedStart = $null
+    try {
+        $reportedStart = [DateTime]::Parse("$($OwnedProcess.start_time_utc)", [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal)
+    } catch {
+        throw "authoritative target start_time_utc is invalid for session $SessionId generation $Generation"
     }
-    return Add-DebugOwnedProcess $identity 'target' $SessionId $Generation
+    $observedStart = [DateTime]::new([long]$identity.ticks, [DateTimeKind]::Utc)
+    $startDeltaMs = ($observedStart - $reportedStart).TotalMilliseconds
+    # The product's start_time_utc is the launch reservation timestamp immediately before
+    # StartViaWpf, not the OS creation timestamp.  It therefore corroborates a bounded launch
+    # window but cannot replace the exact Win32 creation ticks used for cleanup authorization.
+    if ($identity.exe -ne $expected -or $reported -ne $expected -or
+        $startDeltaMs -lt 0 -or $startDeltaMs -gt 30000) {
+        throw "authoritative target identity mismatch for session $SessionId generation $Generation PID $($OwnedProcess.pid): expected=$expected reported=$reported observed=$($identity.exe) reported_start=$($OwnedProcess.start_time_utc) observed_start=$($identity.start_time_utc_ms) delta_ms=$startDeltaMs"
+    }
+    $record = Add-DebugOwnedProcess $identity 'target' $SessionId $Generation
+    $record | Add-Member -NotePropertyName authoritative_start_time_utc -NotePropertyValue "$($OwnedProcess.start_time_utc)" -Force
+    return $record
+}
+
+function Resolve-DebugToolOwnershipTuple {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('debug_launch','debug_restart')][string]$ToolName,
+        [Parameter(Mandatory = $true)]$ToolArgs,
+        [Parameter(Mandatory = $true)]$Domain
+    )
+    $resultSid = "$($Domain.result.session_id)"
+    $contextSid = "$($Domain.debug_context.session_id)"
+    $requestSid = "$($ToolArgs.session_id)"
+    $sid = if ($ToolName -eq 'debug_launch') { $resultSid } else { $requestSid }
+    $hasResultGeneration = $Domain.result -and ($Domain.result.PSObject.Properties.Name -contains 'generation')
+    $hasContextGeneration = $Domain.debug_context -and ($Domain.debug_context.PSObject.Properties.Name -contains 'generation')
+    $resultGeneration = if ($hasResultGeneration) { [int]$Domain.result.generation } else { -1 }
+    $contextGeneration = if ($hasContextGeneration) { [int]$Domain.debug_context.generation } else { -1 }
+
+    $sessionMismatch = [string]::IsNullOrWhiteSpace($sid) -or [string]::IsNullOrWhiteSpace($contextSid) -or $sid -ne $contextSid
+    if ($ToolName -eq 'debug_launch') {
+        $sessionMismatch = $sessionMismatch -or [string]::IsNullOrWhiteSpace($resultSid)
+    } elseif (-not [string]::IsNullOrWhiteSpace($resultSid)) {
+        $sessionMismatch = $sessionMismatch -or $resultSid -ne $sid
+    }
+    if ($sessionMismatch -or -not $hasResultGeneration -or -not $hasContextGeneration -or
+        $resultGeneration -lt 0 -or $resultGeneration -ne $contextGeneration) {
+        throw "$ToolName response/request ownership tuple mismatch: request_sid=$requestSid result_sid=$resultSid context_sid=$contextSid result_generation=$resultGeneration context_generation=$contextGeneration"
+    }
+
+    $expectedExe = ''
+    if ($ToolName -eq 'debug_launch') {
+        $expectedExe = switch ("$($ToolArgs.launch_mode)") {
+            'coreclr-dotnet' { "$($ToolArgs.host_path)"; break }
+            'harness' { "$($ToolArgs.harness_path)"; break }
+            default { "$($ToolArgs.target_path)"; break }
+        }
+        if ([string]::IsNullOrWhiteSpace($expectedExe)) { throw 'debug_launch cannot resolve its process executable' }
+    }
+    return [pscustomobject]@{ session_id = $sid; generation = $resultGeneration; expected_exe = $expectedExe }
 }
 
 function Get-DebugOwnedProcess {

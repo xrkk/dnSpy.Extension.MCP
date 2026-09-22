@@ -301,19 +301,10 @@ function Get-DomainError($Call) {
 
 function Register-McpToolOwnership {
     param([string]$ToolName, $ToolArgs, $Domain)
-    $sid = "$($Domain.result.session_id)"
-    $generation = [int]$Domain.result.generation
-    if ([string]::IsNullOrWhiteSpace($sid) -or $generation -lt 0) {
-        throw "$ToolName succeeded without a usable session/generation ownership tuple"
-    }
-    $expectedExe = ''
-    if ($ToolName -eq 'debug_launch') {
-        $expectedExe = switch ("$($ToolArgs.launch_mode)") {
-            'coreclr-dotnet' { "$($ToolArgs.host_path)"; break }
-            'harness' { "$($ToolArgs.harness_path)"; break }
-            default { "$($ToolArgs.target_path)"; break }
-        }
-    }
+    $tuple = Resolve-DebugToolOwnershipTuple $ToolName $ToolArgs $Domain
+    $sid = $tuple.session_id
+    $generation = [int]$tuple.generation
+    $expectedExe = $tuple.expected_exe
     if (-not $expectedExe) {
         $prior = @(Get-DebugOwnedProcess -SessionId $sid -Kind 'target' | Select-Object -Last 1)
         if ($prior.Count -ne 1) { throw "restart ownership cannot resolve the previously registered target for session $sid" }

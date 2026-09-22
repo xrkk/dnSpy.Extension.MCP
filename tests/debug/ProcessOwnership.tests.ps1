@@ -67,6 +67,22 @@ try {
     Start-Sleep -Milliseconds 350
     Record 'restart registers and stops each generation' (($null -eq (Get-Process -Id $restart1.Id -ErrorAction SilentlyContinue)) -and ($null -eq (Get-Process -Id $restart2.Id -ErrorAction SilentlyContinue)))
     Record 'failure finally leaves other same-name instance alive' ($null -ne (Get-Process -Id $foreign.Id -ErrorAction SilentlyContinue))
+
+    # Actual wire shapes: launch returns session_id in result and debug_context; restart returns
+    # it only in debug_context while the request carries the authoritative existing session.
+    $launchTuple = Resolve-DebugToolOwnershipTuple 'debug_launch' `
+        @{ target_path='C:\owned\target.exe'; launch_mode='net48-exe' } `
+        ([pscustomobject]@{ result=[pscustomobject]@{session_id='session-wire';generation=1};debug_context=[pscustomobject]@{session_id='session-wire';generation=1} })
+    $restartTuple = Resolve-DebugToolOwnershipTuple 'debug_restart' `
+        @{ session_id='session-wire' } `
+        ([pscustomobject]@{ result=[pscustomobject]@{generation=2};debug_context=[pscustomobject]@{session_id='session-wire';generation=2} })
+    Record 'launch response ownership tuple resolves' ($launchTuple.session_id -eq 'session-wire' -and $launchTuple.generation -eq 1 -and $launchTuple.expected_exe -eq 'C:\owned\target.exe')
+    Record 'restart response uses request plus debug_context session' ($restartTuple.session_id -eq 'session-wire' -and $restartTuple.generation -eq 2)
+    $tupleMismatch = $false
+    try {
+        Resolve-DebugToolOwnershipTuple 'debug_restart' @{session_id='session-wire'} ([pscustomobject]@{result=[pscustomobject]@{generation=2};debug_context=[pscustomobject]@{session_id='other-session';generation=2}}) | Out-Null
+    } catch { $tupleMismatch = $true }
+    Record 'response/request session mismatch fails closed' $tupleMismatch
 }
 finally {
     # The test owns every sleeper it started, but still cleans each through a freshly captured
