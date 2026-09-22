@@ -40,6 +40,13 @@ if ($VerifyHarness) {
     $tokens = $null; $parseErrors = $null
     [System.Management.Automation.Language.Parser]::ParseFile($PSCommandPath, [ref]$tokens, [ref]$parseErrors) | Out-Null
     if ($parseErrors.Count -gt 0) { $errors += "driver parse errors: $($parseErrors.Count)" }
+    $ownershipHelper = Join-Path $PSScriptRoot 'ProcessOwnership.ps1'
+    if (-not (Test-Path $ownershipHelper)) { $errors += 'process ownership helper missing' }
+    else {
+        $helperTokens = $null; $helperParseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($ownershipHelper, [ref]$helperTokens, [ref]$helperParseErrors) | Out-Null
+        if ($helperParseErrors.Count -gt 0) { $errors += "process ownership helper parse errors: $($helperParseErrors.Count)" }
+    }
     $manifests = Get-ChildItem (Join-Path $repo 'tests\debug\cases') -Filter 'ACC-*.json'
     if ($manifests.Count -ne 36) { $errors += "expected 36 case manifests, found $($manifests.Count)" }
     $handlerIds = @('ACC-001','ACC-002','ACC-003','ACC-004','ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012','ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019','ACC-020','ACC-021','ACC-022','ACC-023','ACC-024','ACC-025','ACC-026','ACC-027','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-033','ACC-034','ACC-035','ACC-036')
@@ -62,6 +69,7 @@ if ($VerifyHarness) {
 
 # ---------------------------------------------------------------- framework ----
 $script:ScriptDir = $PSScriptRoot
+. (Join-Path $script:ScriptDir 'ProcessOwnership.ps1')
 $repoOut = & git -C $script:ScriptDir rev-parse --show-toplevel 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $repoOut) { Write-Error "not a git work tree: $script:ScriptDir"; exit 2 }
 $script:Repo = (@($repoOut)[0]) -replace '/','\'
@@ -193,7 +201,9 @@ function Start-PyHttp {
     if ($OutputFile) { $args += @('--output', $OutputFile) }
     if ($HoldSeconds -gt 0) { $args += @('--hold-seconds', "$HoldSeconds") }
     if ($Token) { $args += @('--token', $Token) }
-    return Start-Process -FilePath $script:PythonExe -ArgumentList $args -WorkingDirectory $script:Repo -PassThru -WindowStyle Hidden
+    $process = Start-Process -FilePath $script:PythonExe -ArgumentList $args -WorkingDirectory $script:Repo -PassThru -WindowStyle Hidden
+    Register-StartedDebugProcess $process $script:PythonExe 'driver' | Out-Null
+    return $process
 }
 
 function Invoke-HttpPostRaw {
@@ -278,11 +288,49 @@ function Invoke-ToolNoInit {
     if ($r.json -and $r.json.result -and $r.json.result.content) {
         try { $domain = ($r.json.result.content | Where-Object { $_.type -eq 'text' } | Select-Object -First 1).text | ConvertFrom-Json } catch { }
     }
-    return @{ rpc = $r; domain = $domain }
+    $call = @{ rpc = $r; domain = $domain }
+    if ($domain -and $domain.ok -and ($Name -eq 'debug_launch' -or $Name -eq 'debug_restart')) {
+        Register-McpToolOwnership -ToolName $Name -ToolArgs $ToolArgs -Domain $domain
+    }
+    return $call
 }
 function Get-DomainError($Call) {
     if ($Call.domain -and $Call.domain.error) { return "$($Call.domain.error.code)" }
     return $null
+}
+
+function Register-McpToolOwnership {
+    param([string]$ToolName, $ToolArgs, $Domain)
+    $sid = "$($Domain.result.session_id)"
+    $generation = [int]$Domain.result.generation
+    if ([string]::IsNullOrWhiteSpace($sid) -or $generation -lt 0) {
+        throw "$ToolName succeeded without a usable session/generation ownership tuple"
+    }
+    $expectedExe = ''
+    if ($ToolName -eq 'debug_launch') {
+        $expectedExe = switch ("$($ToolArgs.launch_mode)") {
+            'coreclr-dotnet' { "$($ToolArgs.host_path)"; break }
+            'harness' { "$($ToolArgs.harness_path)"; break }
+            default { "$($ToolArgs.target_path)"; break }
+        }
+    }
+    if (-not $expectedExe) {
+        $prior = @(Get-DebugOwnedProcess -SessionId $sid -Kind 'target' | Select-Object -Last 1)
+        if ($prior.Count -ne 1) { throw "restart ownership cannot resolve the previously registered target for session $sid" }
+        $expectedExe = $prior[0].exe
+    }
+
+    # The tool response establishes session/generation; debug_status is the authoritative
+    # process response.  The helper then independently verifies PID/exe/creation time through
+    # Win32_Process before granting cleanup authority.
+    $statusRpc = Send-Rpc 'tools/call' @{ name = 'debug_status'; arguments = @{ session_id = $sid } }
+    $status = $null
+    try { $status = ($statusRpc.json.result.content | Where-Object type -eq 'text' | Select-Object -First 1).text | ConvertFrom-Json } catch { }
+    if (-not $status -or -not $status.ok -or "$($status.result.active_session_id)" -ne $sid -or
+        [int]$status.debug_context.generation -ne $generation -or -not $status.result.owned_process) {
+        throw "authoritative debug_status did not confirm session $sid generation $generation ownership"
+    }
+    Register-AuthoritativeDebugTarget $status.result.owned_process $expectedExe $sid $generation | Out-Null
 }
 
 # Deep equality for parsed JSON (PSObject/array/scalar).
@@ -317,6 +365,24 @@ if (-not (Test-Path $manifestPath)) {
 } else {
     $script:Manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
     $script:BaseUrl = $script:Manifest.base_url
+
+    # Every invocation receives a new artifact root and a private settings copy.  The committed
+    # APPDATA path is an input only; this runner never writes shared user configuration and never
+    # deletes a historical artifact/store root.
+    $runToken = ([guid]::NewGuid().ToString('N'))
+    $artifactParent = [IO.Path]::GetFullPath("$($script:Manifest.env.artifact_root)").TrimEnd('\')
+    $script:OwnedArtifactRoot = Join-Path $artifactParent ("debug-run-$Case-$runToken")
+    New-Item -ItemType Directory -Path $script:OwnedArtifactRoot -ErrorAction Stop | Out-Null
+    $settingsSource = [Environment]::ExpandEnvironmentVariables("$($script:Manifest.env.settings_xml)")
+    if (-not (Test-Path -LiteralPath $settingsSource -PathType Leaf)) {
+        throw "settings source does not exist for private-copy initialization: $settingsSource"
+    }
+    $settingsDir = Join-Path $script:OutDir 'owned-settings'
+    New-Item -ItemType Directory -Path $settingsDir -ErrorAction Stop | Out-Null
+    $script:OwnedSettingsFile = Join-Path $settingsDir 'dnSpy.xml'
+    Copy-Item -LiteralPath $settingsSource -Destination $script:OwnedSettingsFile -ErrorAction Stop
+    $script:Manifest.env.artifact_root = $script:OwnedArtifactRoot
+    $script:Manifest.env.settings_xml = $script:OwnedSettingsFile
 }
 
 function Get-Sha256File([string]$Path) {
@@ -333,14 +399,19 @@ function Get-Sha256File([string]$Path) {
     } finally { $sha.Dispose() }
 }
 function Stop-DnSpyAndTargets {
-    Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process AccFixture,AccHarness,AccCore,ThreadsStackFixture,ArgvFixture,SampleDataFixture,DynLoadFixture,DualDynFixture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Despite its historical name this is no longer a name sweep.  Only current-run identities
+    # registered by Start-Process or an authoritative MCP status response are eligible.
+    Stop-DebugOwnedProcess
     Start-Sleep -Milliseconds 1500
 }
 function Reset-TestArtifactRoot {
     # Acceptance cleanup is deliberately out-of-process. The extension itself never deletes
     # artifact data; each cold case receives an empty dedicated harness root.
     $path = [IO.Path]::GetFullPath("$($script:Manifest.env.artifact_root)").TrimEnd('\')
+    if (-not $script:OwnedArtifactRoot -or
+        $path -ne [IO.Path]::GetFullPath($script:OwnedArtifactRoot).TrimEnd('\')) {
+        throw "artifact root is not owned by this runner invocation; refusing cleanup: $path"
+    }
     $volume = [IO.Path]::GetPathRoot($path).TrimEnd('\')
     if (-not $path -or $path.Length -le 3 -or $path -eq $volume) {
         throw "refusing to clean unsafe artifact test root: $path"
@@ -375,7 +446,15 @@ function Start-DnSpyAndWait {
         if ($script:Manifest.env.dnspy_exe -like '*x86*') { Set-Item -Path 'Env:DOTNET_ROOT(x86)' -Value $runtimeRoot }
         else { Set-Item -Path 'Env:DOTNET_ROOT(x64)' -Value $runtimeRoot }
     }
-    Start-Process -FilePath $script:Manifest.env.dnspy_exe -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe)
+    $existingHealth = Get-HealthCode $(if ($HealthUrl) { $HealthUrl } else { $script:BaseUrl })
+    if (($existingHealth -eq '200' -or $existingHealth -eq '401') -and
+        @(Get-DebugOwnedProcess -Kind 'dnspy' | Where-Object { -not $_.stopped }).Count -eq 0) {
+        throw "listener is already served by an unowned dnSpy instance; refusing to adopt or stop it"
+    }
+    $dnSpyProcess = Start-Process -FilePath $script:Manifest.env.dnspy_exe `
+        -ArgumentList @('--multiple','--settings-file',("`"$script:OwnedSettingsFile`"")) `
+        -WorkingDirectory (Split-Path $script:Manifest.env.dnspy_exe) -PassThru
+    Register-StartedDebugProcess $dnSpyProcess $script:Manifest.env.dnspy_exe 'dnspy' | Out-Null
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $probe = if ($HealthUrl) { $HealthUrl } else { $script:BaseUrl }
     while ((Get-Date) -lt $deadline) {
@@ -2257,7 +2336,7 @@ function Run-ACC034 {
     # the way an operator would — kill the abandoned target and let the manager observe the
     # removal — before the next launch (CHK-005 root cause; the precheck is right, the
     # scenario was leaking a live orphan).
-    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Stop-DebugOwnedProcess -SessionId $sid2 -Generation $gen2b -Kind 'target' -RequireRegistration
     Start-Sleep -Milliseconds 1800
 
     # [4] Pending-restart relaunch: emit removed while restart waits -> generation+1, no fault.
@@ -2288,7 +2367,7 @@ function Run-ACC034 {
     # manager observes a genuine removal: the pending restart relaunches through the Start
     # precheck (owned process cleared, manager teardown covered by the product's bounded
     # wait). A synthetic emit would leave the live process blocking the internal relaunch.
-    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Stop-DebugOwnedProcess -SessionId $sid3 -Generation $gen3 -Kind 'target' -RequireRegistration
     $dl3 = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $dl3 -and -not (Test-Path $a34Resp3)) { Start-Sleep -Milliseconds 500 }
     $dom3 = $null
@@ -2338,7 +2417,7 @@ function Run-ACC034 {
     $rf5 = Invoke-Detached $t2b 'a34t2b'
     Start-Sleep -Milliseconds 900
     # T2b also posted to the fake — settle with a REAL removal (kill), leaving no orphan.
-    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Stop-DebugOwnedProcess -SessionId $sid4 -Generation $gen4 -Kind 'target' -RequireRegistration
     $null = Read-DetachedResp $rf5
     $null = Test-Adapter '{"install":false}'
     Start-Sleep -Milliseconds 600
@@ -2605,7 +2684,7 @@ function Run-ACC027 {
         if ("$($stR.domain.result.state)" -eq 'running') { $runningOk = $true }
     }
     Assert-Cond 'a27-reconnect-continue' 'new transport continues the original session' "ok=$runningOk" $runningOk @($c2.rpc.resp)
-    $pidAlive = [bool](Get-Process ArgvFixture -ErrorAction SilentlyContinue)
+    $pidAlive = Test-DebugOwnedProcessAlive -SessionId $sid -Generation $gen
     Assert-Cond 'a27-target-alive' 'target process survives the transport swap' "alive=$pidAlive" $pidAlive
 
     # [2] Wrong session_id on control: TARGET_MISMATCH.
@@ -2616,7 +2695,7 @@ function Run-ACC027 {
     # handles invalid, coordinator returns idle.
     Start-Sleep -Milliseconds 500
     $curE = Get-MaxEventCursor $sid $gen
-    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Stop-DebugOwnedProcess -SessionId $sid -Generation $gen -Kind 'target' -RequireRegistration
     $dl = (Get-Date).AddSeconds(10)
     $exitOk = $false
     while ((Get-Date) -lt $dl -and -not $exitOk) {
@@ -2686,7 +2765,7 @@ function Run-ACC027 {
         $ownOk = $inj.domain.ok -and ("$($ost.domain.result.state)" -eq 'faulted') -and ("$(Get-DomainError $oc)" -eq 'OWNERSHIP_LOST') -and ($oe.kinds -contains 'ownership_lost')
         Assert-Cond 'a27-ownership-lost-ui-variant' 'unregistered/UI process observation -> faulted(ownership_lost), control rejected, event emitted' "ok=$ownOk" $ownOk @($inj.rpc.resp, $ost.rpc.resp, $oc.rpc.resp, $oev)
         Invoke-ToolNoInit 'debug_test_start' @{ mode = 'manager_idle' } | Out-Null
-        Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+        Stop-DebugOwnedProcess -SessionId $own.sid -Generation $own.gen -Kind 'target' -RequireRegistration
         Start-Sleep -Milliseconds 800
     } else {
         Assert-Cond 'a27-ownership-lost-ui-variant' 'session available for ownership classifier variant' 'launch failed' $false @()
@@ -2990,7 +3069,7 @@ function Run-ACC025 {
 
     # Post-recovery: the ambiguous target is resolved by the human (external kill) — the
     # manager then stops debugging entirely — and the server launches cleanly again.
-    Get-Process ArgvFixture -ErrorAction SilentlyContinue | Stop-Process -Force
+    Stop-DebugOwnedProcess -SessionId $sid -Generation $gen -Kind 'target' -RequireRegistration
     Start-Sleep -Milliseconds 1500
     $again = Launch-AndPause $exe 'none'
     Assert-Cond 'a25-relaunch' 'clean relaunch after recovery' "ok=$($again.ok)" $again.ok
@@ -3641,7 +3720,7 @@ function Run-ACC029 {
                 $capP = Invoke-ToolNoInit 'debug_capabilities' @{ }
                 $hostArch = "$($capP.domain.result.host_architecture)"
                 if ("$hostArch" -eq 'x86') { break }
-                Get-Process dnSpy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Stop-DnSpyAndTargets
                 Start-Sleep -Milliseconds 800
                 Stop-DnSpyAndTargets
                 $up86 = Ensure-CanonicalDnSpy
@@ -3860,11 +3939,12 @@ function Run-ACC036 {
     $bn.RemoveAttribute('SettingsPendingJson')
     $bx.Save($settingsB)
     $bp = Start-Process -FilePath $m.env.dnspy_exe -WorkingDirectory (Split-Path $m.env.dnspy_exe) -ArgumentList @('--multiple','--settings-file',$settingsB) -PassThru
+    $bpIdentity = Register-StartedDebugProcess $bp $m.env.dnspy_exe 'dnspy-secondary'
     $bUrl = 'http://localhost:15379/'
     $deadlineB = (Get-Date).AddSeconds(45); $bUp = $false
     while ((Get-Date) -lt $deadlineB -and -not $bUp) { Start-Sleep -Milliseconds 700; $bUp = (Get-HealthCode $bUrl) -eq 200 }
     $aBefore = Get-HealthCode $script:BaseUrl
-    if (-not $bp.HasExited) { Stop-Process -Id $bp.Id -Force }
+    if (-not $bp.HasExited) { [void](Stop-VerifiedDebugProcess $bpIdentity -ErrorIfUnknown) }
     Start-Sleep -Milliseconds 1200
     $aAfter = Get-HealthCode $script:BaseUrl
     $bAfter = Get-HealthCode $bUrl
@@ -4198,7 +4278,13 @@ function Run-ACC004 {
     }
     Start-Sleep -Milliseconds 900
     $ninthLong = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/sse') -Method GET -Headers @('Accept:text/event-stream') -Format status -MaxSec 3
-    foreach ($p in $longs) { if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } }
+    foreach ($p in $longs) {
+        if (-not $p.HasExited) {
+            $ownedDriver = @(Get-DebugOwnedProcess -Kind 'driver' | Where-Object { [int]$_.pid -eq [int]$p.Id } | Select-Object -Last 1)
+            if ($ownedDriver.Count -ne 1) { throw "background HTTP driver PID $($p.Id) has no cleanup authority" }
+            [void](Stop-VerifiedDebugProcess $ownedDriver[0] -ErrorIfUnknown)
+        }
+    }
     Assert-Cond 'a4-long-9th' 'ninth concurrent long connection = HTTP 429' "code=$ninthLong" ("$ninthLong" -eq '429') @(Save-Text 'a4-long-9th.txt' "code=$ninthLong")
 
     # [4] Streamable HTTP sessions persist independently of connections: first 16 initialize,
@@ -4258,6 +4344,12 @@ if ($handlers.ContainsKey($Case) -and $script:Manifest) {
         $_ | Out-String | Set-Content (Join-Path $script:OutDir 'harness-error.log')
         Assert-Cond 'harness-exception' 'case body completes without harness exception' $_.Exception.Message $false @('harness-error.log')
         $script:PreconditionFailed = $true
+    } finally {
+        try { Stop-DnSpyAndTargets } catch {
+            $_ | Out-String | Set-Content (Join-Path $script:OutDir 'cleanup-error.log')
+            Assert-Cond 'harness-owned-cleanup' 'all current-run processes either exited or passed PID/exe/ticks verification before stop' $_.Exception.Message $false @('cleanup-error.log')
+            $script:PreconditionFailed = $true
+        }
     }
 } elseif ($script:Manifest) {
     [Console]::Error.WriteLine("case implemented driver logic missing for $Case (manifest exists)")
