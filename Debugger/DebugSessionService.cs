@@ -21,6 +21,8 @@ using dnSpy.Contracts.Debugger.DotNet.Metadata;
 using dnSpy.Contracts.Metadata;
 using dnSpy.Extension.MCP.Execution;
 
+using dnSpy.Extension.MCP.Editing;
+
 namespace dnSpy.Extension.MCP.Debugger;
 
 /// <summary>
@@ -3564,15 +3566,75 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				}
 				if (eventThread is not null && eventModule is null)
 					eventModule = TopFrameModule(eventThread);
-				var threadHandle = eventThread is null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
+				var threadHandle = eventThread is not null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
 				var moduleHandle = ModuleHandleOf(eventModule);
 				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause,
 					stepKind, threadHandle, moduleHandle, exceptionType, exceptionMessage,
-					exceptionHResult, exceptionFirstChance, exceptionUnhandled));
+					exceptionHResult, exceptionFirstChance, exceptionUnhandled) {
+					// PLAN-CHANGE 2026.09.22: only exceptions ICorDebug-attributed to a framework
+					// loader module with the strong-name failure HRESULT whose loader-authored
+					// message names the rejected identity become strong-name evidence facts.
+					StrongNameRejection = ClassifyLoaderStrongNameRejection(eventModule, exceptionHResult, exceptionMessage),
+				});
 			}
 		}
 		return list;
 	}
+
+	/// <summary>HRESULT of the CLR loader's strong-name verification failure
+	/// (FileLoadException "Strong Name signature was invalid").</summary>
+	const int StrongNameFailureHResult = unchecked((int)0x8013141A);
+
+	static readonly System.Text.RegularExpressions.Regex LoaderAssemblyIdentityRegex = new(
+		@"'(?<name>[^',]+),\s*Version=(?<version>[0-9.]+)(?:,\s*Culture=[^,]+)?,\s*PublicKeyToken=(?<pkt>[0-9a-fA-F]{16})'",
+		System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+	/// <summary>Classifies one observed exception into strong-name rejection facts. The three
+	/// structural criteria are each non-forgeable by debugged code: the ICorDebug module
+	/// attribution must be a framework loader module (mscorlib / System.Private.CoreLib) — a
+	/// sample-thrown exception keeps its own module attribution — the HRESULT must be the
+	/// loader's strong-name failure constant, and the loader-authored message must name the
+	/// rejected assembly identity (full name + version + 16-hex public key token). Any miss
+	/// returns null and the exception stays ordinary untrusted sample data.</summary>
+	static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(DbgModule? eventModule, int? hResult, string? message) =>
+		ClassifyLoaderStrongNameRejection(eventModule?.Name, hResult, message);
+
+	internal static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(string? moduleName, int? hResult, string? message) {
+		if (moduleName is null || hResult != StrongNameFailureHResult || string.IsNullOrEmpty(message))
+			return null;
+		if (!string.Equals(moduleName, "mscorlib", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(moduleName, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase))
+			return null;
+		var match = LoaderAssemblyIdentityRegex.Match(message);
+		if (!match.Success)
+			return null;
+		return new StrongNameRejectionFacts {
+			LoaderModule = moduleName,
+			HResult = hResult.Value,
+			AssemblyName = match.Groups["name"].Value.Trim(),
+			AssemblyVersion = match.Groups["version"].Value.Trim(),
+			PublicKeyToken = match.Groups["pkt"].Value.ToLowerInvariant(),
+		};
+	}
+
+	/// <summary>PLAN-CHANGE 2026.09.22 edit-gate entry: atomically validates and consumes the
+	/// loader strong-name rejection recorded at the given session/cursor, bound to the exact
+	/// target assembly identity. One observation authorizes exactly one removal.</summary>
+	internal string? ActiveSessionId => coordinator.ActiveSessionId;
+
+	internal bool TryAuthorizeStrongNameRemove(string sessionId, long cursor,
+		string assemblyName, string assemblyVersion, string publicKeyToken) =>
+		coordinator.TryConsumeStrongNameFailure(sessionId, cursor, assemblyName, assemblyVersion, publicKeyToken);
+
+	/// <summary>DNMCP_TEST-only: records a synthetic loader rejection and returns its event
+	/// cursor for MCP-level strong_name_remove success-branch verification.</summary>
+	internal long RecordStrongNameRejectionForTest(string assemblyName, string assemblyVersion, string publicKeyToken) {
+		if (!TestModeEnabled) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE");
+		return coordinator.WriteStrongNameRejectionForTest(assemblyName, assemblyVersion, publicKeyToken);
+	}
+
+	internal DebugSessionCoordinator.StrongNameFailureObservation? ReadStrongNameFailureEvidence(string sessionId, long cursor) =>
+		coordinator.ReadStrongNameFailure(sessionId, cursor);
 
 	static DbgModule? TopFrameModule(DbgThread thread) {
 		try {

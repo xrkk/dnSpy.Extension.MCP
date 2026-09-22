@@ -60,7 +60,23 @@ public sealed class DebugSessionCoordinator {
 	bool restartReservation;
 	bool abandonedRestart;
 	long eventCursorCounter; // debug_context.event_cursor source
-	internal sealed class StrongNameFailureObservation { }
+	// PLAN-CHANGE 2026.09.22: session-scoped loader strong-name rejection observations.
+	readonly Dictionary<long, StrongNameFailureObservation> strongNameObservations = new();
+	/// <summary>One recorded loader strong-name rejection (PLAN-CHANGE 2026.09.22): created only
+	/// from the pause pipeline for exceptions ICorDebug-attributed to a framework loader module
+	/// with the strong-name failure HRESULT whose loader-authored message names the rejected
+	/// assembly identity. Consumed at most once by the edit strong-name gate.</summary>
+	internal sealed class StrongNameFailureObservation {
+		public string SessionId { get; init; }
+		public int Generation { get; init; }
+		public long EventCursor { get; init; }
+		public string LoaderModule { get; init; }
+		public int HResult { get; init; }
+		public string AssemblyName { get; init; }
+		public string AssemblyVersion { get; init; }
+		public string PublicKeyToken { get; init; }
+		public bool Consumed { get; set; }
+	}
 
 	public DebugSessionCoordinator(Func<string>? newSessionId = null, Func<string>? utcNow = null, Func<DateTime>? wallClock = null) {
 		this.newSessionId = newSessionId ?? DefaultSessionId;
@@ -159,6 +175,7 @@ public sealed class DebugSessionCoordinator {
 			pauseEpoch = 0;
 			fault = FaultKind.None;
 			abandonedRestart = false;
+			strongNameObservations.Clear();
 			observedProcessState = "unknown";
 			activeBuffer = new DebugEventBuffer(activeSessionId, utcNow: utcNow);
 			SetState(DebugStates.Starting);
@@ -380,13 +397,15 @@ public sealed class DebugSessionCoordinator {
 		foreach (var info in PauseCauseArbiter.DetailOrder(breakInfos)) {
 			switch (info.Kind) {
 			case PauseCauseArbiter.Exception:
-					WriteEvent(EventKinds.Exception, new {
+					var exceptionCursor = WriteEvent(EventKinds.Exception, new {
 						first_chance = info.ExceptionFirstChance,
 						unhandled = info.ExceptionUnhandled,
 						type = info.ExceptionType ?? "exception",
 						message = info.ExceptionMessage ?? string.Empty,
 						thread_handle = info.ThreadHandle,
 					}, untrusted: true);
+					if (info.StrongNameRejection is { } rejection)
+						RecordStrongNameFailureLocked(exceptionCursor, rejection);
 					break;
 				case PauseCauseArbiter.Breakpoint:
 					if (info.OwnedBreakpointId != null)
@@ -490,10 +509,76 @@ public sealed class DebugSessionCoordinator {
 		}
 	}
 
-	/// <summary>The current dnSpy exception contract cannot attest a loader validation source
-	/// or name the failed binding target. Raw exception HRESULT/type/module facts therefore
-	/// never become strong-name authorization evidence.</summary>
-	internal StrongNameFailureObservation? ReadStrongNameFailure(string sessionId, long cursor) => null;
+	/// <summary>Records one loader strong-name rejection observation bound to the cursor of the
+	/// exception event just written for it. Called only from WritePauseDetails under the gate.</summary>
+	void RecordStrongNameFailureLocked(long cursor, StrongNameRejectionFacts facts) {
+		strongNameObservations[cursor] = new StrongNameFailureObservation {
+			SessionId = activeSessionId, Generation = generation, EventCursor = cursor,
+			LoaderModule = facts.LoaderModule, HResult = facts.HResult,
+			AssemblyName = facts.AssemblyName, AssemblyVersion = facts.AssemblyVersion,
+			PublicKeyToken = facts.PublicKeyToken,
+		};
+	}
+
+	/// <summary>PLAN-CHANGE 2026.09.22: read (without consuming) the loader strong-name
+	/// rejection recorded at a cursor of the given session, or null when the session/cursor is
+	/// unknown to the active session or the observation was already consumed.</summary>
+	internal StrongNameFailureObservation? ReadStrongNameFailure(string sessionId, long cursor) {
+		lock (gate) {
+			if (!StrongNameSessionLiveLocked(sessionId))
+				return null;
+			return strongNameObservations.TryGetValue(cursor, out var obs) && !obs.Consumed ? obs : null;
+		}
+	}
+
+	/// <summary>Evidence stays readable through the terminal retention window: the edit gate
+	/// must run after the debug session ended (commits require a debug-idle state), so the
+	/// observations of the just-terminated session remain consumable until retention expires.</summary>
+	bool StrongNameSessionLiveLocked(string sessionId) =>
+		string.Equals(sessionId, activeSessionId, StringComparison.Ordinal)
+		|| (activeSessionId is null && lastSessionId is not null
+			&& string.Equals(sessionId, lastSessionId, StringComparison.Ordinal) && !RetentionExpired);
+
+	/// <summary>DNMCP_TEST-only seam: writes one synthetic loader strong-name rejection
+	/// exception event through the normal event path and records its observation, so the
+	/// MCP-level strong-name success branch can be exercised without a real (registry-gated)
+	/// loader failure. Production code never calls this.</summary>
+	internal long WriteStrongNameRejectionForTest(string assemblyName, string assemblyVersion, string publicKeyToken) {
+		lock (gate) {
+			var facts = new StrongNameRejectionFacts {
+				LoaderModule = "mscorlib", HResult = unchecked((int)0x8013141A),
+				AssemblyName = assemblyName, AssemblyVersion = assemblyVersion, PublicKeyToken = publicKeyToken,
+			};
+			var cursor = WriteEvent(EventKinds.Exception, new {
+				first_chance = true, unhandled = false,
+				type = "System.IO.FileLoadException",
+				message = $"Could not load file or assembly '{assemblyName}, Version={assemblyVersion}, Culture=neutral, PublicKeyToken={publicKeyToken}' or one of its dependencies. Strong Name signature was invalid",
+				thread_handle = (string?)null,
+			}, untrusted: false);
+			RecordStrongNameFailureLocked(cursor, facts);
+			return cursor;
+		}
+	}
+
+	/// <summary>Atomically validates and consumes one observation: the session/cursor must be a
+	/// live, unconsumed loader rejection whose rejected identity matches the supplied target
+	/// assembly identity exactly (name + version + public key token). One observation can
+	/// authorize exactly one strong_name_remove; every later attempt fails closed.</summary>
+	internal bool TryConsumeStrongNameFailure(string sessionId, long cursor,
+		string assemblyName, string assemblyVersion, string publicKeyToken) {
+		lock (gate) {
+			if (!StrongNameSessionLiveLocked(sessionId))
+				return false;
+			if (!strongNameObservations.TryGetValue(cursor, out var obs) || obs.Consumed)
+				return false;
+			if (!string.Equals(obs.AssemblyName, assemblyName, StringComparison.Ordinal)
+				|| !string.Equals(obs.AssemblyVersion, assemblyVersion, StringComparison.Ordinal)
+				|| !string.Equals(obs.PublicKeyToken, publicKeyToken, StringComparison.OrdinalIgnoreCase))
+				return false;
+			obs.Consumed = true;
+			return true;
+		}
+	}
 
 	bool RetentionExpired => terminalAtUtc is { } t && (wallClock() - t) >= TerminalRetention;
 
@@ -533,10 +618,10 @@ public sealed class DebugSessionCoordinator {
 		return new { code = code, message = message, recovery = recovery, current_state = currentState, required_states = Array.Empty<string>() };
 	}
 
-	void WriteEvent(string kind, object payload, bool untrusted) {
+	long WriteEvent(string kind, object payload, bool untrusted) {
 		var buffer = activeBuffer;
 		if (buffer is null)
-			return;
+			return 0;
 		var context = new {
 			session_id = activeSessionId,
 			generation = generation,
@@ -558,5 +643,6 @@ public sealed class DebugSessionCoordinator {
 		});
 		eventCursorCounter++;
 		buffer.Append(kind, json, eventCursorCounter);
+		return eventCursorCounter;
 	}
 }

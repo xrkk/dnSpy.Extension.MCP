@@ -32,6 +32,11 @@ public sealed class BreakInfoObservation {
 	internal int? ExceptionHResult { get; }
 	internal bool ExceptionFirstChance { get; }
 	internal bool ExceptionUnhandled { get; }
+	/// <summary>Loader-authored strong-name rejection facts. Set only by the session service
+	/// when the exception is ICorDebug-attributed to a framework loader module, carries the
+	/// strong-name failure HRESULT, and the loader message names the rejected assembly
+	/// identity. Never caller-suppliable.</summary>
+	internal StrongNameRejectionFacts? StrongNameRejection { get; set; }
 
 	public BreakInfoObservation(string kind, int ordinal, string? ownedBreakpointId = null,
 		string? stepId = null, bool policyRequestedPause = false, string? stepKind = null,
@@ -58,6 +63,17 @@ public sealed class BreakInfoObservation {
 		ExceptionFirstChance = exceptionFirstChance;
 		ExceptionUnhandled = exceptionUnhandled;
 	}
+}
+
+/// <summary>Facts of a CLR loader strong-name rejection, extracted from the loader-authored
+/// exception message of an exception attributed (via ICorDebug module mapping) to a framework
+/// loader module. Sample code cannot author an exception that carries this attribution.</summary>
+public sealed class StrongNameRejectionFacts {
+	public string LoaderModule { get; init; }
+	public int HResult { get; init; }
+	public string AssemblyName { get; init; }
+	public string AssemblyVersion { get; init; }
+	public string PublicKeyToken { get; init; }
 }
 
 /// <summary>

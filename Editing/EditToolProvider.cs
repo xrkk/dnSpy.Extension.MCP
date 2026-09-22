@@ -9,7 +9,7 @@ namespace dnSpy.Extension.MCP.Editing;
 [Export(typeof(IMcpToolProvider))]
 internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
 	static readonly string[] ProductTools = { "edit_begin", "edit_status", "edit_apply", "edit_import", "edit_impact_scan", "edit_resource_import", "edit_resource_export", "edit_review", "edit_rollback", "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_restore", "edit_export", "edit_recover", "edit_accept_live" };
-	static readonly string[] TestTools = { "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation", "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore", "edit_test_storage_fault", "edit_test_lineage_mutation" };
+	static readonly string[] TestTools = { "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation", "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore", "edit_test_storage_fault", "edit_test_lineage_mutation", "edit_test_strong_name" };
 	readonly EditTransactionCoordinator coordinator;
 	readonly EditSchemaCatalog schemas = new();
 	readonly IReadOnlyList<ToolInfo> tools;

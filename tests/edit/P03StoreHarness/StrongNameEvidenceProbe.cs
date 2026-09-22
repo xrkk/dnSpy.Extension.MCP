@@ -44,6 +44,46 @@ static class StrongNameEvidenceProbe {
 		now = now.Add(DebugSessionCoordinator.TerminalRetention).Add(TimeSpan.FromSeconds(1));
 		Check(sequence.ReadEvents("session-a", 0, 32, null) is null, "terminal events expire");
 
+		// ---- PLAN-CHANGE 2026.09.22: classifier + observation lifecycle + one-shot consumption ----
+		var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=1.2.3.4, Culture=neutral, PublicKeyToken=0011223344556677' or one of its dependencies. Strong Name signature was invalid";
+		var facts = DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg);
+		Check(facts is not null && facts.AssemblyName == "SignedTarget" && facts.AssemblyVersion == "1.2.3.4"
+			&& facts.PublicKeyToken == "0011223344556677" && facts.LoaderModule == "mscorlib", "loader rejection classified");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("SignedTarget", CorEStrongName, loaderMsg) is null, "sample-module attribution rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x80131509), loaderMsg) is null, "wrong hresult rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, "sample supplied text") is null, "unparseable message rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName,
+			"Could not load file or assembly 'Unsigned, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.") is null, "null token rejected");
+		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("System.Private.CoreLib", CorEStrongName, loaderMsg) is not null, "corelib loader accepted");
+
+		var evidence = new DebugSessionCoordinator(() => "session-e", () => now.ToString("O"), () => now);
+		Check(evidence.BeginLaunch("launch", "start", "net-framework", "x64") && evidence.MarkLaunchClaimSucceeded(false, null), "evidence fixture running");
+		evidence.ObservePaused("session-e", 1, true, new[] {
+			new BreakInfoObservation(PauseCauseArbiter.Exception, 0, null, null, true, null,
+				"thread-1", "module-1", "System.IO.FileLoadException", loaderMsg, CorEStrongName, false, true) {
+				StrongNameRejection = new StrongNameRejectionFacts {
+					LoaderModule = "mscorlib", HResult = CorEStrongName,
+					AssemblyName = "SignedTarget", AssemblyVersion = "1.2.3.4", PublicKeyToken = "0011223344556677",
+				},
+			},
+		});
+		var evidenceEvents = evidence.ReadEvents("session-e", 0, 32, null)!;
+		var evidenceCursor = EventCursor(evidenceEvents.Events.Single(x => EventKind(x) == EventKinds.Exception));
+		var observed = evidence.ReadStrongNameFailure("session-e", evidenceCursor);
+		Check(observed is not null && observed.AssemblyName == "SignedTarget" && observed.PublicKeyToken == "0011223344556677", "loader observation recorded at cursor");
+		Check(!evidence.TryConsumeStrongNameFailure("session-e", evidenceCursor, "SignedTarget", "9.9.9.9", "0011223344556677"), "version drift rejected");
+		Check(!evidence.TryConsumeStrongNameFailure("session-e", evidenceCursor, "SignedTarget", "1.2.3.4", "ffffffffffffffff"), "token drift rejected");
+		Check(!evidence.TryConsumeStrongNameFailure("other-session", evidenceCursor, "SignedTarget", "1.2.3.4", "0011223344556677"), "cross-session consume rejected");
+		Check(evidence.TryConsumeStrongNameFailure("session-e", evidenceCursor, "SignedTarget", "1.2.3.4", "0011223344556677"), "exact identity consumed");
+		Check(!evidence.TryConsumeStrongNameFailure("session-e", evidenceCursor, "SignedTarget", "1.2.3.4", "0011223344556677"), "second consume rejected");
+		Check(evidence.ReadStrongNameFailure("session-e", evidenceCursor) is null, "consumed observation unreadable");
+
+		var seam = new DebugSessionCoordinator(() => "session-t");
+		Check(seam.BeginLaunch("launch", "start", "net-framework", "x64") && seam.MarkLaunchClaimSucceeded(false, null), "seam fixture running");
+		var seamCursor = seam.WriteStrongNameRejectionForTest("SeamTarget", "2.0.0.0", "aabbccddeeff0011");
+		Check(seamCursor > 0 && seam.ReadStrongNameFailure("session-t", seamCursor) is not null, "seam records observation through event path");
+		Check(seam.TryConsumeStrongNameFailure("session-t", seamCursor, "SeamTarget", "2.0.0.0", "aabbccddeeff0011"), "seam observation consumable");
+
 		var restart = new DebugSessionCoordinator(() => "session-r");
 		Check(restart.BeginLaunch("launch", "start", "net-framework", "x64") && restart.MarkLaunchClaimSucceeded(false, null), "restart fixture running");
 		var admission = restart.TryBeginControl(ControlOperation.Restart, "restart");
@@ -51,7 +91,7 @@ static class StrongNameEvidenceProbe {
 		Check(restart.ObserveProcessRemoved("session-r", 1, true, 0).Outcome == "pending-restart", "restart removal");
 		Check(restart.BeginRestartRelaunch() && restart.Generation == 2, "restart generation");
 		Check(restart.MarkLaunchClaimSucceeded(false, null) && restart.State == DebugStates.Running, "restart running");
-		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true");
+		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier=true observation_lifecycle=true one_shot_consume=true");
 	}
 
 	static string EventKind(string json) { using var doc = JsonDocument.Parse(json); return doc.RootElement.GetProperty("kind").GetString()!; }

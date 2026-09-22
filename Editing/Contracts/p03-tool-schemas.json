@@ -18897,5 +18897,46 @@
         }
       ]
     }
+  },
+  "edit_test_strong_name": {
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assembly_name",
+        "assembly_version",
+        "public_key_token"
+      ],
+      "properties": {
+        "assembly_name": {
+          "type": "string"
+        },
+        "assembly_version": {
+          "type": "string"
+        },
+        "public_key_token": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{16}$"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "event_cursor": {
+          "type": "integer"
+        }
+      }
+    }
   }
 }

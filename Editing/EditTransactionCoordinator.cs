@@ -390,6 +390,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					"edit_test_apply_and_restore" => TestApplyAndRestore(args, context),
 					"edit_test_storage_fault" => TestStorageFault(args),
 					"edit_test_lineage_mutation" => TestLineageMutation(args, context),
+					"edit_test_strong_name" => TestStrongNameSeam(args),
 					_ => throw new ArgumentException("Unknown edit tool", nameof(toolName)),
 				};
 			if (requestKey != null && requestPayload != null && CacheableCommand(toolName))
@@ -856,8 +857,20 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		if (!string.Equals(claimedKind, "exception", StringComparison.Ordinal))
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
 				"the evidence event kind must be a retained CLR strong-name validation exception: " + claimedKind));
-		throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-			"the current debugger API exposes only the throwing module and exception sample data; it does not identify a CLR loader validation source or the assembly whose binding failed"));
+		// PLAN-CHANGE 2026.09.22: the dynamic failure must be a live, unconsumed loader
+		// strong-name rejection (ICorDebug loader-module attribution + strong-name failure
+		// HRESULT + loader-authored rejected identity) whose rejected assembly identity
+		// matches THIS transaction's target assembly exactly; consumption is atomic and
+		// one-shot. Anything else — including sample-thrown look-alikes, stale cursors,
+		// foreign sessions or identity drift — fails closed exactly as before.
+		var targetName = assembly.Name.String;
+		var targetVersion = assembly.Version?.ToString() ?? string.Empty;
+		var targetTokenBytes = assembly.PublicKey.Token?.Data;
+		var targetToken = targetTokenBytes is null || targetTokenBytes.Length == 0
+			? string.Empty : string.Concat(targetTokenBytes.Select(b => b.ToString("x2")));
+		if (!debugSessions.TryAuthorizeStrongNameRemove(sessionId, cursor, targetName, targetVersion, targetToken))
+			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
+				"the dynamic failure evidence does not match a live loader strong-name rejection of this target assembly (unknown session/cursor, already consumed, or assembly identity mismatch)"));
 	}
 
 	// P08 edit_resource_import: reads VM file bytes server-side and stages the
@@ -1827,6 +1840,17 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				}
 				throw;
 			}
+		});
+	}
+
+	Dictionary<string, object?> TestStrongNameSeam(Dictionary<string, object>? args) {
+		if (!TestMode) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE");
+		var assemblyName = EditWire.String(args, "assembly_name");
+		var version = EditWire.String(args, "assembly_version");
+		var token = EditWire.String(args, "public_key_token");
+		var cursor = debugSessions.RecordStrongNameRejectionForTest(assemblyName, version, token);
+		return EditWire.Success(state, new Dictionary<string, object?> {
+			["session_id"] = debugSessions.ActiveSessionId ?? "", ["event_cursor"] = cursor,
 		});
 	}
 
