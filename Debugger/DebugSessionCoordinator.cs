@@ -512,12 +512,6 @@ public sealed class DebugSessionCoordinator {
 	/// <summary>Records one loader strong-name rejection observation bound to the cursor of the
 	/// exception event just written for it. Called only from WritePauseDetails under the gate.</summary>
 	void RecordStrongNameFailureLocked(long cursor, StrongNameRejectionFacts facts) {
-		strongNameGeneration = generation;
-		var bufferForRetention = activeBuffer ?? retainedBuffer;
-		if (bufferForRetention is not null) {
-			var probe = bufferForRetention.Read(0, 1, null);
-			lastObservedEarliestCursor = probe.EarliestCursor;
-		}
 		strongNameObservations[cursor] = new StrongNameFailureObservation {
 			SessionId = activeSessionId, Generation = generation, EventCursor = cursor,
 			LoaderModule = facts.LoaderModule, HResult = facts.HResult,
@@ -533,7 +527,11 @@ public sealed class DebugSessionCoordinator {
 		lock (gate) {
 			if (!StrongNameSessionLiveLocked(sessionId) || !StrongNameEvidenceRetainedLocked(cursor))
 				return null;
-			return strongNameObservations.TryGetValue(cursor, out var obs) && !obs.Consumed ? obs : null;
+			// CHK-20260922-04-03 remediation: each observation is bound to the generation it
+			// was recorded under; a newer-generation observation never re-authorizes an
+			// older-generation one.
+			return strongNameObservations.TryGetValue(cursor, out var obs) && !obs.Consumed
+				&& obs.Generation == generation ? obs : null;
 		}
 	}
 
@@ -542,16 +540,15 @@ public sealed class DebugSessionCoordinator {
 	/// bounded ring) AND the debug generation still matches the one the rejection was
 	/// observed under (a same-session restart advances the generation).</summary>
 	bool StrongNameEvidenceRetainedLocked(long cursor) {
-		if (generation != strongNameGeneration)
-			return false;
+		// CHK-20260922-04-02 remediation: the retention watermark is taken live from the
+		// buffer on every check, so eviction by ANY event stream (not only further
+		// strong-name observations) invalidates the evidence.
 		var buffer = activeBuffer ?? retainedBuffer;
 		if (buffer is null)
 			return false;
-		buffer.Read(0, 1, null);
-		return cursor >= lastObservedEarliestCursor;
+		var retention = buffer.Read(0, 1, null);
+		return cursor >= retention.EarliestCursor;
 	}
-	long strongNameGeneration = -1;
-	long lastObservedEarliestCursor;
 
 	/// <summary>Evidence stays readable through the terminal retention window: the edit gate
 	/// must run after the debug session ended (commits require a debug-idle state), so the
@@ -591,7 +588,7 @@ public sealed class DebugSessionCoordinator {
 		lock (gate) {
 			if (!StrongNameSessionLiveLocked(sessionId) || !StrongNameEvidenceRetainedLocked(cursor))
 				return false;
-			if (!strongNameObservations.TryGetValue(cursor, out var obs) || obs.Consumed)
+			if (!strongNameObservations.TryGetValue(cursor, out var obs) || obs.Consumed || obs.Generation != generation)
 				return false;
 			if (!string.Equals(obs.AssemblyName, assemblyName, StringComparison.Ordinal)
 				|| !string.Equals(obs.AssemblyVersion, assemblyVersion, StringComparison.Ordinal)

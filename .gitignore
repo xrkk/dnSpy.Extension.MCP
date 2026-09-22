@@ -75,3 +75,4 @@ __pycache__/
 build/
 /PLAN/2026.08.26/独立核验
 /.tmp
+*.log
