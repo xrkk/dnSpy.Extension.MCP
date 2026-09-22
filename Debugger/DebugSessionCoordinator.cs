@@ -403,6 +403,8 @@ public sealed class DebugSessionCoordinator {
 						type = info.ExceptionType ?? "exception",
 						message = info.ExceptionMessage ?? string.Empty,
 						thread_handle = info.ThreadHandle,
+						hresult = info.ExceptionHResult,
+						strong_name_gate = info.StrongNameGateNote,
 					}, untrusted: true);
 					if (info.StrongNameRejection is { } rejection)
 						RecordStrongNameFailureLocked(exceptionCursor, rejection);

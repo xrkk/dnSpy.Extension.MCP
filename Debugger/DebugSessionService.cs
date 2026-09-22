@@ -3480,6 +3480,13 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 	/// Break/ProgramBreak→break.</summary>
 	List<BreakInfoObservation> CollectBreakInfos(DbgProcess process) {
 		var list = new List<BreakInfoObservation>();
+		string? hostTargetPathForDiff;
+		IReadOnlyCollection<string>? loadedModuleNamesForDiff;
+		lock (sessionLock) {
+			hostTargetPathForDiff = launchIdentities.FirstOrDefault(i => i.Role == "target")?.FinalPath;
+			loadedModuleNamesForDiff = modulesByHandle.Values
+				.Select(r => r.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
+		}
 		string policy;
 		lock (sessionLock) policy = exceptionPolicy;
 		var eventPauseEpoch = coordinator.State == DebugStates.Running
@@ -3574,33 +3581,95 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 					// PLAN-CHANGE 2026.09.22: only exceptions ICorDebug-attributed to a framework
 					// loader module with the strong-name failure HRESULT whose loader-authored
 					// message names the rejected identity become strong-name evidence facts.
-					StrongNameRejection = ClassifyLoaderStrongNameRejection(eventModule, exceptionHResult, exceptionMessage),
+					StrongNameRejection = ClassifyLoaderStrongNameRejection(eventModule?.Name, exceptionHResult, exceptionMessage,
+						hostTargetPathForDiff, loadedModuleNamesForDiff),
 				});
 			}
 		}
 		return list;
 	}
 
-	/// <summary>HRESULT of the CLR loader's strong-name verification failure
-	/// (FileLoadException "Strong Name signature was invalid").</summary>
-	const int StrongNameFailureHResult = unchecked((int)0x8013141A);
+	/// <summary>HRESULTs of the CLR loader's strong-name verification failure: the observed
+	/// FileLoadException carries 0x8013DE1A while its nested SecurityException text names
+	/// 0x8013141A; both identify the same loader rejection and nothing else.</summary>
+	static readonly int[] StrongNameFailureHResults = { unchecked((int)0x8013DE1A), unchecked((int)0x8013141A) };
 
 	static readonly System.Text.RegularExpressions.Regex LoaderAssemblyIdentityRegex = new(
 		@"'(?<name>[^',]+),\s*Version=(?<version>[0-9.]+)(?:,\s*Culture=[^,]+)?,\s*PublicKeyToken=(?<pkt>[0-9a-fA-F]{16})'",
 		System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
 
-	/// <summary>Classifies one observed exception into strong-name rejection facts. The three
-	/// structural criteria are each non-forgeable by debugged code: the ICorDebug module
-	/// attribution must be a framework loader module (mscorlib / System.Private.CoreLib) — a
-	/// sample-thrown exception keeps its own module attribution — the HRESULT must be the
-	/// loader's strong-name failure constant, and the loader-authored message must name the
-	/// rejected assembly identity (full name + version + 16-hex public key token). Any miss
-	/// returns null and the exception stays ordinary untrusted sample data.</summary>
-	static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(DbgModule? eventModule, int? hResult, string? message) =>
-		ClassifyLoaderStrongNameRejection(eventModule?.Name, hResult, message);
+	/// <summary>Full classification with the binding-failure criteria (PLAN-CHANGE 2026.09.22).
+	/// A strong-name binding failure carries no loader module attribution (the throwing module
+	/// resolves to null or the caller's stack top), so attribution alone cannot gate it. The
+	/// trusted form is (strong-name HRESULT + loader-authored identity) PLUS, when attribution
+	/// is absent, the reference-closure differential: the rejected identity must be a
+	/// strong-named AssemblyRef of the launch host's own metadata AND absent from the session's
+	/// loaded-module set. Both are debugger facts sample code cannot forge: an assembly the
+	/// runtime actually loads clears the differential, and an identity the host never
+	/// references is rejected.</summary>
+	internal static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(string? moduleName, int? hResult, string? message,
+		string? hostTargetPath, IReadOnlyCollection<string>? loadedModuleNames) {
+		if (hResult is null || !StrongNameFailureHResults.Contains(hResult.Value) || string.IsNullOrEmpty(message))
+			return null;
+		var match = LoaderAssemblyIdentityRegex.Match(message);
+		if (!match.Success)
+			return null;
+		var name = match.Groups["name"].Value.Trim();
+		var version = match.Groups["version"].Value.Trim();
+		var token = match.Groups["pkt"].Value.ToLowerInvariant();
+		bool loaderAttributed = string.Equals(moduleName, "mscorlib", StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(moduleName, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase);
+		if (!loaderAttributed) {
+			if (hostTargetPath is null || loadedModuleNames is null)
+				return null;
+			if (loadedModuleNames.Any(loaded => string.Equals(loaded, name, StringComparison.OrdinalIgnoreCase)))
+				return null;
+			if (!HostReferencesStrongIdentity(hostTargetPath, name, token))
+				return null;
+		}
+		return new StrongNameRejectionFacts {
+			LoaderModule = loaderAttributed ? moduleName! : "binding-failure",
+			HResult = hResult.Value,
+			AssemblyName = name,
+			AssemblyVersion = version,
+			PublicKeyToken = token,
+		};
+	}
+
+	static bool HostReferencesStrongIdentity(string hostPath, string name, string token) {
+		try {
+			using var host = dnlib.DotNet.ModuleDefMD.Load(hostPath);
+			foreach (var reference in host.GetAssemblyRefs()) {
+				if (!string.Equals(reference.Name, name, StringComparison.OrdinalIgnoreCase))
+					continue;
+				var refToken = reference.PublicKeyOrToken?.Data;
+				if (refToken is null || refToken.Length != 8)
+					continue;
+				var hex = string.Concat(refToken.Select(b => b.ToString("x2")));
+				if (string.Equals(hex, token, StringComparison.OrdinalIgnoreCase))
+					return true;
+			}
+			return false;
+		}
+		catch {
+			return false;
+		}
+	}
+
+	internal static string ClassifyLoaderStrongNameRejectionNote(DbgModule? eventModule, int? hResult, string? message) {
+		var name = eventModule?.Name;
+		if (hResult is null || !StrongNameFailureHResults.Contains(hResult.Value)) return "hresult:" + (hResult?.ToString() ?? "null") + "(0x" + (hResult is int hr ? hr.ToString("X8") : "?") + ")";
+		if (name is null) return "module:null";
+		if (!string.Equals(name, "mscorlib", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(name, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase))
+			return "module:" + name;
+		if (string.IsNullOrEmpty(message)) return "message:empty";
+		if (!LoaderAssemblyIdentityRegex.IsMatch(message)) return "message:no-identity";
+		return "classified";
+	}
 
 	internal static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(string? moduleName, int? hResult, string? message) {
-		if (moduleName is null || hResult != StrongNameFailureHResult || string.IsNullOrEmpty(message))
+		if (moduleName is null || hResult is null || !StrongNameFailureHResults.Contains(hResult.Value) || string.IsNullOrEmpty(message))
 			return null;
 		if (!string.Equals(moduleName, "mscorlib", StringComparison.OrdinalIgnoreCase)
 			&& !string.Equals(moduleName, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase))
