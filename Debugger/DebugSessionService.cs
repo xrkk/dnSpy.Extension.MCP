@@ -3575,14 +3575,21 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 					eventModule = TopFrameModule(eventThread);
 				var threadHandle = eventThread is not null ? null : MintThreadHandle(eventThread, eventPauseEpoch);
 				var moduleHandle = ModuleHandleOf(eventModule);
+				var strongNameFacts = ClassifyLoaderStrongNameRejection(eventModule?.Name, exceptionHResult, exceptionMessage,
+					hostTargetPathForDiff, loadedModuleNamesForDiff);
+				var strongNameNote = strongNameFacts is not null ? "classified"
+					: ClassifyLoaderStrongNameRejectionNote(eventModule, exceptionHResult, exceptionMessage)
+					+ "|diff:" + (hostTargetPathForDiff is null ? "no-host" : "host")
+					+ "|loaded:" + (loadedModuleNamesForDiff is null ? -1 : loadedModuleNamesForDiff.Count);
 				list.Add(new BreakInfoObservation(kind, ordinal++, ownedId, stepId, policyPause,
 					stepKind, threadHandle, moduleHandle, exceptionType, exceptionMessage,
 					exceptionHResult, exceptionFirstChance, exceptionUnhandled) {
 					// PLAN-CHANGE 2026.09.22: only exceptions ICorDebug-attributed to a framework
 					// loader module with the strong-name failure HRESULT whose loader-authored
-					// message names the rejected identity become strong-name evidence facts.
-					StrongNameRejection = ClassifyLoaderStrongNameRejection(eventModule?.Name, exceptionHResult, exceptionMessage,
-						hostTargetPathForDiff, loadedModuleNamesForDiff),
+					// message names the rejected identity become strong-name evidence facts;
+					// binding failures additionally require the reference-closure differential.
+					StrongNameRejection = strongNameFacts,
+					StrongNameGateNote = strongNameNote,
 				});
 			}
 		}
@@ -3595,7 +3602,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 	static readonly int[] StrongNameFailureHResults = { unchecked((int)0x8013DE1A), unchecked((int)0x8013141A) };
 
 	static readonly System.Text.RegularExpressions.Regex LoaderAssemblyIdentityRegex = new(
-		@"'(?<name>[^',]+),\s*Version=(?<version>[0-9.]+)(?:,\s*Culture=[^,]+)?,\s*PublicKeyToken=(?<pkt>[0-9a-fA-F]{16})'",
+		@"['\u201C\u2018](?<name>[^'\u201C\u201D\u2018\u2019,]+),\s*Version=(?<version>[0-9.]+)(?:,\s*Culture=[^,]+)?,\s*PublicKeyToken=(?<pkt>[0-9a-fA-F]{16})['\u201D\u2019]",
 		System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
 
 	/// <summary>Full classification with the binding-failure criteria (PLAN-CHANGE 2026.09.22).
@@ -3642,7 +3649,9 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			foreach (var reference in host.GetAssemblyRefs()) {
 				if (!string.Equals(reference.Name, name, StringComparison.OrdinalIgnoreCase))
 					continue;
-				var refToken = reference.PublicKeyOrToken?.Data;
+				// The ref may carry an 8-byte token or the full public key; dnlib's Token
+				// derives the token from either form.
+				var refToken = reference.PublicKeyOrToken?.Token?.Data;
 				if (refToken is null || refToken.Length != 8)
 					continue;
 				var hex = string.Concat(refToken.Select(b => b.ToString("x2")));
