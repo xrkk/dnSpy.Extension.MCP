@@ -47,8 +47,10 @@ static class StrongNameEvidenceProbe {
 		// ---- PLAN-CHANGE 2026.09.22 (CHK-03-02 tightened): classifier + observation lifecycle + one-shot consumption ----
 		// Real hosts on disk: HostApp.exe references SignedTarget v0.0.0.0 token 56cdca22337a8854;
 		// TestIL.dll (probe arg) references only mscorlib — a host NOT referencing the identity.
+		var classifierProbesExecuted = false;
 		var realHost = "C:\\Tools\\dnspy-rem-glm01\\samples-x86\\sn-e2e\\HostApp.exe";
 		if (!System.IO.File.Exists(realHost)) { Console.WriteLine("SKIP classifier probes (host fixture absent)"); goto AfterClassifier; }
+		classifierProbesExecuted = true;
 		var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=0.0.0.0, Culture=neutral, PublicKeyToken=56cdca22337a8854' or one of its dependencies. Strong Name signature was invalid";
 		string[] loadedOther = { "HostApp", "mscorlib" };
 		// CHK-03-02: ALL FOUR criteria must hold — loader attribution alone is never enough.
@@ -99,14 +101,68 @@ static class StrongNameEvidenceProbe {
 		Check(seamCursor > 0 && seam.ReadStrongNameFailure("session-t", seamCursor) is not null, "seam records observation through event path");
 		Check(seam.TryConsumeStrongNameFailure("session-t", seamCursor, "SeamTarget", "2.0.0.0", "aabbccddeeff0011"), "seam observation consumable");
 
+		// CHK-20260922-04-02: every buffer eviction route invalidates the observation,
+		// even when no later strong-name observation is recorded.
+		CheckEviction("evict-count", c => {
+			for (var i = 0; i < 4200; i++)
+				c.WriteObservedException(true, false, "System.Exception", "ordinary exception");
+		}, "ordinary event-count eviction");
+		CheckEviction("evict-byte-multi", c => {
+			for (var i = 0; i < 100; i++)
+				c.WriteObservedException(true, false, "System.Exception", new string('m', 100000));
+		}, "multi-event byte eviction");
+		CheckEviction("evict-byte-single", c =>
+			c.WriteObservedException(true, false, "System.Exception", new string('s', 8388000)),
+			"single-event byte eviction");
+
 		var restart = new DebugSessionCoordinator(() => "session-r");
 		Check(restart.BeginLaunch("launch", "start", "net-framework", "x64") && restart.MarkLaunchClaimSucceeded(false, null), "restart fixture running");
+		var oldCursor = RecordEvidence(restart, "session-r");
 		var admission = restart.TryBeginControl(ControlOperation.Restart, "restart");
 		Check(admission.Admitted && restart.MarkControlIssued(admission.Record!), "restart issued");
 		Check(restart.ObserveProcessRemoved("session-r", 1, true, 0).Outcome == "pending-restart", "restart removal");
 		Check(restart.BeginRestartRelaunch() && restart.Generation == 2, "restart generation");
 		Check(restart.MarkLaunchClaimSucceeded(false, null) && restart.State == DebugStates.Running, "restart running");
-		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier_four_criteria=true version_binding=true differential=true observation_lifecycle=true one_shot_consume=true");
+		Check(restart.ReadStrongNameFailure("session-r", oldCursor) is null, "old generation rejected before new observation");
+		var newCursor = RecordEvidence(restart, "session-r");
+		var retained = restart.ReadEvents("session-r", 0, 32, null)!;
+		Check(oldCursor >= retained.EarliestCursor, "old generation cursor remains buffered");
+		Check(restart.ReadStrongNameFailure("session-r", oldCursor) is null, "new observation does not revive old generation");
+		Check(!restart.TryConsumeStrongNameFailure("session-r", oldCursor, "SignedTarget", "1.0.0.0", "0011223344556677"), "old generation consume rejected");
+		Check(restart.ReadStrongNameFailure("session-r", newCursor) is not null, "new generation observation readable");
+		Check(restart.TryConsumeStrongNameFailure("session-r", newCursor, "SignedTarget", "1.0.0.0", "0011223344556677"), "new generation observation consumed");
+		Check(!restart.TryConsumeStrongNameFailure("session-r", newCursor, "SignedTarget", "1.0.0.0", "0011223344556677"), "new generation observation one-shot");
+
+		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier_probes_executed=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " version_binding=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " differential=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " observation_lifecycle=true eviction_routes=true generation_binding=true one_shot_consume=true");
+	}
+
+	static long RecordEvidence(DebugSessionCoordinator coordinator, string sessionId) {
+		var observed = coordinator.ObservePaused(sessionId, coordinator.Generation, true, new[] {
+			new BreakInfoObservation(PauseCauseArbiter.Exception, 0, null, null, true, null,
+				"thread-1", "module-1", "System.IO.FileLoadException",
+				"Could not load file or assembly 'SignedTarget, Version=1.0.0.0, Culture=neutral, PublicKeyToken=0011223344556677'",
+				CorEStrongName, false, true) {
+				StrongNameRejection = new StrongNameRejectionFacts {
+					LoaderModule = "mscorlib", HResult = CorEStrongName, AssemblyName = "SignedTarget",
+					AssemblyVersion = "1.0.0.0", PublicKeyToken = "0011223344556677",
+				},
+			},
+		});
+		Check(observed.Accepted, "evidence observation accepted");
+		return coordinator.ReadEvents(sessionId, 0, 4096, null)!.Events
+			.Where(x => EventKind(x) == EventKinds.Exception).Select(EventCursor).Last();
+	}
+
+	static void CheckEviction(string sessionId, Action<DebugSessionCoordinator> fill, string name) {
+		var coordinator = new DebugSessionCoordinator(() => sessionId);
+		Check(coordinator.BeginLaunch("launch", "start", "net-framework", "x64") && coordinator.MarkLaunchClaimSucceeded(false, null), name + " fixture running");
+		var cursor = RecordEvidence(coordinator, sessionId);
+		Check(coordinator.ReadStrongNameFailure(sessionId, cursor) is not null, name + " precondition observation readable");
+		fill(coordinator);
+		var retained = coordinator.ReadEvents(sessionId, 0, 32, null)!;
+		Check(retained.EventsLost > 0 && cursor < retained.EarliestCursor, name + " precondition cursor evicted");
+		Check(coordinator.ReadStrongNameFailure(sessionId, cursor) is null, name + " read rejected");
+		Check(!coordinator.TryConsumeStrongNameFailure(sessionId, cursor, "SignedTarget", "1.0.0.0", "0011223344556677"), name + " consume rejected");
 	}
 
 	static string EventKind(string json) { using var doc = JsonDocument.Parse(json); return doc.RootElement.GetProperty("kind").GetString()!; }
