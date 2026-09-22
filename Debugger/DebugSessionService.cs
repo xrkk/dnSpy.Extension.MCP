@@ -3588,32 +3588,30 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		return list;
 	}
 
-	/// <summary>HRESULTs of the CLR loader's strong-name verification failure. The value
-	/// observed in the real registry-gated run is 0x8013141A (int -2146233318); 0x8013DE1A
-	/// is the documented strong-name failure code kept as an accepted variant with no
-	/// observed instance yet (CHK-20260922-03-02: the earlier note wrongly attributed the
-	/// observed -2146233318 to 0x8013DE1A).</summary>
-	static readonly int[] StrongNameFailureHResults = { unchecked((int)0x8013141A), unchecked((int)0x8013DE1A) };
+	/// <summary>The approved strong-name failure HRESULT. Expanding this value requires
+	/// separate review; an exception code is only one necessary part of the evidence.</summary>
+	const int StrongNameFailureHResult = unchecked((int)0x8013141A);
 
 	static readonly System.Text.RegularExpressions.Regex LoaderAssemblyIdentityRegex = new(
 		@"['\u201C\u2018](?<name>[^'\u201C\u201D\u2018\u2019,]+),\s*Version=(?<version>[0-9.]+)(?:,\s*Culture=[^,]+)?,\s*PublicKeyToken=(?<pkt>[0-9a-fA-F]{16})['\u201D\u2019]",
 		System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
 
-	/// <summary>Full classification under the tightened PLAN-CHANGE 2026.09.22 semantics
-	/// (CHK-20260922-03-02 remediation). ALL FOUR criteria must hold simultaneously, with no
-	/// shortcut for any module attribution:
+	/// <summary>Applies the necessary classifier gates approved by PLAN-CHANGE 2026.09.22:
 	/// 1. the strong-name failure HRESULT;
-	/// 2. the loader-authored identity message parses to name+version+16-hex token;
-	/// 3. the reference-closure differential: that exact identity (name AND version AND
-	///    token, all three fields) is a strong-named AssemblyRef of the launch host's own
-	///    metadata on disk;
+	/// 2. a framework-module throw location and an identity message that parses to
+	///    name+version+16-hex token;
+	/// 3. the reference differential: that exact identity (name AND version AND token, all
+	///    three fields) is a strong-named AssemblyRef in the launch host's metadata on disk;
 	/// 4. no module with that assembly name is in the session's loaded-module set.
-	/// Every input is a debugger fact sample code cannot forge: a forged exception naming
-	/// an assembly the host does reference and that really fails to load IS the genuine
-	/// loader rejection; any assembly the runtime actually loads clears criterion 4.</summary>
+	/// These gates reject known counterexamples but do not independently prove that the CLR
+	/// loader attempted and rejected this identity; callers must not treat the module name or
+	/// the loaded-set differential as sufficient provenance.</summary>
 	internal static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(string? moduleName, int? hResult, string? message,
 		string? hostTargetPath, IReadOnlyCollection<string>? loadedModuleNames) {
-		if (hResult is null || !StrongNameFailureHResults.Contains(hResult.Value) || string.IsNullOrEmpty(message))
+		if (moduleName is null
+			|| (!string.Equals(moduleName, "mscorlib", StringComparison.OrdinalIgnoreCase)
+				&& !string.Equals(moduleName, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase))
+			|| hResult != StrongNameFailureHResult || string.IsNullOrEmpty(message))
 			return null;
 		var match = LoaderAssemblyIdentityRegex.Match(message);
 		if (!match.Success)
@@ -3628,7 +3626,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		if (!HostReferencesStrongIdentity(hostTargetPath, name, version, token))
 			return null;
 		return new StrongNameRejectionFacts {
-			LoaderModule = string.IsNullOrEmpty(moduleName) ? "binding-failure" : moduleName!,
+			LoaderModule = moduleName,
 			HResult = hResult.Value,
 			AssemblyName = name,
 			AssemblyVersion = version,
@@ -3663,7 +3661,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 	}
 
 	internal static StrongNameRejectionFacts? ClassifyLoaderStrongNameRejection(string? moduleName, int? hResult, string? message) {
-		if (moduleName is null || hResult is null || !StrongNameFailureHResults.Contains(hResult.Value) || string.IsNullOrEmpty(message))
+		if (moduleName is null || hResult != StrongNameFailureHResult || string.IsNullOrEmpty(message))
 			return null;
 		if (!string.Equals(moduleName, "mscorlib", StringComparison.OrdinalIgnoreCase)
 			&& !string.Equals(moduleName, "System.Private.CoreLib", StringComparison.OrdinalIgnoreCase))

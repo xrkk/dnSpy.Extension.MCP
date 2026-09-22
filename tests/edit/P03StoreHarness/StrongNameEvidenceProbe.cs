@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using dnlib.DotNet;
 using dnSpy.Extension.MCP.Debugger;
 
 static class StrongNameEvidenceProbe {
@@ -44,33 +45,44 @@ static class StrongNameEvidenceProbe {
 		now = now.Add(DebugSessionCoordinator.TerminalRetention).Add(TimeSpan.FromSeconds(1));
 		Check(sequence.ReadEvents("session-a", 0, 32, null) is null, "terminal events expire");
 
-		// ---- PLAN-CHANGE 2026.09.22 (CHK-03-02 tightened): classifier + observation lifecycle + one-shot consumption ----
-		// Real hosts on disk: HostApp.exe references SignedTarget v0.0.0.0 token 56cdca22337a8854;
-		// TestIL.dll (probe arg) references only mscorlib — a host NOT referencing the identity.
-		var classifierProbesExecuted = false;
-		var realHost = "C:\\Tools\\dnspy-rem-glm01\\samples-x86\\sn-e2e\\HostApp.exe";
-		if (!System.IO.File.Exists(realHost)) { Console.WriteLine("SKIP classifier probes (host fixture absent)"); goto AfterClassifier; }
-		classifierProbesExecuted = true;
-		var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=0.0.0.0, Culture=neutral, PublicKeyToken=56cdca22337a8854' or one of its dependencies. Strong Name signature was invalid";
-		string[] loadedOther = { "HostApp", "mscorlib" };
-		// CHK-03-02: ALL FOUR criteria must hold — loader attribution alone is never enough.
-		var facts = DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, loadedOther);
-		Check(facts is not null && facts.AssemblyName == "SignedTarget" && facts.AssemblyVersion == "0.0.0.0"
-			&& facts.PublicKeyToken == "56cdca22337a8854", "loader rejection classified (four criteria)");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, null, null) is null, "attribution alone rejected (no differential)");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("HostApp", CorEStrongName, loaderMsg, realHost, loadedOther) is not null, "non-loader module still classifies via differential");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x80131509), loaderMsg, realHost, loadedOther) is null, "wrong hresult rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, "sample supplied text", realHost, loadedOther) is null, "unparseable message rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName,
-			"Could not load file or assembly 'Unsigned, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.", realHost, loadedOther) is null, "null token rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "SignedTarget" }) is null, "already-loaded target rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "Unrelated" }) is not null, "unloaded target passes differential");
-		var driftMsg = loaderMsg.Replace("Version=0.0.0.0", "Version=9.9.9.9");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, driftMsg, realHost, loadedOther) is null, "version drift rejected (host refs 0.0.0.0)");
-		var wrongTokenMsg = loaderMsg.Replace("56cdca22337a8854", "0011223344556677");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, wrongTokenMsg, realHost, loadedOther) is null, "token drift rejected");
-		Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, Environment.GetCommandLineArgs()[0], loadedOther) is null, "host not referencing identity rejected");
-		AfterClassifier: ;
+		// ---- PLAN-CHANGE 2026.09.22: necessary classifier gates + observation lifecycle + one-shot consumption ----
+		// This generated metadata fixture exercises the production five-argument classifier. Passing
+		// all of these necessary gates is not proof that a real CLR loader rejection occurred.
+		var fixtureDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dnspy-mcp-strong-name-" + Guid.NewGuid().ToString("N"));
+		System.IO.Directory.CreateDirectory(fixtureDirectory);
+		var realHost = System.IO.Path.Combine(fixtureDirectory, "Host.exe");
+		try {
+			CreateClassifierHost(realHost);
+			Check(System.IO.File.Exists(realHost), "classifier host fixture generated");
+			var loaderMsg = "Could not load file or assembly 'SignedTarget, Version=1.0.0.0, Culture=neutral, PublicKeyToken=0011223344556677' or one of its dependencies. Strong Name signature was invalid";
+			string[] loadedOther = { "Host", "mscorlib" };
+			var facts = DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, loadedOther);
+			Check(facts is not null && facts.AssemblyName == "SignedTarget" && facts.AssemblyVersion == "1.0.0.0"
+				&& facts.PublicKeyToken == "0011223344556677", "necessary classifier gates accept synthesized framework-shaped candidate");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("SyStEm.PrIvAtE.CoReLiB", CorEStrongName, loaderMsg, realHost, loadedOther) is not null,
+				"corelib module comparison is case-insensitive");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, null, null) is null, "module alone rejected without differential");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("Host", CorEStrongName, loaderMsg, realHost, loadedOther) is null, "non-framework module rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection(null, CorEStrongName, loaderMsg, realHost, loadedOther) is null, "null module rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection(string.Empty, CorEStrongName, loaderMsg, realHost, loadedOther) is null, "empty module rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x8013DE1A), loaderMsg, realHost, loadedOther) is null, "unapproved strong-name HRESULT rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x80131509), loaderMsg, realHost, loadedOther) is null, "other HRESULT rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg) is not null, "legacy overload accepts approved HRESULT and framework module");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", unchecked((int)0x8013DE1A), loaderMsg) is null, "legacy overload rejects unapproved strong-name HRESULT");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, "sample supplied text", realHost, loadedOther) is null, "unparseable message rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName,
+				"Could not load file or assembly 'Unsigned, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.", realHost, loadedOther) is null, "null token rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "SignedTarget" }) is null, "already-loaded target rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, realHost, new[] { "mscorlib", "Unrelated" }) is not null, "unloaded matching reference passes necessary differential");
+			var driftMsg = loaderMsg.Replace("Version=1.0.0.0", "Version=9.9.9.9");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, driftMsg, realHost, loadedOther) is null, "version drift rejected");
+			var wrongTokenMsg = loaderMsg.Replace("0011223344556677", "8899aabbccddeeff");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, wrongTokenMsg, realHost, loadedOther) is null, "token drift rejected");
+			Check(DebugSessionService.ClassifyLoaderStrongNameRejection("mscorlib", CorEStrongName, loaderMsg, Environment.GetCommandLineArgs()[0], loadedOther) is null, "host not referencing identity rejected");
+		}
+		finally {
+			try { System.IO.Directory.Delete(fixtureDirectory, recursive: true); } catch { }
+		}
 		var lifecycleMsg = "Could not load file or assembly 'SignedTarget, Version=1.2.3.4, Culture=neutral, PublicKeyToken=0011223344556677' or one of its dependencies. Strong Name signature was invalid";
 
 		var evidence = new DebugSessionCoordinator(() => "session-e", () => now.ToString("O"), () => now);
@@ -133,7 +145,16 @@ static class StrongNameEvidenceProbe {
 		Check(restart.TryConsumeStrongNameFailure("session-r", newCursor, "SignedTarget", "1.0.0.0", "0011223344556677"), "new generation observation consumed");
 		Check(!restart.TryConsumeStrongNameFailure("session-r", newCursor, "SignedTarget", "1.0.0.0", "0011223344556677"), "new generation observation one-shot");
 
-		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier_probes_executed=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " version_binding=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " differential=" + classifierProbesExecuted.ToString().ToLowerInvariant() + " observation_lifecycle=true eviction_routes=true generation_binding=true one_shot_consume=true");
+		Console.WriteLine("PASS strong-name-evidence self_hresult_rejected=true sequence=true retention=true restart=true classifier_fixture_generated=true necessary_module_gate=true approved_hresult_only=true version_binding=true differential=true observation_lifecycle=true eviction_routes=true generation_binding=true one_shot_consume=true");
+	}
+
+	static void CreateClassifierHost(string path) {
+		const string token = "0011223344556677";
+		using var host = new ModuleDefUser("Host.exe") { Kind = ModuleKind.Console };
+		new AssemblyDefUser("Host", new Version(1, 0, 0, 0)).Modules.Add(host);
+		var reference = new AssemblyRefUser("SignedTarget", new Version(1, 0, 0, 0), new PublicKeyToken(token));
+		host.Types.Add(new TypeDefUser("Fixture", "UnusedReference", new TypeRefUser(host, "Fixture", "Base", reference)));
+		host.Write(path);
 	}
 
 	static long RecordEvidence(DebugSessionCoordinator coordinator, string sessionId) {
