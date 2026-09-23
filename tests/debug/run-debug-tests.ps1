@@ -55,7 +55,7 @@ if ($IsolationRoot) {
         'ACC-005','ACC-006','ACC-007','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-024','ACC-025','ACC-026','ACC-027',
-        'ACC-031','ACC-032','ACC-035')) {
+        'ACC-004','ACC-028','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035')) {
         throw "case $Case has not passed the isolated handler safety audit"
     }
     $expectedScriptDir = Join-Path $rootPath 'repo\tests\debug'
@@ -2367,15 +2367,17 @@ function Run-ACC034 {
     # call blocks on the (virtual) deadline — run it detached and settle via emit removed.
     $curC = Get-MaxEventCursor $sid2 $gen2b
     $t2Req = '{"jsonrpc":"2.0","id":783,"method":"tools/call","params":{"name":"debug_terminate","arguments":{"session_id":"' + $sid2 + '","generation":' + $gen2b + ',"request_id":"a34-t2"}}}'
-    Set-Content C:\Tools\a34-t2req.json $t2Req -Encoding ascii
-    Remove-Item C:\Tools\a34-t2resp.txt -Force -ErrorAction SilentlyContinue
-    $cp2 = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile 'C:\Tools\a34-t2req.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 25 -OutputFile 'C:\Tools\a34-t2resp.txt'
+    $a34T2ReqF = Join-Path $script:OutDir 'a34-t2req.json'
+    $a34T2RespF = Join-Path $script:OutDir 'a34-t2resp.txt'
+    Set-Content $a34T2ReqF $t2Req -Encoding ascii
+    Remove-Item $a34T2RespF -Force -ErrorAction SilentlyContinue
+    $cp2 = Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $a34T2ReqF -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 25 -OutputFile $a34T2RespF
     Start-Sleep -Milliseconds 900
     $null = Test-Adapter '{"emit":{"kind":"removed","exit_code":0}}'
     $dl2 = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $dl2 -and -not (Test-Path C:\Tools\a34-t2resp.txt)) { Start-Sleep -Milliseconds 400 }
+    while ((Get-Date) -lt $dl2 -and -not (Test-Path $a34T2RespF)) { Start-Sleep -Milliseconds 400 }
     $t2ok = $false
-    if (Test-Path C:\Tools\a34-t2resp.txt) {
+    if (Test-Path $a34T2RespF) {
         $stT = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid2 }
         $t2ok = "$($stT.domain.result.state)" -ne 'faulted'
     }
@@ -2830,6 +2832,7 @@ function Run-ACC027 {
 # ---------------------------------------------------------------- case: ACC-030 ----
 function Run-ACC030 {
     $m = $script:Manifest
+    $script:Acc30TracePath = Join-Path $script:OutDir 'a30-trace.log'
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
     if (-not (Compile-Fixture 'AccHarness.cs' 'AccHarness.exe')) { Assert-Cond 'fixture-build' 'AccHarness.exe compiled' 'failed' $false @('build-AccHarness.exe.log'); return }
     if (-not (Compile-Fixture 'AccFixture.cs' 'AccFixture.exe')) { Assert-Cond 'fixture-build2' 'AccFixture.exe compiled' 'failed' $false @('build-AccFixture.exe.log'); return }
@@ -2856,21 +2859,21 @@ function Run-ACC030 {
         $sid = $li.session_id; $gen = [int]$li.generation
         # Target module is loaded INSIDE the harness process: fixed settle window, one probe.
         Start-Sleep -Seconds 3
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T1-prepause-$Label`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T1-prepause-$Label`r`n")
         $wp = Wait-HeldPause $sid $gen
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T2-postpause-$Label ok=$($wp.ok)`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T2-postpause-$Label ok=$($wp.ok)`r`n")
         $found = $false
         if ($wp.ok) {
             $MODS = Invoke-ToolNoInit 'debug_list_modules' @{ session_id = $sid; generation = $gen }
-            [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T3-postmodules-$Label`r`n")
+            [IO.File]::AppendAllText($script:Acc30TracePath, "T3-postmodules-$Label`r`n")
             if ($MODS.domain -and $MODS.domain.ok) {
                 $found = [bool](@($MODS.domain.result.items) | Where-Object { "$($_.name)" -like 'SatelliteLib*' })
             }
         }
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T4-found-$Label found=$found`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T4-found-$Label found=$found`r`n")
         Assert-Cond "a30-$Label-module-loaded" 'target module loaded in the harness process' "found=$found paused=$($wp.ok)" $found
         # Transcript: harness received target_path as first arg, remaining argv verbatim.
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T5-pretranscript-$Label`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T5-pretranscript-$Label`r`n")
         $tr = Join-Path $m.env.sample_root 'harness-transcript.txt'
         # ReadAllLines instead of Get-Content: the driver process hung at 100% CPU inside
         # Get-Content on this file twice (T5 marker reached, no further wire/trace activity);
@@ -2880,13 +2883,13 @@ function Run-ACC030 {
         $argvOk = ($lines.Count -eq 4) -and ("$($lines[0])" -eq "$($targetDll.Length):$targetDll") -and ("$($lines[1])" -eq '5:plain') -and ("$($lines[2])" -eq '9:two words') -and ("$($lines[3])" -eq '6:q"uote')
         Assert-Cond "a30-$Label-transcript" 'harness argv: first arg == target_path, rest verbatim' "lines=$($lines.Count) l0=$($lines[0])" $argvOk @(Save-Json "a30-$Label-transcript.json" $lines)
         # Full lifecycle: pause/continue/terminate.
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T6-pretranscriptassert-done-$Label`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T6-pretranscriptassert-done-$Label`r`n")
         $wp2 = Wait-HeldPause $sid $gen
         $pausedOk = $wp2.ok
         if ($pausedOk) {
             $null = Invoke-ToolNoInit 'debug_continue' @{ session_id = $sid; generation = $gen; pause_epoch = $wp2.epoch; request_id = "a30-$Label-c2" }
         }
-        [IO.File]::AppendAllText('C:\Tools\a30-trace.log', "T7-preterminate-$Label paused=$pausedOk`r`n")
+        [IO.File]::AppendAllText($script:Acc30TracePath, "T7-preterminate-$Label paused=$pausedOk`r`n")
         $T = Invoke-ToolNoInit 'debug_terminate' @{ session_id = $sid; generation = $gen; request_id = "a30-$Label-t" }
         Start-Sleep -Milliseconds 900
         $stZ = Invoke-ToolNoInit 'debug_status' @{ session_id = $sid }
@@ -3542,13 +3545,15 @@ function Run-ACC028 {
     $jobs = @()
     for ($i = 0; $i -lt 9; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (700 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sid + '","generation":' + $gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}' 
-        [IO.File]::WriteAllText("C:\Tools\a28-w$i.json", $b)
-        $jobs += Start-PyHttp -Url 'http://localhost:15378/' -Method POST -BodyFile "C:\Tools\a28-w$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 40 -OutputFile "C:\Tools\a28-w$i.out"
+        $reqF = Join-Path $script:OutDir "a28-w$i.json"
+        $respF = Join-Path $script:OutDir "a28-w$i.out"
+        [IO.File]::WriteAllText($reqF, $b)
+        $jobs += Start-PyHttp -Url $script:BaseUrl -Method POST -BodyFile $reqF -Headers @('Accept:application/json','Content-Type:application/json') -Format body -MaxSec 40 -OutputFile $respF
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $limitHits = 0; $okCount = 0
     for ($i = 0; $i -lt 9; $i++) {
-        $o = Get-Content "C:\Tools\a28-w$i.out" -Raw -ErrorAction SilentlyContinue
+        $o = Get-Content (Join-Path $script:OutDir "a28-w$i.out") -Raw -ErrorAction SilentlyContinue
         if ($o -match 'LIMIT_EXCEEDED') { $limitHits++ }
         elseif ($o -match '"ok":true') { $okCount++ }
     }
@@ -4274,11 +4279,13 @@ function Run-ACC004 {
     # body); one byte over is rejected BEFORE any read/parse work as an empty-body 413.
     $pad1m = ('{"jsonrpc":"2.0","id":41,"method":"tools/list","params":{},' + ('"' + ('p' * 1048554) + '":1}'))
     $pad1m = $pad1m.Substring(0, 1048576)
-    [IO.File]::WriteAllText('C:\Tools\a4-1m.json', $pad1m, (New-Object Text.ASCIIEncoding))
-    $r1m = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile 'C:\Tools\a4-1m.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
+    $a4OneMiB = Join-Path $script:OutDir 'a4-1m.json'
+    $a4Big = Join-Path $script:OutDir 'a4-big.json'
+    [IO.File]::WriteAllText($a4OneMiB, $pad1m, (New-Object Text.ASCIIEncoding))
+    $r1m = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile $a4OneMiB -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
     $big = 'x' * 1048577
-    [IO.File]::WriteAllText('C:\Tools\a4-big.json', $big, (New-Object Text.ASCIIEncoding))
-    $rBig = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile 'C:\Tools\a4-big.json' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
+    [IO.File]::WriteAllText($a4Big, $big, (New-Object Text.ASCIIEncoding))
+    $rBig = Invoke-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile $a4Big -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 10
     $ev1 = Save-Text 'a4-body-limits.txt' "atLimit=$r1m over=$rBig"
     Assert-Cond 'a4-body-limit-413' 'exactly 1 MiB is served (200-family, NOT 413); 1 MiB + 1 = 413 before parsing' "at=$r1m over=$rBig" (("$rBig" -eq '413') -and ("$r1m" -ne '413') -and ("$r1m" -ne '') -and ("$r1m" -ne '000')) @($ev1)
 
@@ -4295,26 +4302,30 @@ function Run-ACC004 {
     $jobs = @()
     for ($i = 0; $i -lt 16; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (600 + $i) + ',"method":"tools/call","params":{"name":"debug_wait_event","arguments":{"session_id":"' + $sess.sid + '","generation":' + $sess.gen + ',"after_cursor":' + $maxCur + ',"timeout_ms":4000,"limit":1}}}'
-        [IO.File]::WriteAllText("C:\\Tools\\a4-w$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $jobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile "C:\Tools\a4-w$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile "C:\Tools\a4-w$i.out"
+        $reqF = Join-Path $script:OutDir "a4-w$i.json"
+        $respF = Join-Path $script:OutDir "a4-w$i.out"
+        [IO.File]::WriteAllText($reqF, $b, (New-Object Text.ASCIIEncoding))
+        $jobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile $reqF -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile $respF
     }
     $jobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $limitHits = 0; $oks = 0
     for ($i = 0; $i -lt 16; $i++) {
-        $o = Get-Content "C:\Tools\a4-w$i.out" -Raw -ErrorAction SilentlyContinue
+        $o = Get-Content (Join-Path $script:OutDir "a4-w$i.out") -Raw -ErrorAction SilentlyContinue
         if ("$o" -match 'LIMIT_EXCEEDED') { $limitHits++ }
         elseif ("$o" -match '"ok":true') { $oks++ }
     }
     $shortJobs = @()
     for ($i = 0; $i -lt 17; $i++) {
         $b = '{"jsonrpc":"2.0","id":' + (650 + $i) + ',"method":"tools/call","params":{"name":"debug_test_transport","arguments":{"hold_ms":4000}}}'
-        [IO.File]::WriteAllText("C:\Tools\a4-s$i.json", $b, (New-Object Text.ASCIIEncoding))
-        $shortJobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile "C:\Tools\a4-s$i.json" -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile "C:\Tools\a4-s$i.out"
+        $reqF = Join-Path $script:OutDir "a4-s$i.json"
+        $respF = Join-Path $script:OutDir "a4-s$i.out"
+        [IO.File]::WriteAllText($reqF, $b, (New-Object Text.ASCIIEncoding))
+        $shortJobs += Start-PyHttp -Url ($script:BaseUrl.TrimEnd('/') + '/') -Method POST -BodyFile $reqF -Headers @('Accept:application/json','Content-Type:application/json') -Format curl -MaxSec 12 -OutputFile $respF
     }
     $shortJobs | ForEach-Object { $_.WaitForExit(15000) | Out-Null }
     $shortOk = 0; $http429 = 0
     for ($i = 0; $i -lt 17; $i++) {
-        $o = Get-Content "C:\Tools\a4-s$i.out" -Raw -ErrorAction SilentlyContinue
+        $o = Get-Content (Join-Path $script:OutDir "a4-s$i.out") -Raw -ErrorAction SilentlyContinue
         # Accept the historical flattened-header suffix as well as the explicitly quoted
         # single-transfer form, while still requiring the real request's 429 status.
         if ("$o" -match '429(?:000)?$') { $http429++ }
