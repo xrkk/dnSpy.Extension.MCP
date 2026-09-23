@@ -34,10 +34,27 @@ internal static partial class EditOperationRegistry {
 			var owner = kind == "type_add" ? OptionalRef<TypeDef>(before, forward, "owner_type", objects)
 				: Ref<TypeDef>(before, forward.GetProperty("owner_type"), objects);
 			var count = DefinitionChildren(before, owner, kind).Count;
-			return new() { ["definition_tail_remove"] = new Dictionary<string, object?> {
+			var state = new Dictionary<string, object?> {
 				["add_kind"] = kind, ["owner_address"] = owner == null ? null : EditDefinitionAddress.Capture(before, owner),
 				["index"] = count, ["name"] = RequiredString(forward, "name"),
-			} };
+			};
+			if (kind == "method_add" && forward.TryGetProperty("body", out var body)
+				&& body.TryGetProperty("sequence_points", out var points) && points.ValueKind == JsonValueKind.Array) {
+				var documents = new List<Dictionary<string, object?>>();
+				foreach (var point in points.EnumerateArray()) {
+					var document = point.GetProperty("document");
+					var name = document.GetProperty("name").GetString();
+					var hash = document.TryGetProperty("hash", out var checksum) && checksum.ValueKind == JsonValueKind.String
+						? checksum.GetString() : null;
+					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.Ordinal)
+						&& string.Equals(existing.CheckSum == null ? null : Convert.ToBase64String(existing.CheckSum), hash, StringComparison.Ordinal)) == true
+						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.Ordinal)
+							&& string.Equals(existing["hash"] as string, hash, StringComparison.Ordinal))) continue;
+					documents.Add(new() { ["name"] = name, ["hash"] = hash });
+				}
+				if (documents.Count != 0) state["release_documents"] = documents;
+			}
+			return new() { ["definition_tail_remove"] = state };
 		}
 		case "type_update": {
 			var value = Ref<TypeDef>(before, forward.GetProperty("target"), objects);
@@ -527,9 +544,11 @@ internal static partial class EditOperationRegistry {
 			EditOperationOutcome applied;
 			try { applied = Apply(module, removal.RootElement, temporary, index); }
 			catch { if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row); throw; }
+			var removedDocuments = ReleaseRecordedDocuments(module, definitionTail);
 			foreach (var binding in bindings) objects.Remove(binding.Key);
 			return new EditOperationOutcome { Kind = applied.Kind, Target = applied.Target, Before = applied.Before,
 				After = applied.After, Risks = applied.Risks, Undo = () => {
+					RestoreRecordedDocuments(module, removedDocuments);
 					applied.Undo();
 					if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row);
 					foreach (var binding in bindings) objects[binding.Key] = binding.Value;

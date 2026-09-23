@@ -50,6 +50,7 @@ SEAM_NOTES: list[str] = []
 RAW_WIRE: list[dict] = []
 RAW_SEQ = {"n": 0}
 BLOB_FILE = "t032-blob.bin"  # small fixture file for edit_resource_import
+BLOB_BYTES = b"T032RESOURCEBLOB"
 
 
 def configure_isolation(context) -> None:
@@ -60,6 +61,18 @@ def configure_isolation(context) -> None:
     if work_root:
         WORK_DIR = str(work_root)
         Path(WORK_DIR).mkdir(parents=True, exist_ok=True)
+
+
+def prepare_resource_blob(fixture: str | Path) -> Path:
+    """Stage the driver's own input without replacing an existing sample file."""
+    path = Path(fixture).parent / BLOB_FILE
+    try:
+        with path.open("xb") as handle:
+            handle.write(BLOB_BYTES)
+    except FileExistsError:
+        if not path.is_file() or path.is_symlink() or path.read_bytes() != BLOB_BYTES:
+            raise RuntimeError(f"unexpected existing resource blob: {path}")
+    return path
 
 
 def rid() -> str:
@@ -578,6 +591,8 @@ def main() -> int:
     # ------------------------------------------------------------------
     # Live RPC matrix on the isolated TestIL fixture.
     # ------------------------------------------------------------------
+    blob_path = prepare_resource_blob(FIXTURE) if WORK_DIR else Path(FIXTURE).parent / BLOB_FILE
+    check("L1 resource blob staged", blob_path.is_file(), str(blob_path))
     call(client, "open_files", {"paths": [FIXTURE]})
 
     # Phase 0 - idle read-only tools.

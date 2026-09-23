@@ -34,7 +34,7 @@ static class Program {
 		}
 				if (args.Length == 2 && args[1] == "--locator-spike") { TestLocatorSpike(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--workspace-new-methods") { TestWorkspaceNewMethods(args[0]); return 0; }
-			if (args.Length == 2 && args[1] == "--definition-add-inverses") { TestDefinitionAddInverses(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--definition-add-inverses") { TestDefinitionAddInverses(args[0]); TestMethodAddSymbolInverse(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--zero-rid-reference") { TestZeroRidReference(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--writer-token-map") { TestWriterTokenMap(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--reference-identity") { TestReferenceIdentity(args[0]); return 0; }
@@ -70,6 +70,7 @@ static class Program {
 			InverseFidelityRegression.Run(args[0]);
 			TestTailInverses(args[0]);
 			TestDefinitionAddInverses(args[0]);
+			TestMethodAddSymbolInverse(args[0]);
 			TestZeroRidReference(args[0]);
 			TestReloadedTailInverses(args[0]);
 			TestWorkspaceNewMethods(args[0]);
@@ -1320,6 +1321,41 @@ static class Program {
 			Check(EditFingerprint.Compute(module) == before, "definition inverse reusable after rollback " + kind);
 		}
 		Console.WriteLine("PASS definition-add inverses type+method+field+property+event graph+map+identity+duplicate-rejection");
+	}
+
+	static void TestMethodAddSymbolInverse(string fixture) {
+		using var module = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		Check(module.PdbState == null, "method-add symbol fixture starts without PDB state");
+		var owner = module.GetTypes().Single(t => t.FullName == "TestIL.Members");
+		var operation = new {
+			kind = "method_add", owner_type = new { token = "0x" + owner.MDToken.Raw.ToString("x8") },
+			name = "P03SymbolAdded", attributes = 150,
+			signature = new { return_type = "System.Void", has_this = false, parameters = Array.Empty<object>(), generic_parameters = Array.Empty<object>() },
+			body = new {
+				init_locals = false, max_stack = 1, locals = Array.Empty<object>(), exception_handlers = Array.Empty<object>(),
+				instructions = new[] { new { opcode = "ret" } },
+				sequence_points = new[] { new {
+					document = new { name = "P03SymbolAdded.cs", language = "3f5162f8-07c6-11d3-9053-00c04fa302a1",
+						vendor = "994b45c4-e6e9-11d2-903f-00c04fa302a1", hash = "AQID", type = "5a869d0b-6611-11d3-bd2a-0000f80849bd",
+						hashAlgorithm = "ff1816ec-aa5e-4d10-87f7-6f4963833460" },
+					start = new { il = 0, line = 1, column = 1 }, end = new { line = 1, column = 2 },
+				} },
+			},
+		};
+		using var forward = JsonDocument.Parse(JsonSerializer.Serialize(operation));
+		var objects = new Dictionary<string, IMDTokenProvider>();
+		var inverse = EditOperationRegistry.CompileInverse(module, forward.RootElement, objects);
+		EditOperationRegistry.Apply(module, forward.RootElement, objects, 0);
+		Check(module.PdbState?.Documents.Count() == 1, "method-add registers one document");
+		using var state = JsonDocument.Parse(JsonSerializer.Serialize(inverse));
+		var removed = EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, objects, 0);
+		Check(module.PdbState?.Documents.Count() == 0, "method-add inverse releases its document");
+		EditOperationRegistry.RemoveEmptyPdbState(module);
+		Check(module.PdbState == null, "method-add inverse restores absent PDB state");
+		removed.Undo();
+		Check(module.PdbState?.Documents.Count() == 1 && owner.Methods.Any(m => m.Name == "P03SymbolAdded"),
+			"method-add inverse compensation restores document and definition");
+		Console.WriteLine("PASS method-add symbol inverse releases owned document and compensates exactly");
 	}
 
 	static void TestZeroRidReference(string fixture) {
