@@ -46,9 +46,18 @@ internal static partial class EditOperationRegistry {
 					var name = document.GetProperty("name").GetString();
 					var hash = document.TryGetProperty("hash", out var checksum) && checksum.ValueKind == JsonValueKind.String
 						? checksum.GetString() : null;
-					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.Ordinal)
+					// dnlib's PdbState deduplicates by URL alone. Distinct checksums
+					// cannot own independent rows at the same URL, including within
+					// one method body; reject before persisting an unsafe inverse.
+					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)
+						&& !string.Equals(existing.CheckSum == null ? null : Convert.ToBase64String(existing.CheckSum), hash, StringComparison.Ordinal)) == true
+						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase)
+							&& !string.Equals(existing["hash"] as string, hash, StringComparison.Ordinal)))
+						throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails(
+							"pdb_document_identity", "method_add", "A document URL already exists with a different checksum"));
+					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)
 						&& string.Equals(existing.CheckSum == null ? null : Convert.ToBase64String(existing.CheckSum), hash, StringComparison.Ordinal)) == true
-						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.Ordinal)
+						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase)
 							&& string.Equals(existing["hash"] as string, hash, StringComparison.Ordinal))) continue;
 					documents.Add(new() { ["name"] = name, ["hash"] = hash });
 				}
