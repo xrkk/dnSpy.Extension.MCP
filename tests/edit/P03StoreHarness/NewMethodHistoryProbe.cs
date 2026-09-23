@@ -84,6 +84,20 @@ internal static class NewMethodHistoryProbe {
 				"commit " + turn + " checkpoint exact");
 		}
 		var lineage = history.Load(lineageId!);
+		var beforeFaultImage = EditWorkspace.WriteCheckpointImage(live);
+		var beforeFaultFingerprint = EditFingerprint.Compute(live);
+		var beforeFaultDocuments = live.PdbState?.Documents.Count() ?? 0;
+		var compensate = history.PlanNavigation(lineage, secondHead!, firstHead!).Apply(live);
+		Value(live, 47, "component forward navigation before late fault");
+		compensate();
+		Value(live, 49, "component late-fault inverse restores method");
+		Check(beforeFaultImage.SequenceEqual(EditWorkspace.WriteCheckpointImage(live))
+			&& beforeFaultFingerprint == EditFingerprint.Compute(live)
+			&& beforeFaultDocuments == (live.PdbState?.Documents.Count() ?? 0),
+			"component late-fault inverse restores image fingerprint and PDB documents");
+		Check(history.Load(lineageId!).Manifest.HeadCheckpointId == secondHead
+			&& history.Assess(lineageId!, secondHead!, EditFingerprint.Compute(live)).Classification == "exact",
+			"component late-fault inverse leaves head and checkpoint exact");
 		var undoWrite = history.PrepareHeadMove(lineageId!, secondHead!, firstHead!, "undo");
 		history.PlanNavigation(lineage, secondHead!, firstHead!).Apply(live);
 		history.Finalize(undoWrite, live);
