@@ -6,7 +6,12 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name('run-debug-tests.ps1')
 TEXT = SCRIPT.read_text(encoding='utf-8')
-ALLOWED = ('ACC-005', 'ACC-007', 'ACC-012')
+ALLOWED = (
+    'ACC-005', 'ACC-006', 'ACC-007', 'ACC-009', 'ACC-010', 'ACC-011', 'ACC-012',
+    'ACC-013', 'ACC-014', 'ACC-015', 'ACC-016', 'ACC-017', 'ACC-018', 'ACC-019',
+    'ACC-020', 'ACC-021', 'ACC-024', 'ACC-025', 'ACC-026', 'ACC-027',
+    'ACC-031', 'ACC-032', 'ACC-035',
+)
 
 
 class IsolatedRunnerGuards(unittest.TestCase):
@@ -36,6 +41,8 @@ class IsolatedRunnerGuards(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertIn(case, bodies)
                 self.assertNotRegex(bodies[case], r'C:\\Tools|\bnetsh\b|\bStop-Process\b|Get-Process\s+dnSpy|15378|15379')
+        self.assertRegex(bodies['ACC-015'], r"\$side = Join-Path \$m\.env\.sample_root 'side-effects\.txt'")
+        self.assertRegex(bodies['ACC-026'], r"\$out = Join-Path \$m\.env\.sample_root 'argv-out\.txt'")
 
 
 if __name__ == '__main__':

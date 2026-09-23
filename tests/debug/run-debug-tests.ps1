@@ -51,7 +51,11 @@ if ($IsolationRoot) {
     if ($rootPath -notmatch '^E:\\dnspy-t072-r02-[a-zA-Z0-9-]+$' -or -not (Test-Path -LiteralPath $rootPath -PathType Container)) {
         throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* root'
     }
-    if ($Case -notin @('ACC-005','ACC-007','ACC-012')) {
+    if ($Case -notin @(
+        'ACC-005','ACC-006','ACC-007','ACC-009','ACC-010','ACC-011','ACC-012',
+        'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
+        'ACC-020','ACC-021','ACC-024','ACC-025','ACC-026','ACC-027',
+        'ACC-031','ACC-032','ACC-035')) {
         throw "case $Case has not passed the isolated handler safety audit"
     }
     $expectedScriptDir = Join-Path $rootPath 'repo\tests\debug'
