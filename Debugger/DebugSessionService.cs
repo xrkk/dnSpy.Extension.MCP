@@ -1531,6 +1531,9 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 
 		lock (sessionLock) {
 			claimDeadlineUtc = DateTime.UtcNow + ControlOperationRecord.DefaultDeadline;
+			// A restart owns a new OS process. Status must report this generation's
+			// launch reservation, not the previous process's reservation timestamp.
+			sessionStartedUtc = DateTime.UtcNow;
 			launchClaimTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 		}
 		var plan = activePlan!;
