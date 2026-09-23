@@ -115,6 +115,10 @@ A syntactically valid operation with an unknown version returns
 `EDIT_OPERATION_VERSION_UNSUPPORTED`; malformed input remains schema/parameter invalid. v1
 checkpoints are exact-only. Drift must be explicitly accepted into a new v2 lineage; v2 records
 `exact`, `validated_drift`, or `unverified_drift`, and migration requires explicit confirmation.
+For PDB-bearing edits, a document is identified by its complete normalized metadata, not URL alone;
+an incompatible same-URL identity is rejected before private mutation. Older checkpoint packages may
+load, but an old method/PDB inverse can still conflict on undo; no automatic migration is promised.
+Recent import/history fixes have targeted regression evidence, not a full acceptance-suite result.
 
 #### Codegen
 

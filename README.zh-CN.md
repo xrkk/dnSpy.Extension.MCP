@@ -106,6 +106,9 @@ net10 动态调试通过。
 语法有效但版本未知的操作返回 `EDIT_OPERATION_VERSION_UNSUPPORTED`；畸形输入仍属于
 schema/参数无效。v1 检查点只允许 exact；漂移须显式接纳为新的 v2 谱系，v2 记录
 `exact`、`validated_drift` 或 `unverified_drift`，迁移仍须明确确认。
+PDB 编辑以归一化后的完整文档元数据识别文档，不能只比 URL；无法表示的同 URL 异身份在私有写入前安全拒绝。
+旧检查点包虽可加载，旧方法/PDB 逆操作在 Undo 时仍可能冲突，并无自动迁移承诺。
+近期导入/历史修复只有定向回归证据，不等于完整验收套件通过。
 
 #### 代码生成
 

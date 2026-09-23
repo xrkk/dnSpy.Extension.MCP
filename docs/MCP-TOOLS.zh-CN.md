@@ -60,6 +60,8 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 语法有效但版本未知的操作返回 `EDIT_OPERATION_VERSION_UNSUPPORTED`；畸形输入仍属于协议/schema 无效。v1 检查点只允许 exact；实时模块漂移后须显式接纳为新的 v2 谱系。v2 区分 `exact`、`validated_drift`、`unverified_drift`，迁移仍须明确确认。
 
+PDB 文档以归一化的完整元数据键识别；无法表示的同 URL 异身份在私有写入前安全拒绝。缺少新版文档释放信息的旧包仍可读取，但旧方法/PDB 逆操作在 Undo 时可能冲突，不提供隐式包迁移。这是兼容边界，不能把 T057–T059 的定向回归写成全 ACC 通过。
+
 ## 6. 资源面
 
 MCP resources 面通告 14 个具体资源（程序集列表、类型索引、编辑状态、调试事件……）；`resources/templates/list` 有意为空。tools/list 与 resources 面是两个机器可读注册表。

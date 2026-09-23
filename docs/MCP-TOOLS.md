@@ -60,6 +60,8 @@ The operation schema and `EditWire.OperationKinds` contain 39 entries. The curre
 
 A syntactically valid operation with an unknown version returns `EDIT_OPERATION_VERSION_UNSUPPORTED`; malformed input remains protocol/schema invalid. Checkpoint v1 is exact-only. A drifted live module must be explicitly accepted into a new v2 lineage; v2 distinguishes `exact`, `validated_drift`, and `unverified_drift`, and migration still requires explicit confirmation.
 
+PDB document identity uses the normalized full metadata key; an incompatible same-URL identity that cannot be represented is safely rejected before private mutation. Older packages without the newer document-release data can be read, but old method/PDB inverses may conflict on undo; no implicit package migration is offered. These are compatibility limits, distinct from the targeted T057–T059 regression results and from a full ACC pass.
+
 ## 6. Resources
 
 The MCP resources face exposes 14 concrete resources (assembly list, type index, edit status, debug events, …); `resources/templates/list` is intentionally empty. The tools/list and resources faces are the two machine-readable registries.
