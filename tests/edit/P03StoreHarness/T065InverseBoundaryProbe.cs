@@ -46,12 +46,14 @@ internal static class T065InverseBoundaryProbe {
 			["exception_handlers"] = Array.Empty<object>(),
 		},
 	}, EditWire.JsonOptions));
-	static void Case(byte[] fixture, string label, Action<JsonObject> mutate, bool success, bool exactImage = false) {
+	static void Case(byte[] fixture, string label, Action<JsonObject> mutate, bool success, bool exactImage = false,
+		bool zeroOriginal = false) {
 		using var module = ModuleDefMD.Load(fixture);
 		var method = Subject(module);
+		if (zeroOriginal) method.Body.LocalVarSigTok = 0;
 		var originalToken = method.Body.LocalVarSigTok;
-		Check(originalToken != 0 && module.ResolveToken(originalToken) is StandAloneSig,
-			label + " generated StandAloneSig is present");
+		Check(zeroOriginal ? originalToken == 0 : originalToken != 0 && module.ResolveToken(originalToken) is StandAloneSig,
+			label + (zeroOriginal ? " pre-inverse body has a genuine zero local token" : " generated StandAloneSig is present"));
 		using var forward = Forward(method);
 		var objects = new Dictionary<string, IMDTokenProvider>();
 		var inverse = EditOperationRegistry.CompileInverse(module, forward.RootElement, objects);
@@ -90,7 +92,7 @@ internal static class T065InverseBoundaryProbe {
 		var generated = Fixture(fixture);
 		Case(generated, "valid token", _ => { }, true, true);
 		Case(generated, "legacy missing token", state => state["body"]!.AsObject().Remove("local_var_sig_token"), true);
-		Case(generated, "valid zero token", state => state["body"]!["local_var_sig_token"] = 0, true);
+		Case(generated, "valid zero token", _ => { }, true, zeroOriginal: true);
 		Case(generated, "wrong token type", state => state["body"]!["local_var_sig_token"] = "bad", false);
 		Case(generated, "token overflow", state => state["body"]!["local_var_sig_token"] = 4294967296L, false);
 		Case(generated, "wrong token table", state => state["body"]!["local_var_sig_token"] = 0x06000001, false);
