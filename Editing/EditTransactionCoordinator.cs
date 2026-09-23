@@ -478,7 +478,9 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			using var workspace = EditWorkspace.Create(tree, assembly, mvid);
 			var binding = history.ResolveBegin(workspace, null);
 			if (binding.LineageId == null || binding.BaseCheckpointId == null)
-				throw new ArgumentException("No pending compatible method patch exists for this module");
+				throw new EditDomainException("EDIT_HISTORY_CONFLICT",
+					new Dictionary<string, object?> { ["kind"] = "no_pending_legacy_method_patch" },
+					"No pending compatible method patch exists for this module");
 			var token = resolveMethodToken(workspace);
 			var head = history.RequireLegacyMethodHead(binding.LineageId, binding.BaseCheckpointId, token);
 			return Navigate(context, history.Load(binding.LineageId), head.CheckpointId,

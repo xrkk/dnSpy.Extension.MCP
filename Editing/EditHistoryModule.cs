@@ -365,7 +365,9 @@ internal sealed class EditHistoryModule : IDisposable {
 		if (head.ParentCheckpointId == null || head.Kind is not ("legacy_patch_method_il" or "legacy_force_return" or "legacy_nop_method")
 			|| !lineage.Operations.TryGetValue(head.CheckpointId, out var entry) || entry.Operations.Count != 1
 			|| entry.Operations[0].Kind != "method_body_replace")
-			throw new ArgumentException("No pending compatible method patch exists at the current history head");
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT",
+				new Dictionary<string, object?> { ["kind"] = "no_pending_legacy_method_patch" },
+				"No pending compatible method patch exists at the current history head");
 		using var document = JsonDocument.Parse(JsonSerializer.Serialize(entry.Operations[0].Forward, EditWire.JsonOptions));
 		var tokenText = document.RootElement.TryGetProperty("target", out var target)
 			&& target.TryGetProperty("token", out var tokenElement) && tokenElement.ValueKind == JsonValueKind.String
@@ -374,7 +376,9 @@ internal sealed class EditHistoryModule : IDisposable {
 			|| !uint.TryParse(tokenText.Substring(2), System.Globalization.NumberStyles.HexNumber,
 				System.Globalization.CultureInfo.InvariantCulture, out var recorded)
 			|| recorded != methodToken)
-			throw new ArgumentException("No pending compatible method patch exists for the requested method");
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT",
+				new Dictionary<string, object?> { ["kind"] = "no_pending_legacy_method_patch" },
+				"No pending compatible method patch exists for the requested method");
 		return head;
 	}
 
