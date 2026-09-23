@@ -238,6 +238,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged += OnProcessesChanged;
 			dbgManager.IsDebuggingChanged += OnIsDebuggingChanged;
+			dbgManager.MessageExceptionThrown += OnOwnedExceptionThrown;
 		}
 	}
 
@@ -259,6 +260,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		if (dbgManager is not null) {
 			dbgManager.ProcessesChanged -= OnProcessesChanged;
 			dbgManager.IsDebuggingChanged -= OnIsDebuggingChanged;
+			dbgManager.MessageExceptionThrown -= OnOwnedExceptionThrown;
 		}
 		ReleaseLeases();
 		artifactFs?.Dispose();
@@ -1936,6 +1938,26 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			Previous = new ExceptionPolicyDto { BreakOn = previous },
 			Current = new ExceptionPolicyDto { BreakOn = breakOn },
 		});
+	}
+
+	// dnSpy's user exception settings normally decide DbgMessageEventArgs.Pause before
+	// BreakInfos are populated. Request additional pauses only for our owned process;
+	// never change the user's settings or cancel a pause they requested independently.
+	void OnOwnedExceptionThrown(object? sender, DbgMessageExceptionThrownEventArgs e) {
+		DbgProcess? process;
+		string policy;
+		lock (sessionLock) {
+			process = ownedProcess;
+			policy = exceptionPolicy;
+		}
+		if (process is null || coordinator.ActiveSessionId is null)
+			return;
+		var source = e.Exception.Thread?.Process ?? e.Exception.Module?.Process;
+		if (!ReferenceEquals(source, process))
+			return;
+		if (policy == "first_chance_and_unhandled" ||
+			(policy == "unhandled" && (e.Exception.IsUnhandled || e.Exception.IsSecondChance)))
+			e.Pause = true;
 	}
 
 	static string? ExtractBreakOn(string policyJsonOrValue) {
