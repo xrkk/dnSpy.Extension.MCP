@@ -9,7 +9,7 @@ TEXT = SCRIPT.read_text(encoding='utf-8')
 ALLOWED = (
     'ACC-005', 'ACC-006', 'ACC-007', 'ACC-008', 'ACC-009', 'ACC-010', 'ACC-011', 'ACC-012',
     'ACC-013', 'ACC-014', 'ACC-015', 'ACC-016', 'ACC-017', 'ACC-018', 'ACC-019',
-    'ACC-020', 'ACC-021', 'ACC-024', 'ACC-025', 'ACC-026', 'ACC-027',
+    'ACC-020', 'ACC-021', 'ACC-022', 'ACC-024', 'ACC-025', 'ACC-026', 'ACC-027',
     'ACC-004', 'ACC-028', 'ACC-029', 'ACC-030', 'ACC-031', 'ACC-032', 'ACC-034', 'ACC-035', 'ACC-036',
 )
 
