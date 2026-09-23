@@ -26,7 +26,10 @@ English: see [README.md](README.md).
 ### MCP 工具（双功能门启用时生产面 72 个：静态/代码生成 32 + 动态调试 22 + 结构化编辑 18）
 
 以 `DNMCP_TEST=1` 启动的验收进程另通告 6 个 `debug_test_*` 探针，因此其线上快照为 78 个；
-8 个可调用的 `edit_test_*` 测试缝仍不通告。
+9 个可调用的 `edit_test_*` 测试缝仍不通告。调试门关闭时，21 个调试会话工具不通告，
+静态/代码生成与编辑工具仍可用：生产面 51 个、附加六个测试探针后 57 个。应以
+`debug_capabilities` 和实时 `tools/list` 判定当前 profile；net10 静态宿主实测不等于
+net10 动态调试通过。
 
 #### 加载
 
@@ -73,7 +76,7 @@ English: see [README.md](README.md).
 6. **rename_symbol_by_token** — 统一的元数据重命名入口。用 `target_kind` 选择 `type` / `class` / `enum` / `interface` / `struct` / `delegate`、`method`、`field`、`enum_member`、`enum_members`、`property`、`event`、`parameter` 或 `generic_parameter`。单个符号传 `new_name`；批量枚举成员传完整的按值映射 `members`。适用时会同步当前模块引用并刷新已打开的反编译标签页
 7. **save_assembly** — 将模块写回磁盘（覆盖原文件时会自动生成带时间戳的备份，`NativeWrite` 保留本机 stub / Win32 资源 / 延迟加载导入，GAC 路径被拒绝）
 
-#### 事务式结构化编辑（通告 18 个工具 + 8 个不通告的测试面）
+#### 事务式结构化编辑（通告 18 个工具 + 9 个不通告的测试面）
 
 **事务生命周期**
 1. **edit_begin** — 为一个已加载的纯托管、单模块程序集取得进程级编辑租约，并创建内存私有副本
@@ -439,7 +442,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 ### 客户端配置
 
 需要让 ZCode、Codex 或其他第三方 AI 通过 Python stdio client 完成全功能验收时，可直接把
-[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。该文档包含 x64/x86 两轮流程、确切 fixture/SHA、78 工具逐项清单、私有结构化编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion 验证。
+[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。文中要求先核 x64/x86 fixture/SHA；调试门开启时才是 78 工具 profile。还覆盖私有编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion。ZCode 只有工具面时，14 个 resources 必须另由支持 resources 的宿主读取；静态宿主或阻断项不可冒称完整验收。
 
 #### Claude Code
 

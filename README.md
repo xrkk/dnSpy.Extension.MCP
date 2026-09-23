@@ -26,7 +26,11 @@ From zero to "ask Claude about your assembly" in a few minutes:
 ### MCP Tools (72 production tools with both feature gates enabled: 32 static/codegen + 22 dynamic-debugging + 18 structured-edit)
 
 Acceptance processes started with `DNMCP_TEST=1` additionally advertise 6 `debug_test_*` probes,
-so their wire snapshot contains 78 tools. The 8 callable `edit_test_*` seams remain unadvertised.
+so their wire snapshot contains 78 tools. The 9 callable `edit_test_*` seams remain unadvertised.
+If the dynamic-debugging gate is closed, the static/codegen and edit families remain available but
+the 21 debug session tools are not advertised: 51 production tools, or 57 with the six test probes.
+Confirm the active profile with `debug_capabilities` and `tools/list`; a net10 static-host run does
+not establish net10 dynamic-debugging support.
 
 #### Loading
 
@@ -456,8 +460,10 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 
 For a ZCode, Codex, or other third-party AI full-function acceptance run through the Python stdio
 client, use the Chinese [third-party full-function test prompt](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md).
-It covers two x64/x86 passes, exact fixtures and hashes, all 78 acceptance-mode tools, reversible writes, dump,
-request-id idempotency, and two-level value expansion.
+It describes x64/x86 passes, fixture/hash preflight, the 78-tool profile when the debug gate is open,
+reversible writes, dump, idempotency and two-level value expansion. ZCode's tools-only result must be
+paired with a resource-capable MCP host for the 14 resource reads; static-host or blocked legs are
+reported separately, not promoted to full acceptance.
 
 #### Claude Code
 

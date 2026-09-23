@@ -1,18 +1,18 @@
 # dnSpy MCP — 工具完整说明（中文）
 
-与线上 `tools/list` 注册表机检一致：双功能门启用时生产面 72 个（静态 32 + 调试 22 + 编辑 18）；`DNMCP_TEST=1` 验收进程另通告 6 个 `debug_test_*` 探针，形成 78 工具快照，8 个可调用 `edit_test_*` 测试缝仍不通告。本文档计数来自 `tools/export_tool_registry.py` 导出快照，绝不手写。
+与线上 `tools/list` 注册表机检一致：双功能门启用时生产面 72 个（静态 32 + 调试 22 + 编辑 18）；`DNMCP_TEST=1` 验收进程另通告 6 个 `debug_test_*` 探针，形成 78 工具快照，9 个可调用 `edit_test_*` 测试缝仍不通告。调试门关闭时只保留 `debug_capabilities`，对应生产 51 / 验收 57 个。先用 `debug_capabilities` 与实时注册表辨认 profile；计数来自带明确 profile/门状态参数的 `tools/export_tool_registry.py`。
 
 另见：[README.zh-CN.md](../README.zh-CN.md) · [English reference](MCP-TOOLS.md)
 
 ## 1. 线协议
 
 - 传输：Streamable HTTP（含 legacy SSE），`http://localhost:<端口>/mcp`（默认 15378，Options 页显示实际端口）。
-- 信封：每个工具返回 `{"schema_version": "...", "ok": bool, "state": "...", ...}`；失败携带 `error.code`、`error.message`、`error.current_state`、`error.recovery`。
+- 信封：事务编辑与调试工具返回结构化的 `schema_version`/`ok`/`state`；编辑失败携带 `error.code`、`error.message`、`error.current_state`、`error.recovery`。静态分析/生成工具通常返回文本，不能把统一信封强加给它们；有通告的 `outputSchema` 以实时定义为准。
 - 会话：编辑/调试事务由单个已初始化 MCP 会话拥有；`request_id` 提供幂等重试。
 
 ## 2. 静态分析与代码生成（32 个工具）
 
-open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 每个工具的参数见 README §功能。
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 逐工具参数及返回结构见[单文件 AI 工具手册](AI-TOOL-REFERENCE.zh-CN.md)。
 
 ## 3. 仅启动式动态调试（生产面 22 个；验收模式 28 个）
 
@@ -51,6 +51,8 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 ### 4.4 39 类操作清单
 
 `type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
+
+操作 schema 和 `EditWire.OperationKinds` 均为 39 类；当前 `edit_apply` 注册描述仍误写“37”，该文案不是操作白名单。可接受种类以实时 inputSchema 为准；这里记录源码描述差异，不表示产品文案已修复。
 
 ## 5. 错误码与恢复（冻结）
 

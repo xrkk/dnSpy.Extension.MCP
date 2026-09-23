@@ -4,8 +4,11 @@ dnSpy MCP runs inside dnSpy and exposes loaded .NET modules to MCP clients. With
 gate enabled, its production surface contains 32 static/codegen tools, 22 launch-only debugging
 tools and 18 transactional structured-edit tools, for 72 total. A process started with
 `DNMCP_TEST=1` additionally advertises 6 `debug_test_*` probes, producing the 78-tool acceptance
-snapshot. The 8 callable `edit_test_*` seams and 4 other debug test seams remain unadvertised;
+snapshot. The 9 callable `edit_test_*` seams and 4 other debug test seams remain unadvertised;
 none of these test seams are production interfaces.
+When the debug gate is closed, only `debug_capabilities` remains advertised from that family:
+51 production tools or 57 with the six acceptance probes. A static-host registration check is not
+evidence that launch debugging works. Read `debug_capabilities` and the live `tools/list` first.
 
 ## Capability groups
 

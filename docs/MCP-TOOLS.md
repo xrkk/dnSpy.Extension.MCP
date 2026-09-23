@@ -1,18 +1,18 @@
 # dnSpy MCP — Complete Tool Reference (EN)
 
-Machine-checked against `tools/list`: the production surface is 72 tools when both feature gates are enabled (32 static + 22 debug + 18 edit). A `DNMCP_TEST=1` acceptance process additionally advertises 6 `debug_test_*` probes, producing the 78-tool snapshot; 8 callable `edit_test_*` seams remain unadvertised. Counts come from `tools/export_tool_registry.py`, never from hand edits.
+Machine-checked against `tools/list`: the production surface is 72 tools when both feature gates are enabled (32 static + 22 debug + 18 edit). A `DNMCP_TEST=1` acceptance process additionally advertises 6 `debug_test_*` probes, producing the 78-tool snapshot; 9 callable `edit_test_*` seams remain unadvertised. With the debug gate closed, the corresponding totals are 51 production / 57 acceptance (only `debug_capabilities` remains from the debug family). Use `debug_capabilities` and the live registry to identify the active profile. Counts come from `tools/export_tool_registry.py` with its explicit profile and debug-gate arguments.
 
 See also: [README.md](../README.md) · [中文完整说明](MCP-TOOLS.zh-CN.md)
 
 ## 1. Wire protocol
 
 - Transport: Streamable HTTP (also legacy SSE) at `http://localhost:<port>/mcp` (default 15378; the Options page shows the actual port).
-- Envelope: every tool returns `{"schema_version": "...", "ok": bool, "state": "...", ...}`; failures carry `error.code`, `error.message`, `error.current_state`, `error.recovery`.
+- Envelope: transactional edit and debug tools return a structured `schema_version`/`ok`/`state` result; edit failures carry `error.code`, `error.message`, `error.current_state`, and `error.recovery`. Static analysis/codegen tools commonly return text; consult each live `outputSchema` when one is advertised, rather than assuming a universal envelope.
 - Sessions: edit/debug transactions are owned by one initialized MCP session; `request_id` gives idempotent retries.
 
 ## 2. Static analysis & codegen (32 tools)
 
-open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly — see README §Features for per-tool parameters.
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly — see the [single-file AI tool reference](AI-TOOL-REFERENCE.zh-CN.md) for per-tool arguments and return structures.
 
 ## 3. Launch-only dynamic debugging (22 production tools; 28 in acceptance mode)
 
@@ -51,6 +51,8 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 ### 4.4 The 39 operation kinds
 
 `type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
+
+The operation schema and `EditWire.OperationKinds` contain 39 entries. The current `edit_apply` registry description still says “37”; that text is stale and is not the operation allow-list. Check the live input schema for accepted kinds. This source-description discrepancy is not a claim that the product defect is fixed.
 
 ## 5. Error codes and recovery (frozen)
 
