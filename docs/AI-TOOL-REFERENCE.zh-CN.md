@@ -4,7 +4,7 @@
 
 本文独立给出工具选择、参数/结果、状态关联和冻结结构，英文代码字段保持原样。文末附源 schema 的自包含 JSON：编辑工具完整 `inputSchema`/`outputSchema` 与全部 39 种操作；调试 `$defs` 与 `$ref` 均在同一文件内；静态工具的 `inputSchema` 亦在此。表格是快速入口，附录是精确嵌套语法，不必另开源码。
 
-已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。这不代表全调试套件或所有异常策略已验收。启动入口暂停的 `reason=entry_point_break` 与冻结事件枚举不符，全事件流契约仍待修复和复验。强名称可信来源尚未闭合，`strong_name_remove` 不能当作可成功能力。其他动态/编辑能力也受下述运行门限限制。
+已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。T053 在新隔离根复验了 x86/x64 四种 `break_kind` 的启动、重启、完整分页事件流和真实首机会异常；这不代表全调试套件或所有异常策略已验收。强名称可信来源尚未闭合，`strong_name_remove` 不能当作可成功能力。其他动态/编辑能力也受下述运行门限限制。
 
 ## 1. MCP 接入、信封与能力门
 
@@ -708,6 +708,8 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 | `exception_policy` | 否 | 定义 `exception_policy` |
 
 成功 `result` 字段：`session_id`、`generation`、`state`、`claim_deadline_utc`、`launch_mode`、`runtime_family`、`architecture`、`file_identities`。完整字段类型、条件分支及所有嵌套结构见附录 B 的 `debug_launch_result`、相关 `$defs`；这里的 schema 是冻结调试契约，不是运行成功断言。
+
+启动及重启首个暂停的 `paused.payload.reason` 是事件域枚举：`break_kind=process` 对应 `process`，`module_cctor_or_entry` 对应同名值，`entry` 对应 `entry`；`none` 不要求首个暂停，若后续出现无可归因暂停则可为 `unknown`。它不同于 dnSpy 内部的 `process_break`/`entry_point_break` 名称，也不同于 `debug_pause` 控制结果的 `reason` 枚举。显式继续产生的 `continued.payload.reason` 为 `manual`，不是内部动作名 `continue`；`process_exited.payload.process_handle` 使用本会话的 `proc-<pid>` 句柄。
 
 ### debug_pause
 

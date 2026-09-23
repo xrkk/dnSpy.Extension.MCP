@@ -1251,12 +1251,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			if (workingDirectoryIdentity is not null) launchIdentities.Add(workingDirectoryIdentity);
 			launchArchitecture = architecture;
 			pendingClaimStartsPaused = breakKind != BreakKinds.None;
-			pendingClaimReason = breakKind switch {
-				BreakKinds.Process => "process_break",
-				BreakKinds.ModuleCctorOrEntryPoint => "module_cctor_or_entry",
-				BreakKinds.EntryPoint => "entry_point_break",
-				_ => null,
-			};
+			pendingClaimReason = pendingClaimStartsPaused ? BreakKinds.InitialPauseEventReason(breakKind) : null;
 			claimDeadlineUtc = DateTime.UtcNow + ControlOperationRecord.DefaultDeadline;
 			sessionStartedUtc = DateTime.UtcNow;
 			launchClaimTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1501,7 +1496,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				lock (sessionLock) continueInFlight = false;
 				return Fail(coordinator, DomainErrorCodes.InternalError, message: "continue could not be delivered");
 			}
-			coordinator.MarkResumed("continue");
+			coordinator.MarkResumed("manual");
 			lock (sessionLock) continueInFlight = false;
 		return Ok(coordinator, new ContinueResultDto {
 			State = coordinator.State,
@@ -3341,7 +3336,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 					continue;
 				process.IsRunningChanged -= OnOwnedIsRunningChanged;
 				var terminalSessionId = coordinator.ActiveSessionId;
-				var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation, ownedIdentityMatch: true, exitCode: null);
+				var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation, ownedIdentityMatch: true, exitCode: null, processHandle: $"proc-{process.Id}");
 				lock (sessionLock) {
 					adapter?.Dispose();
 					adapter = null;
@@ -3438,7 +3433,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			bool continueBusy;
 			lock (sessionLock) continueBusy = continueInFlight;
 			if (!continueBusy)
-				coordinator.MarkResumed("auto");
+				coordinator.MarkResumed("manual");
 			return;
 		}
 		// Real stop details come from the runtime's BreakInfos (exception/breakpoint/step/entry/
@@ -3483,7 +3478,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		else if (observation.Kind == ProcessObservation.ObservationKind.Removed) {
 			var terminalSessionId = coordinator.ActiveSessionId;
 			var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation,
-				ownedIdentityMatch: true, observation.ExitCode);
+				ownedIdentityMatch: true, observation.ExitCode, processHandle: $"proc-{observation.Pid}");
 			TaskCompletionSource<string>? controlTcs;
 			lock (sessionLock) controlTcs = controlOutcomeTcs;
 			if (result.Outcome == "pending-restart")

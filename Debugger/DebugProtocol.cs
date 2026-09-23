@@ -44,6 +44,15 @@ static class BreakKinds
     public const string Process = "process";
     public const string ModuleCctorOrEntryPoint = "module_cctor_or_entry";
     public const string EntryPoint = "entry";
+
+	// Initial-stop events use the public EVT-DYN-010 vocabulary, not dnSpy's
+	// native break notification names (process_break / entry_point_break).
+	public static string InitialPauseEventReason(string? breakKind) => breakKind switch {
+		Process => "process",
+		ModuleCctorOrEntryPoint => "module_cctor_or_entry",
+		EntryPoint => "entry",
+		_ => "unknown",
+	};
 }
 
 static class RuntimeFamilies

@@ -433,13 +433,15 @@ public sealed class DebugSessionCoordinator {
 	/// terminate (either phase) as success, advances a pending non-abandoned restart into the
 	/// post-exit stopping state, and otherwise terminates the session (target_exited).
 	/// </summary>
-	public RemovalObservationResult ObserveProcessRemoved(string? sessionId, int obsGeneration, bool ownedIdentityMatch, int? exitCode) {
+	public RemovalObservationResult ObserveProcessRemoved(string? sessionId, int obsGeneration, bool ownedIdentityMatch, int? exitCode, string? processHandle = null) {
 		lock (gate) {
 			var valid = sessionId != null && sessionId == activeSessionId && obsGeneration == generation && ownedIdentityMatch;
 			if (!valid)
 				return new RemovalObservationResult { Accepted = false, Outcome = "rejected" };
 			observedProcessState = "exited";
-			WriteEvent(EventKinds.ProcessExited, new { process_handle = (string?)"", exit_code = exitCode ?? 0 }, untrusted: false);
+			// The service supplies the same opaque handle as debug_status. Pure coordinator
+			// probes without an upstream process use their nonempty synthetic session ID.
+			WriteEvent(EventKinds.ProcessExited, new { process_handle = processHandle ?? sessionId, exit_code = exitCode ?? 0 }, untrusted: false);
 			var control = unsettledControl;
 			if (control is { Operation: ControlOperation.Restart } && !abandonedRestart
 				&& control.CurrentPhase != ControlOperationRecord.Phase.Settled) {
