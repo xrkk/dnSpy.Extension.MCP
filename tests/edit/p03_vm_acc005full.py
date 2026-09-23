@@ -395,6 +395,43 @@ def main() -> int:
     check("V1 members landed", "AddedTag" in added_names and "AddedWithLocal" in added_names
           and any(n.startswith("get_Tag") for n in added_names), str(added_names))
 
+    # N1 navigation must work on the committed live module before export or
+    # reopening another copy can make its identity ambiguous.
+    undone = call(client, "edit_undo", {
+        "request_id": rid(), "lineage_id": lineage_id, "expected_checkpoint_id": checkpoint_id})
+    root_checkpoint_id = str(payload(undone).get("history", {}).get("head_checkpoint_id", ""))
+    check("N1 imported commit undo", bool(undone.get("ok")) and bool(root_checkpoint_id)
+          and root_checkpoint_id != checkpoint_id, json.dumps(undone)[:600])
+    removed = call(client, "list_methods", {"assembly_name": "ImportHost", "type_full_name": "ImportHost.Machines"})
+    removed_names = [str(field(item, "name", "Name")) for item in removed.get("items", []) if isinstance(item, dict)]
+    check("N1 imported member absent after undo", "AddedWithLocal" not in removed_names, str(removed_names))
+    undo_history = call(client, "edit_history", {})
+    undo_head = next((row for row in payload(undo_history).get("lineages", [])
+                      if row.get("lineage_id") == lineage_id), {})
+    undo_assess = call(client, "edit_restore", {"request_id": rid(), "lineage_id": lineage_id,
+                                                "checkpoint_id": root_checkpoint_id, "action": "assess"})
+    check("N1 undo head and replay exact", bool(undo_history.get("ok")) and
+          undo_head.get("head_checkpoint_id") == root_checkpoint_id and
+          payload(undo_assess).get("replay", {}).get("classification") == "exact",
+          json.dumps({"history": undo_head, "assess": undo_assess})[:600])
+    redone = call(client, "edit_redo", {
+        "request_id": rid(), "lineage_id": lineage_id, "expected_checkpoint_id": root_checkpoint_id})
+    check("N1 imported commit redo", bool(redone.get("ok")) and
+          str(payload(redone).get("history", {}).get("head_checkpoint_id", "")) == checkpoint_id,
+          json.dumps(redone)[:600])
+    restored = call(client, "list_methods", {"assembly_name": "ImportHost", "type_full_name": "ImportHost.Machines"})
+    restored_names = [str(field(item, "name", "Name")) for item in restored.get("items", []) if isinstance(item, dict)]
+    check("N1 imported member restored after redo", "AddedWithLocal" in restored_names, str(restored_names))
+    redo_history = call(client, "edit_history", {})
+    redo_head = next((row for row in payload(redo_history).get("lineages", [])
+                      if row.get("lineage_id") == lineage_id), {})
+    redo_assess = call(client, "edit_restore", {"request_id": rid(), "lineage_id": lineage_id,
+                                                "checkpoint_id": checkpoint_id, "action": "assess"})
+    check("N1 redo head and replay exact", bool(redo_history.get("ok")) and
+          redo_head.get("head_checkpoint_id") == checkpoint_id and
+          payload(redo_assess).get("replay", {}).get("classification") == "exact",
+          json.dumps({"history": redo_head, "assess": redo_assess})[:600])
+
     # X1 export: exactly one file below ArtifactRoot, no sidecar PDB.
     exported = call(client, "edit_export", {
         "request_id": rid(), "lineage_id": lineage_id, "checkpoint_id": checkpoint_id,

@@ -366,6 +366,19 @@ internal static partial class EditOperationRegistry {
 				return absent;
 			}
 			var body = McpTools.StructuredBody(value);
+			// Rebuilding a body with LocalVarSigTok=0 allocates a fresh
+			// StandAloneSig RID even when the original local signature is exact.
+			// Retain the original RID for byte-identical inverse navigation.
+			body["local_var_sig_token"] = value.Body.LocalVarSigTok;
+			// FullName alone erases class/value-type and generic-instance
+			// signature information (for example an async awaiter's local).
+			// The existing structured type entry restores the exact signature.
+			var bindLocal = InverseBinder(before, objects);
+			body["locals"] = value.Body.Variables.Select(local => new Dictionary<string, object?> {
+				["type"] = new Dictionary<string, object?> { ["kind"] = "type",
+					["type"] = EditStructuredSignatureCodec.Capture(local.Type, bindLocal) },
+				["name"] = local.Name ?? string.Empty,
+			}).ToArray();
 			// StructuredBody is the legacy IL representation.  A compiled history
 			// inverse must additionally preserve the complete P06 body symbol state,
 			// otherwise undoing a second import of the same source silently drops the
@@ -1146,11 +1159,53 @@ internal static partial class EditOperationRegistry {
 		var operation = JsonSerializer.Deserialize<Dictionary<string, object?>>(inverse.GetRawText(), EditWire.JsonOptions)
 			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		operation.Remove("custom_debug_infos");
+		var inverseBody = inverse.GetProperty("body");
+		var inverseLocals = inverseBody.GetProperty("locals").EnumerateArray().ToArray();
+		var applyObjects = new Dictionary<string, IMDTokenProvider>(objects, StringComparer.Ordinal);
+		if (inverseLocals.Any(local => local.GetProperty("type").ValueKind == JsonValueKind.Object)) {
+			// The ordinary body parser uses operation object IDs, whereas the
+			// persisted inverse uses token:/object_id:/corlib: references. Bind
+			// each exact TypeSig into the parser's temporary object map; parsing
+			// a textual placeholder would add unused metadata rows to the image.
+			var body = JsonSerializer.Deserialize<Dictionary<string, object?>>(inverseBody.GetRawText(), EditWire.JsonOptions)
+				?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			var nextLocalReference = 0;
+			body["locals"] = inverseLocals.Select(local => new Dictionary<string, object?> {
+				["type"] = LocalType(local.GetProperty("type")),
+				["name"] = local.GetProperty("name").GetString(),
+			}).ToArray();
+			operation["body"] = body;
+			object LocalType(JsonElement entry) {
+				if (entry.ValueKind != JsonValueKind.Object) return entry.GetString() ?? string.Empty;
+				var node = entry.GetProperty("type").Deserialize<EditStructuredSignatureCodec.TypeNode>(EditWire.JsonOptions)
+					?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				var exact = EditStructuredSignatureCodec.Restore(node, id => ResolveInverseReference(module, id, objects));
+				var rebound = EditStructuredSignatureCodec.Capture(exact, reference => {
+					string key;
+					do { key = "inverse-local-" + (nextLocalReference++).ToString(System.Globalization.CultureInfo.InvariantCulture); }
+					while (applyObjects.ContainsKey(key));
+					applyObjects.Add(key, reference);
+					return key;
+				});
+				return new Dictionary<string, object?> { ["kind"] = "type", ["type"] = rebound };
+			}
+		}
 		using var document = JsonDocument.Parse(JsonSerializer.Serialize(operation, EditWire.JsonOptions));
-		var applied = Apply(module, document.RootElement, objects, index);
+		var applied = Apply(module, document.RootElement, applyObjects, index);
 		var method = Ref<MethodDef>(module, inverse.GetProperty("target"), objects);
 		PdbDocument[] removedDocuments = Array.Empty<PdbDocument>();
 		try {
+			if (inverseBody.TryGetProperty("local_var_sig_token", out var originalSigToken)) {
+				var token = originalSigToken.GetUInt32();
+				if (token != 0) {
+					var originalSig = module.ResolveToken(token) as StandAloneSig;
+					var locals = originalSig?.LocalSig?.Locals;
+					if (locals == null || locals.Count != method.Body.Variables.Count
+						|| locals.Where((type, i) => !new SigComparer().Equals(type, method.Body.Variables[i].Type)).Any())
+						throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				}
+				method.Body.LocalVarSigTok = token;
+			}
 			if (inverse.TryGetProperty("custom_debug_infos", out var rowsElement)) {
 				var rows = JsonSerializer.Deserialize<EditPdbTransferCodec.CdiRow[]>(rowsElement.GetRawText(), EditWire.JsonOptions)
 					?? Array.Empty<EditPdbTransferCodec.CdiRow>();

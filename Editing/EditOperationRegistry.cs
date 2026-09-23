@@ -868,11 +868,21 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 		void Bind(IMDTokenProvider row) {
 			if (row.MDToken.Rid == 0 || target.ResolveToken(row.MDToken.Raw) != null) return;
 			var match = EditDefinitionAddress.Resolve(target, EditDefinitionAddress.Capture(source, row));
-			if (match.MDToken.Table != row.MDToken.Table || match is IFullName named && row is IFullName original
-				&& !string.Equals(named.FullName, original.FullName, StringComparison.Ordinal))
+			if (match.MDToken.Table != row.MDToken.Table || !SameBindingIdentity(row, match))
 				throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			if (bindings.ContainsKey(row.MDToken.Raw)) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			bindings.Add(row.MDToken.Raw, match);
+		}
+		bool SameBindingIdentity(IMDTokenProvider serialized, IMDTokenProvider attached) {
+			// dnlib renders a materialized generic method as Added<T>(T), but
+			// an imported MethodDefUser as Added<T>(!!0).  The exact positional
+			// address and caller's semantic gate already bind the graph; compare
+			// the method's actual signature rather than its display rendering.
+			if (serialized is MethodDef sourceMethod && attached is MethodDef targetMethod)
+				return sourceMethod.Name == targetMethod.Name
+					&& new SigComparer().Equals(sourceMethod.MethodSig, targetMethod.MethodSig);
+			return serialized is not IFullName source || attached is not IFullName target
+				|| string.Equals(source.FullName, target.FullName, StringComparison.Ordinal);
 		}
 		return new TokenBindingScope(target, bindings);
 	}

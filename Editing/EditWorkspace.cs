@@ -193,6 +193,12 @@ internal sealed class EditWorkspace : IDisposable {
 				pdbState.PdbFileKind = PdbFileKind.EmbeddedPortablePDB;
 				options.WritePdb = true;
 				options.PdbFileName = "embedded.pdb";
+				// The private baseline may have been emitted while no sidecar PDB
+				// was available. In that case dnlib drops the source PE's
+				// Reproducible entry, so its later replay inherits different PDB
+				// writer options from the unchanged live ModuleDefMD. Use the same
+				// deterministic embedded-PDB policy for both paths.
+				options.PdbOptions |= PdbWriterOptions.Deterministic;
 			}
 			module.Write(stream, options);
 		}
