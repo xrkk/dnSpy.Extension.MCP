@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using dnlib.DotNet.Pdb;
 using dnSpy.Extension.MCP.Editing;
 
 internal static class NewMethodHistoryProbe {
@@ -23,6 +24,14 @@ internal static class NewMethodHistoryProbe {
 		method.Body.Instructions.Add(Instruction.CreateLdcI4(value));
 		method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 		owner.Methods.Add(method);
+		module.CreatePdbState(PdbFileKind.PortablePDB);
+		var document = new PdbDocument("R059History.cs", new Guid("3f5162f8-07c6-11d3-9053-00c04fa302a1"),
+			new Guid("994b45c4-e6e9-11d2-903f-00c04fa302a1"), EditPdbTransferCodec.TextDocumentType,
+			EditPdbTransferCodec.Sha256ChecksumAlgorithm, new byte[] { 1, 2, 3 });
+		module.PdbState!.Add(document);
+		method.Body.Instructions[0].SequencePoint = new SequencePoint {
+			Document = document, StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 2,
+		};
 		return module;
 	}
 
@@ -87,6 +96,8 @@ internal static class NewMethodHistoryProbe {
 		var beforeFaultImage = EditWorkspace.WriteCheckpointImage(live);
 		var beforeFaultFingerprint = EditFingerprint.Compute(live);
 		var beforeFaultDocuments = live.PdbState?.Documents.Count() ?? 0;
+		Console.WriteLine("PDB_DOCUMENTS_BEFORE_LATE_FAULT " + beforeFaultDocuments);
+		Check(beforeFaultDocuments > 0, "component import retains PDB documents before late fault");
 		var compensate = history.PlanNavigation(lineage, secondHead!, firstHead!).Apply(live);
 		Value(live, 47, "component forward navigation before late fault");
 		compensate();
