@@ -484,11 +484,20 @@ static class Program {
 		Inject(unknownFormatId, Craft(store.FinalBytes(realId), unknownFormatId, (manifest, _) => {
 			manifest.Format = "dnspy.edit.checkpoints.v3";
 		}));
+		var futureVersionId = "lineage-" + Guid.NewGuid().ToString("N");
+		Inject(futureVersionId, Craft(store.FinalBytes(realId), futureVersionId, (manifest, entries) => {
+			var node = manifest.Checkpoints.Single(x => x.CheckpointId == headId);
+			var document = System.Text.Json.Nodes.JsonNode.Parse(Encoding.UTF8.GetString(entries[node.OperationEntry]))!;
+			document["operations"]![0]!["kind_version"] = 99;
+			var rewritten = Encoding.UTF8.GetBytes(document.ToJsonString());
+			entries[node.OperationEntry] = rewritten;
+			node.OperationSha256 = EditWire.Sha256(rewritten);
+		}));
 		var malformedVersionId = "lineage-" + Guid.NewGuid().ToString("N");
 		Inject(malformedVersionId, Craft(store.FinalBytes(realId), malformedVersionId, (manifest, entries) => {
 			var node = manifest.Checkpoints.Single(x => x.CheckpointId == headId);
 			var document = System.Text.Json.Nodes.JsonNode.Parse(Encoding.UTF8.GetString(entries[node.OperationEntry]))!;
-			document["operations"]![0]!["kind_version"] = 2;
+			document["operations"]![0]!["kind_version"] = "invalid";
 			var rewritten = Encoding.UTF8.GetBytes(document.ToJsonString());
 			entries[node.OperationEntry] = rewritten;
 			node.OperationSha256 = EditWire.Sha256(rewritten);
@@ -514,11 +523,18 @@ static class Program {
 			Check(ex.Code == "EDIT_OPERATION_VERSION_UNSUPPORTED", "unknown package format rejection code=" + ex.Code);
 		}
 		try {
-			history.Load(malformedVersionId);
-			Check(false, "schema-invalid operation version must be rejected at load");
+			history.Load(futureVersionId);
+			Check(false, "well-typed future operation version must be rejected at load");
 		}
 		catch (EditDomainException ex) {
-			Check(ex.Code == "EDIT_CHECKPOINT_INVALID", "schema-invalid operation version rejection code=" + ex.Code);
+			Check(ex.Code == "EDIT_OPERATION_VERSION_UNSUPPORTED", "future operation version rejection code=" + ex.Code);
+		}
+		try {
+			history.Load(malformedVersionId);
+			Check(false, "non-integer operation version must be rejected at load");
+		}
+		catch (EditDomainException ex) {
+			Check(ex.Code == "EDIT_CHECKPOINT_INVALID", "non-integer operation version rejection code=" + ex.Code);
 		}
 		try {
 			history.Load(unknownEnvelopeId);
@@ -540,9 +556,9 @@ static class Program {
 
 		Check(history.Assess(realId, headId, liveFingerprint).Classification == "exact", "original lineage unaffected");
 		Check(EditFingerprint.Compute(live) == liveFingerprint, "live module unchanged by assessments and migration");
-		Check(store.ListFinalIds().Count == 6, "store finals are exactly the real lineage plus five fixtures");
+		Check(store.ListFinalIds().Count == 7, "store finals are exactly the real lineage plus six fixtures");
 
-		Console.WriteLine("PASS dual-tool-classification exact+validated+unverified+unknown-format+envelope-rejected+malformed-rejected migration-child-exact zero-side-effect");
+		Console.WriteLine("PASS dual-tool-classification exact+validated+unverified+unknown-format+envelope-rejected+future-version-rejected+malformed-rejected migration-child-exact zero-side-effect");
 	}
 
 	// ACC-029: capacity curve across 22 commits on one lineage (monotonic store,
