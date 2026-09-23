@@ -7,6 +7,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name('run-debug-tests.ps1')
 TEXT = SCRIPT.read_text(encoding='utf-8')
 ALLOWED = (
+    'ACC-001',
     'ACC-005', 'ACC-006', 'ACC-007', 'ACC-008', 'ACC-009', 'ACC-010', 'ACC-011', 'ACC-012',
     'ACC-013', 'ACC-014', 'ACC-015', 'ACC-016', 'ACC-017', 'ACC-018', 'ACC-019',
     'ACC-020', 'ACC-021', 'ACC-022', 'ACC-024', 'ACC-025', 'ACC-026', 'ACC-027',
@@ -48,6 +49,9 @@ class IsolatedRunnerGuards(unittest.TestCase):
                 self.assertIsNone(unsafe, f'{case}: shared/global operation at {unsafe.group(0) if unsafe else ""}')
         self.assertRegex(bodies['ACC-015'], r"\$side = Join-Path \$m\.env\.sample_root 'side-effects\.txt'")
         self.assertRegex(bodies['ACC-026'], r"\$out = Join-Path \$m\.env\.sample_root 'argv-out\.txt'")
+        self.assertIn('if ($IsolationRoot) { $staticPort = $script:PrivatePort }', bodies['ACC-001'])
+        self.assertNotIn('-Port 3100', bodies['ACC-001'])
+        self.assertIn("$script:Manifest.env.testil_dll = Join-Path $privateFixture 'TestIL.dll'", TEXT)
 
 
 if __name__ == '__main__':

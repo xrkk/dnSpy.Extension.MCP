@@ -48,11 +48,11 @@ if ($IsolationRoot) {
         throw 'isolated case requires a safe RunId, full source SHA, and private non-default port'
     }
     $rootPath = [IO.Path]::GetFullPath($IsolationRoot).TrimEnd('\')
-    if ($rootPath -notmatch '^E:\\dnspy-t072-r02-[a-zA-Z0-9-]+$' -or -not (Test-Path -LiteralPath $rootPath -PathType Container)) {
-        throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* root'
+    if ($rootPath -notmatch '^E:\\dnspy-t072-r0[23]-[a-zA-Z0-9-]+$' -or -not (Test-Path -LiteralPath $rootPath -PathType Container)) {
+        throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* or E:\dnspy-t072-r03-* root'
     }
     if ($Case -notin @(
-        'ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
+        'ACC-001','ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-022','ACC-024','ACC-025','ACC-026','ACC-027',
         'ACC-004','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035','ACC-036')) {
@@ -416,6 +416,7 @@ if (-not (Test-Path $manifestPath)) {
         $script:Manifest.env.sample_root = $privateFixture
         $script:Manifest.env.artifact_root = Join-Path $privateArchRoot 'artifact'
         $script:Manifest.env.fixture_exe = Join-Path $privateFixture 'AccFixture.exe'
+        $script:Manifest.env.testil_dll = Join-Path $privateFixture 'TestIL.dll'
         $script:Manifest.env.vm_ip = '192.168.204.240'
         if ($Case -in @('ACC-008','ACC-029')) {
             $privateRuntime = Join-Path $privateFixture 'dotnet10-x64'
@@ -907,17 +908,7 @@ function Run-ACC001 {
     $ev = @(Save-Json 'tools-list.json' ($tl.tools | Select-Object name, description, inputSchema))
     Assert-Cond 'static-baseline-schema' 'all 32 baseline tools advertised with identical schema/description' $(if ($mismatches.Count) { $mismatches -join ',' } else { 'all equal' }) ($mismatches.Count -eq 0) $ev
 
-    # [2] Static E2E (tests/fixtures/run-tests.ps1) — needs a locally built TestIL.dll and the
-    #     extension DLL in-tree; attempted, outcome recorded truthfully.
-    $ok = $true
-    try {
-        $extDest = Join-Path $script:Repo "bin\Release\net48"
-        New-Item -ItemType Directory -Force -Path $extDest | Out-Null
-        Copy-Item $m.env.extension_dll -Destination (Join-Path $extDest 'dnSpy.Extension.MCP.x.dll') -Force
-        New-Item -ItemType Directory -Force -Path (Join-Path $script:Repo 'tests\fixtures\bin') | Out-Null
-        Copy-Item $m.env.testil_dll -Destination (Join-Path $m.env.sample_root 'TestIL.dll') -Force
-        $fixOut = "fixture staged from $($m.env.testil_dll)" 
-    # [3] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
+    # [2] Dispatcher domains, measured (not probed): a real launch cycle must place Start on
     # the WPF thread (spy start_thread_is_wpf==1) and drive object work through the
     # DbgManager dispatcher (spy dispatcher_sync_posts>=1). The former placeholder probe
     # (assert-dispatchers.ps1) always answered "unknown" and was removed as vacuous.
@@ -938,18 +929,29 @@ function Run-ACC001 {
         Start-Sleep -Milliseconds 900
     }
 
-        $fixOut | Set-Content (Join-Path $script:OutDir 'testil-build.log')
-        # In-process invocation: deeply nested powershell children occasionally fail to
-        # autoload Microsoft.PowerShell.Utility (Get-FileHash) on this host. run-tests.ps1
-        # deploys the extension DLL itself, so dnSpy must be down before it starts; it also
-        # probes ports 3100..3119, so the committed snapshot's port is staged to 3100 for the
-        # run and restored afterwards by Ensure-CanonicalDnSpy.
+    # [3] Static E2E uses the current session-aware client. The private runner's repo,
+    #     fixture, settings, artifact root, host and port stay inside this invocation.
+    $staticPort = 3100
+    if ($IsolationRoot) { $staticPort = $script:PrivatePort }
+    $ok = $false
+    try {
+        $extDest = Join-Path $script:Repo 'bin\Release\net48'
+        New-Item -ItemType Directory -Force -Path $extDest | Out-Null
+        Copy-Item $m.env.extension_dll -Destination (Join-Path $extDest 'dnSpy.Extension.MCP.x.dll') -Force
+        $testIlDest = Join-Path $m.env.sample_root 'TestIL.dll'
+        if (-not ([IO.Path]::GetFullPath($m.env.testil_dll) -ieq [IO.Path]::GetFullPath($testIlDest))) {
+            Copy-Item $m.env.testil_dll -Destination $testIlDest -Force
+        }
+        if (-not (Test-Path -LiteralPath $testIlDest -PathType Leaf)) { throw "TestIL fixture missing: $testIlDest" }
+        Save-Text 'testil-build.log' "fixture=$testIlDest sha256=$(Get-Sha256File $testIlDest)" | Out-Null
+        # The static suite owns its own session and launches only the designated private
+        # dnSpy. Its first action rejects an occupied listener or mismatched snapshot.
         Stop-DnSpyAndTargets
-        Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' 3100 $m.env.sample_root $m.env.artifact_root)
-        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port 3100 -SettingsFile ([Environment]::ExpandEnvironmentVariables($m.env.settings_xml)) -FixtureDll (Join-Path $m.env.sample_root 'TestIL.dll') *>&1
-        "$static" | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
+        Set-SnapshotJson (New-SnapshotJson $true $true 'localhost' $staticPort $m.env.sample_root $m.env.artifact_root)
+        $static = & (Join-Path $script:Repo 'tests\fixtures\run-tests.ps1') -SkipBuild -Tfm net48 -DnSpyExe $m.env.dnspy_exe -Port $staticPort -SettingsFile $m.env.settings_xml -FixtureDll $testIlDest *>&1
+        $staticExit = $LASTEXITCODE
         $static | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
-        $ok = ($LASTEXITCODE -eq 0) -or ($static -join '`n' -match 'ALL .*PASS|SMOKE PASSED')
+        $ok = ($staticExit -eq 0)
     } catch {
         $_ | Out-String | Set-Content (Join-Path $script:OutDir 'static-e2e.log')
         $ok = $false
