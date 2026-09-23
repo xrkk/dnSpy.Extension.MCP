@@ -78,6 +78,20 @@ namespace ImportHost
             return "added";
         }
 
+        public static int AddedWithLocal(int value)
+        {
+            try
+            {
+                int doubled = value * 2;
+                System.Threading.Interlocked.Increment(ref doubled);
+                return doubled;
+            }
+            catch (Exception)
+            {
+                return -1;
+            }
+        }
+
         public string Tag => "tag";
     }
 }
@@ -328,6 +342,7 @@ def main() -> int:
         {"compiled": "ImportHost.Machines::DoCoroutine()", "action": "replace_body"},
         {"compiled": "ImportHost.Machines::DoAsync()", "action": "replace_body"},
         {"compiled": "ImportHost.Machines::AddedTag`1(!!0)", "action": "add"},
+        {"compiled": "ImportHost.Machines::AddedWithLocal(System.Int32)", "action": "add"},
     ], revision)
     import_row = payload(imported).get("import", {})
     kinds = [str(item.get("kind")) for item in import_row.get("rows", []) if isinstance(item, dict)]
@@ -377,7 +392,8 @@ def main() -> int:
     check("V1 edited async constant", "200" in il_text, il_text[:300])
     added = call(client, "list_methods", {"assembly_name": "ImportHost", "type_full_name": "ImportHost.Machines"})
     added_names = [str(field(item, "name", "Name")) for item in added.get("items", []) if isinstance(item, dict)]
-    check("V1 members landed", "AddedTag" in added_names and any(n.startswith("get_Tag") for n in added_names), str(added_names))
+    check("V1 members landed", "AddedTag" in added_names and "AddedWithLocal" in added_names
+          and any(n.startswith("get_Tag") for n in added_names), str(added_names))
 
     # X1 export: exactly one file below ArtifactRoot, no sidecar PDB.
     exported = call(client, "edit_export", {
