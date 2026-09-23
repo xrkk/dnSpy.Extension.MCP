@@ -27,6 +27,8 @@ URL = "http://127.0.0.1:15378/mcp"
 FIXTURE = r"C:\Tools\mcp-repo\tests\fixtures\bin\TestIL.dll"
 FAILURES: list[str] = []
 PASSES: list[str] = []
+CALLS: list[dict] = []
+NEXT_ID = 25000
 DEPLOYMENT_ROOT = ""
 ARCH = "x64"
 OUTPUT_ROOT = ""
@@ -59,17 +61,49 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 def call(client: DnSpyClient, tool: str, args: dict) -> dict:
+    global NEXT_ID
+    NEXT_ID += 1
+    request = {"jsonrpc": "2.0", "id": NEXT_ID, "method": "tools/call",
+               "params": {"name": tool, "arguments": args}}
     try:
-        return client.call_tool_json(tool, args)
+        response = client.request_object(request)
+        raw_body = response.body.decode("utf-8", "replace")
+        candidates = [raw_body, *(line[6:] for line in raw_body.splitlines() if line.startswith("data: "))]
+        message = None
+        for item in candidates:
+            try:
+                row = json.loads(item)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get("id") == NEXT_ID:
+                message = row
+                break
+        if message is None:
+            raise RuntimeError("JSON-RPC response ID not found")
+        result = message.get("result") or {}
+        structured = result.get("structuredContent")
+        content = result.get("content") or []
+        parsed = json.loads(content[0]["text"]) if content else None
+        value = structured if isinstance(structured, dict) else parsed
+        if not isinstance(value, dict):
+            value = {"ok": False, "error": message.get("error", {"code": "DRIVER_TRANSPORT", "message": "empty tool response"})}
+        CALLS.append({"request": request, "raw_body": raw_body, "message": message,
+                      "content_structured_mirror": parsed == structured if isinstance(structured, dict) else None,
+                      "parsed_response": value})
+        return value
     except Exception as ex:  # noqa: BLE001
         text = str(ex)
         start = text.find("{")
         if start >= 0:
             try:
-                return json.loads(text[start:])
+                value = json.loads(text[start:])
+                CALLS.append({"request": request, "transport_exception": text[:300], "parsed_response": value})
+                return value
             except json.JSONDecodeError:
                 pass
-        return {"ok": False, "error": {"code": "DRIVER_TRANSPORT", "message": text[:300]}}
+        value = {"ok": False, "error": {"code": "DRIVER_TRANSPORT", "message": text[:300]}}
+        CALLS.append({"request": request, "transport_exception": text[:300], "parsed_response": value})
+        return value
 
 
 def payload(envelope: dict) -> dict:
@@ -258,7 +292,11 @@ def main() -> int:
         rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": probe_tx["transaction_id"]})
         check("A2 no active transaction before native UI", bool(rolled.get("ok")), json.dumps(rolled)[:180])
 
-    native_name = "T018Ui" + ("64" if ARCH == "x64" else "86")
+    old_package = Path(PACKAGE_ROOT) / "edit-checkpoints" / (old_lineage_id + ".dnspy-mcp-checkpoints")
+    old_package_sha = file_sha256(old_package) if old_package.is_file() else ""
+    check("A1 old package exists before UI", bool(old_package_sha), str(old_package))
+
+    native_name = "T068Ui" + ("64" if ARCH == "x64" else "86")
     names_before = type_names(client)
     ui_facts = native_type_rename("Simple", native_name, output)
     names_after = type_names(client)
@@ -304,6 +342,20 @@ def main() -> int:
     check("A4 wrong accept no new lineage", len(rows_after_wrong) == len(lineages),
           f"before={len(lineages)} after={len(rows_after_wrong)}")
 
+    # No implicit adoption: both omitted and false acknowledgement are rejected
+    # by the advertised input contract before the coordinator can write a root.
+    for label, acknowledged in (("omitted", None), ("false", False)):
+        args = {"request_id": rid(), "assembly_name": "TestIL", "source_family_id": old_family_id,
+                "superseded_lineage_id": old_lineage_id, "expected_live_fingerprint": diverged_fp}
+        if acknowledged is not None:
+            args["acknowledge_new_baseline"] = acknowledged
+        denied = call(client, "edit_accept_live", args)
+        no_ack_history = payload(call(client, "edit_history", {}))
+        check("A4 " + label + " acknowledgement cannot accept",
+              denied.get("ok") is not True and len(no_ack_history.get("lineages", [])) == len(lineages)
+              and file_sha256(old_package) == old_package_sha and native_name in type_names(client),
+              json.dumps(denied)[:240])
+
     # Explicit accept of the externally mutated live state.
     accept = call(client, "edit_accept_live", {
         "request_id": rid(), "assembly_name": "TestIL", "source_family_id": old_family_id,
@@ -325,6 +377,9 @@ def main() -> int:
     old_rows = old_view.get("checkpoints", []) if isinstance(old_view.get("checkpoints"), list) else []
     check("A6 old lineage readable", len(old_rows) == old_count and any(c.get("checkpoint_id") == old_head for c in old_rows if isinstance(c, dict)),
           f"rows={len(old_rows)} expected={old_count}")
+    check("A6 old package and head byte-stable", file_sha256(old_package) == old_package_sha
+          and any(c.get("checkpoint_id") == old_head and c.get("is_head") for c in old_rows if isinstance(c, dict)),
+          f"before={old_package_sha} after={file_sha256(old_package)}")
 
     # New lineage: single root, no parent, no forged operations.
     new_view = payload(call(client, "edit_history", {"lineage_id": new_lineage_id, "page_size": 100}))
@@ -361,7 +416,8 @@ def main() -> int:
     check("A8 new lineage links superseded", new_row.get("superseded_lineage_id") == old_lineage_id,
           json.dumps(new_row)[:240])
 
-    # The coordinator is usable again: begin binds the new baseline, rollback cleanly.
+    # The coordinator is usable again: bind the accepted baseline and commit a
+    # normal MCP edit, not only a begin/rollback handshake.
     begin2 = call(client, "edit_begin", {"assembly_name": "TestIL", "request_id": rid()})
     begin_ok = bool(begin2.get("ok"))
     check("A9 begin usable after accept", begin_ok, json.dumps(begin2)[:240])
@@ -370,13 +426,31 @@ def main() -> int:
               payload(begin2).get("source", {}).get("live_fingerprint") == diverged_fp,
               json.dumps(payload(begin2).get("source", {}))[:220])
         tx2 = payload(begin2).get("transaction", {}).get("transaction_id", "")
-        rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx2})
-        check("A9 rollback after accept", bool(rolled.get("ok")), json.dumps(rolled)[:200])
+        rev2 = payload(begin2).get("transaction", {}).get("work_revision", 0)
+        applied2 = call(client, "edit_apply", {"request_id": rid(), "transaction_id": tx2,
+            "expected_revision": rev2, "operation": {"kind": "module_update", "name": "T068AfterUiAccept"}})
+        check("A9 normal apply after accept", applied2.get("ok") is True, json.dumps(applied2)[:200])
+        review2 = call(client, "edit_review", {"request_id": rid(), "transaction_id": tx2,
+            "expected_revision": rev2 + 1})
+        reviewed2 = payload(review2).get("review", {})
+        check("A9 normal review after accept", review2.get("ok") is True, json.dumps(review2)[:200])
+        committed2 = call(client, "edit_commit", {"request_id": rid(), "transaction_id": tx2,
+            "expected_revision": rev2 + 1, "review_id": reviewed2.get("review_id", ""),
+            "review_revision": reviewed2.get("review_revision", 0),
+            "confirmed_risk_ids": reviewed2.get("required_confirmation_ids", [])})
+        final_history = payload(call(client, "edit_history", {"lineage_id": new_lineage_id, "page_size": 100}))
+        check("A9 normal commit after accept", committed2.get("ok") is True
+              and len(final_history.get("checkpoints", [])) == 2
+              and file_sha256(old_package) == old_package_sha,
+              json.dumps(committed2)[:260])
 
+    (output / "calls.json").write_text(json.dumps(CALLS, ensure_ascii=False, indent=2), encoding="utf-8")
     (output / "summary.json").write_text(json.dumps({"arch": ARCH, "fixture": FIXTURE,
         "fixture_sha256_before": fixture_sha_before, "fixture_sha256_after": file_sha256(FIXTURE),
         "native_name": native_name, "before_live_fingerprint": before_fp,
-        "accepted_live_fingerprint": diverged_fp, "passes": PASSES, "failures": FAILURES}, ensure_ascii=False, indent=2), encoding="utf-8")
+        "accepted_live_fingerprint": diverged_fp, "old_lineage_id": old_lineage_id,
+        "old_head_checkpoint_id": old_head, "old_package_sha256": old_package_sha,
+        "passes": PASSES, "failures": FAILURES}, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"EVIDENCE {output}", flush=True)
     print(f"ACC025 {'PASS' if not FAILURES else 'FAIL'} passes={len(PASSES)} failures={FAILURES}", flush=True)
     return 0 if not FAILURES else 1
