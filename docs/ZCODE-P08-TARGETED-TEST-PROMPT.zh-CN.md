@@ -2,25 +2,26 @@
 
 ## 目标
 
-针对 P08（资源大载荷与强名称）做定向回归验收，退出判据＝全部断言通过且无遗留活动事务/进程。
+针对 P08（资源大载荷与强名称）做定向回归。强名称可信来源仍未闭合，故本轮可交付资源与强名称安全拒绝证据，不能将 P08/ACC016 整体判通过。
 
 ## 前置
 
-- dnSpy + MCP 插件已部署，loopback 健康检查通过（`http://localhost:<port>/health`）。
-- `tools/list` 包含本阶段新工具（以注册表快照核对）。
-- 阶段 fixtures 已就位。
+- 操作员授权的隔离 dnSpy 实例和可丢弃 fixture 已就位；核插件/样本 SHA、独立 settings/AllowedSampleRoot/ArtifactRoot、宿主架构及受保护 PID+完整 exe+创建时刻。只停本轮自启对象，禁止全局 kill、清旧包或覆盖源样本。
+- 正式 initialize，读取实时 `tools/list` 和资源工具 input/outputSchema；当前生产面 18 个编辑工具、39 类操作。ZCode 若不暴露 resources，14 URI 由支持 resources 的宿主另验，不计本轮已读。
 
 ## 步骤
 
 1. managed/win32 资源 CRUD+图标组断链拒绝+CON-019 哨兵；VM 路径导入导出身份；`strong_name_remove` 当前因无可信且绑定目标的因果证据源而恒拒绝，必须保存拒绝来源/失败模块绑定证据并将 ACC016 记 BLOCKED，不得声称成功去强名称。这只是当前实现限制，不改写正式验收要求：获得合法证据来源后仍须证明“来源事件→目标模块”绑定、真实成功去强名称及该证据一次消费；三项未完成前 ACC016 不得判 PASS。
-2. 每个失败样本必须断言稳定错误码/状态/恢复建议三元组。
-3. 结束时清理：回滚或提交全部事务，终止全部调试会话，`edit_status` 必须 idle。
+2. 对受控普通资源文件先核大小/路径/SHA，`edit_begin`→`edit_resource_import`（记录 `file_id`/长度/SHA）→`edit_review`→确认风险后 `edit_commit`→`edit_resource_export` 到 ArtifactRoot 下全新路径，独立读回 SHA；另做 managed/win32 CRUD、linked 归一、数字/文本 type/name 与语言定位。错误目标、根外、目录、reparse、超限及已有输出失败各记录前后 revision、live 指纹、包/输出 SHA；不得用工具启动失败代替业务拒绝。
+3. 强名称仅在已授权隔离样本上验证当前 `strong_name_remove` 安全拒绝，记录来源事件缺失、目标模块绑定和零副作用；可信动态验证来源、一次消费和真实成功去强名称均记未验证/阻断，不把测试缝 `edit_test_strong_name` 或净构建当作正例。
+4. 结束时回滚活动事务，确认编辑/调试 idle；只清理本轮自有产物/进程，受保护现场不变。
 
 ## 证据
 
 - 每步的请求/响应转录（request_id、错误码）。
 - 前后指纹（拒绝类断言必须证明零副作用）。
 - 文件清单（资源/导出类断言）。
+- 每条标真实宿主/测试缝/静态检查及未执行项；接口字段见 [AI 单文件手册](AI-TOOL-REFERENCE.zh-CN.md)。
 
 ### 资源路径导入导出补充
 
