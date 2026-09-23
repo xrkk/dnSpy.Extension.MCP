@@ -7,6 +7,30 @@ using dnlib.DotNet;
 using dnSpy.Extension.MCP.Editing;
 
 internal static class StructuralCommitGuardProbe {
+	public static void RunParameterAdd(string fixture) {
+		using var catalog = new EditSchemaCatalog();
+		using var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "p03-parameter-commit-" + Guid.NewGuid().ToString("N")));
+		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+		using var live = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		using var workspace = EditWorkspace.CreateForTesting(live);
+		var method = live.ResolveToken(0x0600000D) as MethodDef;
+		Check(method != null && method.MethodSig.Params.Count == 0, "parameter fixture has empty target signature");
+		var operation = "{\"kind\":\"parameter_add\",\"owner_method\":{\"token\":\"0x0600000D\"},\"parameter_index\":0,\"name\":\"added\",\"parameter_type\":\"System.Int32\"}";
+		using (var json = JsonDocument.Parse(operation))
+			EditOperationRegistry.Apply(workspace.PrivateModule, json.RootElement, workspace.ObjectIds, 0);
+		workspace.NormalizedOperations.Add(operation);
+		var binding = history.ResolveBegin(workspace, null);
+		var prepared = history.PrepareCommit(workspace, binding, workspace.NormalizedOperations,
+			"review-parameter-add", 1, Array.Empty<string>());
+		Check(store.TempCount == 1 && store.FinalCount == 0, "parameter_add inverse envelope prepares a package");
+		using (var json = JsonDocument.Parse(operation))
+			EditOperationRegistry.ApplyPersisted(live, json.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+		history.Finalize(prepared, live);
+		Check(store.FinalCount == 1 && method!.MethodSig.Params.Count == 1
+			&& method.MethodSig.Params[0].FullName == "System.Int32", "parameter_add package commits and preserves signature");
+		Console.WriteLine("PASS parameter-add-checkpoint envelope=parameter_remove committed=true");
+	}
+
 	public static void Run(string fixture) {
 		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
 		using var catalog = new EditSchemaCatalog();

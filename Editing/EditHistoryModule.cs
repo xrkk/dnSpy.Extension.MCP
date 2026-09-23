@@ -967,7 +967,17 @@ internal sealed class EditHistoryModule : IDisposable {
 			var hits = shapes.Count(shape => state.TryGetProperty(shape, out _));
 			var bodyShape = state.TryGetProperty("kind", out var stateKind)
 				&& string.Equals(ValueString(stateKind), "method_body_replace", StringComparison.Ordinal);
-			if (hits != 1 && !bodyShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID",
+			// parameter_add has always compiled its inverse as the public
+			// parameter_remove operation. Accept that existing executable form
+			// without changing the persisted inverse format or operation version.
+			var parameterRemoveShape = operation.Kind == "parameter_add" && hits == 0
+				&& state.EnumerateObject().Count() == 3
+				&& state.TryGetProperty("kind", out stateKind)
+				&& string.Equals(ValueString(stateKind), "parameter_remove", StringComparison.Ordinal)
+				&& StringProperty(state, "remove_mode", "reject_if_referenced")
+				&& state.TryGetProperty("parameter_target", out var parameterTarget)
+				&& parameterTarget.ValueKind == JsonValueKind.Object;
+			if (hits != 1 && !bodyShape && !parameterRemoveShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID",
 				new Dictionary<string, object?> { ["kind"] = "envelope_shape", ["operation_kind"] = operation.Kind, ["state_keys"] = state.EnumerateObject().Select(x => x.Name).ToArray() });
 			if (operation.Kind == EditOperationVersions.LegacySymbolRename) {
 				if (!state.TryGetProperty("legacy", out var legacy) || legacy.ValueKind != JsonValueKind.Object)

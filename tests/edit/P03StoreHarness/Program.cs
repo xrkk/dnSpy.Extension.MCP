@@ -74,6 +74,7 @@ static class Program {
 		if (args.Length == 2 && args[1] == "--owner-version") { OwnerVersionProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--legacy-history") { LegacyHistoryProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--structural-commit-guard") { StructuralCommitGuardProbe.Run(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--parameter-add-checkpoint") { StructuralCommitGuardProbe.RunParameterAdd(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--strong-name-evidence") { StrongNameEvidenceProbe.Run(); return 0; }
 		if (args.Length >= 2 && args[1] == "--owner-version-child") { OwnerVersionProbe.RunChildCase(args[2]); return 0; }
 			if (args.Length != 1 || !File.Exists(args[0])) throw new ArgumentException("usage: P03StoreHarness <managed-fixture>");
