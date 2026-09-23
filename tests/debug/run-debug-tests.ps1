@@ -24,12 +24,43 @@ param(
     [Parameter(Mandatory = $true, ParameterSetName = 'Case')]
     [ValidatePattern('^ACC-\d{3}$')]
     [string]$Case,
+    [Parameter(ParameterSetName = 'Case')]
+    [string]$IsolationRoot,
+    [Parameter(ParameterSetName = 'Case')]
+    [string]$RunId,
+    [Parameter(ParameterSetName = 'Case')]
+    [string]$SourceSha,
+    [Parameter(ParameterSetName = 'Case')]
+    [int]$PrivatePort,
+    [Parameter(ParameterSetName = 'Case')]
+    [ValidateSet('x64','x86')]
+    [string]$PrivateArch = 'x64',
     # CI harness gate: validate manifests/handlers/syntax without a VM (no result.json).
     [Parameter(Mandatory = $true, ParameterSetName = 'VerifyHarness')]
     [switch]$VerifyHarness
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($IsolationRoot) {
+    if ($RunId -cnotmatch '^[a-z0-9][a-z0-9-]{0,48}$' -or $SourceSha -cnotmatch '^[0-9a-f]{40}$' -or
+        $PrivatePort -lt 1024 -or $PrivatePort -gt 65535 -or $PrivatePort -in @(15378,15379)) {
+        throw 'isolated case requires a safe RunId, full source SHA, and private non-default port'
+    }
+    $rootPath = [IO.Path]::GetFullPath($IsolationRoot).TrimEnd('\')
+    if ($rootPath -notmatch '^E:\\dnspy-t072-r02-[a-zA-Z0-9-]+$' -or -not (Test-Path -LiteralPath $rootPath -PathType Container)) {
+        throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* root'
+    }
+    if ($Case -notin @('ACC-005','ACC-007','ACC-012')) {
+        throw "case $Case has not passed the isolated handler safety audit"
+    }
+    $expectedScriptDir = Join-Path $rootPath 'repo\tests\debug'
+    if (-not ([IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') -ieq [IO.Path]::GetFullPath($expectedScriptDir).TrimEnd('\'))) {
+        throw 'isolated runner must execute from its own private repo tree'
+    }
+} elseif ($RunId -or $SourceSha -or $PrivatePort -or $PSBoundParameters.ContainsKey('PrivateArch')) {
+    throw 'partial isolation parameters are forbidden'
+}
 
 # ---- CI harness gate (-VerifyHarness): no VM, no result.json — validates that the E2E
 # driver itself is complete and wired: script parses, all 36 case manifests exist, every
@@ -70,19 +101,30 @@ if ($VerifyHarness) {
 # ---------------------------------------------------------------- framework ----
 $script:ScriptDir = $PSScriptRoot
 . (Join-Path $script:ScriptDir 'ProcessOwnership.ps1')
-$repoOut = & git -C $script:ScriptDir rev-parse --show-toplevel 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $repoOut) { Write-Error "not a git work tree: $script:ScriptDir"; exit 2 }
-$script:Repo = (@($repoOut)[0]) -replace '/','\'
 $expectedRoot = (Resolve-Path (Join-Path $script:ScriptDir '..\..')).Path
-if ((Resolve-Path $script:Repo).Path -ne $expectedRoot) {
-    [Console]::Error.WriteLine("repo root mismatch: $script:Repo vs $expectedRoot")
-    exit 2
+if ($IsolationRoot) {
+    $script:Repo = $expectedRoot
+    $script:Sha = $SourceSha
+    $script:PrivatePort = $PrivatePort
+    $runParent = Join-Path $rootPath ('runs\' + $RunId)
+    New-Item -ItemType Directory -Force -Path $runParent | Out-Null
+    $script:OutDir = Join-Path $runParent $Case
+    if (Test-Path -LiteralPath $script:OutDir) { throw "isolated result already exists: $script:OutDir" }
+} else {
+    $repoOut = & git -C $script:ScriptDir rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $repoOut) { Write-Error "not a git work tree: $script:ScriptDir"; exit 2 }
+    $script:Repo = (@($repoOut)[0]) -replace '/','\'
+    if ((Resolve-Path $script:Repo).Path -ne $expectedRoot) {
+        [Console]::Error.WriteLine("repo root mismatch: $script:Repo vs $expectedRoot")
+        exit 2
+    }
+    $script:Sha = (& git rev-parse HEAD).Trim()
+    $script:PrivatePort = 15378
+    $script:OutDir = Join-Path $script:Repo "tests\debug\results\$script:Sha\$Case"
+    if (Test-Path -LiteralPath $script:OutDir) { throw "result already exists; refusing overwrite: $script:OutDir" }
 }
 Set-Location $script:Repo
-$script:Sha = (& git rev-parse HEAD).Trim()
-$script:OutDir = Join-Path $script:Repo "tests\debug\results\$script:Sha\$Case"
-if (Test-Path $script:OutDir) { Remove-Item -Recurse -Force $script:OutDir }
-New-Item -ItemType Directory -Force -Path (Join-Path $script:OutDir 'wire') | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $script:OutDir 'wire') -ErrorAction Stop | Out-Null
 
 $script:StartedUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
 $script:Assertions = New-Object System.Collections.ArrayList
@@ -355,6 +397,23 @@ if (-not (Test-Path $manifestPath)) {
     Assert-Cond 'precondition-manifest' ('tests\debug\cases\' + $Case + '.json exists') 'missing' $false @()
 } else {
     $script:Manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($IsolationRoot) {
+        $privateArchRoot = Join-Path $rootPath $PrivateArch
+        $privateApp = Join-Path $privateArchRoot 'app'
+        $privateFixture = Join-Path $privateArchRoot 'fixtures'
+        $script:Manifest.base_url = "http://127.0.0.1:$PrivatePort/"
+        $script:Manifest.env.dnspy_exe = Join-Path $privateApp $(if ($PrivateArch -eq 'x86') { 'dnSpy-x86.exe' } else { 'dnSpy.exe' })
+        $script:Manifest.env.extension_dll = Join-Path $privateApp 'bin\Extensions\dnSpy.Extension.MCP\dnSpy.Extension.MCP.x.dll'
+        $script:Manifest.env.settings_xml = Join-Path $privateArchRoot 'settings-template.xml'
+        $script:Manifest.env.sample_root = $privateFixture
+        $script:Manifest.env.artifact_root = Join-Path $privateArchRoot 'artifact'
+        $script:Manifest.env.fixture_exe = Join-Path $privateFixture 'AccFixture.exe'
+        $script:Manifest.env.vm_ip = '192.168.204.240'
+        foreach ($path in @($script:Manifest.env.dnspy_exe,$script:Manifest.env.extension_dll,
+                $script:Manifest.env.settings_xml,$script:Manifest.env.sample_root,$script:Manifest.env.artifact_root)) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "private manifest path missing: $path" }
+        }
+    }
     $script:BaseUrl = $script:Manifest.base_url
 
     # Every invocation receives a new artifact root and a private settings copy.  The committed
@@ -463,7 +522,7 @@ function Restart-WithSnapshot {
     return Start-DnSpyAndWait
 }
 function New-SnapshotJson {
-    param([bool]$DebugTools, [bool]$Dedicated, [string]$Host_ = 'localhost', [int]$Port_ = 15378,
+    param([bool]$DebugTools, [bool]$Dedicated, [string]$Host_ = 'localhost', [int]$Port_ = $(if ($IsolationRoot) { $script:PrivatePort } else { 15378 }),
            [string]$SampleRoot, [string]$ArtifactRoot, [string]$CidrsJson = '[]', [bool]$RemoteAck = $false, [string]$Verifier = 'null')
     $dt = if ($DebugTools) { 'true' } else { 'false' }
     $dd = if ($Dedicated) { 'true' } else { 'false' }
@@ -474,7 +533,7 @@ function Ensure-CanonicalDnSpy {
     # Leave/ensure the VM in the canonical gate-on loopback state, and sweep any session a
     # previously aborted case left behind so launch-facing cases always start from idle.
     if ((Get-HealthCode $script:BaseUrl) -ne '200') {
-        $json = New-SnapshotJson $true $true 'localhost' 15378 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+        $json = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
         if (-not (Restart-WithSnapshot $json)) { return $false }
     }
     $st = Invoke-ToolNoInit 'debug_status' @{ session_id = 'driver-sweep' }
@@ -492,7 +551,7 @@ function Ensure-CanonicalDnSpy {
         $state2 = if ($st2.domain) { "$($st2.domain.result.state)" } else { '' }
         if ($state2 -and $state2 -ne 'idle' -and $state2 -ne 'terminal') {
             # hard reset only as last resort
-            $json = New-SnapshotJson $true $true 'localhost' 15378 $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
+            $json = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $script:Manifest.env.sample_root $script:Manifest.env.artifact_root
             return Restart-WithSnapshot $json
         }
     }
