@@ -46,13 +46,13 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`、`module_update`、`assembly_ref_update`、`entry_point_set`
 - `managed_resource_add/update/remove`、`win32_resource_add/update/remove`
-- `strong_name_remove`（当前恒拒绝：缺少可信且绑定目标的因果证据源；ACC016 仍阻断）
+- `strong_name_remove` 要求存活、留存、一次消费且绑定目标程序集的 CLR loader 强名称拒绝事件；门控可授权匹配证据，但真实可信来源的成功路径和一次消费仍未通过 ACC016 验收。
 
 ### 4.4 39 类操作清单
 
 `type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
 
-操作 schema 和 `EditWire.OperationKinds` 均为 39 类；当前 `edit_apply` 注册描述仍误写“37”，该文案不是操作白名单。可接受种类以实时 inputSchema 为准；这里记录源码描述差异，不表示产品文案已修复。
+操作 schema、`EditWire.OperationKinds` 和当前 `edit_apply` 注册描述均为 39 类；可接受种类以实时 inputSchema 为准。
 
 ## 5. 错误码与恢复（冻结）
 

@@ -99,7 +99,7 @@ net10 动态调试通过。
 **资源与大载荷**
 13. **edit_resource_import** — 服务端从 VM 文件路径读取资源字节并暂存为内嵌载荷操作（大载荷不进 MCP 请求正文；内联上限不变）
 14. **edit_resource_export** — 把已提交资源写到 ArtifactRoot 下并返回完整文件身份（路径/长度/SHA-256）
-15. *（edit_apply 种类）* `managed_resource_add/update/remove`、`win32_resource_add/update/remove` — 标准 `.resources` 条目编辑（标量/字符串/字节数组；自定义序列化对象仅元数据+整体替换——绝不反序列化）、图标组结构校验；`strong_name_remove` 当前因缺少可信且绑定目标的因果证据源而恒拒绝（ACC016 仍阻断）
+15. *（edit_apply 种类）* `managed_resource_add/update/remove`、`win32_resource_add/update/remove` — 标准 `.resources` 条目编辑（标量/字符串/字节数组；自定义序列化对象仅元数据+整体替换——绝不反序列化）、图标组结构校验；`strong_name_remove` 有目标绑定且一次消费的可信事件门控，但真实成功路径尚未通过 ACC016 验收
 
 39 类操作覆盖类型、方法、字段、属性、事件、参数、泛型参数、程序集/模块身份、AssemblyRef、入口点、托管与 Win32 资源、强名称移除、接口/引用新增，以及完整方法体替换。引用使用元数据 token 或事务内 object ID；原始 PE、heap、RVA、十六进制编辑被明确拒绝。结构化编辑事务活动期间，旧实时写工具会被拒绝，避免绕过事务。只读的**MCP Edit Explorer**窗口（View 菜单）展示事务、暂存操作、diff、风险与逐检查点的谱系详情；空闲时也可浏览历史。本地取消面向当前活动事务（属主在线即可，操作/提交执行期间除外；孤儿事务同样受操作/提交忙态守卫约束）——UI 不提供任何提交/恢复入口。
 

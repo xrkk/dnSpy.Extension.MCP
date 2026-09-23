@@ -46,13 +46,13 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`, `module_update`, `assembly_ref_update`, `entry_point_set`
 - `managed_resource_add/update/remove`, `win32_resource_add/update/remove`
-- `strong_name_remove` (currently always rejected: no trusted target-bound causal evidence source; ACC016 is blocked)
+- `strong_name_remove` requires a live, retained, one-time CLR loader strong-name rejection bound to the target assembly. The gate can authorize matching evidence, but a real trusted-source success and one-time consumption have not passed ACC016 acceptance.
 
 ### 4.4 The 39 operation kinds
 
 `type_add` · `type_update` · `type_remove` · `method_add` · `method_update` · `method_remove` · `field_add` · `field_update` · `field_remove` · `property_add` · `property_update` · `property_remove` · `event_add` · `event_update` · `event_remove` · `parameter_add` · `parameter_update` · `parameter_remove` · `generic_parameter_add` · `generic_parameter_update` · `generic_parameter_remove` · `method_body_replace` · `attribute_add` · `attribute_remove` · `security_add` · `security_remove` · `assembly_update` · `module_update` · `assembly_ref_update` · `entry_point_set` · `managed_resource_add` · `managed_resource_update` · `managed_resource_remove` · `win32_resource_add` · `win32_resource_update` · `win32_resource_remove` · `strong_name_remove` · `interface_add` · `reference_add`
 
-The operation schema and `EditWire.OperationKinds` contain 39 entries. The current `edit_apply` registry description still says “37”; that text is stale and is not the operation allow-list. Check the live input schema for accepted kinds. This source-description discrepancy is not a claim that the product defect is fixed.
+The operation schema, `EditWire.OperationKinds` and current `edit_apply` registry description agree on 39 entries. Check the live input schema for accepted kinds.
 
 ## 5. Error codes and recovery (frozen)
 

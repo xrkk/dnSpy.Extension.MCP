@@ -47,8 +47,9 @@ by the returned transaction-scoped `object_id`; an existing object is addressed 
 metadata token. Removal is only `reject_if_referenced`. Unknown raw fields such as `raw_metadata`,
 `pe_bytes`, `heap`, `rva` and `hex_patch` are rejected by the published schema.
 
-`strong_name_remove` is presently always rejected: no trusted target-bound causal evidence source
-is available, so ACC016 remains blocked. The old live write tools are blocked while a structured
+`strong_name_remove` requires a live, retained, one-time CLR loader strong-name rejection bound to
+the target assembly. Matching evidence can pass the gate, but its real success path and one-time
+consumption have not passed ACC016 acceptance. The old live write tools are blocked while a structured
 transaction is active, so do not mix the two workflows.
 
 A syntactically valid operation with an unknown version returns

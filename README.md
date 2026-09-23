@@ -100,7 +100,7 @@ not establish net10 dynamic-debugging support.
 **Resources & large payloads**
 13. **edit_resource_import** — read resource bytes from a VM file path server-side and stage them as an inline-payload operation (large payloads never ride the MCP request body; inline limits unchanged)
 14. **edit_resource_export** — write a committed resource below ArtifactRoot and return the full file identity (path/length/SHA-256)
-15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` is currently rejected because no trusted target-bound causal evidence source is available (ACC016 remains blocked)
+15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` has a target-bound, one-time trusted-event gate, but its real success path has not passed ACC016 acceptance
 
 The 39 operation kinds cover add/update/remove for types, methods, fields, properties, events,
 parameters, generic parameters, assembly/module identity, AssemblyRef, entry point, managed and

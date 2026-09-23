@@ -100,8 +100,8 @@ restore/export/recover/accept_live，并覆盖 compile/import/impact_scan 与 re
 操作清单必须为 39 类，含 `interface_add`、`reference_add`。语法有效但版本未知返回
 `EDIT_OPERATION_VERSION_UNSUPPORTED`，畸形输入仍为 schema/参数无效。`edit_compile.documents`
 每项字段闭集只有 `path`、`content`。v1 检查点仅 exact；漂移须显式建立 v2 新谱系，v2 的
-`validated_drift`/`unverified_drift` 迁移均按契约要求明确确认。`strong_name_remove` 当前恒拒绝，
-必须把 ACC016 记 BLOCKED，不得用预期拒绝冒充成功路径。
+`validated_drift`/`unverified_drift` 迁移均按契约要求明确确认。`strong_name_remove` 仅在存活、留存、绑定目标的 CLR loader 强名称拒绝证据通过一次消费门控时可成功；真实可信来源和成功路径尚未验收，
+必须把 ACC016 记 BLOCKED，不得用普通拒绝或测试缝冒充成功路径。
 
 `edit_recover` 只有实际形成受支持的部分提交状态时才有成功恢复路径；`edit_accept_live` 只有真实 UI 漂移且显式确认新 v2 谱系时才可成功。不得为凑工具计数制造共享现场故障或把普通拒绝计为成功。若当前宿主只给智能体一个 MCP 会话，第二会话所有权项记 BLOCKED 并明确写“宿主限制”；
 其余产品工具不得因此跳过。任何中途失败都必须尝试 `edit_rollback`，不能遗留活动编辑事务。

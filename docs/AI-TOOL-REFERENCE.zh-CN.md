@@ -4,7 +4,7 @@
 
 本文独立给出工具选择、参数/结果、状态关联和冻结结构，英文代码字段保持原样。文末附源 schema 的自包含 JSON：编辑工具完整 `inputSchema`/`outputSchema` 与全部 39 种操作；调试 `$defs` 与 `$ref` 均在同一文件内；静态工具的 `inputSchema` 亦在此。表格是快速入口，附录是精确嵌套语法，不必另开源码。
 
-已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。T053 在新隔离根复验了 x86/x64 四种 `break_kind` 的启动、重启、完整分页事件流和真实首机会异常；这不代表全调试套件或所有异常策略已验收。强名称可信来源尚未闭合，`strong_name_remove` 不能当作可成功能力。其他动态/编辑能力也受下述运行门限限制。
+已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。T053 在新隔离根复验了 x86/x64 四种 `break_kind` 的启动、重启、完整分页事件流和真实首机会异常；这不代表全调试套件或所有异常策略已验收。`strong_name_remove` 有可信事件门控分支，但真实可信来源的成功路径尚未完成 ACC016 验收，不能当作已验收的成功能力。其他动态/编辑能力也受下述运行门限限制。
 
 ## 1. MCP 接入、信封与能力门
 
@@ -1284,7 +1284,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 定义目标可以是 token 或事务 object_id 等 schema 指定地址；不能把跨修订 token/name 当稳定身份。检查点 replay 的定义地址形式为 `t/<index>[/t/<nested-index>][/m|f|p|e/<index>][/a|g/<index>]`，绑定预期图指纹，不是永久对象 ID。`reference_add.reference.form` 闭集是 `assembly_ref,type_ref,type_spec,member_ref,method_spec`；`type_ref` 必须显式 scope，`assembly_ref` 的 public key/token 必须显式 kind，不从字节长度猜，具体字段见附录 C。IL body 指令、operand、局部变量、异常处理、CDI/资源 base64 的全量约束均在对应 operation 子对象里。
 
-持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 虽有输入分支，目前必要可信来源门未闭合，不能宣称可成功。
+持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 虽有输入和可信事件门控分支，但真实来源成功路径尚未验收，不能宣称 ACC016 已通过。
 
 ### 编辑代表流程（ID 均由前一步实际响应替换）
 
@@ -18040,6 +18040,6 @@ JSON Pointer 指向附录 B 中的定义；`direction` 区分入站、出站与�
 ## 来源与边界
 
 - `McpTools.cs` SHA256 `c5c540240b154d798c631fa16f87974f3f91edf62120d1a8e77ae6ecbf425427`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
-- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `e6033fe86785a99f978545198f4525381a9caa073b3fa1c6ee7e3d92bc43d822`；`Editing/EditToolProvider.cs` SHA256 `b1f694a86dbb77b37a2f0234862d4584d45e0dbedcf907a7bf6ccff1bb6e13f4`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
+- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `e6033fe86785a99f978545198f4525381a9caa073b3fa1c6ee7e3d92bc43d822`；`Editing/EditToolProvider.cs` SHA256 `45c956b3da385c46e5d938a46ba630dfa74a309ed670d8e8537147280740db24`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
 - `tests/debug/contracts/dnspy.debug.utf8-limits.json` SHA256 `bf8741dd5054cbff6cbf23a429adeec533ab0b6e84689655763062621ee04b7f`；`McpServer.cs` SHA256 `cdde4fcd3408febe53c6d32a60d369a66eb1eb7ca2ac9481589abd5581358261`。
 - 这是源码接口手册，不是 VM 功能验收报告。运行时条件、实例配置、文件身份和目标架构须以 `debug_capabilities`、`tools/list`、调用返回和实际环境核对。

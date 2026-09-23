@@ -66,12 +66,36 @@ for stage in range(1, 9):
     assert "全局 kill" in body and "tools/list" in body, path
 
 source_description = (ROOT / "Editing/EditToolProvider.cs").read_text(encoding="utf-8")
-assert '"edit_apply" => "Apply one of the 37' in source_description
-assert "37" in texts[ROOT / "docs/MCP-TOOLS.md"] and "误写“37”" in texts[ROOT / "docs/MCP-TOOLS.zh-CN.md"]
+source_operations = registry.source_registry("production", "enabled")[1]
+schema = json.loads((ROOT / "Editing/Contracts/p03-tool-schemas.json").read_text(encoding="utf-8"))
+schema_operations = [branch["properties"]["kind"]["const"] for branch in
+                     schema["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]]
+assert schema_operations == source_operations, "edit_apply schema differs from OperationKinds"
+
+def description_count(description: str) -> int:
+    match = re.search(r'"edit_apply"\s*=>\s*"Apply one of the (\d+) structured metadata/body operations atomically to the transaction private copy\."', description)
+    assert match, "edit_apply registry description missing or changed"
+    count = int(match.group(1))
+    assert count == len(source_operations) == len(schema_operations), (
+        "edit_apply description/schema/OperationKinds count mismatch", count,
+        len(schema_operations), len(source_operations))
+    return count
+
+assert description_count(source_description) == 39
+# In-memory negative mutation: catches the old 37 claim without changing shared source.
+try:
+    description_count(source_description.replace("Apply one of the 39 structured", "Apply one of the 37 structured", 1))
+except AssertionError:
+    pass
+else:
+    raise AssertionError("stale 37 description escaped registry validation")
+assert "still says “37”" not in texts[ROOT / "docs/MCP-TOOLS.md"]
+assert "误写“37”" not in texts[ROOT / "docs/MCP-TOOLS.zh-CN.md"]
 csproj = (ROOT / "dnSpy.Extension.MCP.csproj").read_text(encoding="utf-8")
 assert 'Include="docs/mcp-resources/overview.md" LogicalName="dnspy.docs.overview.md"' in csproj
 
 print(json.dumps({"status": "PASS", "profiles": profiles, "operations": 39,
                   "unadvertised_edit_tests": len(test_seams), "documents_checked": len(docs),
                   "links_checked": sum(len(re.findall(r"\[[^]]+\]\([^)]+\)", body)) for body in texts.values()),
-                  "known_source_description_mismatch": "edit_apply 37 vs schema 39"}, ensure_ascii=False))
+                  "registry_description_operations": 39,
+                  "negative_mutation_37_rejected": True}, ensure_ascii=False))
