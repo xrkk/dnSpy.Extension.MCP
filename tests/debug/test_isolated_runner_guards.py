@@ -10,7 +10,7 @@ ALLOWED = (
     'ACC-005', 'ACC-006', 'ACC-007', 'ACC-008', 'ACC-009', 'ACC-010', 'ACC-011', 'ACC-012',
     'ACC-013', 'ACC-014', 'ACC-015', 'ACC-016', 'ACC-017', 'ACC-018', 'ACC-019',
     'ACC-020', 'ACC-021', 'ACC-024', 'ACC-025', 'ACC-026', 'ACC-027',
-    'ACC-004', 'ACC-028', 'ACC-030', 'ACC-031', 'ACC-032', 'ACC-034', 'ACC-035',
+    'ACC-004', 'ACC-028', 'ACC-029', 'ACC-030', 'ACC-031', 'ACC-032', 'ACC-034', 'ACC-035',
 )
 
 
@@ -28,7 +28,8 @@ class IsolatedRunnerGuards(unittest.TestCase):
         self.assertTrue('dnspy-t072-r02-' in TEXT, 'private root guard missing')
         self.assertIn('case $Case has not passed the isolated handler safety audit', TEXT)
         self.assertIn('isolated runner must execute from its own private repo tree', TEXT)
-        self.assertIn('private .NET 10 x64 host is required for isolated ACC-008', TEXT)
+        self.assertIn('private .NET 10 x64 host is required for isolated CoreCLR cases', TEXT)
+        self.assertIn('private x86 runtime and dnSpy host are required for isolated ACC-029', TEXT)
 
     def test_allowed_handlers_have_no_shared_or_global_writes(self):
         starts = [(m.start(), m.group(1)) for m in re.finditer(r'^function Run-(ACC\d{3}) \{', TEXT, re.M)]

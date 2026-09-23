@@ -55,7 +55,7 @@ if ($IsolationRoot) {
         'ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-024','ACC-025','ACC-026','ACC-027',
-        'ACC-004','ACC-028','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035')) {
+        'ACC-004','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035')) {
         throw "case $Case has not passed the isolated handler safety audit"
     }
     $expectedScriptDir = Join-Path $rootPath 'repo\tests\debug'
@@ -413,12 +413,19 @@ if (-not (Test-Path $manifestPath)) {
         $script:Manifest.env.artifact_root = Join-Path $privateArchRoot 'artifact'
         $script:Manifest.env.fixture_exe = Join-Path $privateFixture 'AccFixture.exe'
         $script:Manifest.env.vm_ip = '192.168.204.240'
-        if ($Case -eq 'ACC-008') {
+        if ($Case -in @('ACC-008','ACC-029')) {
             $privateRuntime = Join-Path $privateFixture 'dotnet10-x64'
             $script:Manifest.env.dotnet10_x64 = Join-Path $privateRuntime 'dotnet.exe'
             $script:Manifest.env.dotnet10_root = $privateRuntime
             if (-not (Test-Path -LiteralPath $script:Manifest.env.dotnet10_x64 -PathType Leaf)) {
-                throw 'private .NET 10 x64 host is required for isolated ACC-008'
+                throw 'private .NET 10 x64 host is required for isolated CoreCLR cases'
+            }
+            if ($Case -eq 'ACC-029') {
+                $script:Manifest.env.dotnet10_x86 = Join-Path (Join-Path $privateFixture 'dotnet10-x86') 'dotnet.exe'
+                if (-not (Test-Path -LiteralPath $script:Manifest.env.dotnet10_x86 -PathType Leaf) -or
+                    -not (Test-Path -LiteralPath (Join-Path $rootPath 'x86\app\dnSpy-x86.exe') -PathType Leaf)) {
+                    throw 'private x86 runtime and dnSpy host are required for isolated ACC-029'
+                }
             }
         }
         foreach ($path in @($script:Manifest.env.dnspy_exe,$script:Manifest.env.extension_dll,
@@ -866,6 +873,13 @@ function Launch-AndPause([string]$Exe, [string]$BreakKind = 'entry', [string]$Ar
     $P = Invoke-ToolNoInit 'debug_pause' @{ session_id = $sid; generation = $gen; request_id = (New-HelperRequestId 'acc-pause') }
     $wp = Wait-StablePaused $sid
     return @{ ok = ($wp.ok); launch = $L; sid = $sid; gen = $gen; epoch = $wp.epoch }
+}
+
+# Shared legacy path is returned only by the non-isolated mode. Isolated ACC-029 always
+# binds the x86 handover to the sibling private host, checked before result creation.
+function Get-Acc029X86HostPath {
+    if ($IsolationRoot) { return Join-Path $rootPath 'x86\app\dnSpy-x86.exe' }
+    return 'C:\Tools\dnSpy\dnSpy-x86.exe'
 }
 
 # ---------------------------------------------------------------- case: ACC-001 ----
@@ -3771,7 +3785,7 @@ function Run-ACC029 {
     Assert-Cond 'a29-x86-on-x64' 'x86 binary on x64 host = CAPABILITY_UNAVAILABLE, zero Start' "code=$badCode start=+$((Get-SpyDelta $spy0 $spy1 'dbg_start_calls'))" (("$badCode" -eq 'CAPABILITY_UNAVAILABLE') -and ((Get-SpyDelta $spy0 $spy1 'dbg_start_calls') -eq 0)) @($bad.rpc.resp)
 
     # [3] Switch to the x86 dnSpy host for the x86 legs (same extension DLL, AnyCPU IL).
-    $x86Exe = 'C:\Tools\dnSpy\dnSpy-x86.exe'
+    $x86Exe = Get-Acc029X86HostPath
     if (-not (Test-Path $x86Exe)) { Fail-Precondition 'a29-x86-host' 'dnSpy-x86.exe present'; return }
     $origDnspy = $m.env.dnspy_exe
     $m.env.dnspy_exe = $x86Exe
@@ -3814,8 +3828,8 @@ function Run-ACC029 {
 
             # [6] coreclr-dotnet x86 positive lifecycle on an actual isolated x86 .NET host.
             # All launch inputs, including the runtime host, must be physical children of
-            # AllowedSampleRoot. Provisioning keeps the shared x86 host under C:\Tools, so
-            # stage a non-reparse copy under the dedicated sample root for this positive leg.
+            # AllowedSampleRoot. Stage a non-reparse runtime copy under this run's dedicated
+            # sample root for the positive leg; a pre-staged private copy is also valid.
             $host86Root = Join-Path $m.env.sample_root 'dotnet10-x86'
             if (-not (Test-Path (Join-Path $host86Root 'dotnet.exe'))) {
                 New-Item -ItemType Directory -Force -Path $host86Root | Out-Null
