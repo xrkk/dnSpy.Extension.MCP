@@ -1229,6 +1229,13 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var cursor = OptionalArgument(args, "cursor"); var pageSize = (int)EditWire.Integer(args, "page_size", required: false, minimum: 1);
 		if (pageSize == 1 && (args == null || !args.ContainsKey("page_size"))) pageSize = 10;
 		if (pageSize > 100) throw new ArgumentException("page_size must be <= 100", "page_size");
+		// A first-checkpoint finalize failure owns only a validated staged temp:
+		// there is no final lineage to load yet. Report its actionable recovery
+		// instead of leaking a FileNotFoundException as EDIT_INTERNAL_ERROR.
+		if (lineageId != null && partial is { Kind: "checkpoint_finalize" } pending
+			&& !pending.Prepared.ReplacesExisting
+			&& string.Equals(lineageId, pending.Prepared.Lineage.Manifest.LineageId, StringComparison.Ordinal))
+			throw new EditDomainException("EDIT_CHECKPOINT_COMMIT_FAILED", RecoveryResult(pending));
 		var result = history.HistoryView(lineageId, checkpointId, EditHistoryModule.DecodeCursor(cursor), pageSize);
 		result["capacity"] = history.CapacityView(); result["recovery"] = RecoveryResult(partial);
 		return EditWire.Success(state, result);

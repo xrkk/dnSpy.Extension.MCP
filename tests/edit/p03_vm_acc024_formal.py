@@ -46,6 +46,12 @@ def main():
     check("024.a true finalize failure enters partial",err_code(f)=="EDIT_CHECKPOINT_COMMIT_FAILED" and st.get("state")=="committed_without_checkpoint" and rec.get("recovery_kind")=="checkpoint_finalize" and rec.get("allowed_actions")==["retry_checkpoint","undo_live"],json.dumps(st)[:320]);o.close()
     c=DnSpyClient(URL,client_name="p03-vm-acc024-reconnect",timeout=90);c.initialize();rs=payload(call(c,"edit_status",{}));r2=rs.get("recovery",{})
     check("024.b reconnect queries same recovery",rs.get("state")=="committed_without_checkpoint" and r2.get("recovery_id")==recid,json.dumps(rs)[:300])
+    pending_history=call(c,"edit_history",{"lineage_id":lineage})
+    check("024.b staged first-lineage history reports recovery, not internal error",
+          err_code(pending_history)=="EDIT_CHECKPOINT_COMMIT_FAILED"
+          and pending_history.get("state")=="committed_without_checkpoint"
+          and (pending_history.get("error",{}).get("details") or {}).get("recovery_id")==recid,
+          json.dumps(pending_history)[:300])
     for label,tool,args in export_variants(lineage,post,str(ARTIFACT_ROOT/"formal-acc024"/"partial.dll")):
         a=dict(args)
         if tool=="edit_export":a["request_id"]=rid()
