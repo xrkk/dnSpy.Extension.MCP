@@ -48,32 +48,32 @@
 
 | 精确工具名 | 类别/作用 | 影响与可用条件 | 详情 |
 | --- | --- | --- | --- |
-| `open_files` | 静态：Load .NET assemblies/modules into dnSpy from disk so the other tools can analyze them — like dnSpy's File → Open, but driven by the AI. | 只读/加载；需 dnSpy 实例与已加载目标 | [open_files](#open_files) |
-| `list_assemblies` | 静态：List all loaded assemblies in dnSpy. | 只读/加载；需 dnSpy 实例与已加载目标 | [list_assemblies](#list_assemblies) |
-| `get_assembly_info` | 静态：Get detailed information about a specific assembly. | 只读/加载；需 dnSpy 实例与已加载目标 | [get_assembly_info](#get_assembly_info) |
-| `list_types` | 静态：List all types in an assembly or namespace. | 只读/加载；需 dnSpy 实例与已加载目标 | [list_types](#list_types) |
-| `get_type_info` | 静态：Get detailed information about a specific type including its TypeDef token, generic-parameter tokens, and members. | 只读/加载；需 dnSpy 实例与已加载目标 | [get_type_info](#get_type_info) |
-| `decompile_method` | 静态：Decompile a specific method to C# code. | 只读/加载；需 dnSpy 实例与已加载目标 | [decompile_method](#decompile_method) |
-| `search_types` | 静态：Search for types by name. | 只读/加载；需 dnSpy 实例与已加载目标 | [search_types](#search_types) |
-| `search_members` | 静态：Search for MEMBERS (methods / fields / properties / events) by name across all loaded assemblies (or one via assembly_name) — the member counterpart of search_types, together covering dnSpy's Ctrl+Shift+K 'Search Assemblies'. | 只读/加载；需 dnSpy 实例与已加载目标 | [search_members](#search_members) |
-| `decompile_type` | 静态：Decompile a whole TYPE to C# (all members) — the dnSpy 'click the class and read its source' view. | 只读/加载；需 dnSpy 实例与已加载目标 | [decompile_type](#decompile_type) |
-| `decompile_by_token` | 静态：Decompile a method (or type) to C# by MDToken alone — no type name needed. | 只读/加载；需 dnSpy 实例与已加载目标 | [decompile_by_token](#decompile_by_token) |
-| `find_callers` | 静态：Cross-reference: find every method that CALLS a given method (call / callvirt / newobj / ldftn / ldvirtftn), across ALL loaded assemblies — callers routinely live in a different assembly than the target. | 只读/加载；需 dnSpy 实例与已加载目标 | [find_callers](#find_callers) |
-| `find_callees` | 静态：Cross-reference (inverse of find_callers): list what a single method USES — the methods it calls, the fields it reads/writes, and the types it touches in its own body (dnSpy Analyze's 'Uses' node). | 只读/加载；需 dnSpy 实例与已加载目标 | [find_callees](#find_callees) |
-| `find_references` | 静态：Cross-reference: find every IL site that references a target across ALL loaded assemblies. | 只读/加载；需 dnSpy 实例与已加载目标 | [find_references](#find_references) |
-| `find_overrides` | 静态：Cross-reference for virtual / interface methods (dnSpy Analyze 'Overridden By' / 'Overrides'). | 只读/加载；需 dnSpy 实例与已加载目标 | [find_overrides](#find_overrides) |
-| `find_unity_messages` | 静态：List the Unity lifecycle / message methods (Awake / Start / Update / FixedUpdate / OnEnable / OnTriggerEnter / OnCollisionEnter / OnGUI / OnDestroy / …) declared on a type, or across a whole assembly. | 只读/加载；需 dnSpy 实例与已加载目标 | [find_unity_messages](#find_unity_messages) |
-| `find_by_attribute` | 静态：Find types and/or members decorated with a given custom attribute, across all assemblies (or one). | 只读/加载；需 dnSpy 实例与已加载目标 | [find_by_attribute](#find_by_attribute) |
-| `search_string_literals` | 静态：Reverse-lookup: find every method that emits a given string literal (ldstr) across loaded assemblies. | 只读/加载；需 dnSpy 实例与已加载目标 | [search_string_literals](#search_string_literals) |
-| `list_string_constants` | 静态：List all string literals (ldstr) in a type, or in a single method. | 只读/加载；需 dnSpy 实例与已加载目标 | [list_string_constants](#list_string_constants) |
-| `search_constants` | 静态：Find where a NUMERIC constant is used in code (ldc.i4* / ldc.i8 / ldc.r4 / ldc.r8) — the number counterpart of search_string_literals, completing dnSpy's Search Assemblies set (types / members / strings / numbers). | 只读/加载；需 dnSpy 实例与已加载目标 | [search_constants](#search_constants) |
-| `generate_bepinex_plugin` | 静态：Generate a complete BepInEx plugin: the BaseUnityPlugin shell (Awake wiring Harmony.PatchAll, OnDestroy unpatch) plus a [HarmonyPatch] class per hook. | 只读/加载；需 dnSpy 实例与已加载目标 | [generate_bepinex_plugin](#generate_bepinex_plugin) |
-| `generate_harmony_patch` | 静态：Generate a compile-ready HarmonyX patch class for a REAL method, with the correct injected parameters read from its actual signature — unlike the empty stubs from generate_bepinex_plugin. | 只读/加载；需 dnSpy 实例与已加载目标 | [generate_harmony_patch](#generate_harmony_patch) |
-| `get_type_fields` | 静态：Get fields from a type matching a name pattern (supports wildcards like *Bonus*). | 只读/加载；需 dnSpy 实例与已加载目标 | [get_type_fields](#get_type_fields) |
-| `get_type_property` | 静态：Get detailed information about a specific property from a type | 只读/加载；需 dnSpy 实例与已加载目标 | [get_type_property](#get_type_property) |
-| `find_path_to_type` | 静态：Find property/field chains connecting two types through their members. | 只读/加载；需 dnSpy 实例与已加载目标 | [find_path_to_type](#find_path_to_type) |
-| `list_methods` | 静态：List methods of a type with unambiguous identifiers. | 只读/加载；需 dnSpy 实例与已加载目标 | [list_methods](#list_methods) |
-| `get_method_il` | 静态：Return the IL body of a method: instructions (index, offset, opcode, operand), locals, exception handlers, and body flags. | 只读/加载；需 dnSpy 实例与已加载目标 | [get_method_il](#get_method_il) |
+| `open_files` | 静态：Load .NET assemblies/modules into dnSpy from disk so the other tools can analyze them — like dnSpy's File → Open, but driven by the AI. | 加载本地文件/目录；无需预先加载目标 | [open_files](#open_files) |
+| `list_assemblies` | 静态：List all loaded assemblies in dnSpy. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [list_assemblies](#list_assemblies) |
+| `get_assembly_info` | 静态：Get detailed information about a specific assembly. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_assembly_info](#get_assembly_info) |
+| `list_types` | 静态：List all types in an assembly or namespace. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [list_types](#list_types) |
+| `get_type_info` | 静态：Get detailed information about a specific type including its TypeDef token, generic-parameter tokens, and members. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_type_info](#get_type_info) |
+| `decompile_method` | 静态：Decompile a specific method to C# code. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [decompile_method](#decompile_method) |
+| `search_types` | 静态：Search for types by name. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_types](#search_types) |
+| `search_members` | 静态：Search for MEMBERS (methods / fields / properties / events) by name across all loaded assemblies (or one via assembly_name) — the member counterpart of search_types, together covering dnSpy's Ctrl+Shift+K 'Search Assemblies'. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_members](#search_members) |
+| `decompile_type` | 静态：Decompile a whole TYPE to C# (all members) — the dnSpy 'click the class and read its source' view. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [decompile_type](#decompile_type) |
+| `decompile_by_token` | 静态：Decompile a method (or type) to C# by MDToken alone — no type name needed. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [decompile_by_token](#decompile_by_token) |
+| `find_callers` | 静态：Cross-reference: find every method that CALLS a given method (call / callvirt / newobj / ldftn / ldvirtftn), across ALL loaded assemblies — callers routinely live in a different assembly than the target. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_callers](#find_callers) |
+| `find_callees` | 静态：Cross-reference (inverse of find_callers): list what a single method USES — the methods it calls, the fields it reads/writes, and the types it touches in its own body (dnSpy Analyze's 'Uses' node). | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_callees](#find_callees) |
+| `find_references` | 静态：Cross-reference: find every IL site that references a target across ALL loaded assemblies. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_references](#find_references) |
+| `find_overrides` | 静态：Cross-reference for virtual / interface methods (dnSpy Analyze 'Overridden By' / 'Overrides'). | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_overrides](#find_overrides) |
+| `find_unity_messages` | 静态：List the Unity lifecycle / message methods (Awake / Start / Update / FixedUpdate / OnEnable / OnTriggerEnter / OnCollisionEnter / OnGUI / OnDestroy / …) declared on a type, or across a whole assembly. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_unity_messages](#find_unity_messages) |
+| `find_by_attribute` | 静态：Find types and/or members decorated with a given custom attribute, across all assemblies (or one). | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_by_attribute](#find_by_attribute) |
+| `search_string_literals` | 静态：Reverse-lookup: find every method that emits a given string literal (ldstr) across loaded assemblies. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_string_literals](#search_string_literals) |
+| `list_string_constants` | 静态：List all string literals (ldstr) in a type, or in a single method. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [list_string_constants](#list_string_constants) |
+| `search_constants` | 静态：Find where a NUMERIC constant is used in code (ldc.i4* / ldc.i8 / ldc.r4 / ldc.r8) — the number counterpart of search_string_literals, completing dnSpy's Search Assemblies set (types / members / strings / numbers). | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_constants](#search_constants) |
+| `generate_bepinex_plugin` | 静态：Generate a complete BepInEx plugin: the BaseUnityPlugin shell (Awake wiring Harmony.PatchAll, OnDestroy unpatch) plus a [HarmonyPatch] class per hook. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [generate_bepinex_plugin](#generate_bepinex_plugin) |
+| `generate_harmony_patch` | 静态：Generate a compile-ready HarmonyX patch class for a REAL method, with the correct injected parameters read from its actual signature — unlike the empty stubs from generate_bepinex_plugin. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [generate_harmony_patch](#generate_harmony_patch) |
+| `get_type_fields` | 静态：Get fields from a type matching a name pattern (supports wildcards like *Bonus*). | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_type_fields](#get_type_fields) |
+| `get_type_property` | 静态：Get detailed information about a specific property from a type | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_type_property](#get_type_property) |
+| `find_path_to_type` | 静态：Find property/field chains connecting two types through their members. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [find_path_to_type](#find_path_to_type) |
+| `list_methods` | 静态：List methods of a type with unambiguous identifiers. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [list_methods](#list_methods) |
+| `get_method_il` | 静态：Return the IL body of a method: instructions (index, offset, opcode, operand), locals, exception handlers, and body flags. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_method_il](#get_method_il) |
 | `patch_method_il` | 静态：按原始 IL 指令索引执行 replace/insert/delete/set_init_locals 兼容批次，并经结构化事务提交检查点；不要按旧通告描述假设仍只在内存暂存。 | 写/导出；需初始化会话、静态写门和编辑前提 | [patch_method_il](#patch_method_il) |
 | `force_return` | 静态：生成固定返回体并经结构化事务提交检查点；返回类型和值组合受实现限制。 | 写/导出；需初始化会话、静态写门和编辑前提 | [force_return](#force_return) |
 | `nop_method` | 静态：生成立即 ret 的空方法体并经结构化事务提交检查点。 | 写/导出；需初始化会话、静态写门和编辑前提 | [nop_method](#nop_method) |
@@ -131,7 +131,7 @@
 
 Load .NET assemblies/modules into dnSpy from disk so the other tools can analyze them — like dnSpy's File → Open, but driven by the AI. Use this when the assembly you need isn't loaded yet. Each entry in 'paths' may be a FILE (loaded directly) or a DIRECTORY (every file matching 'pattern', default '*.dll', optionally 'recursive') — so you can open several DLLs at once or a whole folder (e.g. a Unity game's 'Managed' directory). Only reads metadata; does not execute the assembly. Returns loaded_count / already_loaded_count / failed_count, a 'loaded' list ({name, path, already_loaded}) and a 'failed' list ({path, error}). Then use list_assemblies / search_types to work with them.
 
-`{"name":"open_files","arguments":{"paths":[]}}`
+`{"name":"open_files","arguments":{"paths":["C:\\Samples\\Demo.dll"]}}`
 
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
@@ -536,7 +536,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 
 按原始 IL 指令索引执行 replace/insert/delete/set_init_locals 兼容批次，并经结构化事务提交检查点；不要按旧通告描述假设仍只在内存暂存。
 
-`{"name":"patch_method_il","arguments":{"assembly_name":"sample_assembly_name","type_full_name":"sample_type_full_name","method_name":"sample_method_name","edits":[]}}`
+`{"name":"patch_method_il","arguments":{"assembly_name":"<已加载程序集>","type_full_name":"<前序类型全名>","method_name":"<前序方法名>","edits":[{"op":"set_init_locals","value":true}]}}`
 
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
@@ -548,7 +548,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `edits` | 是 | array; items=object |
 | `optimize_macros` | 否 | boolean |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### force_return
 
@@ -565,7 +565,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `parameter_types` | 否 | array; items=string |
 | `method_token` | 否 | integer/string |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### nop_method
 
@@ -581,7 +581,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `parameter_types` | 否 | array; items=string |
 | `method_token` | 否 | integer/string |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### revert_method_il
 
@@ -597,13 +597,13 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `parameter_types` | 否 | array; items=string |
 | `method_token` | 否 | integer/string |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### rename_symbol_by_token
 
 以 token 定位符号并经结构化事务提交；`enum_members` 批量值映射有额外 members 约束。
 
-`{"name":"rename_symbol_by_token","arguments":{"target_kind":"type","token":0}}`
+`{"name":"rename_symbol_by_token","arguments":{"target_kind":"type","token":"0x02000001","new_name":"RenamedType","assembly_name":"<已加载程序集>"}}`
 
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
@@ -613,7 +613,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `members` | 否 | array; items=object |
 | `assembly_name` | 否 | string |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### save_assembly
 
@@ -626,7 +626,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 | `assembly_name` | 是 | string |
 | `output_path` | 否 | string |
 
-返回：旧兼容 JSON 投影，修改调用带 `checkpoint`、`history`、`confirmed_risks`（如有）、`compatibility_warning` 和空 `backup_path`；`save_assembly` 为 `{saved_to,bytes_written,backup_path:null,source_preserved:true,sha256,file_id,lineage_id,checkpoint_id,warnings}`。失败可返回编辑域信封或纯错误文本；正在调试/事务非 idle 时先被写门以 `INVALID_STATE` 拒绝。旧写的原地覆盖语义已失效，导出限 ArtifactRoot。
+返回：本工具的完整成功投影和条件分支见附录 A2；旧兼容修改通过编辑协调器生成检查点，导出仅限 ArtifactRoot。失败可返回编辑域信封或执行错误文本；调试/事务门会先拒绝不允许的写入。此处调用只是 schema 形状示意，实际需用前序读取取得目标 token/名称、当前检查点与事务状态，不能将占位值直接用于真实目标。
 
 ### 旧 `patch_method_il` 子操作与 tagged operand
 
@@ -1023,7 +1023,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ### edit_import
 
-`{"name":"edit_import","arguments":{"request_id":"sample_request_id","transaction_id":"sample_transaction_id","expected_revision":0,"compile_id":"sample_compile_id","targets":[{"compiled":"sample_compiled","action":"replace_body"}]}}`
+`{"name":"edit_import","arguments":{"request_id":"import-1","transaction_id":"<edit_begin 返回 ID>","expected_revision":0,"compile_id":"<edit_compile 返回 ID>","targets":[{"compiled":"<编译产物方法标识>","action":"add"}]}}`
 
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
@@ -1330,7 +1330,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ## 附录 A：32 个静态工具的原样输入 schema
 
-以下键与 `McpTools.GetAvailableTools()` 一一对应。静态多数无 `outputSchema`，不能把本附录误读成输出声明。
+以下键与 `McpTools.GetAvailableTools()` 一一对应。静态多数无 `outputSchema`；源码推导的返回结构见附录 A2，唯一正式 `list_assemblies.outputSchema` 已在 A2 标明。
 
 ```json
 {
@@ -2440,6 +2440,2861 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "assembly_name"
     ]
   }
+}
+```
+
+## 附录 A2：静态工具成功返回结构（源码推导）
+
+以下 32 项是执行实现推导的成功文本投影，**不是** provider 声明的 outputSchema；唯一正式声明的是 `list_assemblies.outputSchema`，此处原样嵌入。表内 `required` 表示该成功分支构造时必有，未列入的字段只在所述条件出现；`null` 是实际 JSON null。`items` 的 `oneOf` 由 `names_only` 选择，`get_type_info.Methods` 的 `oneOf` 由 `compact` 选择；`get_type_info` 的 Fields/Properties/Events 仅无 cursor 的首请求出现。`nextCursor` 只在仍有下一页时出现；`get_assembly_info` 的 Namespaces 同理分页。`find_path_to_type` 无路径时是普通文本；五个反编译/生成工具直接返回文本。六个旧写工具通过编辑协调器：`checkpoint`/`history`/`confirmed_risks` 嵌套结构沿用冻结 `edit_commit` 输出定义，`revert_method_il.history` 沿用 `edit_undo` 输出定义；若事务分支没有某字段则该字段不出现。`rename_symbol_by_token` 普通分支仅出现 `updated_type_references` 或 `updated_member_references` 之一；`enum_members` 分支使用独立成员数组。错误没有统一冻结输出 schema：参数缺失、目标不存在、歧义、无 IL body、分页 cursor 无效等由执行实现抛出并映射成 `isError:true` 文本；不要将成功结构用于解析错误。`get_type_info.Fields[].Constant` 是源元数据值，可能是不同 JSON 基元；`search_constants.items[].value` 为数字。
+
+```json
+{
+ "open_files": {
+  "type": "object",
+  "properties": {
+   "loaded_count": {
+    "type": "integer"
+   },
+   "already_loaded_count": {
+    "type": "integer"
+   },
+   "failed_count": {
+    "type": "integer"
+   },
+   "loaded": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "path": {
+       "type": "string"
+      },
+      "already_loaded": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "name",
+      "path",
+      "already_loaded"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "failed": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "error": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "error"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "note": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "loaded_count",
+   "already_loaded_count",
+   "failed_count",
+   "loaded",
+   "failed"
+  ],
+  "additionalProperties": false
+ },
+ "list_assemblies": {
+  "type": "object",
+  "properties": {
+   "assemblies": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Name": {
+       "type": "string"
+      },
+      "Version": {
+       "type": "string"
+      },
+      "FullName": {
+       "type": "string"
+      },
+      "Culture": {
+       "type": "string"
+      },
+      "PublicKeyToken": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "Name",
+      "Version",
+      "FullName",
+      "Culture",
+      "PublicKeyToken"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "required": [
+   "assemblies"
+  ],
+  "additionalProperties": false
+ },
+ "get_assembly_info": {
+  "type": "object",
+  "properties": {
+   "Name": {
+    "type": "string"
+   },
+   "Version": {
+    "type": "string"
+   },
+   "FullName": {
+    "type": "string"
+   },
+   "Culture": {
+    "type": "string"
+   },
+   "PublicKeyToken": {
+    "type": "string"
+   },
+   "Modules": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Name": {
+       "type": "string"
+      },
+      "Kind": {
+       "type": "string"
+      },
+      "Architecture": {
+       "type": "string"
+      },
+      "RuntimeVersion": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "Name",
+      "Kind",
+      "Architecture",
+      "RuntimeVersion"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "Namespaces": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "NamespacesTotalCount": {
+    "type": "integer"
+   },
+   "NamespacesReturnedCount": {
+    "type": "integer"
+   },
+   "TypeCount": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "Name",
+   "Version",
+   "FullName",
+   "Culture",
+   "PublicKeyToken",
+   "Modules",
+   "Namespaces",
+   "NamespacesTotalCount",
+   "NamespacesReturnedCount",
+   "TypeCount"
+  ],
+  "additionalProperties": false
+ },
+ "list_types": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "Token": {
+         "type": "integer"
+        },
+        "FullName": {
+         "type": "string"
+        },
+        "Namespace": {
+         "type": "string"
+        },
+        "Name": {
+         "type": "string"
+        },
+        "IsPublic": {
+         "type": "boolean"
+        },
+        "IsNested": {
+         "type": "boolean"
+        },
+        "IsCompilerGenerated": {
+         "type": "boolean"
+        },
+        "DeclaringType": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "IsClass": {
+         "type": "boolean"
+        },
+        "IsInterface": {
+         "type": "boolean"
+        },
+        "IsEnum": {
+         "type": "boolean"
+        },
+        "IsValueType": {
+         "type": "boolean"
+        },
+        "IsAbstract": {
+         "type": "boolean"
+        },
+        "IsSealed": {
+         "type": "boolean"
+        },
+        "BaseType": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "Token",
+        "FullName",
+        "Namespace",
+        "Name",
+        "IsPublic",
+        "IsNested",
+        "IsCompilerGenerated",
+        "DeclaringType",
+        "IsClass",
+        "IsInterface",
+        "IsEnum",
+        "IsValueType",
+        "IsAbstract",
+        "IsSealed",
+        "BaseType"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "get_type_info": {
+  "type": "object",
+  "properties": {
+   "Token": {
+    "type": "integer"
+   },
+   "FullName": {
+    "type": "string"
+   },
+   "Namespace": {
+    "type": "string"
+   },
+   "Name": {
+    "type": "string"
+   },
+   "IsPublic": {
+    "type": "boolean"
+   },
+   "IsClass": {
+    "type": "boolean"
+   },
+   "IsInterface": {
+    "type": "boolean"
+   },
+   "IsEnum": {
+    "type": "boolean"
+   },
+   "IsValueType": {
+    "type": "boolean"
+   },
+   "IsAbstract": {
+    "type": "boolean"
+   },
+   "IsSealed": {
+    "type": "boolean"
+   },
+   "BaseType": {
+    "type": "string"
+   },
+   "Interfaces": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "GenericParameters": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Name": {
+       "type": "string"
+      },
+      "Token": {
+       "type": "integer"
+      },
+      "Number": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "Name",
+      "Token",
+      "Number"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "Methods": {
+    "type": "array",
+    "items": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "Name": {
+         "type": "string"
+        },
+        "Token": {
+         "type": "integer"
+        },
+        "Signature": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "Name",
+        "Token",
+        "Signature"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "object",
+       "properties": {
+        "Name": {
+         "type": "string"
+        },
+        "Token": {
+         "type": "integer"
+        },
+        "Signature": {
+         "type": "string"
+        },
+        "IsPublic": {
+         "type": "boolean"
+        },
+        "IsStatic": {
+         "type": "boolean"
+        },
+        "IsVirtual": {
+         "type": "boolean"
+        },
+        "IsAbstract": {
+         "type": "boolean"
+        },
+        "ReturnType": {
+         "type": "string"
+        },
+        "ParameterTypes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "Parameters": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "Name": {
+            "type": "string"
+           },
+           "Type": {
+            "type": "string"
+           },
+           "Token": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "Name",
+           "Type",
+           "Token"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "GenericParameters": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "Name": {
+            "type": "string"
+           },
+           "Token": {
+            "type": "integer"
+           },
+           "Number": {
+            "type": "integer"
+           }
+          },
+          "required": [
+           "Name",
+           "Token",
+           "Number"
+          ],
+          "additionalProperties": false
+         }
+        }
+       },
+       "required": [
+        "Name",
+        "Token",
+        "Signature",
+        "IsPublic",
+        "IsStatic",
+        "IsVirtual",
+        "IsAbstract",
+        "ReturnType",
+        "ParameterTypes",
+        "Parameters",
+        "GenericParameters"
+       ],
+       "additionalProperties": false
+      }
+     ]
+    }
+   },
+   "MethodsTotalCount": {
+    "type": "integer"
+   },
+   "MethodsReturnedCount": {
+    "type": "integer"
+   },
+   "FieldsCount": {
+    "type": "integer"
+   },
+   "PropertiesCount": {
+    "type": "integer"
+   },
+   "EventsCount": {
+    "type": "integer"
+   },
+   "Fields": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Token": {
+       "type": "integer"
+      },
+      "Name": {
+       "type": "string"
+      },
+      "Type": {
+       "type": "string"
+      },
+      "IsPublic": {
+       "type": "boolean"
+      },
+      "IsStatic": {
+       "type": "boolean"
+      },
+      "IsLiteral": {
+       "type": "boolean"
+      },
+      "Constant": {},
+      "Offset": {
+       "type": "integer"
+      },
+      "OffsetSource": {
+       "type": "string"
+      },
+      "Il2CppToken": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "Token",
+      "Name",
+      "Type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "Properties": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Token": {
+       "type": "integer"
+      },
+      "Name": {
+       "type": "string"
+      },
+      "Type": {
+       "type": "string"
+      },
+      "CanRead": {
+       "type": "boolean"
+      },
+      "CanWrite": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "Token",
+      "Name",
+      "Type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "Events": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Token": {
+       "type": "integer"
+      },
+      "Name": {
+       "type": "string"
+      },
+      "Type": {
+       "type": "string"
+      },
+      "HasAdd": {
+       "type": "boolean"
+      },
+      "HasRemove": {
+       "type": "boolean"
+      },
+      "HasInvoke": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "Token",
+      "Name",
+      "Type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "Token",
+   "FullName",
+   "Namespace",
+   "Name",
+   "IsPublic",
+   "IsClass",
+   "IsInterface",
+   "IsEnum",
+   "IsValueType",
+   "IsAbstract",
+   "IsSealed",
+   "BaseType",
+   "Interfaces",
+   "GenericParameters",
+   "Methods",
+   "MethodsTotalCount",
+   "MethodsReturnedCount",
+   "FieldsCount",
+   "PropertiesCount",
+   "EventsCount"
+  ],
+  "additionalProperties": false
+ },
+ "search_types": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "AssemblyName": {
+         "type": "string"
+        },
+        "Token": {
+         "type": "integer"
+        },
+        "FullName": {
+         "type": "string"
+        },
+        "Namespace": {
+         "type": "string"
+        },
+        "Name": {
+         "type": "string"
+        },
+        "IsPublic": {
+         "type": "boolean"
+        },
+        "IsNested": {
+         "type": "boolean"
+        },
+        "IsCompilerGenerated": {
+         "type": "boolean"
+        },
+        "DeclaringType": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "AssemblyName",
+        "Token",
+        "FullName",
+        "Namespace",
+        "Name",
+        "IsPublic",
+        "IsNested",
+        "IsCompilerGenerated",
+        "DeclaringType"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "search_members": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "assembly": {
+         "type": "string"
+        },
+        "declaring_type": {
+         "type": "string"
+        },
+        "member_kind": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "signature": {
+         "type": "string"
+        },
+        "token": {
+         "type": "integer"
+        },
+        "is_static": {
+         "type": "boolean"
+        },
+        "is_public": {
+         "type": "boolean"
+        },
+        "offset": {
+         "type": "integer"
+        },
+        "offset_source": {
+         "type": "string"
+        },
+        "il2cpp_token": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "assembly",
+        "declaring_type",
+        "member_kind",
+        "name",
+        "signature",
+        "token",
+        "is_static",
+        "is_public"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_callers": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "caller_assembly": {
+       "type": "string"
+      },
+      "caller_type": {
+       "type": "string"
+      },
+      "caller_method": {
+       "type": "string"
+      },
+      "caller_token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "reference": {
+       "type": "string"
+      },
+      "il_index": {
+       "type": "integer"
+      },
+      "il_offset": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "caller_assembly",
+      "caller_type",
+      "caller_method",
+      "caller_token",
+      "signature",
+      "opcode",
+      "reference",
+      "il_index",
+      "il_offset"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_references": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "caller_assembly": {
+       "type": "string"
+      },
+      "caller_type": {
+       "type": "string"
+      },
+      "caller_method": {
+       "type": "string"
+      },
+      "caller_token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "reference": {
+       "type": "string"
+      },
+      "il_index": {
+       "type": "integer"
+      },
+      "il_offset": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "caller_assembly",
+      "caller_type",
+      "caller_method",
+      "caller_token",
+      "signature",
+      "opcode",
+      "reference",
+      "il_index",
+      "il_offset"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_callees": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "ref_kind": {
+       "type": "string"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "token": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "target_assembly": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "opcodes": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "occurrences": {
+       "type": "integer"
+      },
+      "first_il_index": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "ref_kind",
+      "signature",
+      "token",
+      "target_assembly",
+      "opcodes",
+      "occurrences",
+      "first_il_index"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_overrides": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "type": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "token": {
+       "type": "integer"
+      },
+      "assembly": {
+       "type": "string"
+      },
+      "is_abstract": {
+       "type": "boolean"
+      },
+      "is_interface_impl": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "type",
+      "method",
+      "signature",
+      "token",
+      "assembly",
+      "is_abstract"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "search_string_literals": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "value": {
+       "type": "string"
+      },
+      "assembly": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "method_token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "il_index": {
+       "type": "integer"
+      },
+      "il_offset": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "value",
+      "assembly",
+      "type",
+      "method",
+      "method_token",
+      "signature",
+      "il_index",
+      "il_offset"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "list_string_constants": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "value": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "method_token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "il_index": {
+       "type": "integer"
+      },
+      "il_offset": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "value",
+      "type",
+      "method",
+      "method_token",
+      "signature",
+      "il_index",
+      "il_offset"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "search_constants": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "value": {
+       "type": "number"
+      },
+      "assembly": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "method_token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "il_index": {
+       "type": "integer"
+      },
+      "il_offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "value",
+      "assembly",
+      "type",
+      "method",
+      "method_token",
+      "signature",
+      "il_index",
+      "il_offset",
+      "opcode"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_unity_messages": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "assembly": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      },
+      "message": {
+       "type": "string"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "token": {
+       "type": "integer"
+      },
+      "parameter_types": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "is_static": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "assembly",
+      "type",
+      "message",
+      "signature",
+      "token",
+      "parameter_types",
+      "is_static"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "find_by_attribute": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "assembly": {
+       "type": "string"
+      },
+      "target_kind": {
+       "type": "string"
+      },
+      "declaring_type": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "token": {
+       "type": "integer"
+      },
+      "attribute": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "assembly",
+      "target_kind",
+      "declaring_type",
+      "name",
+      "signature",
+      "token",
+      "attribute"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "get_type_fields": {
+  "type": "object",
+  "properties": {
+   "Type": {
+    "type": "string"
+   },
+   "Pattern": {
+    "type": "string"
+   },
+   "MatchCount": {
+    "type": "integer"
+   },
+   "ReturnedCount": {
+    "type": "integer"
+   },
+   "Fields": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Name": {
+       "type": "string"
+      },
+      "Type": {
+       "type": "string"
+      },
+      "IsPublic": {
+       "type": "boolean"
+      },
+      "IsStatic": {
+       "type": "boolean"
+      },
+      "IsLiteral": {
+       "type": "boolean"
+      },
+      "IsReadOnly": {
+       "type": "boolean"
+      },
+      "Attributes": {
+       "type": "string"
+      },
+      "Offset": {
+       "type": "integer"
+      },
+      "OffsetSource": {
+       "type": "string"
+      },
+      "Il2CppToken": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "Name",
+      "Type",
+      "IsPublic",
+      "IsStatic",
+      "IsLiteral",
+      "IsReadOnly",
+      "Attributes"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "Type",
+   "Pattern",
+   "MatchCount",
+   "ReturnedCount",
+   "Fields"
+  ],
+  "additionalProperties": false
+ },
+ "get_type_property": {
+  "type": "object",
+  "properties": {
+   "Name": {
+    "type": "string"
+   },
+   "Type": {
+    "type": "string"
+   },
+   "CanRead": {
+    "type": "boolean"
+   },
+   "CanWrite": {
+    "type": "boolean"
+   },
+   "GetMethod": {
+    "oneOf": [
+     {
+      "type": "object",
+      "properties": {
+       "Name": {
+        "type": "string"
+       },
+       "IsPublic": {
+        "type": "boolean"
+       },
+       "IsStatic": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "Name",
+       "IsPublic",
+       "IsStatic"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "SetMethod": {
+    "oneOf": [
+     {
+      "type": "object",
+      "properties": {
+       "Name": {
+        "type": "string"
+       },
+       "IsPublic": {
+        "type": "boolean"
+       },
+       "IsStatic": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "Name",
+       "IsPublic",
+       "IsStatic"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "Attributes": {
+    "type": "string"
+   },
+   "CustomAttributes": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   }
+  },
+  "required": [
+   "Name",
+   "Type",
+   "CanRead",
+   "CanWrite",
+   "GetMethod",
+   "SetMethod",
+   "Attributes",
+   "CustomAttributes"
+  ],
+  "additionalProperties": false
+ },
+ "find_path_to_type": {
+  "type": "object",
+  "properties": {
+   "FromType": {
+    "type": "string"
+   },
+   "ToType": {
+    "type": "string"
+   },
+   "PathsFound": {
+    "type": "integer"
+   },
+   "Paths": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "Path": {
+       "type": "string"
+      },
+      "Depth": {
+       "type": "integer"
+      },
+      "Steps": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "Path",
+      "Depth",
+      "Steps"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "required": [
+   "FromType",
+   "ToType",
+   "PathsFound",
+   "Paths"
+  ],
+  "additionalProperties": false
+ },
+ "list_methods": {
+  "type": "object",
+  "properties": {
+   "items": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "token": {
+       "type": "integer"
+      },
+      "signature": {
+       "type": "string"
+      },
+      "return_type": {
+       "type": "string"
+      },
+      "parameter_types": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "parameters": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "type": {
+          "type": "string"
+         },
+         "token": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "required": [
+         "name",
+         "type",
+         "token"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "generic_parameters": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "token": {
+          "type": "integer"
+         },
+         "number": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "name",
+         "token",
+         "number"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "is_static": {
+       "type": "boolean"
+      },
+      "is_virtual": {
+       "type": "boolean"
+      },
+      "is_abstract": {
+       "type": "boolean"
+      },
+      "has_body": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "name",
+      "token",
+      "signature",
+      "return_type",
+      "parameter_types",
+      "parameters",
+      "generic_parameters",
+      "is_static",
+      "is_virtual",
+      "is_abstract",
+      "has_body"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "total_count": {
+    "type": "integer"
+   },
+   "returned_count": {
+    "type": "integer"
+   },
+   "nextCursor": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "items",
+   "total_count",
+   "returned_count"
+  ],
+  "additionalProperties": false
+ },
+ "get_method_il": {
+  "type": "object",
+  "properties": {
+   "method": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "signature": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "token",
+     "signature"
+    ],
+    "additionalProperties": false
+   },
+   "instructions": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "operand": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "index",
+      "offset",
+      "opcode",
+      "operand"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "max_stack": {
+    "type": "integer"
+   },
+   "init_locals": {
+    "type": "boolean"
+   },
+   "keep_old_max_stack": {
+    "type": "boolean"
+   },
+   "local_var_sig_tok": {
+    "type": "integer"
+   },
+   "locals": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "type": {
+       "type": "string"
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "type",
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "exception_handlers": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "handler_type": {
+       "type": "string"
+      },
+      "try_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "try_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "filter_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "catch_type": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "handler_type",
+      "try_start",
+      "try_end",
+      "handler_start",
+      "handler_end",
+      "filter_start",
+      "catch_type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "has_pending_patch": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "method",
+   "instructions",
+   "max_stack",
+   "init_locals",
+   "keep_old_max_stack",
+   "local_var_sig_tok",
+   "locals",
+   "exception_handlers",
+   "has_pending_patch"
+  ],
+  "additionalProperties": false
+ },
+ "patch_method_il": {
+  "type": "object",
+  "properties": {
+   "method": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "signature": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "token",
+     "signature"
+    ],
+    "additionalProperties": false
+   },
+   "instructions": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "operand": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "index",
+      "offset",
+      "opcode",
+      "operand"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "max_stack": {
+    "type": "integer"
+   },
+   "init_locals": {
+    "type": "boolean"
+   },
+   "keep_old_max_stack": {
+    "type": "boolean"
+   },
+   "local_var_sig_tok": {
+    "type": "integer"
+   },
+   "locals": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "type": {
+       "type": "string"
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "type",
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "exception_handlers": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "handler_type": {
+       "type": "string"
+      },
+      "try_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "try_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "filter_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "catch_type": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "handler_type",
+      "try_start",
+      "try_end",
+      "handler_start",
+      "handler_end",
+      "filter_start",
+      "catch_type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "has_pending_patch": {
+    "type": "boolean"
+   },
+   "method_token": {
+    "type": "integer"
+   },
+   "method_token_hex": {
+    "type": "string"
+   },
+   "checkpoint": {
+    "type": "object"
+   },
+   "history": {
+    "type": "object"
+   },
+   "confirmed_risks": {
+    "type": "array",
+    "items": {
+     "type": "object"
+    }
+   },
+   "compatibility_warning": {
+    "type": "string"
+   },
+   "backup_path": {
+    "type": "null"
+   },
+   "edits_applied": {
+    "type": "integer"
+   }
+  },
+  "required": [
+   "method",
+   "instructions",
+   "max_stack",
+   "init_locals",
+   "keep_old_max_stack",
+   "local_var_sig_tok",
+   "locals",
+   "exception_handlers",
+   "has_pending_patch",
+   "method_token",
+   "method_token_hex",
+   "checkpoint",
+   "history",
+   "compatibility_warning",
+   "backup_path",
+   "edits_applied"
+  ],
+  "additionalProperties": false
+ },
+ "force_return": {
+  "type": "object",
+  "properties": {
+   "method": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "signature": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "token",
+     "signature"
+    ],
+    "additionalProperties": false
+   },
+   "instructions": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "operand": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "index",
+      "offset",
+      "opcode",
+      "operand"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "max_stack": {
+    "type": "integer"
+   },
+   "init_locals": {
+    "type": "boolean"
+   },
+   "keep_old_max_stack": {
+    "type": "boolean"
+   },
+   "local_var_sig_tok": {
+    "type": "integer"
+   },
+   "locals": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "type": {
+       "type": "string"
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "type",
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "exception_handlers": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "handler_type": {
+       "type": "string"
+      },
+      "try_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "try_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "filter_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "catch_type": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "handler_type",
+      "try_start",
+      "try_end",
+      "handler_start",
+      "handler_end",
+      "filter_start",
+      "catch_type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "has_pending_patch": {
+    "type": "boolean"
+   },
+   "method_token": {
+    "type": "integer"
+   },
+   "method_token_hex": {
+    "type": "string"
+   },
+   "checkpoint": {
+    "type": "object"
+   },
+   "history": {
+    "type": "object"
+   },
+   "confirmed_risks": {
+    "type": "array",
+    "items": {
+     "type": "object"
+    }
+   },
+   "compatibility_warning": {
+    "type": "string"
+   },
+   "backup_path": {
+    "type": "null"
+   },
+   "forced_return": {
+    "type": "boolean"
+   },
+   "return_behavior": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "method",
+   "instructions",
+   "max_stack",
+   "init_locals",
+   "keep_old_max_stack",
+   "local_var_sig_tok",
+   "locals",
+   "exception_handlers",
+   "has_pending_patch",
+   "method_token",
+   "method_token_hex",
+   "checkpoint",
+   "history",
+   "compatibility_warning",
+   "backup_path",
+   "forced_return",
+   "return_behavior"
+  ],
+  "additionalProperties": false
+ },
+ "nop_method": {
+  "type": "object",
+  "properties": {
+   "method": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "signature": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "token",
+     "signature"
+    ],
+    "additionalProperties": false
+   },
+   "instructions": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "operand": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "index",
+      "offset",
+      "opcode",
+      "operand"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "max_stack": {
+    "type": "integer"
+   },
+   "init_locals": {
+    "type": "boolean"
+   },
+   "keep_old_max_stack": {
+    "type": "boolean"
+   },
+   "local_var_sig_tok": {
+    "type": "integer"
+   },
+   "locals": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "type": {
+       "type": "string"
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "type",
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "exception_handlers": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "handler_type": {
+       "type": "string"
+      },
+      "try_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "try_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "filter_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "catch_type": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "handler_type",
+      "try_start",
+      "try_end",
+      "handler_start",
+      "handler_end",
+      "filter_start",
+      "catch_type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "has_pending_patch": {
+    "type": "boolean"
+   },
+   "method_token": {
+    "type": "integer"
+   },
+   "method_token_hex": {
+    "type": "string"
+   },
+   "checkpoint": {
+    "type": "object"
+   },
+   "history": {
+    "type": "object"
+   },
+   "confirmed_risks": {
+    "type": "array",
+    "items": {
+     "type": "object"
+    }
+   },
+   "compatibility_warning": {
+    "type": "string"
+   },
+   "backup_path": {
+    "type": "null"
+   },
+   "nopped": {
+    "type": "boolean"
+   },
+   "return_behavior": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "method",
+   "instructions",
+   "max_stack",
+   "init_locals",
+   "keep_old_max_stack",
+   "local_var_sig_tok",
+   "locals",
+   "exception_handlers",
+   "has_pending_patch",
+   "method_token",
+   "method_token_hex",
+   "checkpoint",
+   "history",
+   "compatibility_warning",
+   "backup_path",
+   "nopped",
+   "return_behavior"
+  ],
+  "additionalProperties": false
+ },
+ "revert_method_il": {
+  "type": "object",
+  "properties": {
+   "method": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "signature": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "token",
+     "signature"
+    ],
+    "additionalProperties": false
+   },
+   "instructions": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      },
+      "opcode": {
+       "type": "string"
+      },
+      "operand": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "index",
+      "offset",
+      "opcode",
+      "operand"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "max_stack": {
+    "type": "integer"
+   },
+   "init_locals": {
+    "type": "boolean"
+   },
+   "keep_old_max_stack": {
+    "type": "boolean"
+   },
+   "local_var_sig_tok": {
+    "type": "integer"
+   },
+   "locals": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "index": {
+       "type": "integer"
+      },
+      "type": {
+       "type": "string"
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "type",
+      "name"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "exception_handlers": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "handler_type": {
+       "type": "string"
+      },
+      "try_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "try_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "handler_end": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "filter_start": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "catch_type": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "handler_type",
+      "try_start",
+      "try_end",
+      "handler_start",
+      "handler_end",
+      "filter_start",
+      "catch_type"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "has_pending_patch": {
+    "type": "boolean"
+   },
+   "reverted": {
+    "type": "boolean"
+   },
+   "history": {
+    "type": "object"
+   },
+   "compatibility_warning": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "method",
+   "instructions",
+   "max_stack",
+   "init_locals",
+   "keep_old_max_stack",
+   "local_var_sig_tok",
+   "locals",
+   "exception_handlers",
+   "has_pending_patch",
+   "reverted",
+   "compatibility_warning"
+  ],
+  "additionalProperties": false
+ },
+ "rename_symbol_by_token": {
+  "oneOf": [
+   {
+    "type": "object",
+    "properties": {
+     "changed": {
+      "type": "boolean"
+     },
+     "target_kind": {
+      "type": "string"
+     },
+     "token": {
+      "type": "integer"
+     },
+     "token_hex": {
+      "type": "string"
+     },
+     "old_name": {
+      "type": "string"
+     },
+     "new_name": {
+      "type": "string"
+     },
+     "updated_type_references": {
+      "type": "integer"
+     },
+     "updated_member_references": {
+      "type": "integer"
+     },
+     "checkpoint": {
+      "type": "object"
+     },
+     "history": {
+      "type": "object"
+     },
+     "confirmed_risks": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      }
+     },
+     "compatibility_warning": {
+      "type": "string"
+     },
+     "backup_path": {
+      "type": "null"
+     }
+    },
+    "required": [
+     "changed",
+     "target_kind",
+     "token",
+     "token_hex",
+     "old_name",
+     "new_name",
+     "checkpoint",
+     "history",
+     "compatibility_warning",
+     "backup_path"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "changed": {
+      "type": "boolean"
+     },
+     "changed_count": {
+      "type": "integer"
+     },
+     "target_kind": {
+      "type": "string"
+     },
+     "enum_token": {
+      "type": "integer"
+     },
+     "enum_token_hex": {
+      "type": "string"
+     },
+     "enum_full_name": {
+      "type": "string"
+     },
+     "updated_member_references": {
+      "type": "integer"
+     },
+     "members": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "field_token": {
+         "type": "integer"
+        },
+        "field_token_hex": {
+         "type": "string"
+        },
+        "value": {
+         "type": "number"
+        },
+        "old_name": {
+         "type": "string"
+        },
+        "new_name": {
+         "type": "string"
+        },
+        "changed": {
+         "type": "boolean"
+        },
+        "updated_member_references": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "field_token",
+        "field_token_hex",
+        "value",
+        "old_name",
+        "new_name",
+        "changed",
+        "updated_member_references"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "checkpoint": {
+      "type": "object"
+     },
+     "history": {
+      "type": "object"
+     },
+     "confirmed_risks": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      }
+     },
+     "compatibility_warning": {
+      "type": "string"
+     },
+     "backup_path": {
+      "type": "null"
+     }
+    },
+    "required": [
+     "changed",
+     "changed_count",
+     "target_kind",
+     "enum_token",
+     "enum_token_hex",
+     "enum_full_name",
+     "updated_member_references",
+     "members",
+     "checkpoint",
+     "history",
+     "compatibility_warning",
+     "backup_path"
+    ],
+    "additionalProperties": false
+   }
+  ]
+ },
+ "save_assembly": {
+  "type": "object",
+  "properties": {
+   "saved_to": {
+    "type": "string"
+   },
+   "bytes_written": {
+    "type": "integer"
+   },
+   "backup_path": {
+    "type": "null"
+   },
+   "source_preserved": {
+    "type": "boolean"
+   },
+   "sha256": {
+    "type": "string"
+   },
+   "file_id": {
+    "type": "string"
+   },
+   "lineage_id": {
+    "type": "string"
+   },
+   "checkpoint_id": {
+    "type": "string"
+   },
+   "warnings": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   }
+  },
+  "required": [
+   "saved_to",
+   "bytes_written",
+   "backup_path",
+   "source_preserved",
+   "sha256",
+   "file_id",
+   "lineage_id",
+   "checkpoint_id",
+   "warnings"
+  ],
+  "additionalProperties": false
+ },
+ "decompile_method": {
+  "type": "string",
+  "description": "原样文本；不是 JSON 投影"
+ },
+ "decompile_by_token": {
+  "type": "string",
+  "description": "原样文本；不是 JSON 投影"
+ },
+ "decompile_type": {
+  "type": "string",
+  "description": "原样文本；不是 JSON 投影"
+ },
+ "generate_bepinex_plugin": {
+  "type": "string",
+  "description": "原样文本；不是 JSON 投影"
+ },
+ "generate_harmony_patch": {
+  "type": "string",
+  "description": "原样文本；不是 JSON 投影"
+ }
 }
 ```
 
@@ -6401,18950 +9256,8720 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ## 附录 C：冻结编辑 JSON Schema（自包含）
 
-顶层每个工具键含 `inputSchema` 与 `outputSchema`；包括 39 个 `edit_apply.operation.oneOf` 分支及不通告测试缝。JSON 里没有外部 `$ref`，嵌套全部就地展开。`edit_compile` 的输入/输出由独立 provider 在正文给出，未冒充此文件中的键。
+顶层每个工具键含 `inputSchema` 与 `outputSchema`，包括全部 39 个 `edit_apply.operation.oneOf` 分支与不通告测试缝；`$defs` 收纳重复结构。所有 `$ref` 都在本 JSON 对象内闭合；递归展开每个工具后与源 `p03-tool-schemas.json` 精确相等，包含 `oneOf`/`anyOf`/`required`/`additionalProperties`/`null`。`edit_compile` 独立于该源文件，接口在正文说明。
 
 ```json
 {
-  "edit_apply": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "expected_revision": {
-          "maximum": 4294967295,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "operation": {
-          "oneOf": [
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 0,
-                  "maximum": 16219583,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 16219583,
-                  "x-dnspy-enum": "TypeAttributes"
-                },
-                "base_type": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "maxLength": 4096,
-                          "minLength": 1,
-                          "type": "string",
-                          "x-dnspy-contract": "p02-typesig-v1"
-                        },
-                        {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "kind",
-                            "type"
-                          ],
-                          "properties": {
-                            "kind": {
-                              "const": "type"
-                            },
-                            "type": {
-                              "type": "object",
-                              "required": [
-                                "Kind"
-                              ],
-                              "properties": {
-                                "Kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "CorLibTypeSig",
-                                    "ClassSig",
-                                    "ValueTypeSig",
-                                    "GenericVar",
-                                    "GenericMVar",
-                                    "FnPtrSig",
-                                    "GenericInstSig",
-                                    "CModReqdSig",
-                                    "CModOptSig",
-                                    "ArraySig",
-                                    "ValueArraySig",
-                                    "ModuleSig",
-                                    "PtrSig",
-                                    "ByRefSig",
-                                    "SZArraySig",
-                                    "PinnedSig",
-                                    "SentinelSig"
-                                  ]
-                                }
-                              },
-                              "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "type_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "namespace": {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "layout": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "kind"
-                  ],
-                  "properties": {
-                    "kind": {
-                      "enum": [
-                        "auto",
-                        "sequential",
-                        "explicit"
-                      ]
-                    },
-                    "pack": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 65535
-                    },
-                    "size": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    }
-                  }
-                }
-              },
-              "required": [
-                "kind",
-                "name"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 16219583,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 16219583,
-                  "x-dnspy-enum": "TypeAttributes"
-                },
-                "base_type": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "maxLength": 4096,
-                          "minLength": 1,
-                          "type": "string",
-                          "x-dnspy-contract": "p02-typesig-v1"
-                        },
-                        {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "kind",
-                            "type"
-                          ],
-                          "properties": {
-                            "kind": {
-                              "const": "type"
-                            },
-                            "type": {
-                              "type": "object",
-                              "required": [
-                                "Kind"
-                              ],
-                              "properties": {
-                                "Kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "CorLibTypeSig",
-                                    "ClassSig",
-                                    "ValueTypeSig",
-                                    "GenericVar",
-                                    "GenericMVar",
-                                    "FnPtrSig",
-                                    "GenericInstSig",
-                                    "CModReqdSig",
-                                    "CModOptSig",
-                                    "ArraySig",
-                                    "ValueArraySig",
-                                    "ModuleSig",
-                                    "PtrSig",
-                                    "ByRefSig",
-                                    "SZArraySig",
-                                    "PinnedSig",
-                                    "SentinelSig"
-                                  ]
-                                }
-                              },
-                              "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "type_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "namespace": {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "layout": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "kind"
-                  ],
-                  "properties": {
-                    "kind": {
-                      "enum": [
-                        "auto",
-                        "sequential",
-                        "explicit"
-                      ]
-                    },
-                    "pack": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 65535
-                    },
-                    "size": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    }
-                  }
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "type_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 128,
-                  "maximum": 65535,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 65535,
-                  "x-dnspy-enum": "MethodAttributes"
-                },
-                "body": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "exception_handlers": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "catch_type": {
-                            "oneOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "maxLength": 4096,
-                                    "minLength": 1,
-                                    "type": "string",
-                                    "x-dnspy-contract": "p02-typesig-v1"
-                                  },
-                                  {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "required": [
-                                      "kind",
-                                      "type"
-                                    ],
-                                    "properties": {
-                                      "kind": {
-                                        "const": "type"
-                                      },
-                                      "type": {
-                                        "type": "object",
-                                        "required": [
-                                          "Kind"
-                                        ],
-                                        "properties": {
-                                          "Kind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "CorLibTypeSig",
-                                              "ClassSig",
-                                              "ValueTypeSig",
-                                              "GenericVar",
-                                              "GenericMVar",
-                                              "FnPtrSig",
-                                              "GenericInstSig",
-                                              "CModReqdSig",
-                                              "CModOptSig",
-                                              "ArraySig",
-                                              "ValueArraySig",
-                                              "ModuleSig",
-                                              "PtrSig",
-                                              "ByRefSig",
-                                              "SZArraySig",
-                                              "PinnedSig",
-                                              "SentinelSig"
-                                            ]
-                                          }
-                                        },
-                                        "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                      }
-                                    }
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "filter_start": {
-                            "oneOf": [
-                              {
-                                "maximum": 4294967295,
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "handler_end": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "handler_start": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "kind": {
-                            "enum": [
-                              "catch",
-                              "finally",
-                              "fault",
-                              "filter"
-                            ]
-                          },
-                          "try_end": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "try_start": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "try_start",
-                          "try_end",
-                          "handler_start",
-                          "handler_end",
-                          "filter_start",
-                          "catch_type"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 512,
-                      "type": "array"
-                    },
-                    "init_locals": {
-                      "type": "boolean"
-                    },
-                    "instructions": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "opcode": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "operand": {
-                            "oneOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "i32"
-                                      },
-                                      "value": {
-                                        "maximum": 2147483647,
-                                        "minimum": -2147483648,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "i64"
-                                      },
-                                      "value": {
-                                        "maximum": 9223372036854775807,
-                                        "minimum": -9223372036854775808,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "f32"
-                                      },
-                                      "value": {
-                                        "maximum": 3.4028234663852886e+38,
-                                        "minimum": -3.4028234663852886e+38,
-                                        "type": "number"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "f64"
-                                      },
-                                      "value": {
-                                        "maximum": 1.7976931348623157e+308,
-                                        "minimum": -1.7976931348623157e+308,
-                                        "type": "number"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "string"
-                                      },
-                                      "value": {
-                                        "maxLength": 65535,
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "token"
-                                      },
-                                      "token": {
-                                        "maxLength": 10,
-                                        "minLength": 1,
-                                        "pattern": "^0x[0-9a-fA-F]{8}$",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "token"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "object"
-                                      },
-                                      "object_id": {
-                                        "maxLength": 128,
-                                        "minLength": 1,
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "object_id"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "instruction_index": {
-                                        "maximum": 4095,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "kind": {
-                                        "const": "label"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "instruction_index"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "instruction_indices": {
-                                        "items": {
-                                          "maximum": 4294967295,
-                                          "minimum": 0,
-                                          "type": "integer"
-                                        },
-                                        "maxItems": 4096,
-                                        "type": "array"
-                                      },
-                                      "kind": {
-                                        "const": "switch"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "instruction_indices"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "local"
-                                      },
-                                      "local_index": {
-                                        "maximum": 65535,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "local_index"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "argument_index": {
-                                        "maximum": 65535,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "kind": {
-                                        "const": "arg"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "argument_index"
-                                    ],
-                                    "type": "object"
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "opcode"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 4096,
-                      "type": "array"
-                    },
-                    "locals": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "name": {
-                            "oneOf": [
-                              {
-                                "maxLength": 512,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "type": {
-                            "oneOf": [
-                              {
-                                "maxLength": 4096,
-                                "minLength": 1,
-                                "type": "string",
-                                "x-dnspy-contract": "p02-typesig-v1"
-                              },
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "kind",
-                                  "type"
-                                ],
-                                "properties": {
-                                  "kind": {
-                                    "const": "type"
-                                  },
-                                  "type": {
-                                    "type": "object",
-                                    "required": [
-                                      "Kind"
-                                    ],
-                                    "properties": {
-                                      "Kind": {
-                                        "type": "string",
-                                        "enum": [
-                                          "CorLibTypeSig",
-                                          "ClassSig",
-                                          "ValueTypeSig",
-                                          "GenericVar",
-                                          "GenericMVar",
-                                          "FnPtrSig",
-                                          "GenericInstSig",
-                                          "CModReqdSig",
-                                          "CModOptSig",
-                                          "ArraySig",
-                                          "ValueArraySig",
-                                          "ModuleSig",
-                                          "PtrSig",
-                                          "ByRefSig",
-                                          "SZArraySig",
-                                          "PinnedSig",
-                                          "SentinelSig"
-                                        ]
-                                      }
-                                    },
-                                    "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 1024,
-                      "type": "array"
-                    },
-                    "max_stack": {
-                      "maximum": 65535,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "sequence_points": {
-                      "type": "array",
-                      "maxItems": 4096,
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "document",
-                          "start",
-                          "end"
-                        ],
-                        "properties": {
-                          "document": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "name"
-                            ],
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 1024
-                              },
-                              "language": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "vendor": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hash": {
-                                "type": "string",
-                                "maxLength": 96
-                              },
-                              "type": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hash_algorithm": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hashAlgorithm": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "not": {
-                                  "required": [
-                                    "hash_algorithm",
-                                    "hashAlgorithm"
-                                  ]
-                                }
-                              }
-                            ]
-                          },
-                          "start": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "il",
-                              "line",
-                              "column"
-                            ],
-                            "properties": {
-                              "il": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 4095
-                              },
-                              "line": {
-                                "oneOf": [
-                                  {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 1048575
-                                  },
-                                  {
-                                    "const": 16707566
-                                  }
-                                ]
-                              },
-                              "column": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 1048575
-                              }
-                            }
-                          },
-                          "end": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "il",
-                              "line",
-                              "column"
-                            ],
-                            "properties": {
-                              "il": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 4095
-                              },
-                              "line": {
-                                "oneOf": [
-                                  {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 1048575
-                                  },
-                                  {
-                                    "const": 16707566
-                                  }
-                                ]
-                              },
-                              "column": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 1048575
-                              }
-                            }
-                          }
-                        }
-                      }
-                    },
-                    "scope": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "locals",
-                        "constants",
-                        "namespaces",
-                        "scopes"
-                      ],
-                      "properties": {
-                        "start_il": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "end_il": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "locals": {
-                          "type": "array",
-                          "maxItems": 1024,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "index",
-                              "name",
-                              "attributes"
-                            ],
-                            "properties": {
-                              "index": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 65535
-                              },
-                              "name": {
-                                "type": "string",
-                                "maxLength": 512
-                              },
-                              "attributes": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 63
-                              }
-                            }
-                          }
-                        },
-                        "constants": {
-                          "type": "array",
-                          "maxItems": 256,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "name",
-                              "type",
-                              "value"
-                            ],
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "maxLength": 512
-                              },
-                              "type": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 2048
-                              },
-                              "value_kind": {
-                                "type": "string",
-                                "enum": [
-                                  "null",
-                                  "Boolean",
-                                  "String",
-                                  "Char",
-                                  "SByte",
-                                  "Byte",
-                                  "Int16",
-                                  "UInt16",
-                                  "Int32",
-                                  "UInt32",
-                                  "Int64",
-                                  "UInt64",
-                                  "Single",
-                                  "Double"
-                                ]
-                              },
-                              "value": {},
-                              "valueKind": {
-                                "type": "string",
-                                "enum": [
-                                  "null",
-                                  "Boolean",
-                                  "String",
-                                  "Char",
-                                  "SByte",
-                                  "Byte",
-                                  "Int16",
-                                  "UInt16",
-                                  "Int32",
-                                  "UInt32",
-                                  "Int64",
-                                  "UInt64",
-                                  "Single",
-                                  "Double"
-                                ]
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "value_kind"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "valueKind"
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        },
-                        "namespaces": {
-                          "type": "array",
-                          "maxItems": 128,
-                          "items": {
-                            "type": "string",
-                            "maxLength": 512
-                          }
-                        },
-                        "import_scope": {
-                          "type": "string",
-                          "maxLength": 64
-                        },
-                        "scopes": {
-                          "type": "array",
-                          "maxItems": 256,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "locals",
-                              "constants",
-                              "namespaces",
-                              "scopes"
-                            ],
-                            "properties": {
-                              "start_il": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "end_il": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "locals": {
-                                "type": "array",
-                                "maxItems": 1024,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "index",
-                                    "name",
-                                    "attributes"
-                                  ],
-                                  "properties": {
-                                    "index": {
-                                      "type": "integer",
-                                      "minimum": 0,
-                                      "maximum": 65535
-                                    },
-                                    "name": {
-                                      "type": "string",
-                                      "maxLength": 512
-                                    },
-                                    "attributes": {
-                                      "type": "integer",
-                                      "minimum": 0,
-                                      "maximum": 63
-                                    }
-                                  }
-                                }
-                              },
-                              "constants": {
-                                "type": "array",
-                                "maxItems": 256,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "name",
-                                    "type",
-                                    "value"
-                                  ],
-                                  "properties": {
-                                    "name": {
-                                      "type": "string",
-                                      "maxLength": 512
-                                    },
-                                    "type": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 2048
-                                    },
-                                    "value_kind": {
-                                      "type": "string",
-                                      "enum": [
-                                        "null",
-                                        "Boolean",
-                                        "String",
-                                        "Char",
-                                        "SByte",
-                                        "Byte",
-                                        "Int16",
-                                        "UInt16",
-                                        "Int32",
-                                        "UInt32",
-                                        "Int64",
-                                        "UInt64",
-                                        "Single",
-                                        "Double"
-                                      ]
-                                    },
-                                    "value": {},
-                                    "valueKind": {
-                                      "type": "string",
-                                      "enum": [
-                                        "null",
-                                        "Boolean",
-                                        "String",
-                                        "Char",
-                                        "SByte",
-                                        "Byte",
-                                        "Int16",
-                                        "UInt16",
-                                        "Int32",
-                                        "UInt32",
-                                        "Int64",
-                                        "UInt64",
-                                        "Single",
-                                        "Double"
-                                      ]
-                                    }
-                                  },
-                                  "allOf": [
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "value_kind"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "valueKind"
-                                          ]
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              },
-                              "namespaces": {
-                                "type": "array",
-                                "maxItems": 128,
-                                "items": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                }
-                              },
-                              "import_scope": {
-                                "type": "string",
-                                "maxLength": 64
-                              },
-                              "scopes": {
-                                "type": "array",
-                                "maxItems": 256,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "locals",
-                                    "constants",
-                                    "namespaces",
-                                    "scopes"
-                                  ],
-                                  "properties": {
-                                    "start_il": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "end_il": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "locals": {
-                                      "type": "array",
-                                      "maxItems": 1024,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "index",
-                                          "name",
-                                          "attributes"
-                                        ],
-                                        "properties": {
-                                          "index": {
-                                            "type": "integer",
-                                            "minimum": 0,
-                                            "maximum": 65535
-                                          },
-                                          "name": {
-                                            "type": "string",
-                                            "maxLength": 512
-                                          },
-                                          "attributes": {
-                                            "type": "integer",
-                                            "minimum": 0,
-                                            "maximum": 63
-                                          }
-                                        }
-                                      }
-                                    },
-                                    "constants": {
-                                      "type": "array",
-                                      "maxItems": 256,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "name",
-                                          "type",
-                                          "value"
-                                        ],
-                                        "properties": {
-                                          "name": {
-                                            "type": "string",
-                                            "maxLength": 512
-                                          },
-                                          "type": {
-                                            "type": "string",
-                                            "minLength": 1,
-                                            "maxLength": 2048
-                                          },
-                                          "value_kind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "null",
-                                              "Boolean",
-                                              "String",
-                                              "Char",
-                                              "SByte",
-                                              "Byte",
-                                              "Int16",
-                                              "UInt16",
-                                              "Int32",
-                                              "UInt32",
-                                              "Int64",
-                                              "UInt64",
-                                              "Single",
-                                              "Double"
-                                            ]
-                                          },
-                                          "value": {},
-                                          "valueKind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "null",
-                                              "Boolean",
-                                              "String",
-                                              "Char",
-                                              "SByte",
-                                              "Byte",
-                                              "Int16",
-                                              "UInt16",
-                                              "Int32",
-                                              "UInt32",
-                                              "Int64",
-                                              "UInt64",
-                                              "Single",
-                                              "Double"
-                                            ]
-                                          }
-                                        },
-                                        "allOf": [
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "value_kind"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "valueKind"
-                                                ]
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "namespaces": {
-                                      "type": "array",
-                                      "maxItems": 128,
-                                      "items": {
-                                        "type": "string",
-                                        "maxLength": 512
-                                      }
-                                    },
-                                    "import_scope": {
-                                      "type": "string",
-                                      "maxLength": 64
-                                    },
-                                    "scopes": {
-                                      "type": "array",
-                                      "maxItems": 256,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "locals",
-                                          "constants",
-                                          "namespaces",
-                                          "scopes"
-                                        ],
-                                        "properties": {
-                                          "start_il": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "end_il": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "locals": {
-                                            "type": "array",
-                                            "maxItems": 1024,
-                                            "items": {
-                                              "type": "object",
-                                              "additionalProperties": false,
-                                              "required": [
-                                                "index",
-                                                "name",
-                                                "attributes"
-                                              ],
-                                              "properties": {
-                                                "index": {
-                                                  "type": "integer",
-                                                  "minimum": 0,
-                                                  "maximum": 65535
-                                                },
-                                                "name": {
-                                                  "type": "string",
-                                                  "maxLength": 512
-                                                },
-                                                "attributes": {
-                                                  "type": "integer",
-                                                  "minimum": 0,
-                                                  "maximum": 63
-                                                }
-                                              }
-                                            }
-                                          },
-                                          "constants": {
-                                            "type": "array",
-                                            "maxItems": 256,
-                                            "items": {
-                                              "type": "object",
-                                              "additionalProperties": false,
-                                              "required": [
-                                                "name",
-                                                "type",
-                                                "value"
-                                              ],
-                                              "properties": {
-                                                "name": {
-                                                  "type": "string",
-                                                  "maxLength": 512
-                                                },
-                                                "type": {
-                                                  "type": "string",
-                                                  "minLength": 1,
-                                                  "maxLength": 2048
-                                                },
-                                                "value_kind": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "null",
-                                                    "Boolean",
-                                                    "String",
-                                                    "Char",
-                                                    "SByte",
-                                                    "Byte",
-                                                    "Int16",
-                                                    "UInt16",
-                                                    "Int32",
-                                                    "UInt32",
-                                                    "Int64",
-                                                    "UInt64",
-                                                    "Single",
-                                                    "Double"
-                                                  ]
-                                                },
-                                                "value": {},
-                                                "valueKind": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "null",
-                                                    "Boolean",
-                                                    "String",
-                                                    "Char",
-                                                    "SByte",
-                                                    "Byte",
-                                                    "Int16",
-                                                    "UInt16",
-                                                    "Int32",
-                                                    "UInt32",
-                                                    "Int64",
-                                                    "UInt64",
-                                                    "Single",
-                                                    "Double"
-                                                  ]
-                                                }
-                                              },
-                                              "allOf": [
-                                                {
-                                                  "oneOf": [
-                                                    {
-                                                      "required": [
-                                                        "value_kind"
-                                                      ]
-                                                    },
-                                                    {
-                                                      "required": [
-                                                        "valueKind"
-                                                      ]
-                                                    }
-                                                  ]
-                                                }
-                                              ]
-                                            }
-                                          },
-                                          "namespaces": {
-                                            "type": "array",
-                                            "maxItems": 128,
-                                            "items": {
-                                              "type": "string",
-                                              "maxLength": 512
-                                            }
-                                          },
-                                          "import_scope": {
-                                            "type": "string",
-                                            "maxLength": 64
-                                          },
-                                          "scopes": {
-                                            "type": "array",
-                                            "maxItems": 0
-                                          },
-                                          "startIl": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "endIl": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "importScope": {
-                                            "type": "string",
-                                            "maxLength": 64
-                                          }
-                                        },
-                                        "allOf": [
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "start_il"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "startIl"
-                                                ]
-                                              }
-                                            ]
-                                          },
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "end_il"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "endIl"
-                                                ]
-                                              }
-                                            ]
-                                          },
-                                          {
-                                            "not": {
-                                              "required": [
-                                                "import_scope",
-                                                "importScope"
-                                              ]
-                                            }
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "startIl": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "endIl": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "importScope": {
-                                      "type": "string",
-                                      "maxLength": 64
-                                    }
-                                  },
-                                  "allOf": [
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "start_il"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "startIl"
-                                          ]
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "end_il"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "endIl"
-                                          ]
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "not": {
-                                        "required": [
-                                          "import_scope",
-                                          "importScope"
-                                        ]
-                                      }
-                                    }
-                                  ]
-                                }
-                              },
-                              "startIl": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "endIl": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "importScope": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "start_il"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "startIl"
-                                    ]
-                                  }
-                                ]
-                              },
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "end_il"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "endIl"
-                                    ]
-                                  }
-                                ]
-                              },
-                              {
-                                "not": {
-                                  "required": [
-                                    "import_scope",
-                                    "importScope"
-                                  ]
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "startIl": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "endIl": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "importScope": {
-                          "type": "string",
-                          "maxLength": 64
-                        }
-                      },
-                      "allOf": [
-                        {
-                          "oneOf": [
-                            {
-                              "required": [
-                                "start_il"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "startIl"
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "oneOf": [
-                            {
-                              "required": [
-                                "end_il"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "endIl"
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "not": {
-                            "required": [
-                              "import_scope",
-                              "importScope"
-                            ]
-                          }
-                        }
-                      ]
-                    },
-                    "import_scopes": {
-                      "type": "array",
-                      "minItems": 1,
-                      "maxItems": 256,
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "id",
-                          "imports"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "parent": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "imports": {
-                            "type": "array",
-                            "maxItems": 128,
-                            "items": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "kind"
-                              ],
-                              "properties": {
-                                "kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "namespace",
-                                    "assembly_namespace",
-                                    "type",
-                                    "xml",
-                                    "assembly_reference_alias",
-                                    "alias_assembly",
-                                    "alias_namespace",
-                                    "alias_assembly_namespace",
-                                    "alias_type"
-                                  ]
-                                },
-                                "alias": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "namespace": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "assembly_name": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "type": {
-                                  "type": "string",
-                                  "maxLength": 2048
-                                },
-                                "assemblyName": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                }
-                              },
-                              "allOf": [
-                                {
-                                  "not": {
-                                    "required": [
-                                      "assembly_name",
-                                      "assemblyName"
-                                    ]
-                                  }
-                                }
-                              ]
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "required": [
-                    "init_locals",
-                    "max_stack",
-                    "instructions",
-                    "locals",
-                    "exception_handlers"
-                  ],
-                  "type": "object"
-                },
-                "impl_attributes": {
-                  "default": 0,
-                  "maximum": 6143,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 6143,
-                  "x-dnspy-enum": "MethodImplAttributes"
-                },
-                "kind": {
-                  "const": "method_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "signature": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "generic_parameters": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "attributes": {
-                            "default": 0,
-                            "maximum": 63,
-                            "minimum": 0,
-                            "type": "integer",
-                            "x-dnspy-defined-bit-mask": 63,
-                            "x-dnspy-enum": "GenericParamAttributes"
-                          },
-                          "name": {
-                            "maxLength": 512,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "constraints": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "array",
-                                "maxItems": 64,
-                                "items": {
-                                  "oneOf": [
-                                    {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 4096
-                                    },
-                                    {
-                                      "type": "object",
-                                      "additionalProperties": false,
-                                      "required": [
-                                        "kind",
-                                        "type"
-                                      ],
-                                      "properties": {
-                                        "kind": {
-                                          "const": "type"
-                                        },
-                                        "type": {
-                                          "type": "object",
-                                          "required": [
-                                            "Kind"
-                                          ],
-                                          "properties": {
-                                            "Kind": {
-                                              "type": "string",
-                                              "enum": [
-                                                "CorLibTypeSig",
-                                                "ClassSig",
-                                                "ValueTypeSig",
-                                                "GenericVar",
-                                                "GenericMVar",
-                                                "FnPtrSig",
-                                                "GenericInstSig",
-                                                "CModReqdSig",
-                                                "CModOptSig",
-                                                "ArraySig",
-                                                "ValueArraySig",
-                                                "ModuleSig",
-                                                "PtrSig",
-                                                "ByRefSig",
-                                                "SZArraySig",
-                                                "PinnedSig",
-                                                "SentinelSig"
-                                              ]
-                                            }
-                                          },
-                                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                        }
-                                      }
-                                    }
-                                  ]
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 64,
-                      "type": "array"
-                    },
-                    "has_this": {
-                      "type": "boolean"
-                    },
-                    "parameters": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "attributes": {
-                            "default": 0,
-                            "maximum": 12319,
-                            "minimum": 0,
-                            "type": "integer",
-                            "x-dnspy-defined-bit-mask": 12319,
-                            "x-dnspy-enum": "ParamAttributes"
-                          },
-                          "name": {
-                            "oneOf": [
-                              {
-                                "maxLength": 512,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "type": {
-                            "oneOf": [
-                              {
-                                "maxLength": 4096,
-                                "minLength": 1,
-                                "type": "string",
-                                "x-dnspy-contract": "p02-typesig-v1"
-                              },
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "kind",
-                                  "type"
-                                ],
-                                "properties": {
-                                  "kind": {
-                                    "const": "type"
-                                  },
-                                  "type": {
-                                    "type": "object",
-                                    "required": [
-                                      "Kind"
-                                    ],
-                                    "properties": {
-                                      "Kind": {
-                                        "type": "string",
-                                        "enum": [
-                                          "CorLibTypeSig",
-                                          "ClassSig",
-                                          "ValueTypeSig",
-                                          "GenericVar",
-                                          "GenericMVar",
-                                          "FnPtrSig",
-                                          "GenericInstSig",
-                                          "CModReqdSig",
-                                          "CModOptSig",
-                                          "ArraySig",
-                                          "ValueArraySig",
-                                          "ModuleSig",
-                                          "PtrSig",
-                                          "ByRefSig",
-                                          "SZArraySig",
-                                          "PinnedSig",
-                                          "SentinelSig"
-                                        ]
-                                      }
-                                    },
-                                    "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "type"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 256,
-                      "type": "array"
-                    },
-                    "return_type": {
-                      "oneOf": [
-                        {
-                          "maxLength": 4096,
-                          "minLength": 1,
-                          "type": "string",
-                          "x-dnspy-contract": "p02-typesig-v1"
-                        },
-                        {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "kind",
-                            "type"
-                          ],
-                          "properties": {
-                            "kind": {
-                              "const": "type"
-                            },
-                            "type": {
-                              "type": "object",
-                              "required": [
-                                "Kind"
-                              ],
-                              "properties": {
-                                "Kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "CorLibTypeSig",
-                                    "ClassSig",
-                                    "ValueTypeSig",
-                                    "GenericVar",
-                                    "GenericMVar",
-                                    "FnPtrSig",
-                                    "GenericInstSig",
-                                    "CModReqdSig",
-                                    "CModOptSig",
-                                    "ArraySig",
-                                    "ValueArraySig",
-                                    "ModuleSig",
-                                    "PtrSig",
-                                    "ByRefSig",
-                                    "SZArraySig",
-                                    "PinnedSig",
-                                    "SentinelSig"
-                                  ]
-                                }
-                              },
-                              "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "return_type",
-                    "parameters",
-                    "has_this",
-                    "generic_parameters"
-                  ],
-                  "type": "object"
-                },
-                "overrides": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "declaration"
-                        ],
-                        "properties": {
-                          "method": {
-                            "oneOf": [
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "owner_type",
-                                  "name"
-                                ],
-                                "properties": {
-                                  "owner_type": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 4096
-                                  },
-                                  "name": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 512
-                                  },
-                                  "parameter_types": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 4096
-                                    },
-                                    "maxItems": 64
-                                  }
-                                }
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "token": {
-                                    "maxLength": 10,
-                                    "minLength": 1,
-                                    "pattern": "^0x[0-9a-fA-F]{8}$",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "token"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "object_id": {
-                                    "maxLength": 128,
-                                    "minLength": 1,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "object_id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "declaration": {
-                            "oneOf": [
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "owner_type",
-                                  "name"
-                                ],
-                                "properties": {
-                                  "owner_type": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 4096
-                                  },
-                                  "name": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 512
-                                  },
-                                  "parameter_types": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 4096
-                                    },
-                                    "maxItems": 64
-                                  }
-                                }
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "token": {
-                                    "maxLength": 10,
-                                    "minLength": 1,
-                                    "pattern": "^0x[0-9a-fA-F]{8}$",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "token"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "object_id": {
-                                    "maxLength": 128,
-                                    "minLength": 1,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "object_id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          }
-                        }
-                      },
-                      "maxItems": 64
-                    }
-                  ]
-                },
-                "pinvoke": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "module_name"
-                      ],
-                      "properties": {
-                        "module_name": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 512
-                        },
-                        "entry_name": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 512
-                        },
-                        "charset": {
-                          "enum": [
-                            "none",
-                            "ansi",
-                            "unicode",
-                            "auto"
-                          ]
-                        },
-                        "no_mangle": {
-                          "type": "boolean"
-                        },
-                        "last_error": {
-                          "type": "boolean"
-                        },
-                        "calling_convention": {
-                          "enum": [
-                            "winapi",
-                            "cdecl",
-                            "stdcall",
-                            "thiscall",
-                            "fastcall"
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                },
-                "custom_debug_infos": {
-                  "type": "array",
-                  "maxItems": 64,
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "hoisted",
-                          "async",
-                          "iterator",
-                          "state_machine_type_name",
-                          "type_documents",
-                          "default_namespace",
-                          "tuple",
-                          "dynamic",
-                          "embedded_source",
-                          "source_link",
-                          "enc_local",
-                          "enc_lambda",
-                          "unknown",
-                          "enc_state_map"
-                        ]
-                      },
-                      "reference": {
-                        "type": "string",
-                        "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
-                      },
-                      "type": {
-                        "type": "string",
-                        "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
-                      },
-                      "instruction": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "method",
-                          "index"
-                        ],
-                        "properties": {
-                          "method": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "index": {
-                            "type": "integer",
-                            "minimum": -1,
-                            "maximum": 4095
-                          }
-                        }
-                      },
-                      "steps": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "yield",
-                            "breakpoint"
-                          ],
-                          "properties": {
-                            "yield": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "method",
-                                "index"
-                              ],
-                              "properties": {
-                                "method": {
-                                  "type": "string",
-                                  "maxLength": 64
-                                },
-                                "index": {
-                                  "type": "integer",
-                                  "minimum": -1,
-                                  "maximum": 4095
-                                }
-                              }
-                            },
-                            "breakpoint": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "method",
-                                "index"
-                              ],
-                              "properties": {
-                                "method": {
-                                  "type": "string",
-                                  "maxLength": 64
-                                },
-                                "index": {
-                                  "type": "integer",
-                                  "minimum": -1,
-                                  "maximum": 4095
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      "ranges": {
-                        "type": "array",
-                        "maxItems": 4096,
-                        "items": {
-                          "type": "array",
-                          "minItems": 2,
-                          "maxItems": 2,
-                          "items": {
-                            "type": "integer",
-                            "minimum": -1,
-                            "maximum": 4095
-                          }
-                        }
-                      },
-                      "documents": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "name"
-                          ],
-                          "properties": {
-                            "name": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 1024
-                            },
-                            "language": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "vendor": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hash": {
-                              "type": "string",
-                              "maxLength": 96
-                            },
-                            "type": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hash_algorithm": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hashAlgorithm": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          },
-                          "allOf": [
-                            {
-                              "not": {
-                                "required": [
-                                  "hash_algorithm",
-                                  "hashAlgorithm"
-                                ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      "text": {
-                        "type": "string",
-                        "maxLength": 128
-                      },
-                      "texts": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "string",
-                          "maxLength": 512
-                        }
-                      },
-                      "flags": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "boolean"
-                        }
-                      },
-                      "base64": {
-                        "type": "string",
-                        "maxLength": 131072
-                      },
-                      "states": {
-                        "type": "array",
-                        "maxItems": 4096,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "syntax_offset",
-                            "state"
-                          ],
-                          "properties": {
-                            "syntax_offset": {
-                              "type": "integer",
-                              "minimum": -2147483648,
-                              "maximum": 2147483647
-                            },
-                            "state": {
-                              "type": "integer",
-                              "minimum": -2147483648,
-                              "maximum": 2147483647
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              "required": [
-                "kind",
-                "owner_type",
-                "name",
-                "signature"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 65535,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 65535,
-                  "x-dnspy-enum": "MethodAttributes"
-                },
-                "has_this": {
-                  "type": "boolean"
-                },
-                "impl_attributes": {
-                  "maximum": 6143,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 6143,
-                  "x-dnspy-enum": "MethodImplAttributes"
-                },
-                "kind": {
-                  "const": "method_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "return_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "overrides": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "declaration"
-                        ],
-                        "properties": {
-                          "method": {
-                            "oneOf": [
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "owner_type",
-                                  "name"
-                                ],
-                                "properties": {
-                                  "owner_type": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 4096
-                                  },
-                                  "name": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 512
-                                  },
-                                  "parameter_types": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 4096
-                                    },
-                                    "maxItems": 64
-                                  }
-                                }
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "token": {
-                                    "maxLength": 10,
-                                    "minLength": 1,
-                                    "pattern": "^0x[0-9a-fA-F]{8}$",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "token"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "object_id": {
-                                    "maxLength": 128,
-                                    "minLength": 1,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "object_id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "declaration": {
-                            "oneOf": [
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "owner_type",
-                                  "name"
-                                ],
-                                "properties": {
-                                  "owner_type": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 4096
-                                  },
-                                  "name": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 512
-                                  },
-                                  "parameter_types": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 4096
-                                    },
-                                    "maxItems": 64
-                                  }
-                                }
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "token": {
-                                    "maxLength": 10,
-                                    "minLength": 1,
-                                    "pattern": "^0x[0-9a-fA-F]{8}$",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "token"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "object_id": {
-                                    "maxLength": 128,
-                                    "minLength": 1,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "object_id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          }
-                        }
-                      },
-                      "maxItems": 64
-                    }
-                  ]
-                },
-                "pinvoke": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "module_name"
-                      ],
-                      "properties": {
-                        "module_name": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 512
-                        },
-                        "entry_name": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 512
-                        },
-                        "charset": {
-                          "enum": [
-                            "none",
-                            "ansi",
-                            "unicode",
-                            "auto"
-                          ]
-                        },
-                        "no_mangle": {
-                          "type": "boolean"
-                        },
-                        "last_error": {
-                          "type": "boolean"
-                        },
-                        "calling_convention": {
-                          "enum": [
-                            "winapi",
-                            "cdecl",
-                            "stdcall",
-                            "thiscall",
-                            "fastcall"
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "method_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 0,
-                  "maximum": 47095,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 47095,
-                  "x-dnspy-enum": "FieldAttributes"
-                },
-                "constant": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i1"
-                        },
-                        "value": {
-                          "maximum": 127,
-                          "minimum": -128,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u1"
-                        },
-                        "value": {
-                          "maximum": 255,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i2"
-                        },
-                        "value": {
-                          "maximum": 32767,
-                          "minimum": -32768,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u2"
-                        },
-                        "value": {
-                          "maximum": 65535,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i4"
-                        },
-                        "value": {
-                          "maximum": 2147483647,
-                          "minimum": -2147483648,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u4"
-                        },
-                        "value": {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i8"
-                        },
-                        "value": {
-                          "maximum": 9223372036854775807,
-                          "minimum": -9223372036854775808,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u8"
-                        },
-                        "value": {
-                          "maximum": 18446744073709551615,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "r4"
-                        },
-                        "value": {
-                          "maximum": 3.4028234663852886e+38,
-                          "minimum": -3.4028234663852886e+38,
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "r8"
-                        },
-                        "value": {
-                          "maximum": 1.7976931348623157e+308,
-                          "minimum": -1.7976931348623157e+308,
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "null"
-                        },
-                        "value": {
-                          "type": "null"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "boolean"
-                        },
-                        "value": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "char"
-                        },
-                        "value": {
-                          "maxLength": 2,
-                          "minLength": 1,
-                          "pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "string"
-                        },
-                        "value": {
-                          "maxLength": 65535,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "field_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "field_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "field_offset": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    }
-                  ]
-                },
-                "initial_data": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "bytes_base64"
-                      ],
-                      "properties": {
-                        "bytes_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 1398102
-                        }
-                      }
-                    }
-                  ]
-                },
-                "marshal": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "enum": [
-                            "simple",
-                            "raw",
-                            "fixed_string",
-                            "fixed_array",
-                            "array",
-                            "safe_array",
-                            "custom",
-                            "interface"
-                          ]
-                        },
-                        "native": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "element": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "size": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "param_number": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "flags": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "iid_param_index": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "variant": {
-                          "enum": [
-                            "Empty",
-                            "Null",
-                            "I2",
-                            "I4",
-                            "R4",
-                            "R8",
-                            "CY",
-                            "Date",
-                            "BStr",
-                            "Dispatch",
-                            "Error",
-                            "Bool",
-                            "Variant",
-                            "Unknown",
-                            "Decimal",
-                            "I1",
-                            "UI1",
-                            "UI2",
-                            "UI4",
-                            "I8",
-                            "UI8",
-                            "Int",
-                            "UInt",
-                            "Void",
-                            "HResult",
-                            "Ptr",
-                            "SafeArray",
-                            "CArray",
-                            "UserDefined",
-                            "Record",
-                            "IntPtr",
-                            "UIntPtr"
-                          ]
-                        },
-                        "user_defined_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "custom_marshaler_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "data_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        },
-                        "guid_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "native_name_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "cookie_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "owner_type",
-                "name",
-                "field_type"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "allOf": [
-                {
-                  "not": {
-                    "required": [
-                      "constant",
-                      "clear_constant"
-                    ]
-                  }
-                }
-              ],
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 47095,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 47095,
-                  "x-dnspy-enum": "FieldAttributes"
-                },
-                "clear_constant": {
-                  "const": true
-                },
-                "constant": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i1"
-                        },
-                        "value": {
-                          "maximum": 127,
-                          "minimum": -128,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u1"
-                        },
-                        "value": {
-                          "maximum": 255,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i2"
-                        },
-                        "value": {
-                          "maximum": 32767,
-                          "minimum": -32768,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u2"
-                        },
-                        "value": {
-                          "maximum": 65535,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i4"
-                        },
-                        "value": {
-                          "maximum": 2147483647,
-                          "minimum": -2147483648,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u4"
-                        },
-                        "value": {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "i8"
-                        },
-                        "value": {
-                          "maximum": 9223372036854775807,
-                          "minimum": -9223372036854775808,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "u8"
-                        },
-                        "value": {
-                          "maximum": 18446744073709551615,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "r4"
-                        },
-                        "value": {
-                          "maximum": 3.4028234663852886e+38,
-                          "minimum": -3.4028234663852886e+38,
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "r8"
-                        },
-                        "value": {
-                          "maximum": 1.7976931348623157e+308,
-                          "minimum": -1.7976931348623157e+308,
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "null"
-                        },
-                        "value": {
-                          "type": "null"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "boolean"
-                        },
-                        "value": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "char"
-                        },
-                        "value": {
-                          "maxLength": 2,
-                          "minLength": 1,
-                          "pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": {
-                          "const": "string"
-                        },
-                        "value": {
-                          "maxLength": 65535,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "field_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "field_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "field_offset": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    }
-                  ]
-                },
-                "initial_data": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "bytes_base64"
-                      ],
-                      "properties": {
-                        "bytes_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 1398102
-                        }
-                      }
-                    }
-                  ]
-                },
-                "marshal": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "enum": [
-                            "simple",
-                            "raw",
-                            "fixed_string",
-                            "fixed_array",
-                            "array",
-                            "safe_array",
-                            "custom",
-                            "interface"
-                          ]
-                        },
-                        "native": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "element": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "size": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "param_number": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "flags": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "iid_param_index": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "variant": {
-                          "enum": [
-                            "Empty",
-                            "Null",
-                            "I2",
-                            "I4",
-                            "R4",
-                            "R8",
-                            "CY",
-                            "Date",
-                            "BStr",
-                            "Dispatch",
-                            "Error",
-                            "Bool",
-                            "Variant",
-                            "Unknown",
-                            "Decimal",
-                            "I1",
-                            "UI1",
-                            "UI2",
-                            "UI4",
-                            "I8",
-                            "UI8",
-                            "Int",
-                            "UInt",
-                            "Void",
-                            "HResult",
-                            "Ptr",
-                            "SafeArray",
-                            "CArray",
-                            "UserDefined",
-                            "Record",
-                            "IntPtr",
-                            "UIntPtr"
-                          ]
-                        },
-                        "user_defined_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "custom_marshaler_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "data_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        },
-                        "guid_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "native_name_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "cookie_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "field_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 0,
-                  "maximum": 5632,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 5632,
-                  "x-dnspy-enum": "PropertyAttributes"
-                },
-                "getter": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "index_parameter_types": {
-                  "items": {
-                    "oneOf": [
-                      {
-                        "maxLength": 4096,
-                        "minLength": 1,
-                        "type": "string",
-                        "x-dnspy-contract": "p02-typesig-v1"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "kind",
-                          "type"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "const": "type"
-                          },
-                          "type": {
-                            "type": "object",
-                            "required": [
-                              "Kind"
-                            ],
-                            "properties": {
-                              "Kind": {
-                                "type": "string",
-                                "enum": [
-                                  "CorLibTypeSig",
-                                  "ClassSig",
-                                  "ValueTypeSig",
-                                  "GenericVar",
-                                  "GenericMVar",
-                                  "FnPtrSig",
-                                  "GenericInstSig",
-                                  "CModReqdSig",
-                                  "CModOptSig",
-                                  "ArraySig",
-                                  "ValueArraySig",
-                                  "ModuleSig",
-                                  "PtrSig",
-                                  "ByRefSig",
-                                  "SZArraySig",
-                                  "PinnedSig",
-                                  "SentinelSig"
-                                ]
-                              }
-                            },
-                            "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "kind": {
-                  "const": "property_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "property_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "setter": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "owner_type",
-                "name",
-                "property_type"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 5632,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 5632,
-                  "x-dnspy-enum": "PropertyAttributes"
-                },
-                "getter": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "index_parameter_types": {
-                  "items": {
-                    "oneOf": [
-                      {
-                        "maxLength": 4096,
-                        "minLength": 1,
-                        "type": "string",
-                        "x-dnspy-contract": "p02-typesig-v1"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "kind",
-                          "type"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "const": "type"
-                          },
-                          "type": {
-                            "type": "object",
-                            "required": [
-                              "Kind"
-                            ],
-                            "properties": {
-                              "Kind": {
-                                "type": "string",
-                                "enum": [
-                                  "CorLibTypeSig",
-                                  "ClassSig",
-                                  "ValueTypeSig",
-                                  "GenericVar",
-                                  "GenericMVar",
-                                  "FnPtrSig",
-                                  "GenericInstSig",
-                                  "CModReqdSig",
-                                  "CModOptSig",
-                                  "ArraySig",
-                                  "ValueArraySig",
-                                  "ModuleSig",
-                                  "PtrSig",
-                                  "ByRefSig",
-                                  "SZArraySig",
-                                  "PinnedSig",
-                                  "SentinelSig"
-                                ]
-                              }
-                            },
-                            "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "kind": {
-                  "const": "property_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "property_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "setter": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "property_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "add_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "attributes": {
-                  "default": 0,
-                  "maximum": 1536,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 1536,
-                  "x-dnspy-enum": "EventAttributes"
-                },
-                "event_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "event_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "raise_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "remove_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "owner_type",
-                "name",
-                "event_type",
-                "add_method",
-                "remove_method"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "add_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "attributes": {
-                  "maximum": 1536,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 1536,
-                  "x-dnspy-enum": "EventAttributes"
-                },
-                "event_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "kind": {
-                  "const": "event_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "raise_method": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "remove_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "event_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 0,
-                  "maximum": 12319,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 12319,
-                  "x-dnspy-enum": "ParamAttributes"
-                },
-                "kind": {
-                  "const": "parameter_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner_method": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "parameter_index": {
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "parameter_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "marshal": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "enum": [
-                            "simple",
-                            "raw",
-                            "fixed_string",
-                            "fixed_array",
-                            "array",
-                            "safe_array",
-                            "custom",
-                            "interface"
-                          ]
-                        },
-                        "native": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "element": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "size": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "param_number": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "flags": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "iid_param_index": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "variant": {
-                          "enum": [
-                            "Empty",
-                            "Null",
-                            "I2",
-                            "I4",
-                            "R4",
-                            "R8",
-                            "CY",
-                            "Date",
-                            "BStr",
-                            "Dispatch",
-                            "Error",
-                            "Bool",
-                            "Variant",
-                            "Unknown",
-                            "Decimal",
-                            "I1",
-                            "UI1",
-                            "UI2",
-                            "UI4",
-                            "I8",
-                            "UI8",
-                            "Int",
-                            "UInt",
-                            "Void",
-                            "HResult",
-                            "Ptr",
-                            "SafeArray",
-                            "CArray",
-                            "UserDefined",
-                            "Record",
-                            "IntPtr",
-                            "UIntPtr"
-                          ]
-                        },
-                        "user_defined_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "custom_marshaler_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "data_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        },
-                        "guid_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "native_name_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "cookie_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "owner_method",
-                "parameter_index",
-                "name",
-                "parameter_type"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 12319,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 12319,
-                  "x-dnspy-enum": "ParamAttributes"
-                },
-                "kind": {
-                  "const": "parameter_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "parameter_target": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "owner_method": {
-                          "oneOf": [
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "token": {
-                                  "maxLength": 10,
-                                  "minLength": 1,
-                                  "pattern": "^0x[0-9a-fA-F]{8}$",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "token"
-                              ],
-                              "type": "object"
-                            },
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "object_id": {
-                                  "maxLength": 128,
-                                  "minLength": 1,
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "object_id"
-                              ],
-                              "type": "object"
-                            }
-                          ]
-                        },
-                        "parameter_index": {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "owner_method",
-                        "parameter_index"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "parameter_type": {
-                  "oneOf": [
-                    {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string",
-                      "x-dnspy-contract": "p02-typesig-v1"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind",
-                        "type"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "const": "type"
-                        },
-                        "type": {
-                          "type": "object",
-                          "required": [
-                            "Kind"
-                          ],
-                          "properties": {
-                            "Kind": {
-                              "type": "string",
-                              "enum": [
-                                "CorLibTypeSig",
-                                "ClassSig",
-                                "ValueTypeSig",
-                                "GenericVar",
-                                "GenericMVar",
-                                "FnPtrSig",
-                                "GenericInstSig",
-                                "CModReqdSig",
-                                "CModOptSig",
-                                "ArraySig",
-                                "ValueArraySig",
-                                "ModuleSig",
-                                "PtrSig",
-                                "ByRefSig",
-                                "SZArraySig",
-                                "PinnedSig",
-                                "SentinelSig"
-                              ]
-                            }
-                          },
-                          "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "marshal": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "enum": [
-                            "simple",
-                            "raw",
-                            "fixed_string",
-                            "fixed_array",
-                            "array",
-                            "safe_array",
-                            "custom",
-                            "interface"
-                          ]
-                        },
-                        "native": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "element": {
-                          "enum": [
-                            "NotInitialized",
-                            "Void",
-                            "Boolean",
-                            "I1",
-                            "U1",
-                            "I2",
-                            "U2",
-                            "I4",
-                            "U4",
-                            "I8",
-                            "U8",
-                            "R4",
-                            "R8",
-                            "Currency",
-                            "BStr",
-                            "LPStr",
-                            "LPWStr",
-                            "LPTStr",
-                            "LPUTF8Str",
-                            "FixedSysString",
-                            "ObjectRef",
-                            "Decimal",
-                            "Struct",
-                            "IntF",
-                            "Int",
-                            "UInt",
-                            "IntPtr",
-                            "ByValStr",
-                            "TBStr",
-                            "ANSIBStr",
-                            "IDispatch",
-                            "IUnknown",
-                            "StructEnd",
-                            "SafeArray",
-                            "FixedArray",
-                            "NestedStruct",
-                            "CustomMarshaler",
-                            "Error",
-                            "IInspectable",
-                            "HString",
-                            "Ptr",
-                            "Array",
-                            "Func",
-                            "AsAny",
-                            "Variant",
-                            "SysChar",
-                            "Void2"
-                          ]
-                        },
-                        "size": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "param_number": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "flags": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "iid_param_index": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 2147483647
-                        },
-                        "variant": {
-                          "enum": [
-                            "Empty",
-                            "Null",
-                            "I2",
-                            "I4",
-                            "R4",
-                            "R8",
-                            "CY",
-                            "Date",
-                            "BStr",
-                            "Dispatch",
-                            "Error",
-                            "Bool",
-                            "Variant",
-                            "Unknown",
-                            "Decimal",
-                            "I1",
-                            "UI1",
-                            "UI2",
-                            "UI4",
-                            "I8",
-                            "UI8",
-                            "Int",
-                            "UInt",
-                            "Void",
-                            "HResult",
-                            "Ptr",
-                            "SafeArray",
-                            "CArray",
-                            "UserDefined",
-                            "Record",
-                            "IntPtr",
-                            "UIntPtr"
-                          ]
-                        },
-                        "user_defined_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "custom_marshaler_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "data_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        },
-                        "guid_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "native_name_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 512
-                        },
-                        "cookie_base64": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
-                          "maxLength": 4096
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "parameter_target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "parameter_remove"
-                },
-                "parameter_target": {
-                  "oneOf": [
-                    {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "owner_method": {
-                          "oneOf": [
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "token": {
-                                  "maxLength": 10,
-                                  "minLength": 1,
-                                  "pattern": "^0x[0-9a-fA-F]{8}$",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "token"
-                              ],
-                              "type": "object"
-                            },
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "object_id": {
-                                  "maxLength": 128,
-                                  "minLength": 1,
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "object_id"
-                              ],
-                              "type": "object"
-                            }
-                          ]
-                        },
-                        "parameter_index": {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "owner_method",
-                        "parameter_index"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                }
-              },
-              "required": [
-                "kind",
-                "parameter_target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "attributes": {
-                  "default": 0,
-                  "maximum": 63,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 63,
-                  "x-dnspy-enum": "GenericParamAttributes"
-                },
-                "generic_index": {
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "const": "generic_parameter_add"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "owner": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "constraints": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      },
-                      "maxItems": 64
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "owner",
-                "generic_index",
-                "name"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "minProperties": 3,
-              "properties": {
-                "attributes": {
-                  "maximum": 63,
-                  "minimum": 0,
-                  "type": "integer",
-                  "x-dnspy-defined-bit-mask": 63,
-                  "x-dnspy-enum": "GenericParamAttributes"
-                },
-                "kind": {
-                  "const": "generic_parameter_update"
-                },
-                "name": {
-                  "maxLength": 512,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "constraints": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      },
-                      "maxItems": 64
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "generic_parameter_remove"
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "body": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "exception_handlers": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "catch_type": {
-                            "oneOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "maxLength": 4096,
-                                    "minLength": 1,
-                                    "type": "string",
-                                    "x-dnspy-contract": "p02-typesig-v1"
-                                  },
-                                  {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "required": [
-                                      "kind",
-                                      "type"
-                                    ],
-                                    "properties": {
-                                      "kind": {
-                                        "const": "type"
-                                      },
-                                      "type": {
-                                        "type": "object",
-                                        "required": [
-                                          "Kind"
-                                        ],
-                                        "properties": {
-                                          "Kind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "CorLibTypeSig",
-                                              "ClassSig",
-                                              "ValueTypeSig",
-                                              "GenericVar",
-                                              "GenericMVar",
-                                              "FnPtrSig",
-                                              "GenericInstSig",
-                                              "CModReqdSig",
-                                              "CModOptSig",
-                                              "ArraySig",
-                                              "ValueArraySig",
-                                              "ModuleSig",
-                                              "PtrSig",
-                                              "ByRefSig",
-                                              "SZArraySig",
-                                              "PinnedSig",
-                                              "SentinelSig"
-                                            ]
-                                          }
-                                        },
-                                        "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                      }
-                                    }
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "filter_start": {
-                            "oneOf": [
-                              {
-                                "maximum": 4294967295,
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "handler_end": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "handler_start": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "kind": {
-                            "enum": [
-                              "catch",
-                              "finally",
-                              "fault",
-                              "filter"
-                            ]
-                          },
-                          "try_end": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "try_start": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "try_start",
-                          "try_end",
-                          "handler_start",
-                          "handler_end",
-                          "filter_start",
-                          "catch_type"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 512,
-                      "type": "array"
-                    },
-                    "init_locals": {
-                      "type": "boolean"
-                    },
-                    "instructions": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "opcode": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "operand": {
-                            "oneOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "i32"
-                                      },
-                                      "value": {
-                                        "maximum": 2147483647,
-                                        "minimum": -2147483648,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "i64"
-                                      },
-                                      "value": {
-                                        "maximum": 9223372036854775807,
-                                        "minimum": -9223372036854775808,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "f32"
-                                      },
-                                      "value": {
-                                        "maximum": 3.4028234663852886e+38,
-                                        "minimum": -3.4028234663852886e+38,
-                                        "type": "number"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "f64"
-                                      },
-                                      "value": {
-                                        "maximum": 1.7976931348623157e+308,
-                                        "minimum": -1.7976931348623157e+308,
-                                        "type": "number"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "string"
-                                      },
-                                      "value": {
-                                        "maxLength": 65535,
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "value"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "token"
-                                      },
-                                      "token": {
-                                        "maxLength": 10,
-                                        "minLength": 1,
-                                        "pattern": "^0x[0-9a-fA-F]{8}$",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "token"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "object"
-                                      },
-                                      "object_id": {
-                                        "maxLength": 128,
-                                        "minLength": 1,
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "object_id"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "instruction_index": {
-                                        "maximum": 4095,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "kind": {
-                                        "const": "label"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "instruction_index"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "instruction_indices": {
-                                        "items": {
-                                          "maximum": 4294967295,
-                                          "minimum": 0,
-                                          "type": "integer"
-                                        },
-                                        "maxItems": 4096,
-                                        "type": "array"
-                                      },
-                                      "kind": {
-                                        "const": "switch"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "instruction_indices"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "kind": {
-                                        "const": "local"
-                                      },
-                                      "local_index": {
-                                        "maximum": 65535,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "local_index"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "argument_index": {
-                                        "maximum": 65535,
-                                        "minimum": 0,
-                                        "type": "integer"
-                                      },
-                                      "kind": {
-                                        "const": "arg"
-                                      }
-                                    },
-                                    "required": [
-                                      "kind",
-                                      "argument_index"
-                                    ],
-                                    "type": "object"
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "opcode"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 4096,
-                      "type": "array"
-                    },
-                    "locals": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "name": {
-                            "oneOf": [
-                              {
-                                "maxLength": 512,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "type": {
-                            "oneOf": [
-                              {
-                                "maxLength": 4096,
-                                "minLength": 1,
-                                "type": "string",
-                                "x-dnspy-contract": "p02-typesig-v1"
-                              },
-                              {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "kind",
-                                  "type"
-                                ],
-                                "properties": {
-                                  "kind": {
-                                    "const": "type"
-                                  },
-                                  "type": {
-                                    "type": "object",
-                                    "required": [
-                                      "Kind"
-                                    ],
-                                    "properties": {
-                                      "Kind": {
-                                        "type": "string",
-                                        "enum": [
-                                          "CorLibTypeSig",
-                                          "ClassSig",
-                                          "ValueTypeSig",
-                                          "GenericVar",
-                                          "GenericMVar",
-                                          "FnPtrSig",
-                                          "GenericInstSig",
-                                          "CModReqdSig",
-                                          "CModOptSig",
-                                          "ArraySig",
-                                          "ValueArraySig",
-                                          "ModuleSig",
-                                          "PtrSig",
-                                          "ByRefSig",
-                                          "SZArraySig",
-                                          "PinnedSig",
-                                          "SentinelSig"
-                                        ]
-                                      }
-                                    },
-                                    "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 1024,
-                      "type": "array"
-                    },
-                    "max_stack": {
-                      "maximum": 65535,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "sequence_points": {
-                      "type": "array",
-                      "maxItems": 4096,
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "document",
-                          "start",
-                          "end"
-                        ],
-                        "properties": {
-                          "document": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "name"
-                            ],
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 1024
-                              },
-                              "language": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "vendor": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hash": {
-                                "type": "string",
-                                "maxLength": 96
-                              },
-                              "type": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hash_algorithm": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              },
-                              "hashAlgorithm": {
-                                "type": "string",
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "not": {
-                                  "required": [
-                                    "hash_algorithm",
-                                    "hashAlgorithm"
-                                  ]
-                                }
-                              }
-                            ]
-                          },
-                          "start": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "il",
-                              "line",
-                              "column"
-                            ],
-                            "properties": {
-                              "il": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 4095
-                              },
-                              "line": {
-                                "oneOf": [
-                                  {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 1048575
-                                  },
-                                  {
-                                    "const": 16707566
-                                  }
-                                ]
-                              },
-                              "column": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 1048575
-                              }
-                            }
-                          },
-                          "end": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "il",
-                              "line",
-                              "column"
-                            ],
-                            "properties": {
-                              "il": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 4095
-                              },
-                              "line": {
-                                "oneOf": [
-                                  {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 1048575
-                                  },
-                                  {
-                                    "const": 16707566
-                                  }
-                                ]
-                              },
-                              "column": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 1048575
-                              }
-                            }
-                          }
-                        }
-                      }
-                    },
-                    "scope": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "locals",
-                        "constants",
-                        "namespaces",
-                        "scopes"
-                      ],
-                      "properties": {
-                        "start_il": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "end_il": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "locals": {
-                          "type": "array",
-                          "maxItems": 1024,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "index",
-                              "name",
-                              "attributes"
-                            ],
-                            "properties": {
-                              "index": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 65535
-                              },
-                              "name": {
-                                "type": "string",
-                                "maxLength": 512
-                              },
-                              "attributes": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 63
-                              }
-                            }
-                          }
-                        },
-                        "constants": {
-                          "type": "array",
-                          "maxItems": 256,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "name",
-                              "type",
-                              "value"
-                            ],
-                            "properties": {
-                              "name": {
-                                "type": "string",
-                                "maxLength": 512
-                              },
-                              "type": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 2048
-                              },
-                              "value_kind": {
-                                "type": "string",
-                                "enum": [
-                                  "null",
-                                  "Boolean",
-                                  "String",
-                                  "Char",
-                                  "SByte",
-                                  "Byte",
-                                  "Int16",
-                                  "UInt16",
-                                  "Int32",
-                                  "UInt32",
-                                  "Int64",
-                                  "UInt64",
-                                  "Single",
-                                  "Double"
-                                ]
-                              },
-                              "value": {},
-                              "valueKind": {
-                                "type": "string",
-                                "enum": [
-                                  "null",
-                                  "Boolean",
-                                  "String",
-                                  "Char",
-                                  "SByte",
-                                  "Byte",
-                                  "Int16",
-                                  "UInt16",
-                                  "Int32",
-                                  "UInt32",
-                                  "Int64",
-                                  "UInt64",
-                                  "Single",
-                                  "Double"
-                                ]
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "value_kind"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "valueKind"
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        },
-                        "namespaces": {
-                          "type": "array",
-                          "maxItems": 128,
-                          "items": {
-                            "type": "string",
-                            "maxLength": 512
-                          }
-                        },
-                        "import_scope": {
-                          "type": "string",
-                          "maxLength": 64
-                        },
-                        "scopes": {
-                          "type": "array",
-                          "maxItems": 256,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "locals",
-                              "constants",
-                              "namespaces",
-                              "scopes"
-                            ],
-                            "properties": {
-                              "start_il": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "end_il": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "locals": {
-                                "type": "array",
-                                "maxItems": 1024,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "index",
-                                    "name",
-                                    "attributes"
-                                  ],
-                                  "properties": {
-                                    "index": {
-                                      "type": "integer",
-                                      "minimum": 0,
-                                      "maximum": 65535
-                                    },
-                                    "name": {
-                                      "type": "string",
-                                      "maxLength": 512
-                                    },
-                                    "attributes": {
-                                      "type": "integer",
-                                      "minimum": 0,
-                                      "maximum": 63
-                                    }
-                                  }
-                                }
-                              },
-                              "constants": {
-                                "type": "array",
-                                "maxItems": 256,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "name",
-                                    "type",
-                                    "value"
-                                  ],
-                                  "properties": {
-                                    "name": {
-                                      "type": "string",
-                                      "maxLength": 512
-                                    },
-                                    "type": {
-                                      "type": "string",
-                                      "minLength": 1,
-                                      "maxLength": 2048
-                                    },
-                                    "value_kind": {
-                                      "type": "string",
-                                      "enum": [
-                                        "null",
-                                        "Boolean",
-                                        "String",
-                                        "Char",
-                                        "SByte",
-                                        "Byte",
-                                        "Int16",
-                                        "UInt16",
-                                        "Int32",
-                                        "UInt32",
-                                        "Int64",
-                                        "UInt64",
-                                        "Single",
-                                        "Double"
-                                      ]
-                                    },
-                                    "value": {},
-                                    "valueKind": {
-                                      "type": "string",
-                                      "enum": [
-                                        "null",
-                                        "Boolean",
-                                        "String",
-                                        "Char",
-                                        "SByte",
-                                        "Byte",
-                                        "Int16",
-                                        "UInt16",
-                                        "Int32",
-                                        "UInt32",
-                                        "Int64",
-                                        "UInt64",
-                                        "Single",
-                                        "Double"
-                                      ]
-                                    }
-                                  },
-                                  "allOf": [
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "value_kind"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "valueKind"
-                                          ]
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              },
-                              "namespaces": {
-                                "type": "array",
-                                "maxItems": 128,
-                                "items": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                }
-                              },
-                              "import_scope": {
-                                "type": "string",
-                                "maxLength": 64
-                              },
-                              "scopes": {
-                                "type": "array",
-                                "maxItems": 256,
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "locals",
-                                    "constants",
-                                    "namespaces",
-                                    "scopes"
-                                  ],
-                                  "properties": {
-                                    "start_il": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "end_il": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "locals": {
-                                      "type": "array",
-                                      "maxItems": 1024,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "index",
-                                          "name",
-                                          "attributes"
-                                        ],
-                                        "properties": {
-                                          "index": {
-                                            "type": "integer",
-                                            "minimum": 0,
-                                            "maximum": 65535
-                                          },
-                                          "name": {
-                                            "type": "string",
-                                            "maxLength": 512
-                                          },
-                                          "attributes": {
-                                            "type": "integer",
-                                            "minimum": 0,
-                                            "maximum": 63
-                                          }
-                                        }
-                                      }
-                                    },
-                                    "constants": {
-                                      "type": "array",
-                                      "maxItems": 256,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "name",
-                                          "type",
-                                          "value"
-                                        ],
-                                        "properties": {
-                                          "name": {
-                                            "type": "string",
-                                            "maxLength": 512
-                                          },
-                                          "type": {
-                                            "type": "string",
-                                            "minLength": 1,
-                                            "maxLength": 2048
-                                          },
-                                          "value_kind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "null",
-                                              "Boolean",
-                                              "String",
-                                              "Char",
-                                              "SByte",
-                                              "Byte",
-                                              "Int16",
-                                              "UInt16",
-                                              "Int32",
-                                              "UInt32",
-                                              "Int64",
-                                              "UInt64",
-                                              "Single",
-                                              "Double"
-                                            ]
-                                          },
-                                          "value": {},
-                                          "valueKind": {
-                                            "type": "string",
-                                            "enum": [
-                                              "null",
-                                              "Boolean",
-                                              "String",
-                                              "Char",
-                                              "SByte",
-                                              "Byte",
-                                              "Int16",
-                                              "UInt16",
-                                              "Int32",
-                                              "UInt32",
-                                              "Int64",
-                                              "UInt64",
-                                              "Single",
-                                              "Double"
-                                            ]
-                                          }
-                                        },
-                                        "allOf": [
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "value_kind"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "valueKind"
-                                                ]
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "namespaces": {
-                                      "type": "array",
-                                      "maxItems": 128,
-                                      "items": {
-                                        "type": "string",
-                                        "maxLength": 512
-                                      }
-                                    },
-                                    "import_scope": {
-                                      "type": "string",
-                                      "maxLength": 64
-                                    },
-                                    "scopes": {
-                                      "type": "array",
-                                      "maxItems": 256,
-                                      "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "required": [
-                                          "locals",
-                                          "constants",
-                                          "namespaces",
-                                          "scopes"
-                                        ],
-                                        "properties": {
-                                          "start_il": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "end_il": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "locals": {
-                                            "type": "array",
-                                            "maxItems": 1024,
-                                            "items": {
-                                              "type": "object",
-                                              "additionalProperties": false,
-                                              "required": [
-                                                "index",
-                                                "name",
-                                                "attributes"
-                                              ],
-                                              "properties": {
-                                                "index": {
-                                                  "type": "integer",
-                                                  "minimum": 0,
-                                                  "maximum": 65535
-                                                },
-                                                "name": {
-                                                  "type": "string",
-                                                  "maxLength": 512
-                                                },
-                                                "attributes": {
-                                                  "type": "integer",
-                                                  "minimum": 0,
-                                                  "maximum": 63
-                                                }
-                                              }
-                                            }
-                                          },
-                                          "constants": {
-                                            "type": "array",
-                                            "maxItems": 256,
-                                            "items": {
-                                              "type": "object",
-                                              "additionalProperties": false,
-                                              "required": [
-                                                "name",
-                                                "type",
-                                                "value"
-                                              ],
-                                              "properties": {
-                                                "name": {
-                                                  "type": "string",
-                                                  "maxLength": 512
-                                                },
-                                                "type": {
-                                                  "type": "string",
-                                                  "minLength": 1,
-                                                  "maxLength": 2048
-                                                },
-                                                "value_kind": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "null",
-                                                    "Boolean",
-                                                    "String",
-                                                    "Char",
-                                                    "SByte",
-                                                    "Byte",
-                                                    "Int16",
-                                                    "UInt16",
-                                                    "Int32",
-                                                    "UInt32",
-                                                    "Int64",
-                                                    "UInt64",
-                                                    "Single",
-                                                    "Double"
-                                                  ]
-                                                },
-                                                "value": {},
-                                                "valueKind": {
-                                                  "type": "string",
-                                                  "enum": [
-                                                    "null",
-                                                    "Boolean",
-                                                    "String",
-                                                    "Char",
-                                                    "SByte",
-                                                    "Byte",
-                                                    "Int16",
-                                                    "UInt16",
-                                                    "Int32",
-                                                    "UInt32",
-                                                    "Int64",
-                                                    "UInt64",
-                                                    "Single",
-                                                    "Double"
-                                                  ]
-                                                }
-                                              },
-                                              "allOf": [
-                                                {
-                                                  "oneOf": [
-                                                    {
-                                                      "required": [
-                                                        "value_kind"
-                                                      ]
-                                                    },
-                                                    {
-                                                      "required": [
-                                                        "valueKind"
-                                                      ]
-                                                    }
-                                                  ]
-                                                }
-                                              ]
-                                            }
-                                          },
-                                          "namespaces": {
-                                            "type": "array",
-                                            "maxItems": 128,
-                                            "items": {
-                                              "type": "string",
-                                              "maxLength": 512
-                                            }
-                                          },
-                                          "import_scope": {
-                                            "type": "string",
-                                            "maxLength": 64
-                                          },
-                                          "scopes": {
-                                            "type": "array",
-                                            "maxItems": 0
-                                          },
-                                          "startIl": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "endIl": {
-                                            "type": "integer",
-                                            "minimum": -1,
-                                            "maximum": 4095
-                                          },
-                                          "importScope": {
-                                            "type": "string",
-                                            "maxLength": 64
-                                          }
-                                        },
-                                        "allOf": [
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "start_il"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "startIl"
-                                                ]
-                                              }
-                                            ]
-                                          },
-                                          {
-                                            "oneOf": [
-                                              {
-                                                "required": [
-                                                  "end_il"
-                                                ]
-                                              },
-                                              {
-                                                "required": [
-                                                  "endIl"
-                                                ]
-                                              }
-                                            ]
-                                          },
-                                          {
-                                            "not": {
-                                              "required": [
-                                                "import_scope",
-                                                "importScope"
-                                              ]
-                                            }
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "startIl": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "endIl": {
-                                      "type": "integer",
-                                      "minimum": -1,
-                                      "maximum": 4095
-                                    },
-                                    "importScope": {
-                                      "type": "string",
-                                      "maxLength": 64
-                                    }
-                                  },
-                                  "allOf": [
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "start_il"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "startIl"
-                                          ]
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "oneOf": [
-                                        {
-                                          "required": [
-                                            "end_il"
-                                          ]
-                                        },
-                                        {
-                                          "required": [
-                                            "endIl"
-                                          ]
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "not": {
-                                        "required": [
-                                          "import_scope",
-                                          "importScope"
-                                        ]
-                                      }
-                                    }
-                                  ]
-                                }
-                              },
-                              "startIl": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "endIl": {
-                                "type": "integer",
-                                "minimum": -1,
-                                "maximum": 4095
-                              },
-                              "importScope": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            },
-                            "allOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "start_il"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "startIl"
-                                    ]
-                                  }
-                                ]
-                              },
-                              {
-                                "oneOf": [
-                                  {
-                                    "required": [
-                                      "end_il"
-                                    ]
-                                  },
-                                  {
-                                    "required": [
-                                      "endIl"
-                                    ]
-                                  }
-                                ]
-                              },
-                              {
-                                "not": {
-                                  "required": [
-                                    "import_scope",
-                                    "importScope"
-                                  ]
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        "startIl": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "endIl": {
-                          "type": "integer",
-                          "minimum": -1,
-                          "maximum": 4095
-                        },
-                        "importScope": {
-                          "type": "string",
-                          "maxLength": 64
-                        }
-                      },
-                      "allOf": [
-                        {
-                          "oneOf": [
-                            {
-                              "required": [
-                                "start_il"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "startIl"
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "oneOf": [
-                            {
-                              "required": [
-                                "end_il"
-                              ]
-                            },
-                            {
-                              "required": [
-                                "endIl"
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "not": {
-                            "required": [
-                              "import_scope",
-                              "importScope"
-                            ]
-                          }
-                        }
-                      ]
-                    },
-                    "import_scopes": {
-                      "type": "array",
-                      "minItems": 1,
-                      "maxItems": 256,
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "id",
-                          "imports"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "parent": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "imports": {
-                            "type": "array",
-                            "maxItems": 128,
-                            "items": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "kind"
-                              ],
-                              "properties": {
-                                "kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "namespace",
-                                    "assembly_namespace",
-                                    "type",
-                                    "xml",
-                                    "assembly_reference_alias",
-                                    "alias_assembly",
-                                    "alias_namespace",
-                                    "alias_assembly_namespace",
-                                    "alias_type"
-                                  ]
-                                },
-                                "alias": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "namespace": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "assembly_name": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                },
-                                "type": {
-                                  "type": "string",
-                                  "maxLength": 2048
-                                },
-                                "assemblyName": {
-                                  "type": "string",
-                                  "maxLength": 512
-                                }
-                              },
-                              "allOf": [
-                                {
-                                  "not": {
-                                    "required": [
-                                      "assembly_name",
-                                      "assemblyName"
-                                    ]
-                                  }
-                                }
-                              ]
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "required": [
-                    "init_locals",
-                    "max_stack",
-                    "instructions",
-                    "locals",
-                    "exception_handlers"
-                  ],
-                  "type": "object"
-                },
-                "kind": {
-                  "const": "method_body_replace"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "custom_debug_infos": {
-                  "type": "array",
-                  "maxItems": 64,
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "hoisted",
-                          "async",
-                          "iterator",
-                          "state_machine_type_name",
-                          "type_documents",
-                          "default_namespace",
-                          "tuple",
-                          "dynamic",
-                          "embedded_source",
-                          "source_link",
-                          "enc_local",
-                          "enc_lambda",
-                          "unknown",
-                          "enc_state_map"
-                        ]
-                      },
-                      "reference": {
-                        "type": "string",
-                        "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
-                      },
-                      "type": {
-                        "type": "string",
-                        "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
-                      },
-                      "instruction": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "method",
-                          "index"
-                        ],
-                        "properties": {
-                          "method": {
-                            "type": "string",
-                            "maxLength": 64
-                          },
-                          "index": {
-                            "type": "integer",
-                            "minimum": -1,
-                            "maximum": 4095
-                          }
-                        }
-                      },
-                      "steps": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "yield",
-                            "breakpoint"
-                          ],
-                          "properties": {
-                            "yield": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "method",
-                                "index"
-                              ],
-                              "properties": {
-                                "method": {
-                                  "type": "string",
-                                  "maxLength": 64
-                                },
-                                "index": {
-                                  "type": "integer",
-                                  "minimum": -1,
-                                  "maximum": 4095
-                                }
-                              }
-                            },
-                            "breakpoint": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "method",
-                                "index"
-                              ],
-                              "properties": {
-                                "method": {
-                                  "type": "string",
-                                  "maxLength": 64
-                                },
-                                "index": {
-                                  "type": "integer",
-                                  "minimum": -1,
-                                  "maximum": 4095
-                                }
-                              }
-                            }
-                          }
-                        }
-                      },
-                      "ranges": {
-                        "type": "array",
-                        "maxItems": 4096,
-                        "items": {
-                          "type": "array",
-                          "minItems": 2,
-                          "maxItems": 2,
-                          "items": {
-                            "type": "integer",
-                            "minimum": -1,
-                            "maximum": 4095
-                          }
-                        }
-                      },
-                      "documents": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "name"
-                          ],
-                          "properties": {
-                            "name": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 1024
-                            },
-                            "language": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "vendor": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hash": {
-                              "type": "string",
-                              "maxLength": 96
-                            },
-                            "type": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hash_algorithm": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            "hashAlgorithm": {
-                              "type": "string",
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          },
-                          "allOf": [
-                            {
-                              "not": {
-                                "required": [
-                                  "hash_algorithm",
-                                  "hashAlgorithm"
-                                ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      "text": {
-                        "type": "string",
-                        "maxLength": 128
-                      },
-                      "texts": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "string",
-                          "maxLength": 512
-                        }
-                      },
-                      "flags": {
-                        "type": "array",
-                        "maxItems": 1024,
-                        "items": {
-                          "type": "boolean"
-                        }
-                      },
-                      "base64": {
-                        "type": "string",
-                        "maxLength": 131072
-                      },
-                      "states": {
-                        "type": "array",
-                        "maxItems": 4096,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "syntax_offset",
-                            "state"
-                          ],
-                          "properties": {
-                            "syntax_offset": {
-                              "type": "integer",
-                              "minimum": -2147483648,
-                              "maximum": 2147483647
-                            },
-                            "state": {
-                              "type": "integer",
-                              "minimum": -2147483648,
-                              "maximum": 2147483647
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              "required": [
-                "kind",
-                "target",
-                "body"
-              ],
-              "type": "object"
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "target",
-                "constructor"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "attribute_add"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "scope": {
-                          "const": "assembly"
-                        }
-                      },
-                      "required": [
-                        "scope"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "constructor": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "attribute_type"
-                  ],
-                  "properties": {
-                    "attribute_type": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 4096
-                    },
-                    "parameter_types": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      },
-                      "maxItems": 64
-                    }
-                  }
-                },
-                "fixed_arguments": {
-                  "type": "array",
-                  "items": {
-                    "oneOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "string",
-                        "maxLength": 4096
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "kind",
-                          "type"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "const": "type"
-                          },
-                          "type": {
-                            "type": "object",
-                            "required": [
-                              "Kind"
-                            ],
-                            "properties": {
-                              "Kind": {
-                                "type": "string",
-                                "enum": [
-                                  "CorLibTypeSig",
-                                  "ClassSig",
-                                  "ValueTypeSig",
-                                  "GenericVar",
-                                  "GenericMVar",
-                                  "FnPtrSig",
-                                  "GenericInstSig",
-                                  "CModReqdSig",
-                                  "CModOptSig",
-                                  "ArraySig",
-                                  "ValueArraySig",
-                                  "ModuleSig",
-                                  "PtrSig",
-                                  "ByRefSig",
-                                  "SZArraySig",
-                                  "PinnedSig",
-                                  "SentinelSig"
-                                ]
-                              }
-                            },
-                            "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                          }
-                        }
-                      },
-                      {
-                        "type": "array",
-                        "maxItems": 64,
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "kind",
-                            "type"
-                          ],
-                          "properties": {
-                            "kind": {
-                              "const": "type"
-                            },
-                            "type": {
-                              "type": "object",
-                              "required": [
-                                "Kind"
-                              ],
-                              "properties": {
-                                "Kind": {
-                                  "type": "string",
-                                  "enum": [
-                                    "CorLibTypeSig",
-                                    "ClassSig",
-                                    "ValueTypeSig",
-                                    "GenericVar",
-                                    "GenericMVar",
-                                    "FnPtrSig",
-                                    "GenericInstSig",
-                                    "CModReqdSig",
-                                    "CModOptSig",
-                                    "ArraySig",
-                                    "ValueArraySig",
-                                    "ModuleSig",
-                                    "PtrSig",
-                                    "ByRefSig",
-                                    "SZArraySig",
-                                    "PinnedSig",
-                                    "SentinelSig"
-                                  ]
-                                }
-                              },
-                              "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                            }
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  "maxItems": 64
-                },
-                "named_arguments": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "kind",
-                      "type",
-                      "name",
-                      "value"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "enum": [
-                          "field",
-                          "property"
-                        ]
-                      },
-                      "type": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      },
-                      "name": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512
-                      },
-                      "value": {
-                        "oneOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "string",
-                            "maxLength": 4096
-                          },
-                          {
-                            "type": "null"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                              "kind",
-                              "type"
-                            ],
-                            "properties": {
-                              "kind": {
-                                "const": "type"
-                              },
-                              "type": {
-                                "type": "object",
-                                "required": [
-                                  "Kind"
-                                ],
-                                "properties": {
-                                  "Kind": {
-                                    "type": "string",
-                                    "enum": [
-                                      "CorLibTypeSig",
-                                      "ClassSig",
-                                      "ValueTypeSig",
-                                      "GenericVar",
-                                      "GenericMVar",
-                                      "FnPtrSig",
-                                      "GenericInstSig",
-                                      "CModReqdSig",
-                                      "CModOptSig",
-                                      "ArraySig",
-                                      "ValueArraySig",
-                                      "ModuleSig",
-                                      "PtrSig",
-                                      "ByRefSig",
-                                      "SZArraySig",
-                                      "PinnedSig",
-                                      "SentinelSig"
-                                    ]
-                                  }
-                                },
-                                "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                              }
-                            }
-                          },
-                          {
-                            "type": "array",
-                            "maxItems": 64,
-                            "items": {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "required": [
-                                "kind",
-                                "type"
-                              ],
-                              "properties": {
-                                "kind": {
-                                  "const": "type"
-                                },
-                                "type": {
-                                  "type": "object",
-                                  "required": [
-                                    "Kind"
-                                  ],
-                                  "properties": {
-                                    "Kind": {
-                                      "type": "string",
-                                      "enum": [
-                                        "CorLibTypeSig",
-                                        "ClassSig",
-                                        "ValueTypeSig",
-                                        "GenericVar",
-                                        "GenericMVar",
-                                        "FnPtrSig",
-                                        "GenericInstSig",
-                                        "CModReqdSig",
-                                        "CModOptSig",
-                                        "ArraySig",
-                                        "ValueArraySig",
-                                        "ModuleSig",
-                                        "PtrSig",
-                                        "ByRefSig",
-                                        "SZArraySig",
-                                        "PinnedSig",
-                                        "SentinelSig"
-                                      ]
-                                    }
-                                  },
-                                  "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                                }
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  "maxItems": 64
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "target",
-                "match"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "attribute_remove"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "scope": {
-                          "const": "assembly"
-                        }
-                      },
-                      "required": [
-                        "scope"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "match": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "constructor"
-                  ],
-                  "properties": {
-                    "constructor": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "attribute_type"
-                      ],
-                      "properties": {
-                        "attribute_type": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 4096
-                        },
-                        "parameter_types": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 4096
-                          },
-                          "maxItems": 64
-                        }
-                      }
-                    },
-                    "index": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "parent",
-                "action",
-                "xml"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "security_add"
-                },
-                "parent": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "scope": {
-                          "const": "assembly"
-                        }
-                      },
-                      "required": [
-                        "scope"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "action": {
-                  "enum": [
-                    "deny",
-                    "permit_only",
-                    "request_minimum",
-                    "request_optional",
-                    "request_refuse",
-                    "assert",
-                    "link_demand",
-                    "inherit_demand",
-                    "demand"
-                  ]
-                },
-                "xml": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 65536
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "parent",
-                "action"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "security_remove"
-                },
-                "parent": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "pattern": "^0x[0-9a-fA-F]{1,8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "scope": {
-                          "const": "assembly"
-                        }
-                      },
-                      "required": [
-                        "scope"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "action": {
-                  "enum": [
-                    "deny",
-                    "permit_only",
-                    "request_minimum",
-                    "request_optional",
-                    "request_refuse",
-                    "assert",
-                    "link_demand",
-                    "inherit_demand",
-                    "demand"
-                  ]
-                },
-                "index": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 4294967295
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "assembly_update"
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                "version": {
-                  "type": "string",
-                  "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
-                },
-                "culture": {
-                  "type": "string",
-                  "maxLength": 64
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "name"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "module_update"
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "target"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "assembly_ref_update"
-                },
-                "target": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "token"
-                      ],
-                      "properties": {
-                        "token": {
-                          "type": "string",
-                          "pattern": "^0x[0-9a-fA-F]{8}$"
-                        }
-                      }
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "object_id"
-                      ],
-                      "properties": {
-                        "object_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        }
-                      }
-                    }
-                  ]
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                "version": {
-                  "type": "string",
-                  "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
-                },
-                "culture": {
-                  "type": "string",
-                  "maxLength": 64
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "entry_point_set"
-                },
-                "entry_point": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "token"
-                      ],
-                      "properties": {
-                        "token": {
-                          "type": "string",
-                          "pattern": "^0x[0-9a-fA-F]{8}$"
-                        }
-                      }
-                    },
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "object_id"
-                      ],
-                      "properties": {
-                        "object_id": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "name",
-                "data_base64"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "managed_resource_add"
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                "attributes": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 3
-                },
-                "data_base64": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 12582912
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "target"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "managed_resource_update"
-                },
-                "target": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "name"
-                  ],
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    }
-                  }
-                },
-                "entry": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "name",
-                    "value_kind",
-                    "value"
-                  ],
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "value_kind": {
-                      "type": "string",
-                      "enum": [
-                        "string",
-                        "boolean",
-                        "i1",
-                        "u1",
-                        "i2",
-                        "u2",
-                        "i4",
-                        "u4",
-                        "i8",
-                        "u8",
-                        "r4",
-                        "r8",
-                        "bytes"
-                      ]
-                    },
-                    "value": {}
-                  }
-                },
-                "data_base64": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 12582912
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "target",
-                "remove_mode"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "managed_resource_remove"
-                },
-                "target": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "name"
-                  ],
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    }
-                  }
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "data_base64"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "win32_resource_add"
-                },
-                "type_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "type_name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "name_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "name_string": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "lang_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "data_base64": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 12582912
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "data_base64"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "win32_resource_update"
-                },
-                "type_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "type_name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "name_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "name_string": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "lang_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "data_base64": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 12582912
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "remove_mode"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "win32_resource_remove"
-                },
-                "type_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "type_name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "name_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "name_string": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
-                "lang_id": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 65535
-                },
-                "remove_mode": {
-                  "const": "reject_if_referenced"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "dynamic_failure"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "strong_name_remove"
-                },
-                "dynamic_failure": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "session_id",
-                    "event_cursor",
-                    "event_kind"
-                  ],
-                  "properties": {
-                    "session_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "event_cursor": {
-                      "type": "integer",
-                      "minimum": 1
-                    },
-                    "event_kind": {
-                      "type": "string",
-                      "enum": [
-                        "start_failed",
-                        "process_exited",
-                        "exception",
-                        "module_load_failed"
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "owner_type",
-                "interface"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "interface_add"
-                },
-                "owner_type": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "token": {
-                          "maxLength": 10,
-                          "minLength": 1,
-                          "pattern": "^0x[0-9a-fA-F]{8}$",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "object_id": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "object_id"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "interface": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "reference": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "type": {
-                      "type": "object",
-                      "required": [
-                        "Kind"
-                      ],
-                      "properties": {
-                        "Kind": {
-                          "type": "string",
-                          "enum": [
-                            "CorLibTypeSig",
-                            "ClassSig",
-                            "ValueTypeSig",
-                            "GenericVar",
-                            "GenericMVar",
-                            "FnPtrSig",
-                            "GenericInstSig",
-                            "CModReqdSig",
-                            "CModOptSig",
-                            "ArraySig",
-                            "ValueArraySig",
-                            "ModuleSig",
-                            "PtrSig",
-                            "ByRefSig",
-                            "SZArraySig",
-                            "PinnedSig",
-                            "SentinelSig"
-                          ]
-                        }
-                      },
-                      "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
-                    }
-                  },
-                  "oneOf": [
-                    {
-                      "required": [
-                        "reference"
-                      ],
-                      "not": {
-                        "required": [
-                          "type"
-                        ]
-                      }
-                    },
-                    {
-                      "required": [
-                        "type"
-                      ],
-                      "not": {
-                        "required": [
-                          "reference"
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "kind",
-                "reference"
-              ],
-              "properties": {
-                "kind": {
-                  "const": "reference_add"
-                },
-                "reference": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "form"
-                  ],
-                  "properties": {
-                    "form": {
-                      "type": "string",
-                      "enum": [
-                        "assembly_ref",
-                        "type_ref",
-                        "type_spec",
-                        "member_ref",
-                        "method_spec"
-                      ]
-                    },
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "version": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64
-                    },
-                    "culture": {
-                      "type": "string",
-                      "maxLength": 128
-                    },
-                    "public_key_or_token": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "kind"
-                      ],
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "none",
-                            "token",
-                            "public_key"
-                          ]
-                        },
-                        "base64": {
-                          "type": "string"
-                        }
-                      }
-                    },
-                    "flags": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "scope": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "namespace": {
-                      "type": "string",
-                      "maxLength": 1024
-                    },
-                    "signature": {
-                      "type": "object"
-                    },
-                    "member_kind": {
-                      "type": "string",
-                      "enum": [
-                        "method",
-                        "field"
-                      ]
-                    },
-                    "owner": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "method": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "token": {
-                              "maxLength": 10,
-                              "minLength": 1,
-                              "pattern": "^0x[0-9a-fA-F]{8}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "token"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "object_id": {
-                              "maxLength": 128,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "object_id"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "arguments": {
-                      "type": "array",
-                      "maxItems": 64,
-                      "items": {
-                        "type": "object"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          ]
-        },
-        "request_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision",
-        "operation"
-      ],
-      "type": "object"
+ "$defs": {
+  "Shared001": {
+   "additionalProperties": false,
+   "properties": {
+    "exception_handlers": {
+     "$ref": "#/$defs/Shared029"
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "capacity": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "apply_cache_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "apply_cache_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "diff_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "normalized_operation_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "object_ids": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "operations": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "operations",
-                    "object_ids",
-                    "normalized_operation_bytes",
-                    "diff_bytes",
-                    "apply_cache_entries",
-                    "apply_cache_bytes",
-                    "review_tombstone_entries",
-                    "review_tombstone_bytes"
-                  ],
-                  "type": "object"
-                },
-                "created_object_ids": {
-                  "items": {
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "maxItems": 321,
-                  "type": "array"
-                },
-                "diffs": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "after": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "before": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "kind": {
-                        "enum": [
-                          "type_add",
-                          "type_update",
-                          "type_remove",
-                          "method_add",
-                          "method_update",
-                          "method_remove",
-                          "field_add",
-                          "field_update",
-                          "field_remove",
-                          "property_add",
-                          "property_update",
-                          "property_remove",
-                          "event_add",
-                          "event_update",
-                          "event_remove",
-                          "parameter_add",
-                          "parameter_update",
-                          "parameter_remove",
-                          "generic_parameter_add",
-                          "generic_parameter_update",
-                          "generic_parameter_remove",
-                          "method_body_replace",
-                          "attribute_add",
-                          "attribute_remove",
-                          "security_add",
-                          "security_remove",
-                          "assembly_update",
-                          "module_update",
-                          "assembly_ref_update",
-                          "entry_point_set",
-                          "managed_resource_add",
-                          "managed_resource_update",
-                          "managed_resource_remove",
-                          "win32_resource_add",
-                          "win32_resource_update",
-                          "win32_resource_remove",
-                          "strong_name_remove",
-                          "interface_add",
-                          "reference_add"
-                        ]
-                      },
-                      "operation_index": {
-                        "maximum": 4294967295,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "path": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_ids": {
-                        "items": {
-                          "maxLength": 48,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 17,
-                        "type": "array"
-                      },
-                      "target": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "operation_index",
-                      "kind",
-                      "target",
-                      "path",
-                      "before",
-                      "after",
-                      "risk_ids"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "fingerprints": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "baseline_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "current_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "private": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "baseline_live",
-                    "current_live",
-                    "private"
-                  ],
-                  "type": "object"
-                },
-                "kind": {
-                  "enum": [
-                    "type_add",
-                    "type_update",
-                    "type_remove",
-                    "method_add",
-                    "method_update",
-                    "method_remove",
-                    "field_add",
-                    "field_update",
-                    "field_remove",
-                    "property_add",
-                    "property_update",
-                    "property_remove",
-                    "event_add",
-                    "event_update",
-                    "event_remove",
-                    "parameter_add",
-                    "parameter_update",
-                    "parameter_remove",
-                    "generic_parameter_add",
-                    "generic_parameter_update",
-                    "generic_parameter_remove",
-                    "method_body_replace",
-                    "attribute_add",
-                    "attribute_remove",
-                    "security_add",
-                    "security_remove",
-                    "assembly_update",
-                    "module_update",
-                    "assembly_ref_update",
-                    "entry_point_set",
-                    "managed_resource_add",
-                    "managed_resource_update",
-                    "managed_resource_remove",
-                    "win32_resource_add",
-                    "win32_resource_update",
-                    "win32_resource_remove",
-                    "strong_name_remove",
-                    "interface_add",
-                    "reference_add"
-                  ]
-                },
-                "operation_index": {
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "review_cleared": {
-                  "const": true
-                },
-                "risks": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "confirmation_required": {
-                        "type": "boolean"
-                      },
-                      "description": {
-                        "maxLength": 96,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "assembly_identity_change",
-                          "assembly_ref_change",
-                          "attribute_change",
-                          "body_change",
-                          "cross_assembly_inbound",
-                          "data_section_change",
-                          "eh_change",
-                          "entry_point_change",
-                          "external_code_entry",
-                          "layout_change",
-                          "module_identity_change",
-                          "public_delete",
-                          "resource_change",
-                          "security_change",
-                          "signature_change",
-                          "strong_name_change",
-                          "visibility_change"
-                        ]
-                      },
-                      "object": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_id": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "risk_id",
-                      "kind",
-                      "object",
-                      "description",
-                      "confirmation_required"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                }
-              },
-              "required": [
-                "transaction",
-                "operation_index",
-                "kind",
-                "created_object_ids",
-                "fingerprints",
-                "diffs",
-                "risks",
-                "review_cleared",
-                "capacity"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_begin": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "assembly_name": {
-          "maxLength": 512,
-          "minLength": 1,
-          "type": "string"
-        },
-        "module_mvid": {
-          "maxLength": 36,
-          "minLength": 1,
-          "type": "string"
-        },
-        "request_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        },
-        "source_family_id": {
-          "type": "string",
-          "pattern": "^family-[0-9a-f]{32}$"
-        }
-      },
-      "required": [
-        "request_id",
-        "assembly_name"
-      ],
-      "type": "object"
+    "init_locals": {
+     "type": "boolean"
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "capabilities": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "dynamic_validation": {
-                      "type": "boolean"
-                    },
-                    "operation_kinds": {
-                      "items": {
-                        "enum": [
-                          "type_add",
-                          "type_update",
-                          "type_remove",
-                          "method_add",
-                          "method_update",
-                          "method_remove",
-                          "field_add",
-                          "field_update",
-                          "field_remove",
-                          "property_add",
-                          "property_update",
-                          "property_remove",
-                          "event_add",
-                          "event_update",
-                          "event_remove",
-                          "parameter_add",
-                          "parameter_update",
-                          "parameter_remove",
-                          "generic_parameter_add",
-                          "generic_parameter_update",
-                          "generic_parameter_remove",
-                          "method_body_replace",
-                          "attribute_add",
-                          "attribute_remove",
-                          "security_add",
-                          "security_remove",
-                          "assembly_update",
-                          "module_update",
-                          "assembly_ref_update",
-                          "entry_point_set",
-                          "managed_resource_add",
-                          "managed_resource_update",
-                          "managed_resource_remove",
-                          "win32_resource_add",
-                          "win32_resource_update",
-                          "win32_resource_remove",
-                          "strong_name_remove",
-                          "interface_add",
-                          "reference_add"
-                        ]
-                      },
-                      "maxItems": 39,
-                      "minItems": 39,
-                      "type": "array",
-                      "uniqueItems": true
-                    },
-                    "test_apply_restore": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "operation_kinds",
-                    "dynamic_validation",
-                    "test_apply_restore"
-                  ],
-                  "type": "object"
-                },
-                "capacity": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "apply_cache_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "apply_cache_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "diff_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "normalized_operation_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "object_ids": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "operations": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "operations",
-                    "object_ids",
-                    "normalized_operation_bytes",
-                    "diff_bytes",
-                    "apply_cache_entries",
-                    "apply_cache_bytes",
-                    "review_tombstone_entries",
-                    "review_tombstone_bytes"
-                  ],
-                  "type": "object"
-                },
-                "fingerprints": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "baseline_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "current_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "private": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "baseline_live",
-                    "current_live",
-                    "private"
-                  ],
-                  "type": "object"
-                },
-                "limits": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "max_body_exception_handlers": {
-                      "const": 512
-                    },
-                    "max_body_instructions": {
-                      "const": 4096
-                    },
-                    "max_body_locals": {
-                      "const": 1024
-                    },
-                    "max_diff_bytes": {
-                      "const": 524288
-                    },
-                    "max_dispatcher_ms": {
-                      "const": 1000
-                    },
-                    "max_il_instructions": {
-                      "const": 250000
-                    },
-                    "max_live_steps": {
-                      "const": 256
-                    },
-                    "max_metadata_rows": {
-                      "const": 100000
-                    },
-                    "max_module_bytes": {
-                      "const": 16777216
-                    },
-                    "max_normalized_operation_bytes": {
-                      "const": 8388608
-                    },
-                    "max_object_ids": {
-                      "const": 4096
-                    },
-                    "max_operations": {
-                      "const": 256
-                    },
-                    "max_pdb_bytes": {
-                      "const": 8388608
-                    },
-                    "max_resource_bytes": {
-                      "const": 8388608
-                    }
-                  },
-                  "required": [
-                    "max_operations",
-                    "max_object_ids",
-                    "max_normalized_operation_bytes",
-                    "max_diff_bytes",
-                    "max_body_instructions",
-                    "max_body_locals",
-                    "max_body_exception_handlers",
-                    "max_live_steps",
-                    "max_module_bytes",
-                    "max_metadata_rows",
-                    "max_resource_bytes",
-                    "max_pdb_bytes",
-                    "max_il_instructions",
-                    "max_dispatcher_ms"
-                  ],
-                  "type": "object"
-                },
-                "source": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "assembly_name": {
-                      "maxLength": 512,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "file_path": {
-                      "oneOf": [
-                        {
-                          "maxLength": 32767,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "file_sha256": {
-                      "oneOf": [
-                        {
-                          "maxLength": 64,
-                          "minLength": 1,
-                          "pattern": "^[0-9a-f]{64}$",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "live_fingerprint": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "module_name": {
-                      "maxLength": 512,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "mvid": {
-                      "maxLength": 36,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "assembly_name",
-                    "module_name",
-                    "mvid",
-                    "file_path",
-                    "file_sha256",
-                    "live_fingerprint"
-                  ],
-                  "type": "object"
-                },
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                },
-                "history": {
-                  "type": "object"
-                }
-              },
-              "required": [
-                "transaction",
-                "source",
-                "fingerprints",
-                "limits",
-                "capacity",
-                "capabilities",
-                "history"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    "instructions": {
+     "$ref": "#/$defs/Shared012"
+    },
+    "locals": {
+     "$ref": "#/$defs/Shared041"
+    },
+    "max_stack": {
+     "maximum": 65535,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "sequence_points": {
+     "$ref": "#/$defs/Shared022"
+    },
+    "scope": {
+     "$ref": "#/$defs/Shared002"
+    },
+    "import_scopes": {
+     "$ref": "#/$defs/Shared040"
     }
+   },
+   "required": [
+    "init_locals",
+    "max_stack",
+    "instructions",
+    "locals",
+    "exception_handlers"
+   ],
+   "type": "object"
   },
-  "edit_review": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "dynamic_validation": {
-          "additionalProperties": false,
-          "properties": {
-            "args": {
-              "items": {
-                "maxLength": 32767,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 256,
-              "type": "array"
-            },
-            "mode": {
-              "const": "run"
-            },
-            "runtime_profile": {
-              "maxLength": 128,
+  "Shared002": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "locals",
+    "constants",
+    "namespaces",
+    "scopes"
+   ],
+   "properties": {
+    "start_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "end_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "locals": {
+     "$ref": "#/$defs/Shared081"
+    },
+    "constants": {
+     "$ref": "#/$defs/Shared051"
+    },
+    "namespaces": {
+     "type": "array",
+     "maxItems": 128,
+     "items": {
+      "type": "string",
+      "maxLength": 512
+     }
+    },
+    "import_scope": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "scopes": {
+     "$ref": "#/$defs/Shared003"
+    },
+    "startIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "endIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "importScope": {
+     "type": "string",
+     "maxLength": 64
+    }
+   },
+   "allOf": [
+    {
+     "oneOf": [
+      {
+       "required": [
+        "start_il"
+       ]
+      },
+      {
+       "required": [
+        "startIl"
+       ]
+      }
+     ]
+    },
+    {
+     "oneOf": [
+      {
+       "required": [
+        "end_il"
+       ]
+      },
+      {
+       "required": [
+        "endIl"
+       ]
+      }
+     ]
+    },
+    {
+     "not": {
+      "required": [
+       "import_scope",
+       "importScope"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared003": {
+   "type": "array",
+   "maxItems": 256,
+   "items": {
+    "$ref": "#/$defs/Shared004"
+   }
+  },
+  "Shared004": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "locals",
+    "constants",
+    "namespaces",
+    "scopes"
+   ],
+   "properties": {
+    "start_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "end_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "locals": {
+     "$ref": "#/$defs/Shared081"
+    },
+    "constants": {
+     "$ref": "#/$defs/Shared051"
+    },
+    "namespaces": {
+     "type": "array",
+     "maxItems": 128,
+     "items": {
+      "type": "string",
+      "maxLength": 512
+     }
+    },
+    "import_scope": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "scopes": {
+     "$ref": "#/$defs/Shared005"
+    },
+    "startIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "endIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "importScope": {
+     "type": "string",
+     "maxLength": 64
+    }
+   },
+   "allOf": [
+    {
+     "oneOf": [
+      {
+       "required": [
+        "start_il"
+       ]
+      },
+      {
+       "required": [
+        "startIl"
+       ]
+      }
+     ]
+    },
+    {
+     "oneOf": [
+      {
+       "required": [
+        "end_il"
+       ]
+      },
+      {
+       "required": [
+        "endIl"
+       ]
+      }
+     ]
+    },
+    {
+     "not": {
+      "required": [
+       "import_scope",
+       "importScope"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared005": {
+   "type": "array",
+   "maxItems": 256,
+   "items": {
+    "$ref": "#/$defs/Shared006"
+   }
+  },
+  "Shared006": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "locals",
+    "constants",
+    "namespaces",
+    "scopes"
+   ],
+   "properties": {
+    "start_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "end_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "locals": {
+     "$ref": "#/$defs/Shared081"
+    },
+    "constants": {
+     "$ref": "#/$defs/Shared051"
+    },
+    "namespaces": {
+     "type": "array",
+     "maxItems": 128,
+     "items": {
+      "type": "string",
+      "maxLength": 512
+     }
+    },
+    "import_scope": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "scopes": {
+     "$ref": "#/$defs/Shared019"
+    },
+    "startIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "endIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "importScope": {
+     "type": "string",
+     "maxLength": 64
+    }
+   },
+   "allOf": [
+    {
+     "oneOf": [
+      {
+       "required": [
+        "start_il"
+       ]
+      },
+      {
+       "required": [
+        "startIl"
+       ]
+      }
+     ]
+    },
+    {
+     "oneOf": [
+      {
+       "required": [
+        "end_il"
+       ]
+      },
+      {
+       "required": [
+        "endIl"
+       ]
+      }
+     ]
+    },
+    {
+     "not": {
+      "required": [
+       "import_scope",
+       "importScope"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared007": {
+   "type": "array",
+   "maxItems": 64,
+   "items": {
+    "$ref": "#/$defs/Shared008"
+   }
+  },
+  "Shared008": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "$ref": "#/$defs/Shared009"
+   }
+  },
+  "Shared009": {
+   "kind": {
+    "$ref": "#/$defs/Shared095"
+   },
+   "reference": {
+    "type": "string",
+    "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
+   },
+   "type": {
+    "type": "string",
+    "pattern": "^(0x[0-9a-fA-F]{8}|obj-[0-9]{3}-00)$"
+   },
+   "instruction": {
+    "$ref": "#/$defs/Shared105"
+   },
+   "steps": {
+    "$ref": "#/$defs/Shared059"
+   },
+   "ranges": {
+    "$ref": "#/$defs/Shared128"
+   },
+   "documents": {
+    "$ref": "#/$defs/Shared035"
+   },
+   "text": {
+    "type": "string",
+    "maxLength": 128
+   },
+   "texts": {
+    "type": "array",
+    "maxItems": 1024,
+    "items": {
+     "type": "string",
+     "maxLength": 512
+    }
+   },
+   "flags": {
+    "type": "array",
+    "maxItems": 1024,
+    "items": {
+     "type": "boolean"
+    }
+   },
+   "base64": {
+    "type": "string",
+    "maxLength": 131072
+   },
+   "states": {
+    "$ref": "#/$defs/Shared083"
+   }
+  },
+  "Shared010": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared119"
+    },
+    {
+     "$ref": "#/$defs/Shared121"
+    },
+    {
+     "$ref": "#/$defs/Shared116"
+    },
+    {
+     "$ref": "#/$defs/Shared120"
+    },
+    {
+     "$ref": "#/$defs/Shared108"
+    },
+    {
+     "$ref": "#/$defs/Shared117"
+    },
+    {
+     "$ref": "#/$defs/Shared103"
+    },
+    {
+     "$ref": "#/$defs/Shared110"
+    },
+    {
+     "$ref": "#/$defs/Shared100"
+    },
+    {
+     "$ref": "#/$defs/Shared097"
+    },
+    {
+     "$ref": "#/$defs/Shared129"
+    },
+    {
+     "$ref": "#/$defs/Shared124"
+    },
+    {
+     "$ref": "#/$defs/Shared092"
+    },
+    {
+     "$ref": "#/$defs/Shared122"
+    }
+   ]
+  },
+  "Shared011": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared039"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  },
+  "Shared012": {
+   "items": {
+    "$ref": "#/$defs/Shared013"
+   },
+   "maxItems": 4096,
+   "type": "array"
+  },
+  "Shared013": {
+   "additionalProperties": false,
+   "properties": {
+    "opcode": {
+     "maxLength": 64,
+     "minLength": 1,
+     "type": "string"
+    },
+    "operand": {
+     "$ref": "#/$defs/Shared015"
+    }
+   },
+   "required": [
+    "opcode"
+   ],
+   "type": "object"
+  },
+  "Shared014": {
+   "additionalProperties": false,
+   "properties": {
+    "apply_cache_bytes": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "apply_cache_entries": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "diff_bytes": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "normalized_operation_bytes": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "object_ids": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "operations": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "review_tombstone_entries": {
+     "$ref": "#/$defs/Shared093"
+    },
+    "review_tombstone_bytes": {
+     "$ref": "#/$defs/Shared093"
+    }
+   },
+   "required": [
+    "operations",
+    "object_ids",
+    "normalized_operation_bytes",
+    "diff_bytes",
+    "apply_cache_entries",
+    "apply_cache_bytes",
+    "review_tombstone_entries",
+    "review_tombstone_bytes"
+   ],
+   "type": "object"
+  },
+  "Shared015": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared016"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "Shared016": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared107"
+    },
+    {
+     "$ref": "#/$defs/Shared101"
+    },
+    {
+     "$ref": "#/$defs/Shared098"
+    },
+    {
+     "$ref": "#/$defs/Shared096"
+    },
+    {
+     "$ref": "#/$defs/Shared122"
+    },
+    {
+     "$ref": "#/$defs/Shared102"
+    },
+    {
+     "$ref": "#/$defs/Shared111"
+    },
+    {
+     "$ref": "#/$defs/Shared104"
+    },
+    {
+     "$ref": "#/$defs/Shared090"
+    },
+    {
+     "$ref": "#/$defs/Shared109"
+    },
+    {
+     "$ref": "#/$defs/Shared106"
+    }
+   ]
+  },
+  "Shared017": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/Shared018"
+    }
+   ]
+  },
+  "Shared018": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "simple",
+      "raw",
+      "fixed_string",
+      "fixed_array",
+      "array",
+      "safe_array",
+      "custom",
+      "interface"
+     ]
+    },
+    "native": {
+     "enum": [
+      "NotInitialized",
+      "Void",
+      "Boolean",
+      "I1",
+      "U1",
+      "I2",
+      "U2",
+      "I4",
+      "U4",
+      "I8",
+      "U8",
+      "R4",
+      "R8",
+      "Currency",
+      "BStr",
+      "LPStr",
+      "LPWStr",
+      "LPTStr",
+      "LPUTF8Str",
+      "FixedSysString",
+      "ObjectRef",
+      "Decimal",
+      "Struct",
+      "IntF",
+      "Int",
+      "UInt",
+      "IntPtr",
+      "ByValStr",
+      "TBStr",
+      "ANSIBStr",
+      "IDispatch",
+      "IUnknown",
+      "StructEnd",
+      "SafeArray",
+      "FixedArray",
+      "NestedStruct",
+      "CustomMarshaler",
+      "Error",
+      "IInspectable",
+      "HString",
+      "Ptr",
+      "Array",
+      "Func",
+      "AsAny",
+      "Variant",
+      "SysChar",
+      "Void2"
+     ]
+    },
+    "element": {
+     "enum": [
+      "NotInitialized",
+      "Void",
+      "Boolean",
+      "I1",
+      "U1",
+      "I2",
+      "U2",
+      "I4",
+      "U4",
+      "I8",
+      "U8",
+      "R4",
+      "R8",
+      "Currency",
+      "BStr",
+      "LPStr",
+      "LPWStr",
+      "LPTStr",
+      "LPUTF8Str",
+      "FixedSysString",
+      "ObjectRef",
+      "Decimal",
+      "Struct",
+      "IntF",
+      "Int",
+      "UInt",
+      "IntPtr",
+      "ByValStr",
+      "TBStr",
+      "ANSIBStr",
+      "IDispatch",
+      "IUnknown",
+      "StructEnd",
+      "SafeArray",
+      "FixedArray",
+      "NestedStruct",
+      "CustomMarshaler",
+      "Error",
+      "IInspectable",
+      "HString",
+      "Ptr",
+      "Array",
+      "Func",
+      "AsAny",
+      "Variant",
+      "SysChar",
+      "Void2"
+     ]
+    },
+    "size": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 2147483647
+    },
+    "param_number": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 2147483647
+    },
+    "flags": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 2147483647
+    },
+    "iid_param_index": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 2147483647
+    },
+    "variant": {
+     "enum": [
+      "Empty",
+      "Null",
+      "I2",
+      "I4",
+      "R4",
+      "R8",
+      "CY",
+      "Date",
+      "BStr",
+      "Dispatch",
+      "Error",
+      "Bool",
+      "Variant",
+      "Unknown",
+      "Decimal",
+      "I1",
+      "UI1",
+      "UI2",
+      "UI4",
+      "I8",
+      "UI8",
+      "Int",
+      "UInt",
+      "Void",
+      "HResult",
+      "Ptr",
+      "SafeArray",
+      "CArray",
+      "UserDefined",
+      "Record",
+      "IntPtr",
+      "UIntPtr"
+     ]
+    },
+    "user_defined_type": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "custom_marshaler_type": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "data_base64": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+     "maxLength": 4096
+    },
+    "guid_base64": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+     "maxLength": 512
+    },
+    "native_name_base64": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+     "maxLength": 512
+    },
+    "cookie_base64": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+     "maxLength": 4096
+    }
+   }
+  },
+  "Shared019": {
+   "type": "array",
+   "maxItems": 256,
+   "items": {
+    "$ref": "#/$defs/Shared020"
+   }
+  },
+  "Shared020": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "locals",
+    "constants",
+    "namespaces",
+    "scopes"
+   ],
+   "properties": {
+    "start_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "end_il": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "locals": {
+     "$ref": "#/$defs/Shared081"
+    },
+    "constants": {
+     "$ref": "#/$defs/Shared051"
+    },
+    "namespaces": {
+     "type": "array",
+     "maxItems": 128,
+     "items": {
+      "type": "string",
+      "maxLength": 512
+     }
+    },
+    "import_scope": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "scopes": {
+     "type": "array",
+     "maxItems": 0
+    },
+    "startIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "endIl": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    },
+    "importScope": {
+     "type": "string",
+     "maxLength": 64
+    }
+   },
+   "allOf": [
+    {
+     "oneOf": [
+      {
+       "required": [
+        "start_il"
+       ]
+      },
+      {
+       "required": [
+        "startIl"
+       ]
+      }
+     ]
+    },
+    {
+     "oneOf": [
+      {
+       "required": [
+        "end_il"
+       ]
+      },
+      {
+       "required": [
+        "endIl"
+       ]
+      }
+     ]
+    },
+    {
+     "not": {
+      "required": [
+       "import_scope",
+       "importScope"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared021": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "ok",
+    "state",
+    "error",
+    "warnings",
+    "untrusted_sample_data"
+   ],
+   "properties": {
+    "schema_version": {
+     "const": "dnspy.edit.v1"
+    },
+    "ok": {
+     "const": false
+    },
+    "state": {
+     "$ref": "#/$defs/Shared132"
+    },
+    "error": {
+     "$ref": "#/$defs/Shared032"
+    },
+    "warnings": {
+     "type": "array",
+     "maxItems": 16,
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+     }
+    },
+    "untrusted_sample_data": {
+     "const": true
+    }
+   }
+  },
+  "Shared022": {
+   "type": "array",
+   "maxItems": 4096,
+   "items": {
+    "$ref": "#/$defs/Shared023"
+   }
+  },
+  "Shared023": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "document",
+    "start",
+    "end"
+   ],
+   "properties": {
+    "document": {
+     "$ref": "#/$defs/Shared038"
+    },
+    "start": {
+     "$ref": "#/$defs/Shared082"
+    },
+    "end": {
+     "$ref": "#/$defs/Shared082"
+    }
+   }
+  },
+  "Shared024": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/Shared025"
+    }
+   ]
+  },
+  "Shared025": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/Shared026"
+   },
+   "maxItems": 64
+  },
+  "Shared026": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "declaration"
+   ],
+   "properties": {
+    "method": {
+     "$ref": "#/$defs/Shared050"
+    },
+    "declaration": {
+     "$ref": "#/$defs/Shared050"
+    }
+   }
+  },
+  "Shared027": {
+   "items": {
+    "$ref": "#/$defs/Shared028"
+   },
+   "maxItems": 256,
+   "type": "array"
+  },
+  "Shared028": {
+   "additionalProperties": false,
+   "properties": {
+    "after": {
+     "oneOf": [
+      {
+       "maxLength": 32,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "before": {
+     "oneOf": [
+      {
+       "maxLength": 32,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "enum": [
+      "type_add",
+      "type_update",
+      "type_remove",
+      "method_add",
+      "method_update",
+      "method_remove",
+      "field_add",
+      "field_update",
+      "field_remove",
+      "property_add",
+      "property_update",
+      "property_remove",
+      "event_add",
+      "event_update",
+      "event_remove",
+      "parameter_add",
+      "parameter_update",
+      "parameter_remove",
+      "generic_parameter_add",
+      "generic_parameter_update",
+      "generic_parameter_remove",
+      "method_body_replace",
+      "attribute_add",
+      "attribute_remove",
+      "security_add",
+      "security_remove",
+      "assembly_update",
+      "module_update",
+      "assembly_ref_update",
+      "entry_point_set",
+      "managed_resource_add",
+      "managed_resource_update",
+      "managed_resource_remove",
+      "win32_resource_add",
+      "win32_resource_update",
+      "win32_resource_remove",
+      "strong_name_remove",
+      "interface_add",
+      "reference_add"
+     ]
+    },
+    "operation_index": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "path": {
+     "maxLength": 48,
+     "minLength": 1,
+     "type": "string"
+    },
+    "risk_ids": {
+     "items": {
+      "maxLength": 48,
+      "minLength": 1,
+      "type": "string"
+     },
+     "maxItems": 17,
+     "type": "array"
+    },
+    "target": {
+     "maxLength": 32,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "operation_index",
+    "kind",
+    "target",
+    "path",
+    "before",
+    "after",
+    "risk_ids"
+   ],
+   "type": "object"
+  },
+  "Shared029": {
+   "items": {
+    "$ref": "#/$defs/Shared030"
+   },
+   "maxItems": 512,
+   "type": "array"
+  },
+  "Shared030": {
+   "additionalProperties": false,
+   "properties": {
+    "catch_type": {
+     "$ref": "#/$defs/Shared053"
+    },
+    "filter_start": {
+     "oneOf": [
+      {
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "handler_end": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "handler_start": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "kind": {
+     "enum": [
+      "catch",
+      "finally",
+      "fault",
+      "filter"
+     ]
+    },
+    "try_end": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "try_start": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "try_start",
+    "try_end",
+    "handler_start",
+    "handler_end",
+    "filter_start",
+    "catch_type"
+   ],
+   "type": "object"
+  },
+  "Shared031": {
+   "items": {
+    "$ref": "#/$defs/Shared033"
+   },
+   "maxItems": 240,
+   "minItems": 240,
+   "type": "array",
+   "uniqueItems": true
+  },
+  "Shared032": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "code",
+    "message",
+    "current_state",
+    "recovery",
+    "details"
+   ],
+   "properties": {
+    "code": {
+     "$ref": "#/$defs/Shared045"
+    },
+    "message": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "current_state": {
+     "$ref": "#/$defs/Shared132"
+    },
+    "recovery": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "details": {}
+   }
+  },
+  "Shared033": {
+   "additionalProperties": false,
+   "properties": {
+    "boundary": {
+     "enum": [
+      "before",
+      "after"
+     ]
+    },
+    "direction": {
+     "enum": [
+      "forward",
+      "reverse"
+     ]
+    },
+    "fault_id": {
+     "$ref": "#/$defs/Shared135"
+    },
+    "operation_index": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "operation_kind": {
+     "enum": [
+      "type_add",
+      "type_update",
+      "type_remove",
+      "method_add",
+      "method_update",
+      "method_remove",
+      "field_add",
+      "field_update",
+      "field_remove",
+      "property_add",
+      "property_update",
+      "property_remove",
+      "event_add",
+      "event_update",
+      "event_remove",
+      "parameter_add",
+      "parameter_update",
+      "parameter_remove",
+      "generic_parameter_add",
+      "generic_parameter_update",
+      "generic_parameter_remove",
+      "method_body_replace"
+     ]
+    },
+    "primitive_kind": {
+     "maxLength": 16,
+     "minLength": 1,
+     "type": "string"
+    },
+    "step": {
+     "maxLength": 96,
+     "minLength": 1,
+     "type": "string"
+    },
+    "step_index": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "target": {
+     "maxLength": 64,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "fault_id",
+    "operation_index",
+    "step_index",
+    "operation_kind",
+    "direction",
+    "boundary",
+    "primitive_kind",
+    "target",
+    "step"
+   ],
+   "type": "object"
+  },
+  "Shared034": {
+   "oneOf": [
+    {
+     "type": "boolean"
+    },
+    {
+     "type": "number"
+    },
+    {
+     "type": "string",
+     "maxLength": 4096
+    },
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/Shared063"
+    },
+    {
+     "$ref": "#/$defs/Shared060"
+    }
+   ]
+  },
+  "Shared035": {
+   "type": "array",
+   "maxItems": 1024,
+   "items": {
+    "$ref": "#/$defs/Shared038"
+   }
+  },
+  "Shared036": {
+   "additionalProperties": false,
+   "properties": {
+    "max_body_exception_handlers": {
+     "const": 512
+    },
+    "max_body_instructions": {
+     "const": 4096
+    },
+    "max_body_locals": {
+     "const": 1024
+    },
+    "max_diff_bytes": {
+     "const": 524288
+    },
+    "max_dispatcher_ms": {
+     "const": 1000
+    },
+    "max_il_instructions": {
+     "const": 250000
+    },
+    "max_live_steps": {
+     "const": 256
+    },
+    "max_metadata_rows": {
+     "const": 100000
+    },
+    "max_module_bytes": {
+     "const": 16777216
+    },
+    "max_normalized_operation_bytes": {
+     "const": 8388608
+    },
+    "max_object_ids": {
+     "const": 4096
+    },
+    "max_operations": {
+     "const": 256
+    },
+    "max_pdb_bytes": {
+     "const": 8388608
+    },
+    "max_resource_bytes": {
+     "const": 8388608
+    }
+   },
+   "required": [
+    "max_operations",
+    "max_object_ids",
+    "max_normalized_operation_bytes",
+    "max_diff_bytes",
+    "max_body_instructions",
+    "max_body_locals",
+    "max_body_exception_handlers",
+    "max_live_steps",
+    "max_module_bytes",
+    "max_metadata_rows",
+    "max_resource_bytes",
+    "max_pdb_bytes",
+    "max_il_instructions",
+    "max_dispatcher_ms"
+   ],
+   "type": "object"
+  },
+  "Shared037": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared077"
+    },
+    {
+     "$ref": "#/$defs/Shared061"
+    }
+   ]
+  },
+  "Shared038": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name"
+   ],
+   "properties": {
+    "$ref": "#/$defs/Shared047"
+   },
+   "allOf": [
+    {
+     "not": {
+      "required": [
+       "hash_algorithm",
+       "hashAlgorithm"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared039": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "ok",
+    "state",
+    "result",
+    "warnings",
+    "untrusted_sample_data"
+   ],
+   "properties": {
+    "schema_version": {
+     "const": "dnspy.edit.v1"
+    },
+    "ok": {
+     "const": true
+    },
+    "state": {
+     "$ref": "#/$defs/Shared132"
+    },
+    "result": {
+     "$ref": "#/$defs/Shared075"
+    },
+    "warnings": {
+     "type": "array",
+     "maxItems": 16,
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+     }
+    },
+    "untrusted_sample_data": {
+     "const": true
+    }
+   }
+  },
+  "Shared040": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 256,
+   "items": {
+    "$ref": "#/$defs/Shared042"
+   }
+  },
+  "Shared041": {
+   "items": {
+    "$ref": "#/$defs/Shared043"
+   },
+   "maxItems": 1024,
+   "type": "array"
+  },
+  "Shared042": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "imports"
+   ],
+   "properties": {
+    "id": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "parent": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "imports": {
+     "$ref": "#/$defs/Shared055"
+    }
+   }
+  },
+  "Shared043": {
+   "additionalProperties": false,
+   "properties": {
+    "$ref": "#/$defs/Shared049"
+   },
+   "required": [
+    "type",
+    "name"
+   ],
+   "type": "object"
+  },
+  "Shared044": {
+   "items": {
+    "$ref": "#/$defs/Shared046"
+   },
+   "maxItems": 256,
+   "type": "array"
+  },
+  "Shared045": {
+   "type": "string",
+   "enum": [
+    "EDIT_TRANSACTION_BUSY",
+    "EDIT_TRANSACTION_NOT_FOUND",
+    "EDIT_OWNER_REQUIRED",
+    "EDIT_OWNER_MISMATCH",
+    "EDIT_REVISION_CONFLICT",
+    "EDIT_LIVE_MODULE_CONFLICT",
+    "EDIT_REVIEW_STALE",
+    "EDIT_VALIDATION_FAILED",
+    "EDIT_RISK_CONFIRMATION_REQUIRED",
+    "EDIT_CAPABILITY_UNAVAILABLE",
+    "EDIT_CAPACITY_EXCEEDED",
+    "EDIT_DEBUG_NOT_IDLE",
+    "EDIT_LIVE_STATE_UNKNOWN",
+    "EDIT_CHECKPOINT_INVALID",
+    "EDIT_CHECKPOINT_COMMIT_FAILED",
+    "EDIT_CHECKPOINT_CLEANUP_FAILED",
+    "EDIT_EXPORT_BLOCKED",
+    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
+    "EDIT_REPLAY_UNVERIFIED",
+    "EDIT_OPERATION_VERSION_UNSUPPORTED",
+    "EDIT_HISTORY_CONFLICT",
+    "EDIT_BRANCH_SELECTION_REQUIRED",
+    "EDIT_LINEAGE_DIVERGED",
+    "EDIT_SOURCE_IDENTITY_CONFLICT",
+    "EDIT_RECOVERY_NOT_FOUND",
+    "EDIT_INTERNAL_ERROR",
+    "REQUEST_ID_REUSE"
+   ]
+  },
+  "Shared046": {
+   "additionalProperties": false,
+   "properties": {
+    "confirmation_required": {
+     "type": "boolean"
+    },
+    "description": {
+     "maxLength": 96,
+     "minLength": 1,
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "assembly_identity_change",
+      "assembly_ref_change",
+      "attribute_change",
+      "body_change",
+      "cross_assembly_inbound",
+      "data_section_change",
+      "eh_change",
+      "entry_point_change",
+      "external_code_entry",
+      "layout_change",
+      "module_identity_change",
+      "public_delete",
+      "resource_change",
+      "security_change",
+      "signature_change",
+      "strong_name_change",
+      "visibility_change"
+     ]
+    },
+    "object": {
+     "maxLength": 32,
+     "minLength": 1,
+     "type": "string"
+    },
+    "risk_id": {
+     "maxLength": 48,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "risk_id",
+    "kind",
+    "object",
+    "description",
+    "confirmation_required"
+   ],
+   "type": "object"
+  },
+  "Shared047": {
+   "name": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 1024
+   },
+   "language": {
+    "$ref": "#/$defs/Shared142"
+   },
+   "vendor": {
+    "$ref": "#/$defs/Shared142"
+   },
+   "hash": {
+    "type": "string",
+    "maxLength": 96
+   },
+   "type": {
+    "$ref": "#/$defs/Shared142"
+   },
+   "hash_algorithm": {
+    "$ref": "#/$defs/Shared142"
+   },
+   "hashAlgorithm": {
+    "$ref": "#/$defs/Shared142"
+   }
+  },
+  "Shared048": {
+   "additionalProperties": false,
+   "properties": {
+    "last_activity_monotonic_ms": {
+     "maximum": 9223372036854775807,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "operation_count": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "review_revision": {
+     "oneOf": [
+      {
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "started_at_monotonic_ms": {
+     "maximum": 9223372036854775807,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "work_revision": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "transaction_id",
+    "work_revision",
+    "review_revision",
+    "operation_count",
+    "started_at_monotonic_ms",
+    "last_activity_monotonic_ms"
+   ],
+   "type": "object"
+  },
+  "Shared049": {
+   "name": {
+    "oneOf": [
+     {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "type": {
+    "$ref": "#/$defs/Shared057"
+   }
+  },
+  "Shared050": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared078"
+    },
+    {
+     "$ref": "#/$defs/Shared118"
+    },
+    {
+     "$ref": "#/$defs/Shared123"
+    }
+   ]
+  },
+  "Shared051": {
+   "type": "array",
+   "maxItems": 256,
+   "items": {
+    "$ref": "#/$defs/Shared056"
+   }
+  },
+  "Shared052": {
+   "items": {
+    "$ref": "#/$defs/Shared057"
+   },
+   "maxItems": 64,
+   "type": "array"
+  },
+  "Shared053": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared057"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "Shared054": {
+   "additionalProperties": false,
+   "properties": {
+    "errors": {
+     "$ref": "#/$defs/Shared069"
+    },
+    "rule_count": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "state": {
+     "enum": [
+      "passed",
+      "failed"
+     ]
+    }
+   },
+   "required": [
+    "state",
+    "rule_count",
+    "errors"
+   ],
+   "type": "object"
+  },
+  "Shared055": {
+   "type": "array",
+   "maxItems": 128,
+   "items": {
+    "$ref": "#/$defs/Shared058"
+   }
+  },
+  "Shared056": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "type",
+    "value"
+   ],
+   "properties": {
+    "$ref": "#/$defs/Shared065"
+   },
+   "allOf": [
+    {
+     "oneOf": [
+      {
+       "required": [
+        "value_kind"
+       ]
+      },
+      {
+       "required": [
+        "valueKind"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "Shared057": {
+   "oneOf": [
+    {
+     "maxLength": 4096,
+     "minLength": 1,
+     "type": "string",
+     "x-dnspy-contract": "p02-typesig-v1"
+    },
+    {
+     "$ref": "#/$defs/Shared063"
+    }
+   ]
+  },
+  "Shared058": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "$ref": "#/$defs/Shared066"
+   },
+   "allOf": [
+    {
+     "not": {
+      "required": [
+       "assembly_name",
+       "assemblyName"
+      ]
+     }
+    }
+   ]
+  },
+  "Shared059": {
+   "type": "array",
+   "maxItems": 1024,
+   "items": {
+    "$ref": "#/$defs/Shared062"
+   }
+  },
+  "Shared060": {
+   "type": "array",
+   "maxItems": 64,
+   "items": {
+    "$ref": "#/$defs/Shared063"
+   }
+  },
+  "Shared061": {
+   "additionalProperties": false,
+   "properties": {
+    "owner_method": {
+     "$ref": "#/$defs/Shared077"
+    },
+    "parameter_index": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "owner_method",
+    "parameter_index"
+   ],
+   "type": "object"
+  },
+  "Shared062": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "yield",
+    "breakpoint"
+   ],
+   "properties": {
+    "yield": {
+     "$ref": "#/$defs/Shared105"
+    },
+    "breakpoint": {
+     "$ref": "#/$defs/Shared105"
+    }
+   }
+  },
+  "Shared063": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "type"
+   ],
+   "properties": {
+    "$ref": "#/$defs/Shared068"
+   }
+  },
+  "Shared064": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/Shared067"
+    }
+   ]
+  },
+  "Shared065": {
+   "name": {
+    "type": "string",
+    "maxLength": 512
+   },
+   "type": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 2048
+   },
+   "value_kind": {
+    "$ref": "#/$defs/Shared125"
+   },
+   "value": {},
+   "valueKind": {
+    "$ref": "#/$defs/Shared125"
+   }
+  },
+  "Shared066": {
+   "kind": {
+    "$ref": "#/$defs/Shared115"
+   },
+   "alias": {
+    "type": "string",
+    "maxLength": 512
+   },
+   "namespace": {
+    "type": "string",
+    "maxLength": 512
+   },
+   "assembly_name": {
+    "type": "string",
+    "maxLength": 512
+   },
+   "type": {
+    "type": "string",
+    "maxLength": 2048
+   },
+   "assemblyName": {
+    "type": "string",
+    "maxLength": 512
+   }
+  },
+  "Shared067": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "module_name"
+   ],
+   "properties": {
+    "module_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "entry_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "charset": {
+     "enum": [
+      "none",
+      "ansi",
+      "unicode",
+      "auto"
+     ]
+    },
+    "no_mangle": {
+     "type": "boolean"
+    },
+    "last_error": {
+     "type": "boolean"
+    },
+    "calling_convention": {
+     "enum": [
+      "winapi",
+      "cdecl",
+      "stdcall",
+      "thiscall",
+      "fastcall"
+     ]
+    }
+   }
+  },
+  "Shared068": {
+   "kind": {
+    "const": "type"
+   },
+   "type": {
+    "$ref": "#/$defs/Shared072"
+   }
+  },
+  "Shared069": {
+   "items": {
+    "$ref": "#/$defs/Shared074"
+   },
+   "maxItems": 64,
+   "type": "array"
+  },
+  "Shared070": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared126"
+    },
+    {
+     "$ref": "#/$defs/Shared137"
+    },
+    {
+     "$ref": "#/$defs/Shared139"
+    }
+   ]
+  },
+  "Shared071": {
+   "additionalProperties": false,
+   "properties": {
+    "baseline_live": {
+     "maxLength": 64,
+     "minLength": 1,
+     "pattern": "^[0-9a-f]{64}$",
+     "type": "string"
+    },
+    "current_live": {
+     "maxLength": 64,
+     "minLength": 1,
+     "pattern": "^[0-9a-f]{64}$",
+     "type": "string"
+    },
+    "private": {
+     "maxLength": 64,
+     "minLength": 1,
+     "pattern": "^[0-9a-f]{64}$",
+     "type": "string"
+    }
+   },
+   "required": [
+    "baseline_live",
+    "current_live",
+    "private"
+   ],
+   "type": "object"
+  },
+  "Shared072": {
+   "type": "object",
+   "required": [
+    "Kind"
+   ],
+   "properties": {
+    "Kind": {
+     "$ref": "#/$defs/Shared088"
+    }
+   },
+   "x-dnspy-contract": "EditStructuredSignatureCodec.TypeNode"
+  },
+  "Shared073": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared077"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "Shared074": {
+   "additionalProperties": false,
+   "properties": {
+    "location": {
+     "maxLength": 48,
+     "minLength": 1,
+     "type": "string"
+    },
+    "message": {
+     "maxLength": 192,
+     "minLength": 1,
+     "type": "string"
+    },
+    "object": {
+     "maxLength": 48,
+     "minLength": 1,
+     "type": "string"
+    },
+    "rule_id": {
+     "maxLength": 48,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "rule_id",
+    "object",
+    "location",
+    "message"
+   ],
+   "type": "object"
+  },
+  "Shared075": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "from_checkpoint_id",
+    "to_checkpoint_id",
+    "history",
+    "replay"
+   ],
+   "properties": {
+    "from_checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "to_checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "history": {
+     "type": "object"
+    },
+    "replay": {
+     "type": "object"
+    }
+   }
+  },
+  "Shared076": {
+   "additionalProperties": false,
+   "properties": {
+    "debug_idle": {
+     "const": true
+    },
+    "residual_path": {
+     "type": "null"
+    },
+    "temp_delete_attempted": {
+     "const": false
+    },
+    "temp_deleted": {
+     "const": true
+    },
+    "terminate_attempted": {
+     "const": false
+    }
+   },
+   "required": [
+    "terminate_attempted",
+    "debug_idle",
+    "temp_delete_attempted",
+    "temp_deleted",
+    "residual_path"
+   ],
+   "type": "object"
+  },
+  "Shared077": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared118"
+    },
+    {
+     "$ref": "#/$defs/Shared123"
+    }
+   ]
+  },
+  "Shared078": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "owner_type",
+    "name"
+   ],
+   "properties": {
+    "owner_type": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "parameter_types": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+     },
+     "maxItems": 64
+    }
+   }
+  },
+  "Shared079": {
+   "items": {
+    "$ref": "#/$defs/Shared084"
+   },
+   "maxItems": 0,
+   "type": "array"
+  },
+  "Shared080": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared127"
+    },
+    {
+     "$ref": "#/$defs/Shared123"
+    }
+   ]
+  },
+  "Shared081": {
+   "type": "array",
+   "maxItems": 1024,
+   "items": {
+    "$ref": "#/$defs/Shared087"
+   }
+  },
+  "Shared082": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "il",
+    "line",
+    "column"
+   ],
+   "properties": {
+    "il": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4095
+    },
+    "line": {
+     "oneOf": [
+      {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 1048575
+      },
+      {
+       "const": 16707566
+      }
+     ]
+    },
+    "column": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 1048575
+    }
+   }
+  },
+  "Shared083": {
+   "type": "array",
+   "maxItems": 4096,
+   "items": {
+    "$ref": "#/$defs/Shared089"
+   }
+  },
+  "Shared084": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "maxLength": 64,
+     "minLength": 1,
+     "type": "string"
+    },
+    "sequence": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "summary": {
+     "maxLength": 256,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "sequence",
+    "kind",
+    "summary"
+   ],
+   "type": "object"
+  },
+  "Shared085": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared126"
+    },
+    {
+     "$ref": "#/$defs/Shared139"
+    }
+   ]
+  },
+  "Shared086": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "attribute_type"
+   ],
+   "properties": {
+    "attribute_type": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "parameter_types": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+     },
+     "maxItems": 64
+    }
+   }
+  },
+  "Shared087": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "index",
+    "name",
+    "attributes"
+   ],
+   "properties": {
+    "index": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "name": {
+     "type": "string",
+     "maxLength": 512
+    },
+    "attributes": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 63
+    }
+   }
+  },
+  "Shared088": {
+   "type": "string",
+   "enum": [
+    "CorLibTypeSig",
+    "ClassSig",
+    "ValueTypeSig",
+    "GenericVar",
+    "GenericMVar",
+    "FnPtrSig",
+    "GenericInstSig",
+    "CModReqdSig",
+    "CModOptSig",
+    "ArraySig",
+    "ValueArraySig",
+    "ModuleSig",
+    "PtrSig",
+    "ByRefSig",
+    "SZArraySig",
+    "PinnedSig",
+    "SentinelSig"
+   ]
+  },
+  "Shared089": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "syntax_offset",
+    "state"
+   ],
+   "properties": {
+    "syntax_offset": {
+     "type": "integer",
+     "minimum": -2147483648,
+     "maximum": 2147483647
+    },
+    "state": {
+     "type": "integer",
+     "minimum": -2147483648,
+     "maximum": 2147483647
+    }
+   }
+  },
+  "Shared090": {
+   "additionalProperties": false,
+   "properties": {
+    "instruction_indices": {
+     "$ref": "#/$defs/Shared144"
+    },
+    "kind": {
+     "const": "switch"
+    }
+   },
+   "required": [
+    "kind",
+    "instruction_indices"
+   ],
+   "type": "object"
+  },
+  "Shared091": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "auto",
+      "sequential",
+      "explicit"
+     ]
+    },
+    "pack": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "size": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    }
+   }
+  },
+  "Shared092": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "char"
+    },
+    "value": {
+     "$ref": "#/$defs/Shared136"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared093": {
+   "additionalProperties": false,
+   "properties": {
+    "current": {
+     "maximum": 9223372036854775807,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "maximum": {
+     "maximum": 9223372036854775807,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "current",
+    "maximum"
+   ],
+   "type": "object"
+  },
+  "Shared094": {
+   "additionalProperties": false,
+   "properties": {
+    "path": {
+     "maxLength": 4096,
+     "minLength": 1,
+     "type": "string"
+    },
+    "sha256": {
+     "maxLength": 64,
+     "minLength": 1,
+     "pattern": "^[0-9a-f]{64}$",
+     "type": "string"
+    }
+   },
+   "required": [
+    "path",
+    "sha256"
+   ],
+   "type": "object"
+  },
+  "Shared095": {
+   "type": "string",
+   "enum": [
+    "hoisted",
+    "async",
+    "iterator",
+    "state_machine_type_name",
+    "type_documents",
+    "default_namespace",
+    "tuple",
+    "dynamic",
+    "embedded_source",
+    "source_link",
+    "enc_local",
+    "enc_lambda",
+    "unknown",
+    "enc_state_map"
+   ]
+  },
+  "Shared096": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "f64"
+    },
+    "value": {
+     "maximum": 1.7976931348623157e+308,
+     "minimum": -1.7976931348623157e+308,
+     "type": "number"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared097": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "r8"
+    },
+    "value": {
+     "maximum": 1.7976931348623157e+308,
+     "minimum": -1.7976931348623157e+308,
+     "type": "number"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared098": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "f32"
+    },
+    "value": {
+     "maximum": 3.4028234663852886e+38,
+     "minimum": -3.4028234663852886e+38,
+     "type": "number"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared099": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/Shared112"
+    }
+   ]
+  },
+  "Shared100": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "r4"
+    },
+    "value": {
+     "maximum": 3.4028234663852886e+38,
+     "minimum": -3.4028234663852886e+38,
+     "type": "number"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared101": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i64"
+    },
+    "value": {
+     "maximum": 9223372036854775807,
+     "minimum": -9223372036854775808,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared102": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "token"
+    },
+    "token": {
+     "maxLength": 10,
+     "minLength": 1,
+     "pattern": "^0x[0-9a-fA-F]{8}$",
+     "type": "string"
+    }
+   },
+   "required": [
+    "kind",
+    "token"
+   ],
+   "type": "object"
+  },
+  "Shared103": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i8"
+    },
+    "value": {
+     "maximum": 9223372036854775807,
+     "minimum": -9223372036854775808,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared104": {
+   "additionalProperties": false,
+   "properties": {
+    "instruction_index": {
+     "maximum": 4095,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "kind": {
+     "const": "label"
+    }
+   },
+   "required": [
+    "kind",
+    "instruction_index"
+   ],
+   "type": "object"
+  },
+  "Shared105": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "method",
+    "index"
+   ],
+   "properties": {
+    "method": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "index": {
+     "type": "integer",
+     "minimum": -1,
+     "maximum": 4095
+    }
+   }
+  },
+  "Shared106": {
+   "additionalProperties": false,
+   "properties": {
+    "argument_index": {
+     "maximum": 65535,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "kind": {
+     "const": "arg"
+    }
+   },
+   "required": [
+    "kind",
+    "argument_index"
+   ],
+   "type": "object"
+  },
+  "Shared107": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i32"
+    },
+    "value": {
+     "maximum": 2147483647,
+     "minimum": -2147483648,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared108": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i4"
+    },
+    "value": {
+     "maximum": 2147483647,
+     "minimum": -2147483648,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared109": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "local"
+    },
+    "local_index": {
+     "maximum": 65535,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "local_index"
+   ],
+   "type": "object"
+  },
+  "Shared110": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "u8"
+    },
+    "value": {
+     "maximum": 18446744073709551615,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared111": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "object"
+    },
+    "object_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "kind",
+    "object_id"
+   ],
+   "type": "object"
+  },
+  "Shared112": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "bytes_base64"
+   ],
+   "properties": {
+    "bytes_base64": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+     "maxLength": 1398102
+    }
+   }
+  },
+  "Shared113": {
+   "type": "string",
+   "enum": [
+    "embedded",
+    "linked",
+    "win32"
+   ],
+   "description": "linked path imports are normalized to embedded bytes; win32 uses the native type/name/language identity."
+  },
+  "Shared114": {
+   "additionalProperties": false,
+   "properties": {
+    "created": {
+     "const": false
+    },
+    "path": {
+     "type": "null"
+    },
+    "sha256": {
+     "type": "null"
+    }
+   },
+   "required": [
+    "created",
+    "path",
+    "sha256"
+   ],
+   "type": "object"
+  },
+  "Shared115": {
+   "type": "string",
+   "enum": [
+    "namespace",
+    "assembly_namespace",
+    "type",
+    "xml",
+    "assembly_reference_alias",
+    "alias_assembly",
+    "alias_namespace",
+    "alias_assembly_namespace",
+    "alias_type"
+   ]
+  },
+  "Shared116": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i2"
+    },
+    "value": {
+     "maximum": 32767,
+     "minimum": -32768,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared117": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "u4"
+    },
+    "value": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared118": {
+   "additionalProperties": false,
+   "properties": {
+    "token": {
+     "maxLength": 10,
+     "minLength": 1,
+     "pattern": "^0x[0-9a-fA-F]{8}$",
+     "type": "string"
+    }
+   },
+   "required": [
+    "token"
+   ],
+   "type": "object"
+  },
+  "Shared119": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "i1"
+    },
+    "value": {
+     "maximum": 127,
+     "minimum": -128,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared120": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "u2"
+    },
+    "value": {
+     "maximum": 65535,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared121": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "u1"
+    },
+    "value": {
+     "maximum": 255,
+     "minimum": 0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared122": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "string"
+    },
+    "value": {
+     "maxLength": 65535,
+     "type": "string"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared123": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id"
+   ],
+   "properties": {
+    "object_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   }
+  },
+  "Shared124": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "boolean"
+    },
+    "value": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared125": {
+   "type": "string",
+   "enum": [
+    "null",
+    "Boolean",
+    "String",
+    "Char",
+    "SByte",
+    "Byte",
+    "Int16",
+    "UInt16",
+    "Int32",
+    "UInt32",
+    "Int64",
+    "UInt64",
+    "Single",
+    "Double"
+   ]
+  },
+  "Shared126": {
+   "additionalProperties": false,
+   "properties": {
+    "token": {
+     "pattern": "^0x[0-9a-fA-F]{1,8}$",
+     "type": "string"
+    }
+   },
+   "required": [
+    "token"
+   ],
+   "type": "object"
+  },
+  "Shared127": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "token"
+   ],
+   "properties": {
+    "token": {
+     "type": "string",
+     "pattern": "^0x[0-9a-fA-F]{8}$"
+    }
+   }
+  },
+  "Shared128": {
+   "type": "array",
+   "maxItems": 4096,
+   "items": {
+    "$ref": "#/$defs/Shared143"
+   }
+  },
+  "Shared129": {
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "null"
+    },
+    "value": {
+     "type": "null"
+    }
+   },
+   "required": [
+    "kind",
+    "value"
+   ],
+   "type": "object"
+  },
+  "Shared130": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    }
+   }
+  },
+  "Shared131": {
+   "type": "string",
+   "enum": [
+    "prewrite",
+    "readback",
+    "finalize",
+    "cleanup",
+    "navigate_forward",
+    "navigate_inverse",
+    "live_apply",
+    "export_reload"
+   ]
+  },
+  "Shared132": {
+   "type": "string",
+   "enum": [
+    "idle",
+    "editing",
+    "reviewed",
+    "applying",
+    "committing",
+    "committed_without_checkpoint",
+    "live_state_unknown"
+   ]
+  },
+  "Shared133": {
+   "default": 0,
+   "maximum": 63,
+   "minimum": 0,
+   "type": "integer",
+   "x-dnspy-defined-bit-mask": 63,
+   "x-dnspy-enum": "GenericParamAttributes"
+  },
+  "Shared134": {
+   "default": 0,
+   "maximum": 12319,
+   "minimum": 0,
+   "type": "integer",
+   "x-dnspy-defined-bit-mask": 12319,
+   "x-dnspy-enum": "ParamAttributes"
+  },
+  "Shared135": {
+   "maxLength": 64,
+   "minLength": 1,
+   "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
+   "type": "string"
+  },
+  "Shared136": {
+   "maxLength": 2,
+   "minLength": 1,
+   "pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])$",
+   "type": "string"
+  },
+  "Shared137": {
+   "additionalProperties": false,
+   "properties": {
+    "object_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "object_id"
+   ],
+   "type": "object"
+  },
+  "Shared138": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+     },
+     "maxItems": 64
+    }
+   ]
+  },
+  "Shared139": {
+   "additionalProperties": false,
+   "properties": {
+    "scope": {
+     "const": "assembly"
+    }
+   },
+   "required": [
+    "scope"
+   ],
+   "type": "object"
+  },
+  "Shared140": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "action"
+   ],
+   "properties": {
+    "action": {
+     "const": "reset"
+    }
+   }
+  },
+  "Shared141": {
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "const": "read"
+    }
+   },
+   "required": [
+    "action"
+   ],
+   "type": "object"
+  },
+  "Shared142": {
+   "type": "string",
+   "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+  },
+  "Shared143": {
+   "type": "array",
+   "minItems": 2,
+   "maxItems": 2,
+   "items": {
+    "type": "integer",
+    "minimum": -1,
+    "maximum": 4095
+   }
+  },
+  "Shared144": {
+   "items": {
+    "maximum": 4294967295,
+    "minimum": 0,
+    "type": "integer"
+   },
+   "maxItems": 4096,
+   "type": "array"
+  }
+ },
+ "edit_apply": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "expected_revision": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "operation": {
+     "oneOf": [
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "default": 0,
+         "maximum": 16219583,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 16219583,
+         "x-dnspy-enum": "TypeAttributes"
+        },
+        "base_type": {
+         "$ref": "#/$defs/Shared053"
+        },
+        "kind": {
+         "const": "type_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "namespace": {
+         "maxLength": 512,
+         "type": "string"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "layout": {
+         "$ref": "#/$defs/Shared091"
+        }
+       },
+       "required": [
+        "kind",
+        "name"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 16219583,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 16219583,
+         "x-dnspy-enum": "TypeAttributes"
+        },
+        "base_type": {
+         "$ref": "#/$defs/Shared053"
+        },
+        "kind": {
+         "const": "type_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "namespace": {
+         "maxLength": 512,
+         "type": "string"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "layout": {
+         "$ref": "#/$defs/Shared091"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "type_remove"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "default": 128,
+         "maximum": 65535,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 65535,
+         "x-dnspy-enum": "MethodAttributes"
+        },
+        "body": {
+         "$ref": "#/$defs/Shared001"
+        },
+        "impl_attributes": {
+         "default": 0,
+         "maximum": 6143,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 6143,
+         "x-dnspy-enum": "MethodImplAttributes"
+        },
+        "kind": {
+         "const": "method_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "signature": {
+         "additionalProperties": false,
+         "properties": {
+          "generic_parameters": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "attributes": {
+              "$ref": "#/$defs/Shared133"
+             },
+             "name": {
+              "maxLength": 512,
               "minLength": 1,
               "type": "string"
-            },
-            "timeout_ms": {
-              "maximum": 120000,
-              "minimum": 1000,
-              "type": "integer"
-            },
-            "working_directory": {
-              "maxLength": 32767,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          "required": [
-            "mode",
-            "runtime_profile"
-          ],
-          "type": "object"
-        },
-        "expected_revision": {
-          "maximum": 4294967295,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "request_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision"
-      ],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "diffs": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "after": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "before": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "kind": {
-                        "enum": [
-                          "type_add",
-                          "type_update",
-                          "type_remove",
-                          "method_add",
-                          "method_update",
-                          "method_remove",
-                          "field_add",
-                          "field_update",
-                          "field_remove",
-                          "property_add",
-                          "property_update",
-                          "property_remove",
-                          "event_add",
-                          "event_update",
-                          "event_remove",
-                          "parameter_add",
-                          "parameter_update",
-                          "parameter_remove",
-                          "generic_parameter_add",
-                          "generic_parameter_update",
-                          "generic_parameter_remove",
-                          "method_body_replace",
-                          "attribute_add",
-                          "attribute_remove",
-                          "security_add",
-                          "security_remove",
-                          "assembly_update",
-                          "module_update",
-                          "assembly_ref_update",
-                          "entry_point_set",
-                          "managed_resource_add",
-                          "managed_resource_update",
-                          "managed_resource_remove",
-                          "win32_resource_add",
-                          "win32_resource_update",
-                          "win32_resource_remove",
-                          "strong_name_remove",
-                          "interface_add",
-                          "reference_add"
-                        ]
-                      },
-                      "operation_index": {
-                        "maximum": 4294967295,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "path": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_ids": {
-                        "items": {
-                          "maxLength": 48,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 17,
-                        "type": "array"
-                      },
-                      "target": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "operation_index",
-                      "kind",
-                      "target",
-                      "path",
-                      "before",
-                      "after",
-                      "risk_ids"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "dynamic_validation": {
-                  "oneOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "artifact": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "created": {
-                              "const": false
-                            },
-                            "path": {
-                              "type": "null"
-                            },
-                            "sha256": {
-                              "type": "null"
-                            }
-                          },
-                          "required": [
-                            "created",
-                            "path",
-                            "sha256"
-                          ],
-                          "type": "object"
-                        },
-                        "cleanup": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "debug_idle": {
-                              "const": true
-                            },
-                            "residual_path": {
-                              "type": "null"
-                            },
-                            "temp_delete_attempted": {
-                              "const": false
-                            },
-                            "temp_deleted": {
-                              "const": true
-                            },
-                            "terminate_attempted": {
-                              "const": false
-                            }
-                          },
-                          "required": [
-                            "terminate_attempted",
-                            "debug_idle",
-                            "temp_delete_attempted",
-                            "temp_deleted",
-                            "residual_path"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "maxLength": 64,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "sequence": {
-                                "maximum": 4294967295,
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "summary": {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "kind",
-                              "summary"
-                            ],
-                            "type": "object"
-                          },
-                          "maxItems": 0,
-                          "type": "array"
-                        },
-                        "failure": {
-                          "type": "null"
-                        },
-                        "requested": {
-                          "const": false
-                        },
-                        "runtime_profile": {
-                          "type": "null"
-                        },
-                        "state": {
-                          "const": "not_requested"
-                        }
-                      },
-                      "required": [
-                        "state",
-                        "requested",
-                        "runtime_profile",
-                        "artifact",
-                        "events",
-                        "cleanup",
-                        "failure"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "artifact": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "created": {
-                              "const": false
-                            },
-                            "path": {
-                              "type": "null"
-                            },
-                            "sha256": {
-                              "type": "null"
-                            }
-                          },
-                          "required": [
-                            "created",
-                            "path",
-                            "sha256"
-                          ],
-                          "type": "object"
-                        },
-                        "cleanup": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "debug_idle": {
-                              "const": true
-                            },
-                            "residual_path": {
-                              "type": "null"
-                            },
-                            "temp_delete_attempted": {
-                              "const": false
-                            },
-                            "temp_deleted": {
-                              "const": true
-                            },
-                            "terminate_attempted": {
-                              "const": false
-                            }
-                          },
-                          "required": [
-                            "terminate_attempted",
-                            "debug_idle",
-                            "temp_delete_attempted",
-                            "temp_deleted",
-                            "residual_path"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "maxLength": 64,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "sequence": {
-                                "maximum": 4294967295,
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "summary": {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "kind",
-                              "summary"
-                            ],
-                            "type": "object"
-                          },
-                          "maxItems": 0,
-                          "type": "array"
-                        },
-                        "failure": {
-                          "type": "null"
-                        },
-                        "requested": {
-                          "const": true
-                        },
-                        "runtime_profile": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "state": {
-                          "const": "not_applicable"
-                        }
-                      },
-                      "required": [
-                        "state",
-                        "requested",
-                        "runtime_profile",
-                        "artifact",
-                        "events",
-                        "cleanup",
-                        "failure"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "artifact": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "created": {
-                              "const": true
-                            },
-                            "path": {
-                              "maxLength": 4096,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            "sha256": {
-                              "maxLength": 64,
-                              "minLength": 1,
-                              "pattern": "^[0-9a-f]{64}$",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "created",
-                            "path",
-                            "sha256"
-                          ],
-                          "type": "object"
-                        },
-                        "cleanup": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "debug_idle": {
-                              "const": true
-                            },
-                            "residual_path": {
-                              "type": "null"
-                            },
-                            "temp_delete_attempted": {
-                              "const": true
-                            },
-                            "temp_deleted": {
-                              "const": true
-                            },
-                            "terminate_attempted": {
-                              "const": true
-                            }
-                          },
-                          "required": [
-                            "terminate_attempted",
-                            "debug_idle",
-                            "temp_delete_attempted",
-                            "temp_deleted",
-                            "residual_path"
-                          ],
-                          "type": "object"
-                        },
-                        "events": {
-                          "items": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "maxLength": 64,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "sequence": {
-                                "maximum": 4294967295,
-                                "minimum": 0,
-                                "type": "integer"
-                              },
-                              "summary": {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "sequence",
-                              "kind",
-                              "summary"
-                            ],
-                            "type": "object"
-                          },
-                          "maxItems": 64,
-                          "minItems": 1,
-                          "type": "array"
-                        },
-                        "failure": {
-                          "type": "null"
-                        },
-                        "requested": {
-                          "const": true
-                        },
-                        "runtime_profile": {
-                          "maxLength": 128,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "state": {
-                          "const": "passed"
-                        }
-                      },
-                      "required": [
-                        "state",
-                        "requested",
-                        "runtime_profile",
-                        "artifact",
-                        "events",
-                        "cleanup",
-                        "failure"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                "fingerprints": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "baseline_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "current_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "private": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "baseline_live",
-                    "current_live",
-                    "private"
-                  ],
-                  "type": "object"
-                },
-                "limits": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "max_body_exception_handlers": {
-                      "const": 512
-                    },
-                    "max_body_instructions": {
-                      "const": 4096
-                    },
-                    "max_body_locals": {
-                      "const": 1024
-                    },
-                    "max_diff_bytes": {
-                      "const": 524288
-                    },
-                    "max_dispatcher_ms": {
-                      "const": 1000
-                    },
-                    "max_il_instructions": {
-                      "const": 250000
-                    },
-                    "max_live_steps": {
-                      "const": 256
-                    },
-                    "max_metadata_rows": {
-                      "const": 100000
-                    },
-                    "max_module_bytes": {
-                      "const": 16777216
-                    },
-                    "max_normalized_operation_bytes": {
-                      "const": 8388608
-                    },
-                    "max_object_ids": {
-                      "const": 4096
-                    },
-                    "max_operations": {
-                      "const": 256
-                    },
-                    "max_pdb_bytes": {
-                      "const": 8388608
-                    },
-                    "max_resource_bytes": {
-                      "const": 8388608
-                    }
-                  },
-                  "required": [
-                    "max_operations",
-                    "max_object_ids",
-                    "max_normalized_operation_bytes",
-                    "max_diff_bytes",
-                    "max_body_instructions",
-                    "max_body_locals",
-                    "max_body_exception_handlers",
-                    "max_live_steps",
-                    "max_module_bytes",
-                    "max_metadata_rows",
-                    "max_resource_bytes",
-                    "max_pdb_bytes",
-                    "max_il_instructions",
-                    "max_dispatcher_ms"
-                  ],
-                  "type": "object"
-                },
-                "review": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "required_confirmation_ids": {
-                      "items": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "maxItems": 256,
-                      "type": "array"
-                    },
-                    "review_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "review_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "review_id",
-                    "review_revision",
-                    "required_confirmation_ids"
-                  ],
-                  "type": "object"
-                },
-                "risks": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "confirmation_required": {
-                        "type": "boolean"
-                      },
-                      "description": {
-                        "maxLength": 96,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "assembly_identity_change",
-                          "assembly_ref_change",
-                          "attribute_change",
-                          "body_change",
-                          "cross_assembly_inbound",
-                          "data_section_change",
-                          "eh_change",
-                          "entry_point_change",
-                          "external_code_entry",
-                          "layout_change",
-                          "module_identity_change",
-                          "public_delete",
-                          "resource_change",
-                          "security_change",
-                          "signature_change",
-                          "strong_name_change",
-                          "visibility_change"
-                        ]
-                      },
-                      "object": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_id": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "risk_id",
-                      "kind",
-                      "object",
-                      "description",
-                      "confirmation_required"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "roundtrip_validation": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "errors": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "location": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "message": {
-                            "maxLength": 192,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "object": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "rule_id": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "rule_id",
-                          "object",
-                          "location",
-                          "message"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 64,
-                      "type": "array"
-                    },
-                    "rule_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "state": {
-                      "enum": [
-                        "passed",
-                        "failed"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "state",
-                    "rule_count",
-                    "errors"
-                  ],
-                  "type": "object"
-                },
-                "structural_validation": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "errors": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "location": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "message": {
-                            "maxLength": 192,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "object": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "rule_id": {
-                            "maxLength": 48,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "rule_id",
-                          "object",
-                          "location",
-                          "message"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 64,
-                      "type": "array"
-                    },
-                    "rule_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "state": {
-                      "enum": [
-                        "passed",
-                        "failed"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "state",
-                    "rule_count",
-                    "errors"
-                  ],
-                  "type": "object"
-                },
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                }
-              },
-              "required": [
-                "transaction",
-                "review",
-                "fingerprints",
-                "diffs",
-                "structural_validation",
-                "roundtrip_validation",
-                "dynamic_validation",
-                "risks",
-                "limits"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_rollback": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "request_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "request_id",
-        "transaction_id"
-      ],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "end_reason": {
-                  "const": "client_rollback"
-                },
-                "original_live_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "released": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "apply_cache_entries": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "private_modules": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_slots": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "validation_modules": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "private_modules",
-                    "validation_modules",
-                    "apply_cache_entries",
-                    "review_slots"
-                  ],
-                  "type": "object"
-                },
-                "rolled_back": {
-                  "const": true
-                }
-              },
-              "required": [
-                "rolled_back",
-                "end_reason",
-                "original_live_fingerprint",
-                "released"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_status": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {},
-      "required": [],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
+             },
+             "constraints": {
               "oneOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "busy",
-                    "state",
-                    "history",
-                    "recovery",
-                    "capacity"
-                  ],
-                  "properties": {
-                    "busy": {
-                      "type": "boolean"
-                    },
-                    "state": {
-                      "type": "string",
-                      "enum": [
-                        "idle",
-                        "committing",
-                        "committed_without_checkpoint",
-                        "live_state_unknown"
-                      ]
-                    },
-                    "history": {
-                      "type": "object"
-                    },
-                    "recovery": {
-                      "oneOf": [
-                        {
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "capacity": {
-                      "type": "object"
-                    }
+               {
+                "type": "null"
+               },
+               {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                 "oneOf": [
+                  {
+                   "type": "string",
+                   "minLength": 1,
+                   "maxLength": 4096
+                  },
+                  {
+                   "$ref": "#/$defs/Shared063"
                   }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "busy",
-                    "state",
-                    "owner_transport_kind"
-                  ],
-                  "properties": {
-                    "busy": {
-                      "const": true
-                    },
-                    "state": {
-                      "type": "string",
-                      "enum": [
-                        "editing",
-                        "reviewed",
-                        "applying",
-                        "committing"
-                      ]
-                    },
-                    "owner_transport_kind": {
-                      "type": "string",
-                      "enum": [
-                        "legacy_sse",
-                        "streamable_http"
-                      ]
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "busy",
-                    "state",
-                    "transaction",
-                    "fingerprints",
-                    "review",
-                    "history",
-                    "recovery",
-                    "capacity",
-                    "risks"
-                  ],
-                  "properties": {
-                    "busy": {
-                      "const": true
-                    },
-                    "state": {
-                      "type": "string",
-                      "enum": [
-                        "editing",
-                        "reviewed",
-                        "applying",
-                        "committing"
-                      ]
-                    },
-                    "transaction": {
-                      "type": "object"
-                    },
-                    "fingerprints": {
-                      "type": "object"
-                    },
-                    "review": {
-                      "oneOf": [
-                        {
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "history": {
-                      "type": "object"
-                    },
-                    "recovery": {
-                      "oneOf": [
-                        {
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "capacity": {
-                      "type": "object"
-                    },
-                    "risks": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      }
-                    }
-                  }
+                 ]
                 }
+               }
               ]
+             }
             },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
+            "required": [
+             "name"
+            ],
+            "type": "object"
+           },
+           "maxItems": 64,
+           "type": "array"
+          },
+          "has_this": {
+           "type": "boolean"
+          },
+          "parameters": {
+           "items": {
+            "additionalProperties": false,
+            "properties": {
+             "attributes": {
+              "$ref": "#/$defs/Shared134"
+             },
+             "name": {
+              "oneOf": [
+               {
+                "maxLength": 512,
                 "minLength": 1,
                 "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
+               },
+               {
+                "type": "null"
+               }
               ]
+             },
+             "type": {
+              "$ref": "#/$defs/Shared057"
+             }
             },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_test_apply_and_restore": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "confirmed_risk_ids": {
-          "items": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
+            "required": [
+             "type"
+            ],
+            "type": "object"
+           },
+           "maxItems": 256,
+           "type": "array"
           },
-          "maxItems": 256,
-          "type": "array"
+          "return_type": {
+           "$ref": "#/$defs/Shared057"
+          }
+         },
+         "required": [
+          "return_type",
+          "parameters",
+          "has_this",
+          "generic_parameters"
+         ],
+         "type": "object"
         },
-        "expected_revision": {
-          "maximum": 4294967295,
-          "minimum": 0,
-          "type": "integer"
+        "overrides": {
+         "$ref": "#/$defs/Shared024"
         },
-        "request_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
+        "pinvoke": {
+         "$ref": "#/$defs/Shared064"
         },
-        "review_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
+        "custom_debug_infos": {
+         "$ref": "#/$defs/Shared007"
         }
+       },
+       "required": [
+        "kind",
+        "owner_type",
+        "name",
+        "signature"
+       ],
+       "type": "object"
       },
-      "required": [
-        "request_id",
-        "transaction_id",
-        "review_id",
-        "expected_revision",
-        "confirmed_risk_ids"
-      ],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "applied_and_restored": {
-                  "const": true
-                },
-                "dispatcher_callbacks_ms": {
-                  "items": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "execution_evidence": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "actual_mutation_trace": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "boundary": {
-                            "enum": [
-                              "before",
-                              "after"
-                            ]
-                          },
-                          "direction": {
-                            "enum": [
-                              "forward",
-                              "reverse"
-                            ]
-                          },
-                          "fault_id": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
-                            "type": "string"
-                          },
-                          "operation_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "operation_kind": {
-                            "enum": [
-                              "type_add",
-                              "type_update",
-                              "type_remove",
-                              "method_add",
-                              "method_update",
-                              "method_remove",
-                              "field_add",
-                              "field_update",
-                              "field_remove",
-                              "property_add",
-                              "property_update",
-                              "property_remove",
-                              "event_add",
-                              "event_update",
-                              "event_remove",
-                              "parameter_add",
-                              "parameter_update",
-                              "parameter_remove",
-                              "generic_parameter_add",
-                              "generic_parameter_update",
-                              "generic_parameter_remove",
-                              "method_body_replace"
-                            ]
-                          },
-                          "primitive_kind": {
-                            "maxLength": 16,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step": {
-                            "maxLength": 96,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "target": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "fault_id",
-                          "operation_index",
-                          "step_index",
-                          "operation_kind",
-                          "direction",
-                          "boundary",
-                          "primitive_kind",
-                          "target",
-                          "step"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 24,
-                      "type": "array"
-                    },
-                    "armed_fault": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "boundary": {
-                              "enum": [
-                                "before",
-                                "after"
-                              ]
-                            },
-                            "direction": {
-                              "enum": [
-                                "forward",
-                                "reverse"
-                              ]
-                            },
-                            "fault_id": {
-                              "maxLength": 64,
-                              "minLength": 1,
-                              "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
-                              "type": "string"
-                            },
-                            "operation_index": {
-                              "maximum": 4294967295,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "operation_kind": {
-                              "enum": [
-                                "type_add",
-                                "type_update",
-                                "type_remove",
-                                "method_add",
-                                "method_update",
-                                "method_remove",
-                                "field_add",
-                                "field_update",
-                                "field_remove",
-                                "property_add",
-                                "property_update",
-                                "property_remove",
-                                "event_add",
-                                "event_update",
-                                "event_remove",
-                                "parameter_add",
-                                "parameter_update",
-                                "parameter_remove",
-                                "generic_parameter_add",
-                                "generic_parameter_update",
-                                "generic_parameter_remove",
-                                "method_body_replace"
-                              ]
-                            },
-                            "primitive_kind": {
-                              "maxLength": 16,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            "step": {
-                              "maxLength": 96,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            "step_index": {
-                              "maximum": 4294967295,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
-                            "target": {
-                              "maxLength": 64,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "fault_id",
-                            "operation_index",
-                            "step_index",
-                            "operation_kind",
-                            "direction",
-                            "boundary",
-                            "primitive_kind",
-                            "target",
-                            "step"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "covered_faults": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "boundary": {
-                            "enum": [
-                              "before",
-                              "after"
-                            ]
-                          },
-                          "direction": {
-                            "enum": [
-                              "forward",
-                              "reverse"
-                            ]
-                          },
-                          "fault_id": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
-                            "type": "string"
-                          },
-                          "operation_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "operation_kind": {
-                            "enum": [
-                              "type_add",
-                              "type_update",
-                              "type_remove",
-                              "method_add",
-                              "method_update",
-                              "method_remove",
-                              "field_add",
-                              "field_update",
-                              "field_remove",
-                              "property_add",
-                              "property_update",
-                              "property_remove",
-                              "event_add",
-                              "event_update",
-                              "event_remove",
-                              "parameter_add",
-                              "parameter_update",
-                              "parameter_remove",
-                              "generic_parameter_add",
-                              "generic_parameter_update",
-                              "generic_parameter_remove",
-                              "method_body_replace"
-                            ]
-                          },
-                          "primitive_kind": {
-                            "maxLength": 16,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step": {
-                            "maxLength": 96,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "target": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "fault_id",
-                          "operation_index",
-                          "step_index",
-                          "operation_kind",
-                          "direction",
-                          "boundary",
-                          "primitive_kind",
-                          "target",
-                          "step"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 1,
-                      "type": "array",
-                      "uniqueItems": true
-                    },
-                    "fault_manifest": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "boundary": {
-                            "enum": [
-                              "before",
-                              "after"
-                            ]
-                          },
-                          "direction": {
-                            "enum": [
-                              "forward",
-                              "reverse"
-                            ]
-                          },
-                          "fault_id": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
-                            "type": "string"
-                          },
-                          "operation_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "operation_kind": {
-                            "enum": [
-                              "type_add",
-                              "type_update",
-                              "type_remove",
-                              "method_add",
-                              "method_update",
-                              "method_remove",
-                              "field_add",
-                              "field_update",
-                              "field_remove",
-                              "property_add",
-                              "property_update",
-                              "property_remove",
-                              "event_add",
-                              "event_update",
-                              "event_remove",
-                              "parameter_add",
-                              "parameter_update",
-                              "parameter_remove",
-                              "generic_parameter_add",
-                              "generic_parameter_update",
-                              "generic_parameter_remove",
-                              "method_body_replace"
-                            ]
-                          },
-                          "primitive_kind": {
-                            "maxLength": 16,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step": {
-                            "maxLength": 96,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "target": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "fault_id",
-                          "operation_index",
-                          "step_index",
-                          "operation_kind",
-                          "direction",
-                          "boundary",
-                          "primitive_kind",
-                          "target",
-                          "step"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 240,
-                      "minItems": 240,
-                      "type": "array",
-                      "uniqueItems": true
-                    },
-                    "oracle_faults": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "boundary": {
-                            "enum": [
-                              "before",
-                              "after"
-                            ]
-                          },
-                          "direction": {
-                            "enum": [
-                              "forward",
-                              "reverse"
-                            ]
-                          },
-                          "fault_id": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "pattern": "^fp-[0-9]+-(forward|reverse)-[0-9]+-[a-z0-9_]+-(before|after)$",
-                            "type": "string"
-                          },
-                          "operation_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "operation_kind": {
-                            "enum": [
-                              "type_add",
-                              "type_update",
-                              "type_remove",
-                              "method_add",
-                              "method_update",
-                              "method_remove",
-                              "field_add",
-                              "field_update",
-                              "field_remove",
-                              "property_add",
-                              "property_update",
-                              "property_remove",
-                              "event_add",
-                              "event_update",
-                              "event_remove",
-                              "parameter_add",
-                              "parameter_update",
-                              "parameter_remove",
-                              "generic_parameter_add",
-                              "generic_parameter_update",
-                              "generic_parameter_remove",
-                              "method_body_replace"
-                            ]
-                          },
-                          "primitive_kind": {
-                            "maxLength": 16,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step": {
-                            "maxLength": 96,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "step_index": {
-                            "maximum": 4294967295,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "target": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "fault_id",
-                          "operation_index",
-                          "step_index",
-                          "operation_kind",
-                          "direction",
-                          "boundary",
-                          "primitive_kind",
-                          "target",
-                          "step"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 240,
-                      "minItems": 240,
-                      "type": "array",
-                      "uniqueItems": true
-                    }
-                  },
-                  "required": [
-                    "armed_fault",
-                    "fault_manifest",
-                    "oracle_faults",
-                    "actual_mutation_trace",
-                    "covered_faults"
-                  ],
-                  "type": "object"
-                },
-                "post_apply_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "post_restore_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "pre_live_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "private_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "applied_and_restored",
-                "pre_live_fingerprint",
-                "private_fingerprint",
-                "post_apply_fingerprint",
-                "post_restore_fingerprint",
-                "execution_evidence",
-                "dispatcher_callbacks_ms"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 65535,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 65535,
+         "x-dnspy-enum": "MethodAttributes"
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
+        "has_this": {
+         "type": "boolean"
+        },
+        "impl_attributes": {
+         "maximum": 6143,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 6143,
+         "x-dnspy-enum": "MethodImplAttributes"
+        },
+        "kind": {
+         "const": "method_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "return_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "overrides": {
+         "$ref": "#/$defs/Shared024"
+        },
+        "pinvoke": {
+         "$ref": "#/$defs/Shared064"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "method_remove"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "default": 0,
+         "maximum": 47095,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 47095,
+         "x-dnspy-enum": "FieldAttributes"
+        },
+        "constant": {
+         "$ref": "#/$defs/Shared010"
+        },
+        "field_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "kind": {
+         "const": "field_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "field_offset": {
+         "oneOf": [
+          {
+           "type": "null"
+          },
+          {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 4294967295
           }
+         ]
+        },
+        "initial_data": {
+         "$ref": "#/$defs/Shared099"
+        },
+        "marshal": {
+         "$ref": "#/$defs/Shared017"
         }
-      ]
-    }
-  },
-  "edit_test_barrier": {
-    "inputSchema": {
-      "oneOf": [
+       },
+       "required": [
+        "kind",
+        "owner_type",
+        "name",
+        "field_type"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "allOf": [
         {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "arm"
-            },
-            "name": {
-              "enum": [
-                "begin_after_copy",
-                "apply_before_mutation",
-                "review_before_validation",
-                "commit_after_guard_before_temp",
-                "commit_after_temp_validate",
-                "commit_dispatcher_queued",
-                "commit_after_live_first_mutation",
-                "commit_after_live_complete",
-                "commit_after_package_switch_before_response"
-              ]
-            }
-          },
+         "not": {
           "required": [
-            "action",
-            "name"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "snapshot"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "release"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "reset"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "active_generation": {
-                  "oneOf": [
-                    {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "active_transaction_id": {
-                  "oneOf": [
-                    {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "armed": {
-                  "type": "boolean"
-                },
-                "entered": {
-                  "type": "boolean"
-                },
-                "name": {
-                  "oneOf": [
-                    {
-                      "enum": [
-                        "begin_after_copy",
-                        "apply_before_mutation",
-                        "review_before_validation"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "operation_waiters": {
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "owner_session_id": {
-                  "oneOf": [
-                    {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "pending_request_key": {
-                  "oneOf": [
-                    {
-                      "maxLength": 512,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "released": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "armed",
-                "name",
-                "owner_session_id",
-                "entered",
-                "released",
-                "operation_waiters",
-                "pending_request_key",
-                "active_generation",
-                "active_transaction_id"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_test_clock": {
-    "inputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "read"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "reset"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "advance"
-            },
-            "advance_ms": {
-              "maximum": 9223372036854775807,
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "action",
-            "advance_ms"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "monotonic_ms": {
-                  "maximum": 9223372036854775807,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "offset_ms": {
-                  "maximum": 9223372036854775807,
-                  "minimum": 0,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "monotonic_ms",
-                "offset_ms"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_test_external_mutation": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "case_id": {
-          "enum": [
-            "fp-channel-modulemetadata:mutate",
-            "fp-channel-dnlibobjectgraph:mutate",
-            "fp-channel-methodbodyil:mutate",
-            "fp-channel-managedresource:mutate",
-            "fp-channel-embeddedpdb:mutate",
-            "fp-canonical-global-order:reorder",
-            "live-conflict:mutate-entrypoint",
-            "live-conflict:mutate-layout",
-            "live-conflict:mutate-cdi"
+           "constant",
+           "clear_constant"
           ]
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
+         }
         }
+       ],
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 47095,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 47095,
+         "x-dnspy-enum": "FieldAttributes"
+        },
+        "clear_constant": {
+         "const": true
+        },
+        "constant": {
+         "$ref": "#/$defs/Shared010"
+        },
+        "field_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "kind": {
+         "const": "field_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "field_offset": {
+         "oneOf": [
+          {
+           "type": "null"
+          },
+          {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 4294967295
+          }
+         ]
+        },
+        "initial_data": {
+         "$ref": "#/$defs/Shared099"
+        },
+        "marshal": {
+         "$ref": "#/$defs/Shared017"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
       },
-      "required": [
-        "transaction_id",
-        "case_id"
-      ],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "after_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "before_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "canonical_readback_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "canonical_readback_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "case_id": {
-                  "enum": [
-                    "fp-channel-modulemetadata:mutate",
-                    "fp-channel-dnlibobjectgraph:mutate",
-                    "fp-channel-methodbodyil:mutate",
-                    "fp-channel-managedresource:mutate",
-                    "fp-channel-embeddedpdb:mutate",
-                    "fp-canonical-global-order:reorder"
-                  ]
-                },
-                "changed": {
-                  "type": "boolean"
-                },
-                "component": {
-                  "enum": [
-                    "ModuleMetadata",
-                    "DnlibObjectGraph",
-                    "MethodBodyIl",
-                    "ManagedResource",
-                    "EmbeddedPdb",
-                    "GlobalCanonicalOrder"
-                  ]
-                },
-                "evidence_artifact": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "sha256": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "sha256"
-                  ],
-                  "type": "object"
-                },
-                "located_slice_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "located_slice_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "raw_order_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "raw_order_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "recipe_id": {
-                  "enum": [
-                    "fp-channel-modulemetadata",
-                    "fp-channel-dnlibobjectgraph",
-                    "fp-channel-methodbodyil",
-                    "fp-channel-managedresource",
-                    "fp-channel-embeddedpdb",
-                    "fp-canonical-global-order"
-                  ]
-                },
-                "recipe_sha256": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "restored": {
-                  "const": true
-                },
-                "restored_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "semantic_change": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "case_id",
-                "recipe_id",
-                "component",
-                "recipe_sha256",
-                "evidence_artifact",
-                "located_slice_before",
-                "located_slice_after",
-                "raw_order_before",
-                "raw_order_after",
-                "canonical_readback_before",
-                "canonical_readback_after",
-                "before_fingerprint",
-                "after_fingerprint",
-                "restored_fingerprint",
-                "changed",
-                "semantic_change",
-                "restored"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "field_remove"
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
         }
-      ]
-    }
-  },
-  "edit_test_fault": {
-    "inputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "read"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "reset"
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "action": {
-              "const": "arm"
-            },
-            "fault_id": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          "required": [
-            "action",
-            "fault_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "armed_fault_id": {
-                  "oneOf": [
-                    {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "emergency_cleanup": {
-                  "type": "boolean"
-                },
-                "known_fault_ids": {
-                  "items": {
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "maxItems": 1024,
-                  "type": "array"
-                }
-              },
-              "required": [
-                "armed_fault_id",
-                "known_fault_ids",
-                "emergency_cleanup"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_test_live_mutation": {
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "action": {
-          "enum": [
-            "mutate",
-            "restore"
-          ]
-        },
-        "transaction_id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "type": "string"
-        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
       },
-      "required": [
-        "transaction_id",
-        "action"
-      ],
-      "type": "object"
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "after_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "before_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "canonical_readback_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "canonical_readback_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "case_id": {
-                  "enum": [
-                    "live-conflict:mutate",
-                    "live-conflict:restore"
-                  ]
-                },
-                "changed": {
-                  "type": "boolean"
-                },
-                "component": {
-                  "const": "ModuleMetadata"
-                },
-                "evidence_artifact": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "path": {
-                      "maxLength": 4096,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "sha256": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path",
-                    "sha256"
-                  ],
-                  "type": "object"
-                },
-                "located_slice_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "located_slice_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "raw_order_after": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "raw_order_before": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "recipe_id": {
-                  "const": "live-conflict"
-                },
-                "recipe_sha256": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "restored": {
-                  "type": "boolean"
-                },
-                "restored_fingerprint": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "pattern": "^[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "semantic_change": {
-                  "const": true
-                }
-              },
-              "required": [
-                "case_id",
-                "recipe_id",
-                "component",
-                "recipe_sha256",
-                "evidence_artifact",
-                "located_slice_before",
-                "located_slice_after",
-                "raw_order_before",
-                "raw_order_after",
-                "canonical_readback_before",
-                "canonical_readback_after",
-                "before_fingerprint",
-                "after_fingerprint",
-                "restored_fingerprint",
-                "changed",
-                "semantic_change",
-                "restored"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "default": 0,
+         "maximum": 5632,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 5632,
+         "x-dnspy-enum": "PropertyAttributes"
         },
-        {
+        "getter": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "index_parameter_types": {
+         "$ref": "#/$defs/Shared052"
+        },
+        "kind": {
+         "const": "property_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "property_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "setter": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "owner_type",
+        "name",
+        "property_type"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 5632,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 5632,
+         "x-dnspy-enum": "PropertyAttributes"
+        },
+        "getter": {
+         "$ref": "#/$defs/Shared073"
+        },
+        "index_parameter_types": {
+         "$ref": "#/$defs/Shared052"
+        },
+        "kind": {
+         "const": "property_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "property_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "setter": {
+         "$ref": "#/$defs/Shared073"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "property_remove"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "add_method": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "attributes": {
+         "default": 0,
+         "maximum": 1536,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 1536,
+         "x-dnspy-enum": "EventAttributes"
+        },
+        "event_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "kind": {
+         "const": "event_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "raise_method": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "remove_method": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "owner_type",
+        "name",
+        "event_type",
+        "add_method",
+        "remove_method"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "add_method": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "attributes": {
+         "maximum": 1536,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 1536,
+         "x-dnspy-enum": "EventAttributes"
+        },
+        "event_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "kind": {
+         "const": "event_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "raise_method": {
+         "$ref": "#/$defs/Shared073"
+        },
+        "remove_method": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "event_remove"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "$ref": "#/$defs/Shared134"
+        },
+        "kind": {
+         "const": "parameter_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner_method": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "parameter_index": {
+         "maximum": 4294967295,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "parameter_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "marshal": {
+         "$ref": "#/$defs/Shared017"
+        }
+       },
+       "required": [
+        "kind",
+        "owner_method",
+        "parameter_index",
+        "name",
+        "parameter_type"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 12319,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 12319,
+         "x-dnspy-enum": "ParamAttributes"
+        },
+        "kind": {
+         "const": "parameter_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "parameter_target": {
+         "$ref": "#/$defs/Shared037"
+        },
+        "parameter_type": {
+         "$ref": "#/$defs/Shared057"
+        },
+        "marshal": {
+         "$ref": "#/$defs/Shared017"
+        }
+       },
+       "required": [
+        "kind",
+        "parameter_target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "parameter_remove"
+        },
+        "parameter_target": {
+         "$ref": "#/$defs/Shared037"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        }
+       },
+       "required": [
+        "kind",
+        "parameter_target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "attributes": {
+         "$ref": "#/$defs/Shared133"
+        },
+        "generic_index": {
+         "maximum": 4294967295,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "kind": {
+         "const": "generic_parameter_add"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "owner": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "constraints": {
+         "$ref": "#/$defs/Shared138"
+        }
+       },
+       "required": [
+        "kind",
+        "owner",
+        "generic_index",
+        "name"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "minProperties": 3,
+       "properties": {
+        "attributes": {
+         "maximum": 63,
+         "minimum": 0,
+         "type": "integer",
+         "x-dnspy-defined-bit-mask": 63,
+         "x-dnspy-enum": "GenericParamAttributes"
+        },
+        "kind": {
+         "const": "generic_parameter_update"
+        },
+        "name": {
+         "maxLength": 512,
+         "minLength": 1,
+         "type": "string"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "constraints": {
+         "$ref": "#/$defs/Shared138"
+        }
+       },
+       "required": [
+        "kind",
+        "target"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "kind": {
+         "const": "generic_parameter_remove"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "type": "object"
+      },
+      {
+       "additionalProperties": false,
+       "properties": {
+        "body": {
+         "$ref": "#/$defs/Shared001"
+        },
+        "kind": {
+         "const": "method_body_replace"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "custom_debug_infos": {
+         "$ref": "#/$defs/Shared007"
+        }
+       },
+       "required": [
+        "kind",
+        "target",
+        "body"
+       ],
+       "type": "object"
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "target",
+        "constructor"
+       ],
+       "properties": {
+        "kind": {
+         "const": "attribute_add"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared070"
+        },
+        "constructor": {
+         "$ref": "#/$defs/Shared086"
+        },
+        "fixed_arguments": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/Shared034"
+         },
+         "maxItems": 64
+        },
+        "named_arguments": {
+         "type": "array",
+         "items": {
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
+           "kind",
+           "type",
+           "name",
+           "value"
           ],
           "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_commit": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision",
-        "review_id",
-        "review_revision",
-        "confirmed_risk_ids"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "transaction_id": {
-          "type": "string",
-          "pattern": "^edit-[0-9a-f]{32}$"
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "review_id": {
-          "type": "string",
-          "pattern": "^review-[0-9a-f]{32}$"
-        },
-        "review_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "confirmed_risk_ids": {
-          "type": "array",
-          "maxItems": 256,
-          "uniqueItems": true,
-          "items": {
+           "kind": {
+            "enum": [
+             "field",
+             "property"
+            ]
+           },
+           "type": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 4096
+           },
+           "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+           },
+           "value": {
+            "$ref": "#/$defs/Shared034"
+           }
           }
+         },
+         "maxItems": 64
         }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "checkpoint",
-                "history",
-                "fingerprints",
-                "confirmed_risks",
-                "live_recovery"
-              ],
-              "properties": {
-                "checkpoint": {
-                  "type": "object"
-                },
-                "history": {
-                  "type": "object"
-                },
-                "fingerprints": {
-                  "type": "object"
-                },
-                "confirmed_risks": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                },
-                "live_recovery": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "inverse_plan": {
-                      "const": "pregenerated_compiled_state"
-                    },
-                    "inverse_plan_operations": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    },
-                    "inverse_plan_bound_checkpoint_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "inverse_plan_complete_before_live_write": {
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "inverse_plan",
-                    "inverse_plan_operations",
-                    "inverse_plan_bound_checkpoint_id",
-                    "inverse_plan_complete_before_live_write"
-                  ]
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "target",
+        "match"
+       ],
+       "properties": {
+        "kind": {
+         "const": "attribute_remove"
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
+        "target": {
+         "$ref": "#/$defs/Shared070"
+        },
+        "match": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "constructor"
+         ],
+         "properties": {
+          "constructor": {
+           "$ref": "#/$defs/Shared086"
+          },
+          "index": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 4294967295
           }
+         }
         }
-      ]
-    }
-  },
-  "edit_history": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "parent",
+        "action",
+        "xml"
+       ],
+       "properties": {
+        "kind": {
+         "const": "security_add"
         },
-        "checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
-        },
-        "cursor": {
-          "type": "string",
-          "maxLength": 1024
-        },
-        "page_size": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "view",
-                "next_cursor"
-              ],
-              "properties": {
-                "view": {
-                  "type": "string",
-                  "enum": [
-                    "lineages",
-                    "checkpoints",
-                    "checkpoint"
-                  ]
-                },
-                "lineages": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                },
-                "checkpoints": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                },
-                "checkpoint": {
-                  "oneOf": [
-                    {
-                      "type": "object"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "next_cursor": {
-                  "oneOf": [
-                    {
-                      "type": "string",
-                      "maxLength": 1024
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "capacity": {
-                  "type": "object"
-                },
-                "recovery": {
-                  "oneOf": [
-                    {
-                      "type": "object"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "view",
-                "busy",
-                "state"
-              ],
-              "properties": {
-                "view": {
-                  "const": "summary"
-                },
-                "busy": {
-                  "type": "boolean"
-                },
-                "state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_undo": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "lineage_id",
-        "expected_checkpoint_id"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
-        },
-        "expected_checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "from_checkpoint_id",
-                "to_checkpoint_id",
-                "history",
-                "replay"
-              ],
-              "properties": {
-                "from_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                },
-                "to_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                },
-                "history": {
-                  "type": "object"
-                },
-                "replay": {
-                  "type": "object"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_redo": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "lineage_id",
-        "expected_checkpoint_id"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
-        },
-        "expected_checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
-        },
-        "child_checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "from_checkpoint_id",
-                "to_checkpoint_id",
-                "history",
-                "replay"
-              ],
-              "properties": {
-                "from_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                },
-                "to_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                },
-                "history": {
-                  "type": "object"
-                },
-                "replay": {
-                  "type": "object"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_restore": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "lineage_id",
-        "checkpoint_id",
-        "action"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
-        },
-        "checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
+        "parent": {
+         "$ref": "#/$defs/Shared085"
         },
         "action": {
-          "type": "string",
-          "enum": [
-            "assess",
-            "apply"
-          ]
+         "enum": [
+          "deny",
+          "permit_only",
+          "request_minimum",
+          "request_optional",
+          "request_refuse",
+          "assert",
+          "link_demand",
+          "inherit_demand",
+          "demand"
+         ]
         },
-        "replay_id": {
-          "type": "string",
-          "pattern": "^replay-[0-9a-f]{32}$"
-        },
-        "expected_live_fingerprint": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "confirm_validated_drift": {
-          "type": "boolean"
+        "xml": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 65536
         }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "replay"
-              ],
-              "properties": {
-                "replay": {
-                  "type": "object"
-                },
-                "history": {
-                  "type": "object"
-                },
-                "migration_checkpoint": {
-                  "type": "object"
-                },
-                "from_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                },
-                "to_checkpoint_id": {
-                  "type": "string",
-                  "pattern": "^checkpoint-[0-9a-f]{32}$"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_export": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "lineage_id",
-        "checkpoint_id"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
-        },
-        "checkpoint_id": {
-          "type": "string",
-          "pattern": "^checkpoint-[0-9a-f]{32}$"
-        },
-        "output_path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32767
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "checkpoint",
-                "output",
-                "replay"
-              ],
-              "properties": {
-                "checkpoint": {
-                  "type": "object"
-                },
-                "output": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "path",
-                    "length",
-                    "sha256",
-                    "file_id"
-                  ],
-                  "properties": {
-                    "path": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 32767
-                    },
-                    "length": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{64}$"
-                    },
-                    "file_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 256
-                    }
-                  }
-                },
-                "replay": {
-                  "type": "object"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_recover": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "recovery_id",
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "parent",
         "action"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+       ],
+       "properties": {
+        "kind": {
+         "const": "security_remove"
         },
-        "recovery_id": {
-          "type": "string",
-          "pattern": "^recovery-[0-9a-f]{32}$"
+        "parent": {
+         "$ref": "#/$defs/Shared085"
         },
         "action": {
-          "type": "string",
-          "enum": [
-            "retry_checkpoint",
-            "undo_live",
-            "cleanup_temp"
-          ]
+         "enum": [
+          "deny",
+          "permit_only",
+          "request_minimum",
+          "request_optional",
+          "request_refuse",
+          "assert",
+          "link_demand",
+          "inherit_demand",
+          "demand"
+         ]
+        },
+        "index": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 4294967295
         }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind"
+       ],
+       "properties": {
+        "kind": {
+         "const": "assembly_update"
+        },
+        "name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 512
+        },
+        "version": {
+         "type": "string",
+         "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
+        },
+        "culture": {
+         "type": "string",
+         "maxLength": 64
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "name"
+       ],
+       "properties": {
+        "kind": {
+         "const": "module_update"
+        },
+        "name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 512
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "target"
+       ],
+       "properties": {
+        "kind": {
+         "const": "assembly_ref_update"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared080"
+        },
+        "name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 512
+        },
+        "version": {
+         "type": "string",
+         "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
+        },
+        "culture": {
+         "type": "string",
+         "maxLength": 64
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind"
+       ],
+       "properties": {
+        "kind": {
+         "const": "entry_point_set"
+        },
+        "entry_point": {
+         "$ref": "#/$defs/Shared080"
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "name",
+        "data_base64"
+       ],
+       "properties": {
+        "kind": {
+         "const": "managed_resource_add"
+        },
+        "name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 512
+        },
+        "attributes": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 3
+        },
+        "data_base64": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 12582912
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "target"
+       ],
+       "properties": {
+        "kind": {
+         "const": "managed_resource_update"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared130"
+        },
+        "entry": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "name",
+          "value_kind",
+          "value"
+         ],
+         "properties": {
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          },
+          "value_kind": {
+           "type": "string",
+           "enum": [
+            "string",
+            "boolean",
+            "i1",
+            "u1",
+            "i2",
+            "u2",
+            "i4",
+            "u4",
+            "i8",
+            "u8",
+            "r4",
+            "r8",
+            "bytes"
+           ]
+          },
+          "value": {}
+         }
+        },
+        "data_base64": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 12582912
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "target",
+        "remove_mode"
+       ],
+       "properties": {
+        "kind": {
+         "const": "managed_resource_remove"
+        },
+        "target": {
+         "$ref": "#/$defs/Shared130"
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "data_base64"
+       ],
+       "properties": {
+        "kind": {
+         "const": "win32_resource_add"
+        },
+        "type_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "type_name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "name_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "name_string": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "lang_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "data_base64": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 12582912
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "data_base64"
+       ],
+       "properties": {
+        "kind": {
+         "const": "win32_resource_update"
+        },
+        "type_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "type_name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "name_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "name_string": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "lang_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "data_base64": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 12582912
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "remove_mode"
+       ],
+       "properties": {
+        "kind": {
+         "const": "win32_resource_remove"
+        },
+        "type_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "type_name": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "name_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "name_string": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "lang_id": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 65535
+        },
+        "remove_mode": {
+         "const": "reject_if_referenced"
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "dynamic_failure"
+       ],
+       "properties": {
+        "kind": {
+         "const": "strong_name_remove"
+        },
+        "dynamic_failure": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "session_id",
+          "event_cursor",
+          "event_kind"
+         ],
+         "properties": {
+          "session_id": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 128
+          },
+          "event_cursor": {
+           "type": "integer",
+           "minimum": 1
+          },
+          "event_kind": {
+           "type": "string",
+           "enum": [
+            "start_failed",
+            "process_exited",
+            "exception",
+            "module_load_failed"
+           ]
+          }
+         }
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "owner_type",
+        "interface"
+       ],
+       "properties": {
+        "kind": {
+         "const": "interface_add"
+        },
+        "owner_type": {
+         "$ref": "#/$defs/Shared077"
+        },
+        "interface": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "reference": {
+           "$ref": "#/$defs/Shared077"
+          },
+          "type": {
+           "$ref": "#/$defs/Shared072"
+          }
+         },
+         "oneOf": [
+          {
+           "required": [
+            "reference"
+           ],
+           "not": {
+            "required": [
+             "type"
+            ]
+           }
+          },
+          {
+           "required": [
+            "type"
+           ],
+           "not": {
+            "required": [
+             "reference"
+            ]
+           }
+          }
+         ]
+        }
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "reference"
+       ],
+       "properties": {
+        "kind": {
+         "const": "reference_add"
+        },
+        "reference": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "form"
+         ],
+         "properties": {
+          "form": {
+           "type": "string",
+           "enum": [
+            "assembly_ref",
+            "type_ref",
+            "type_spec",
+            "member_ref",
+            "method_spec"
+           ]
+          },
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          },
+          "version": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 64
+          },
+          "culture": {
+           "type": "string",
+           "maxLength": 128
+          },
+          "public_key_or_token": {
+           "type": "object",
+           "additionalProperties": false,
+           "required": [
+            "kind"
+           ],
+           "properties": {
+            "kind": {
+             "type": "string",
+             "enum": [
+              "none",
+              "token",
+              "public_key"
+             ]
+            },
+            "base64": {
+             "type": "string"
+            }
+           }
+          },
+          "flags": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "scope": {
+           "$ref": "#/$defs/Shared077"
+          },
+          "namespace": {
+           "type": "string",
+           "maxLength": 1024
+          },
+          "signature": {
+           "type": "object"
+          },
+          "member_kind": {
+           "type": "string",
+           "enum": [
+            "method",
+            "field"
+           ]
+          },
+          "owner": {
+           "$ref": "#/$defs/Shared077"
+          },
+          "method": {
+           "$ref": "#/$defs/Shared077"
+          },
+          "arguments": {
+           "type": "array",
+           "maxItems": 64,
+           "items": {
+            "type": "object"
+           }
+          }
+         }
+        }
+       }
       }
+     ]
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "resolved",
-                "action",
-                "history"
-              ],
-              "properties": {
-                "resolved": {
-                  "type": "boolean"
-                },
-                "action": {
-                  "type": "string",
-                  "enum": [
-                    "retry_checkpoint",
-                    "undo_live",
-                    "cleanup_temp"
-                  ]
-                },
-                "checkpoint": {
-                  "type": "object"
-                },
-                "restored_fingerprint": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
-                "removed_temp": {
-                  "type": "boolean"
-                },
-                "history": {
-                  "type": "object"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    "request_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
     }
+   },
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision",
+    "operation"
+   ],
+   "type": "object"
   },
-  "edit_accept_live": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "assembly_name",
-        "source_family_id",
-        "superseded_lineage_id",
-        "expected_live_fingerprint",
-        "acknowledge_new_baseline"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "capacity": {
+         "$ref": "#/$defs/Shared014"
         },
-        "assembly_name": {
-          "type": "string",
+        "created_object_ids": {
+         "items": {
+          "maxLength": 128,
           "minLength": 1,
-          "maxLength": 512
+          "type": "string"
+         },
+         "maxItems": 321,
+         "type": "array"
         },
-        "source_family_id": {
-          "type": "string",
-          "pattern": "^family-[0-9a-f]{32}$"
+        "diffs": {
+         "$ref": "#/$defs/Shared027"
+        },
+        "fingerprints": {
+         "$ref": "#/$defs/Shared071"
+        },
+        "kind": {
+         "enum": [
+          "type_add",
+          "type_update",
+          "type_remove",
+          "method_add",
+          "method_update",
+          "method_remove",
+          "field_add",
+          "field_update",
+          "field_remove",
+          "property_add",
+          "property_update",
+          "property_remove",
+          "event_add",
+          "event_update",
+          "event_remove",
+          "parameter_add",
+          "parameter_update",
+          "parameter_remove",
+          "generic_parameter_add",
+          "generic_parameter_update",
+          "generic_parameter_remove",
+          "method_body_replace",
+          "attribute_add",
+          "attribute_remove",
+          "security_add",
+          "security_remove",
+          "assembly_update",
+          "module_update",
+          "assembly_ref_update",
+          "entry_point_set",
+          "managed_resource_add",
+          "managed_resource_update",
+          "managed_resource_remove",
+          "win32_resource_add",
+          "win32_resource_update",
+          "win32_resource_remove",
+          "strong_name_remove",
+          "interface_add",
+          "reference_add"
+         ]
+        },
+        "operation_index": {
+         "maximum": 4294967295,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "review_cleared": {
+         "const": true
+        },
+        "risks": {
+         "$ref": "#/$defs/Shared044"
+        },
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
+        }
+       },
+       "required": [
+        "transaction",
+        "operation_index",
+        "kind",
+        "created_object_ids",
+        "fingerprints",
+        "diffs",
+        "risks",
+        "review_cleared",
+        "capacity"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_begin": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "assembly_name": {
+     "maxLength": 512,
+     "minLength": 1,
+     "type": "string"
+    },
+    "module_mvid": {
+     "maxLength": 36,
+     "minLength": 1,
+     "type": "string"
+    },
+    "request_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "source_family_id": {
+     "type": "string",
+     "pattern": "^family-[0-9a-f]{32}$"
+    }
+   },
+   "required": [
+    "request_id",
+    "assembly_name"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "capabilities": {
+         "additionalProperties": false,
+         "properties": {
+          "dynamic_validation": {
+           "type": "boolean"
+          },
+          "operation_kinds": {
+           "items": {
+            "enum": [
+             "type_add",
+             "type_update",
+             "type_remove",
+             "method_add",
+             "method_update",
+             "method_remove",
+             "field_add",
+             "field_update",
+             "field_remove",
+             "property_add",
+             "property_update",
+             "property_remove",
+             "event_add",
+             "event_update",
+             "event_remove",
+             "parameter_add",
+             "parameter_update",
+             "parameter_remove",
+             "generic_parameter_add",
+             "generic_parameter_update",
+             "generic_parameter_remove",
+             "method_body_replace",
+             "attribute_add",
+             "attribute_remove",
+             "security_add",
+             "security_remove",
+             "assembly_update",
+             "module_update",
+             "assembly_ref_update",
+             "entry_point_set",
+             "managed_resource_add",
+             "managed_resource_update",
+             "managed_resource_remove",
+             "win32_resource_add",
+             "win32_resource_update",
+             "win32_resource_remove",
+             "strong_name_remove",
+             "interface_add",
+             "reference_add"
+            ]
+           },
+           "maxItems": 39,
+           "minItems": 39,
+           "type": "array",
+           "uniqueItems": true
+          },
+          "test_apply_restore": {
+           "type": "boolean"
+          }
+         },
+         "required": [
+          "operation_kinds",
+          "dynamic_validation",
+          "test_apply_restore"
+         ],
+         "type": "object"
+        },
+        "capacity": {
+         "$ref": "#/$defs/Shared014"
+        },
+        "fingerprints": {
+         "$ref": "#/$defs/Shared071"
+        },
+        "limits": {
+         "$ref": "#/$defs/Shared036"
+        },
+        "source": {
+         "additionalProperties": false,
+         "properties": {
+          "assembly_name": {
+           "maxLength": 512,
+           "minLength": 1,
+           "type": "string"
+          },
+          "file_path": {
+           "oneOf": [
+            {
+             "maxLength": 32767,
+             "minLength": 1,
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "file_sha256": {
+           "oneOf": [
+            {
+             "maxLength": 64,
+             "minLength": 1,
+             "pattern": "^[0-9a-f]{64}$",
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "live_fingerprint": {
+           "maxLength": 64,
+           "minLength": 1,
+           "pattern": "^[0-9a-f]{64}$",
+           "type": "string"
+          },
+          "module_name": {
+           "maxLength": 512,
+           "minLength": 1,
+           "type": "string"
+          },
+          "mvid": {
+           "maxLength": 36,
+           "minLength": 1,
+           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+           "type": "string"
+          }
+         },
+         "required": [
+          "assembly_name",
+          "module_name",
+          "mvid",
+          "file_path",
+          "file_sha256",
+          "live_fingerprint"
+         ],
+         "type": "object"
+        },
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
+        },
+        "history": {
+         "type": "object"
+        }
+       },
+       "required": [
+        "transaction",
+        "source",
+        "fingerprints",
+        "limits",
+        "capacity",
+        "capabilities",
+        "history"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_review": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "dynamic_validation": {
+     "additionalProperties": false,
+     "properties": {
+      "args": {
+       "items": {
+        "maxLength": 32767,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 256,
+       "type": "array"
+      },
+      "mode": {
+       "const": "run"
+      },
+      "runtime_profile": {
+       "maxLength": 128,
+       "minLength": 1,
+       "type": "string"
+      },
+      "timeout_ms": {
+       "maximum": 120000,
+       "minimum": 1000,
+       "type": "integer"
+      },
+      "working_directory": {
+       "maxLength": 32767,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "mode",
+      "runtime_profile"
+     ],
+     "type": "object"
+    },
+    "expected_revision": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "request_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "diffs": {
+         "$ref": "#/$defs/Shared027"
+        },
+        "dynamic_validation": {
+         "oneOf": [
+          {
+           "additionalProperties": false,
+           "properties": {
+            "artifact": {
+             "$ref": "#/$defs/Shared114"
+            },
+            "cleanup": {
+             "$ref": "#/$defs/Shared076"
+            },
+            "events": {
+             "$ref": "#/$defs/Shared079"
+            },
+            "failure": {
+             "type": "null"
+            },
+            "requested": {
+             "const": false
+            },
+            "runtime_profile": {
+             "type": "null"
+            },
+            "state": {
+             "const": "not_requested"
+            }
+           },
+           "required": [
+            "state",
+            "requested",
+            "runtime_profile",
+            "artifact",
+            "events",
+            "cleanup",
+            "failure"
+           ],
+           "type": "object"
+          },
+          {
+           "additionalProperties": false,
+           "properties": {
+            "artifact": {
+             "$ref": "#/$defs/Shared114"
+            },
+            "cleanup": {
+             "$ref": "#/$defs/Shared076"
+            },
+            "events": {
+             "$ref": "#/$defs/Shared079"
+            },
+            "failure": {
+             "type": "null"
+            },
+            "requested": {
+             "const": true
+            },
+            "runtime_profile": {
+             "maxLength": 128,
+             "minLength": 1,
+             "type": "string"
+            },
+            "state": {
+             "const": "not_applicable"
+            }
+           },
+           "required": [
+            "state",
+            "requested",
+            "runtime_profile",
+            "artifact",
+            "events",
+            "cleanup",
+            "failure"
+           ],
+           "type": "object"
+          },
+          {
+           "additionalProperties": false,
+           "properties": {
+            "artifact": {
+             "additionalProperties": false,
+             "properties": {
+              "created": {
+               "const": true
+              },
+              "path": {
+               "maxLength": 4096,
+               "minLength": 1,
+               "type": "string"
+              },
+              "sha256": {
+               "maxLength": 64,
+               "minLength": 1,
+               "pattern": "^[0-9a-f]{64}$",
+               "type": "string"
+              }
+             },
+             "required": [
+              "created",
+              "path",
+              "sha256"
+             ],
+             "type": "object"
+            },
+            "cleanup": {
+             "additionalProperties": false,
+             "properties": {
+              "debug_idle": {
+               "const": true
+              },
+              "residual_path": {
+               "type": "null"
+              },
+              "temp_delete_attempted": {
+               "const": true
+              },
+              "temp_deleted": {
+               "const": true
+              },
+              "terminate_attempted": {
+               "const": true
+              }
+             },
+             "required": [
+              "terminate_attempted",
+              "debug_idle",
+              "temp_delete_attempted",
+              "temp_deleted",
+              "residual_path"
+             ],
+             "type": "object"
+            },
+            "events": {
+             "items": {
+              "$ref": "#/$defs/Shared084"
+             },
+             "maxItems": 64,
+             "minItems": 1,
+             "type": "array"
+            },
+            "failure": {
+             "type": "null"
+            },
+            "requested": {
+             "const": true
+            },
+            "runtime_profile": {
+             "maxLength": 128,
+             "minLength": 1,
+             "type": "string"
+            },
+            "state": {
+             "const": "passed"
+            }
+           },
+           "required": [
+            "state",
+            "requested",
+            "runtime_profile",
+            "artifact",
+            "events",
+            "cleanup",
+            "failure"
+           ],
+           "type": "object"
+          }
+         ]
+        },
+        "fingerprints": {
+         "$ref": "#/$defs/Shared071"
+        },
+        "limits": {
+         "$ref": "#/$defs/Shared036"
+        },
+        "review": {
+         "additionalProperties": false,
+         "properties": {
+          "required_confirmation_ids": {
+           "items": {
+            "maxLength": 48,
+            "minLength": 1,
+            "type": "string"
+           },
+           "maxItems": 256,
+           "type": "array"
+          },
+          "review_id": {
+           "maxLength": 128,
+           "minLength": 1,
+           "type": "string"
+          },
+          "review_revision": {
+           "maximum": 4294967295,
+           "minimum": 0,
+           "type": "integer"
+          }
+         },
+         "required": [
+          "review_id",
+          "review_revision",
+          "required_confirmation_ids"
+         ],
+         "type": "object"
+        },
+        "risks": {
+         "$ref": "#/$defs/Shared044"
+        },
+        "roundtrip_validation": {
+         "$ref": "#/$defs/Shared054"
+        },
+        "structural_validation": {
+         "$ref": "#/$defs/Shared054"
+        },
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
+        }
+       },
+       "required": [
+        "transaction",
+        "review",
+        "fingerprints",
+        "diffs",
+        "structural_validation",
+        "roundtrip_validation",
+        "dynamic_validation",
+        "risks",
+        "limits"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_rollback": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "request_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "request_id",
+    "transaction_id"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "end_reason": {
+         "const": "client_rollback"
+        },
+        "original_live_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "released": {
+         "additionalProperties": false,
+         "properties": {
+          "apply_cache_entries": {
+           "maximum": 4294967295,
+           "minimum": 0,
+           "type": "integer"
+          },
+          "private_modules": {
+           "maximum": 4294967295,
+           "minimum": 0,
+           "type": "integer"
+          },
+          "review_slots": {
+           "maximum": 4294967295,
+           "minimum": 0,
+           "type": "integer"
+          },
+          "validation_modules": {
+           "maximum": 4294967295,
+           "minimum": 0,
+           "type": "integer"
+          }
+         },
+         "required": [
+          "private_modules",
+          "validation_modules",
+          "apply_cache_entries",
+          "review_slots"
+         ],
+         "type": "object"
+        },
+        "rolled_back": {
+         "const": true
+        }
+       },
+       "required": [
+        "rolled_back",
+        "end_reason",
+        "original_live_fingerprint",
+        "released"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_status": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {},
+   "required": [],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "oneOf": [
+        {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "busy",
+          "state",
+          "history",
+          "recovery",
+          "capacity"
+         ],
+         "properties": {
+          "busy": {
+           "type": "boolean"
+          },
+          "state": {
+           "type": "string",
+           "enum": [
+            "idle",
+            "committing",
+            "committed_without_checkpoint",
+            "live_state_unknown"
+           ]
+          },
+          "history": {
+           "type": "object"
+          },
+          "recovery": {
+           "oneOf": [
+            {
+             "type": "object"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "capacity": {
+           "type": "object"
+          }
+         }
+        },
+        {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "busy",
+          "state",
+          "owner_transport_kind"
+         ],
+         "properties": {
+          "busy": {
+           "const": true
+          },
+          "state": {
+           "type": "string",
+           "enum": [
+            "editing",
+            "reviewed",
+            "applying",
+            "committing"
+           ]
+          },
+          "owner_transport_kind": {
+           "type": "string",
+           "enum": [
+            "legacy_sse",
+            "streamable_http"
+           ]
+          }
+         }
+        },
+        {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "busy",
+          "state",
+          "transaction",
+          "fingerprints",
+          "review",
+          "history",
+          "recovery",
+          "capacity",
+          "risks"
+         ],
+         "properties": {
+          "busy": {
+           "const": true
+          },
+          "state": {
+           "type": "string",
+           "enum": [
+            "editing",
+            "reviewed",
+            "applying",
+            "committing"
+           ]
+          },
+          "transaction": {
+           "type": "object"
+          },
+          "fingerprints": {
+           "type": "object"
+          },
+          "review": {
+           "oneOf": [
+            {
+             "type": "object"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "history": {
+           "type": "object"
+          },
+          "recovery": {
+           "oneOf": [
+            {
+             "type": "object"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "capacity": {
+           "type": "object"
+          },
+          "risks": {
+           "type": "array",
+           "items": {
+            "type": "object"
+           }
+          }
+         }
+        }
+       ]
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_apply_and_restore": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "confirmed_risk_ids": {
+     "items": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+     },
+     "maxItems": 256,
+     "type": "array"
+    },
+    "expected_revision": {
+     "maximum": 4294967295,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "request_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "review_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "request_id",
+    "transaction_id",
+    "review_id",
+    "expected_revision",
+    "confirmed_risk_ids"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "applied_and_restored": {
+         "const": true
+        },
+        "dispatcher_callbacks_ms": {
+         "items": {
+          "minimum": 0,
+          "type": "number"
+         },
+         "maxItems": 64,
+         "type": "array"
+        },
+        "execution_evidence": {
+         "additionalProperties": false,
+         "properties": {
+          "actual_mutation_trace": {
+           "items": {
+            "$ref": "#/$defs/Shared033"
+           },
+           "maxItems": 24,
+           "type": "array"
+          },
+          "armed_fault": {
+           "oneOf": [
+            {
+             "$ref": "#/$defs/Shared033"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "covered_faults": {
+           "items": {
+            "$ref": "#/$defs/Shared033"
+           },
+           "maxItems": 1,
+           "type": "array",
+           "uniqueItems": true
+          },
+          "fault_manifest": {
+           "$ref": "#/$defs/Shared031"
+          },
+          "oracle_faults": {
+           "$ref": "#/$defs/Shared031"
+          }
+         },
+         "required": [
+          "armed_fault",
+          "fault_manifest",
+          "oracle_faults",
+          "actual_mutation_trace",
+          "covered_faults"
+         ],
+         "type": "object"
+        },
+        "post_apply_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "post_restore_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "pre_live_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "private_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        }
+       },
+       "required": [
+        "applied_and_restored",
+        "pre_live_fingerprint",
+        "private_fingerprint",
+        "post_apply_fingerprint",
+        "post_restore_fingerprint",
+        "execution_evidence",
+        "dispatcher_callbacks_ms"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_barrier": {
+  "inputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "action": {
+       "const": "arm"
+      },
+      "name": {
+       "enum": [
+        "begin_after_copy",
+        "apply_before_mutation",
+        "review_before_validation",
+        "commit_after_guard_before_temp",
+        "commit_after_temp_validate",
+        "commit_dispatcher_queued",
+        "commit_after_live_first_mutation",
+        "commit_after_live_complete",
+        "commit_after_package_switch_before_response"
+       ]
+      }
+     },
+     "required": [
+      "action",
+      "name"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "action": {
+       "const": "snapshot"
+      }
+     },
+     "required": [
+      "action"
+     ],
+     "type": "object"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "action": {
+       "const": "release"
+      }
+     },
+     "required": [
+      "action"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared140"
+    }
+   ]
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "active_generation": {
+         "oneOf": [
+          {
+           "maximum": 9223372036854775807,
+           "minimum": 0,
+           "type": "integer"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "active_transaction_id": {
+         "oneOf": [
+          {
+           "maxLength": 128,
+           "minLength": 1,
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "armed": {
+         "type": "boolean"
+        },
+        "entered": {
+         "type": "boolean"
+        },
+        "name": {
+         "oneOf": [
+          {
+           "enum": [
+            "begin_after_copy",
+            "apply_before_mutation",
+            "review_before_validation"
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "operation_waiters": {
+         "maximum": 4294967295,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "owner_session_id": {
+         "oneOf": [
+          {
+           "maxLength": 128,
+           "minLength": 1,
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "pending_request_key": {
+         "oneOf": [
+          {
+           "maxLength": 512,
+           "minLength": 1,
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "released": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "armed",
+        "name",
+        "owner_session_id",
+        "entered",
+        "released",
+        "operation_waiters",
+        "pending_request_key",
+        "active_generation",
+        "active_transaction_id"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_clock": {
+  "inputSchema": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared141"
+    },
+    {
+     "$ref": "#/$defs/Shared140"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "action": {
+       "const": "advance"
+      },
+      "advance_ms": {
+       "maximum": 9223372036854775807,
+       "minimum": 0,
+       "type": "integer"
+      }
+     },
+     "required": [
+      "action",
+      "advance_ms"
+     ],
+     "type": "object"
+    }
+   ]
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "monotonic_ms": {
+         "maximum": 9223372036854775807,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "offset_ms": {
+         "maximum": 9223372036854775807,
+         "minimum": 0,
+         "type": "integer"
+        }
+       },
+       "required": [
+        "monotonic_ms",
+        "offset_ms"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_external_mutation": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "case_id": {
+     "enum": [
+      "fp-channel-modulemetadata:mutate",
+      "fp-channel-dnlibobjectgraph:mutate",
+      "fp-channel-methodbodyil:mutate",
+      "fp-channel-managedresource:mutate",
+      "fp-channel-embeddedpdb:mutate",
+      "fp-canonical-global-order:reorder",
+      "live-conflict:mutate-entrypoint",
+      "live-conflict:mutate-layout",
+      "live-conflict:mutate-cdi"
+     ]
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "transaction_id",
+    "case_id"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "after_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "before_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "canonical_readback_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "canonical_readback_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "case_id": {
+         "enum": [
+          "fp-channel-modulemetadata:mutate",
+          "fp-channel-dnlibobjectgraph:mutate",
+          "fp-channel-methodbodyil:mutate",
+          "fp-channel-managedresource:mutate",
+          "fp-channel-embeddedpdb:mutate",
+          "fp-canonical-global-order:reorder"
+         ]
+        },
+        "changed": {
+         "type": "boolean"
+        },
+        "component": {
+         "enum": [
+          "ModuleMetadata",
+          "DnlibObjectGraph",
+          "MethodBodyIl",
+          "ManagedResource",
+          "EmbeddedPdb",
+          "GlobalCanonicalOrder"
+         ]
+        },
+        "evidence_artifact": {
+         "$ref": "#/$defs/Shared094"
+        },
+        "located_slice_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "located_slice_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "raw_order_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "raw_order_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "recipe_id": {
+         "enum": [
+          "fp-channel-modulemetadata",
+          "fp-channel-dnlibobjectgraph",
+          "fp-channel-methodbodyil",
+          "fp-channel-managedresource",
+          "fp-channel-embeddedpdb",
+          "fp-canonical-global-order"
+         ]
+        },
+        "recipe_sha256": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "restored": {
+         "const": true
+        },
+        "restored_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "semantic_change": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "case_id",
+        "recipe_id",
+        "component",
+        "recipe_sha256",
+        "evidence_artifact",
+        "located_slice_before",
+        "located_slice_after",
+        "raw_order_before",
+        "raw_order_after",
+        "canonical_readback_before",
+        "canonical_readback_after",
+        "before_fingerprint",
+        "after_fingerprint",
+        "restored_fingerprint",
+        "changed",
+        "semantic_change",
+        "restored"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_fault": {
+  "inputSchema": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Shared141"
+    },
+    {
+     "$ref": "#/$defs/Shared140"
+    },
+    {
+     "additionalProperties": false,
+     "properties": {
+      "action": {
+       "const": "arm"
+      },
+      "fault_id": {
+       "maxLength": 128,
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "action",
+      "fault_id"
+     ],
+     "type": "object"
+    }
+   ]
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "armed_fault_id": {
+         "oneOf": [
+          {
+           "maxLength": 128,
+           "minLength": 1,
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "emergency_cleanup": {
+         "type": "boolean"
+        },
+        "known_fault_ids": {
+         "items": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+         },
+         "maxItems": 1024,
+         "type": "array"
+        }
+       },
+       "required": [
+        "armed_fault_id",
+        "known_fault_ids",
+        "emergency_cleanup"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_live_mutation": {
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "enum": [
+      "mutate",
+      "restore"
+     ]
+    },
+    "transaction_id": {
+     "maxLength": 128,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "transaction_id",
+    "action"
+   ],
+   "type": "object"
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "after_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "before_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "canonical_readback_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "canonical_readback_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "case_id": {
+         "enum": [
+          "live-conflict:mutate",
+          "live-conflict:restore"
+         ]
+        },
+        "changed": {
+         "type": "boolean"
+        },
+        "component": {
+         "const": "ModuleMetadata"
+        },
+        "evidence_artifact": {
+         "$ref": "#/$defs/Shared094"
+        },
+        "located_slice_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "located_slice_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "raw_order_after": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "raw_order_before": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "recipe_id": {
+         "const": "live-conflict"
+        },
+        "recipe_sha256": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "restored": {
+         "type": "boolean"
+        },
+        "restored_fingerprint": {
+         "maxLength": 64,
+         "minLength": 1,
+         "pattern": "^[0-9a-f]{64}$",
+         "type": "string"
+        },
+        "semantic_change": {
+         "const": true
+        }
+       },
+       "required": [
+        "case_id",
+        "recipe_id",
+        "component",
+        "recipe_sha256",
+        "evidence_artifact",
+        "located_slice_before",
+        "located_slice_after",
+        "raw_order_before",
+        "raw_order_after",
+        "canonical_readback_before",
+        "canonical_readback_after",
+        "before_fingerprint",
+        "after_fingerprint",
+        "restored_fingerprint",
+        "changed",
+        "semantic_change",
+        "restored"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_commit": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision",
+    "review_id",
+    "review_revision",
+    "confirmed_risk_ids"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "transaction_id": {
+     "type": "string",
+     "pattern": "^edit-[0-9a-f]{32}$"
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    },
+    "review_id": {
+     "type": "string",
+     "pattern": "^review-[0-9a-f]{32}$"
+    },
+    "review_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    },
+    "confirmed_risk_ids": {
+     "type": "array",
+     "maxItems": 256,
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+     }
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "checkpoint",
+        "history",
+        "fingerprints",
+        "confirmed_risks",
+        "live_recovery"
+       ],
+       "properties": {
+        "checkpoint": {
+         "type": "object"
+        },
+        "history": {
+         "type": "object"
+        },
+        "fingerprints": {
+         "type": "object"
+        },
+        "confirmed_risks": {
+         "type": "array",
+         "items": {
+          "type": "object"
+         }
+        },
+        "live_recovery": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "inverse_plan": {
+           "const": "pregenerated_compiled_state"
+          },
+          "inverse_plan_operations": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 4294967295
+          },
+          "inverse_plan_bound_checkpoint_id": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 128
+          },
+          "inverse_plan_complete_before_live_write": {
+           "const": true
+          }
+         },
+         "required": [
+          "inverse_plan",
+          "inverse_plan_operations",
+          "inverse_plan_bound_checkpoint_id",
+          "inverse_plan_complete_before_live_write"
+         ]
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_history": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "cursor": {
+     "type": "string",
+     "maxLength": 1024
+    },
+    "page_size": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "view",
+        "next_cursor"
+       ],
+       "properties": {
+        "view": {
+         "type": "string",
+         "enum": [
+          "lineages",
+          "checkpoints",
+          "checkpoint"
+         ]
+        },
+        "lineages": {
+         "type": "array",
+         "items": {
+          "type": "object"
+         }
+        },
+        "checkpoints": {
+         "type": "array",
+         "items": {
+          "type": "object"
+         }
+        },
+        "checkpoint": {
+         "oneOf": [
+          {
+           "type": "object"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "next_cursor": {
+         "oneOf": [
+          {
+           "type": "string",
+           "maxLength": 1024
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "capacity": {
+         "type": "object"
+        },
+        "recovery": {
+         "oneOf": [
+          {
+           "type": "object"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "view",
+        "busy",
+        "state"
+       ],
+       "properties": {
+        "view": {
+         "const": "summary"
+        },
+        "busy": {
+         "type": "boolean"
+        },
+        "state": {
+         "$ref": "#/$defs/Shared132"
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_undo": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "lineage_id",
+    "expected_checkpoint_id"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "expected_checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    }
+   }
+  },
+  "outputSchema": {
+   "$ref": "#/$defs/Shared011"
+  }
+ },
+ "edit_redo": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "lineage_id",
+    "expected_checkpoint_id"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "expected_checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "child_checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    }
+   }
+  },
+  "outputSchema": {
+   "$ref": "#/$defs/Shared011"
+  }
+ },
+ "edit_restore": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "lineage_id",
+    "checkpoint_id",
+    "action"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "action": {
+     "type": "string",
+     "enum": [
+      "assess",
+      "apply"
+     ]
+    },
+    "replay_id": {
+     "type": "string",
+     "pattern": "^replay-[0-9a-f]{32}$"
+    },
+    "expected_live_fingerprint": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "confirm_validated_drift": {
+     "type": "boolean"
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "replay"
+       ],
+       "properties": {
+        "replay": {
+         "type": "object"
+        },
+        "history": {
+         "type": "object"
+        },
+        "migration_checkpoint": {
+         "type": "object"
+        },
+        "from_checkpoint_id": {
+         "type": "string",
+         "pattern": "^checkpoint-[0-9a-f]{32}$"
+        },
+        "to_checkpoint_id": {
+         "type": "string",
+         "pattern": "^checkpoint-[0-9a-f]{32}$"
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_export": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "lineage_id",
+    "checkpoint_id"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "checkpoint_id": {
+     "type": "string",
+     "pattern": "^checkpoint-[0-9a-f]{32}$"
+    },
+    "output_path": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32767
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "checkpoint",
+        "output",
+        "replay"
+       ],
+       "properties": {
+        "checkpoint": {
+         "type": "object"
+        },
+        "output": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "path",
+          "length",
+          "sha256",
+          "file_id"
+         ],
+         "properties": {
+          "path": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 32767
+          },
+          "length": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "sha256": {
+           "type": "string",
+           "pattern": "^[0-9a-f]{64}$"
+          },
+          "file_id": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 256
+          }
+         }
+        },
+        "replay": {
+         "type": "object"
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_recover": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "recovery_id",
+    "action"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "recovery_id": {
+     "type": "string",
+     "pattern": "^recovery-[0-9a-f]{32}$"
+    },
+    "action": {
+     "type": "string",
+     "enum": [
+      "retry_checkpoint",
+      "undo_live",
+      "cleanup_temp"
+     ]
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "resolved",
+        "action",
+        "history"
+       ],
+       "properties": {
+        "resolved": {
+         "type": "boolean"
+        },
+        "action": {
+         "type": "string",
+         "enum": [
+          "retry_checkpoint",
+          "undo_live",
+          "cleanup_temp"
+         ]
+        },
+        "checkpoint": {
+         "type": "object"
+        },
+        "restored_fingerprint": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{64}$"
+        },
+        "removed_temp": {
+         "type": "boolean"
+        },
+        "history": {
+         "type": "object"
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_accept_live": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "assembly_name",
+    "source_family_id",
+    "superseded_lineage_id",
+    "expected_live_fingerprint",
+    "acknowledge_new_baseline"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assembly_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "source_family_id": {
+     "type": "string",
+     "pattern": "^family-[0-9a-f]{32}$"
+    },
+    "superseded_lineage_id": {
+     "type": "string",
+     "pattern": "^lineage-[0-9a-f]{32}$"
+    },
+    "expected_live_fingerprint": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "acknowledge_new_baseline": {
+     "const": true
+    },
+    "module_mvid": {
+     "$ref": "#/$defs/Shared142"
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "source_identity",
+        "lineage",
+        "root_checkpoint",
+        "superseded_lineage_id"
+       ],
+       "properties": {
+        "source_identity": {
+         "type": "object"
+        },
+        "lineage": {
+         "type": "object"
+        },
+        "root_checkpoint": {
+         "type": "object"
         },
         "superseded_lineage_id": {
-          "type": "string",
-          "pattern": "^lineage-[0-9a-f]{32}$"
-        },
-        "expected_live_fingerprint": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "acknowledge_new_baseline": {
-          "const": true
-        },
-        "module_mvid": {
-          "type": "string",
-          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+         "type": "string",
+         "pattern": "^lineage-[0-9a-f]{32}$"
         }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
       }
+     }
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "source_identity",
-                "lineage",
-                "root_checkpoint",
-                "superseded_lineage_id"
-              ],
-              "properties": {
-                "source_identity": {
-                  "type": "object"
-                },
-                "lineage": {
-                  "type": "object"
-                },
-                "root_checkpoint": {
-                  "type": "object"
-                },
-                "superseded_lineage_id": {
-                  "type": "string",
-                  "pattern": "^lineage-[0-9a-f]{32}$"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    {
+     "$ref": "#/$defs/Shared021"
     }
-  },
-  "edit_test_storage_fault": {
-    "inputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "action",
-            "stage"
-          ],
-          "properties": {
-            "action": {
-              "const": "arm"
-            },
-            "stage": {
-              "type": "string",
-              "enum": [
-                "prewrite",
-                "readback",
-                "finalize",
-                "cleanup",
-                "navigate_forward",
-                "navigate_inverse",
-                "live_apply",
-                "export_reload"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "action"
-          ],
-          "properties": {
-            "action": {
-              "const": "reset"
-            }
-          }
-        }
-      ]
+   ]
+  }
+ },
+ "edit_test_storage_fault": {
+  "inputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "action",
+      "stage"
+     ],
+     "properties": {
+      "action": {
+       "const": "arm"
+      },
+      "stage": {
+       "$ref": "#/$defs/Shared131"
+      }
+     }
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "action",
-                "armed"
-              ],
-              "properties": {
-                "action": {
-                  "type": "string",
-                  "enum": [
-                    "arm",
-                    "reset"
-                  ]
-                },
-                "stage": {
-                  "type": "string",
-                  "enum": [
-                    "prewrite",
-                    "readback",
-                    "finalize",
-                    "cleanup",
-                    "navigate_forward",
-                    "navigate_inverse",
-                    "live_apply",
-                    "export_reload"
-                  ]
-                },
-                "armed": {
-                  "type": "boolean"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    {
+     "$ref": "#/$defs/Shared140"
     }
+   ]
   },
-  "edit_test_lineage_mutation": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
         "action",
-        "assembly_name"
-      ],
-      "properties": {
+        "armed"
+       ],
+       "properties": {
         "action": {
-          "type": "string",
-          "enum": [
-            "mutate",
-            "restore"
-          ]
+         "type": "string",
+         "enum": [
+          "arm",
+          "reset"
+         ]
         },
-        "assembly_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
+        "stage": {
+         "$ref": "#/$defs/Shared131"
         },
-        "module_mvid": {
-          "type": "string",
-          "pattern": "^[0-9a-fA-F-]{36}$"
+        "armed": {
+         "type": "boolean"
         }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
       }
+     }
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": true
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "action",
-                "before_fingerprint",
-                "after_fingerprint",
-                "restored"
-              ],
-              "properties": {
-                "action": {
-                  "type": "string",
-                  "enum": [
-                    "mutate",
-                    "restore"
-                  ]
-                },
-                "before_fingerprint": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
-                "after_fingerprint": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
-                "restored": {
-                  "type": "boolean"
-                }
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    {
+     "$ref": "#/$defs/Shared021"
     }
+   ]
+  }
+ },
+ "edit_test_lineage_mutation": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "action",
+    "assembly_name"
+   ],
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "mutate",
+      "restore"
+     ]
+    },
+    "assembly_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "module_mvid": {
+     "type": "string",
+     "pattern": "^[0-9a-fA-F-]{36}$"
+    }
+   }
   },
-  "edit_import": {
-    "inputSchema": {
+  "outputSchema": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "ok": {
+       "const": true
+      },
+      "state": {
+       "$ref": "#/$defs/Shared132"
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "action",
+        "before_fingerprint",
+        "after_fingerprint",
+        "restored"
+       ],
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "mutate",
+          "restore"
+         ]
+        },
+        "before_fingerprint": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{64}$"
+        },
+        "after_fingerprint": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{64}$"
+        },
+        "restored": {
+         "type": "boolean"
+        }
+       }
+      },
+      "warnings": {
+       "type": "array",
+       "maxItems": 16,
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       }
+      },
+      "untrusted_sample_data": {
+       "const": true
+      }
+     }
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_import": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision",
+    "compile_id",
+    "targets"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "transaction_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    },
+    "compile_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "targets": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 256,
+     "items": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision",
-        "compile_id",
-        "targets"
+       "compiled",
+       "action"
       ],
       "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+       "compiled": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8192
+       },
+       "action": {
+        "type": "string",
+        "enum": [
+         "replace_body",
+         "add"
+        ]
+       },
+       "target": {
+        "$ref": "#/$defs/Shared080"
+       }
+      }
+     }
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
         },
-        "transaction_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+        "fingerprints": {
+         "$ref": "#/$defs/Shared071"
         },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
+        "diffs": {
+         "$ref": "#/$defs/Shared027"
         },
-        "compile_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+        "risks": {
+         "$ref": "#/$defs/Shared044"
         },
-        "targets": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 256,
-          "items": {
+        "review_cleared": {
+         "const": true
+        },
+        "capacity": {
+         "$ref": "#/$defs/Shared014"
+        },
+        "operation_count": {
+         "type": "integer",
+         "minimum": 0,
+         "maximum": 4294967295
+        },
+        "import": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "compile_id": {
+           "type": "string"
+          },
+          "target_count": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 4294967295
+          },
+          "rows": {
+           "type": "array",
+           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "compiled",
-              "action"
-            ],
             "properties": {
-              "compiled": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 8192
-              },
-              "action": {
-                "type": "string",
-                "enum": [
-                  "replace_body",
-                  "add"
-                ]
-              },
-              "target": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "token"
-                    ],
-                    "properties": {
-                      "token": {
-                        "type": "string",
-                        "pattern": "^0x[0-9a-fA-F]{8}$"
-                      }
-                    }
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "object_id"
-                    ],
-                    "properties": {
-                      "object_id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
+             "kind": {
+              "type": "string"
+             },
+             "artifact_member": {
+              "type": "string"
+             },
+             "target": {
+              "type": "string"
+             }
             },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                },
-                "fingerprints": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "baseline_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "current_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "private": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "baseline_live",
-                    "current_live",
-                    "private"
-                  ],
-                  "type": "object"
-                },
-                "diffs": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "after": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "before": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "kind": {
-                        "enum": [
-                          "type_add",
-                          "type_update",
-                          "type_remove",
-                          "method_add",
-                          "method_update",
-                          "method_remove",
-                          "field_add",
-                          "field_update",
-                          "field_remove",
-                          "property_add",
-                          "property_update",
-                          "property_remove",
-                          "event_add",
-                          "event_update",
-                          "event_remove",
-                          "parameter_add",
-                          "parameter_update",
-                          "parameter_remove",
-                          "generic_parameter_add",
-                          "generic_parameter_update",
-                          "generic_parameter_remove",
-                          "method_body_replace",
-                          "attribute_add",
-                          "attribute_remove",
-                          "security_add",
-                          "security_remove",
-                          "assembly_update",
-                          "module_update",
-                          "assembly_ref_update",
-                          "entry_point_set",
-                          "managed_resource_add",
-                          "managed_resource_update",
-                          "managed_resource_remove",
-                          "win32_resource_add",
-                          "win32_resource_update",
-                          "win32_resource_remove",
-                          "strong_name_remove",
-                          "interface_add",
-                          "reference_add"
-                        ]
-                      },
-                      "operation_index": {
-                        "maximum": 4294967295,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "path": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_ids": {
-                        "items": {
-                          "maxLength": 48,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 17,
-                        "type": "array"
-                      },
-                      "target": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "operation_index",
-                      "kind",
-                      "target",
-                      "path",
-                      "before",
-                      "after",
-                      "risk_ids"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "risks": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "confirmation_required": {
-                        "type": "boolean"
-                      },
-                      "description": {
-                        "maxLength": 96,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "assembly_identity_change",
-                          "assembly_ref_change",
-                          "attribute_change",
-                          "body_change",
-                          "cross_assembly_inbound",
-                          "data_section_change",
-                          "eh_change",
-                          "entry_point_change",
-                          "external_code_entry",
-                          "layout_change",
-                          "module_identity_change",
-                          "public_delete",
-                          "resource_change",
-                          "security_change",
-                          "signature_change",
-                          "strong_name_change",
-                          "visibility_change"
-                        ]
-                      },
-                      "object": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_id": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "risk_id",
-                      "kind",
-                      "object",
-                      "description",
-                      "confirmation_required"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "review_cleared": {
-                  "const": true
-                },
-                "capacity": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "apply_cache_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "apply_cache_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "diff_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "normalized_operation_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "object_ids": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "operations": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "operations",
-                    "object_ids",
-                    "normalized_operation_bytes",
-                    "diff_bytes",
-                    "apply_cache_entries",
-                    "apply_cache_bytes",
-                    "review_tombstone_entries",
-                    "review_tombstone_bytes"
-                  ],
-                  "type": "object"
-                },
-                "operation_count": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 4294967295
-                },
-                "import": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "compile_id": {
-                      "type": "string"
-                    },
-                    "target_count": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 4294967295
-                    },
-                    "rows": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "kind": {
-                            "type": "string"
-                          },
-                          "artifact_member": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "artifact_member",
-                          "target"
-                        ]
-                      }
-                    },
-                    "created_object_ids": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": [
-                    "compile_id",
-                    "target_count",
-                    "rows",
-                    "created_object_ids"
-                  ]
-                }
-              },
-              "required": [
-                "transaction",
-                "fingerprints",
-                "diffs",
-                "risks",
-                "review_cleared",
-                "capacity",
-                "operation_count",
-                "import"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
+            "required": [
+             "kind",
+             "artifact_member",
+             "target"
+            ]
+           }
           },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
+          "created_object_ids": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
           }
+         },
+         "required": [
+          "compile_id",
+          "target_count",
+          "rows",
+          "created_object_ids"
+         ]
         }
-      ]
-    }
-  },
-  "edit_impact_scan": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "transaction_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        }
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                },
-                "impact": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "scope": {
-                      "const": "loaded_modules"
-                    },
-                    "modules": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "inbound_reference_count": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 4294967295
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "inbound_reference_count"
-                        ]
-                      }
-                    },
-                    "inbound_references": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "module": {
-                            "type": "string"
-                          },
-                          "assembly_ref_token": {
-                            "type": "string"
-                          },
-                          "matched_name": {
-                            "type": "string"
-                          },
-                          "sites": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "risk_id": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "module",
-                          "assembly_ref_token",
-                          "matched_name",
-                          "sites",
-                          "risk_id"
-                        ]
-                      }
-                    },
-                    "risk_ids": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "identity_operations": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "operation_index": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 4294967295
-                          },
-                          "kind": {
-                            "type": "string"
-                          },
-                          "staged_name": {
-                            "oneOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "operation_index",
-                          "kind"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "scope",
-                    "modules",
-                    "inbound_references",
-                    "risk_ids",
-                    "identity_operations"
-                  ]
-                }
-              },
-              "required": [
-                "transaction",
-                "impact"
-              ]
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_resource_import": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "transaction_id",
-        "expected_revision",
-        "vm_path",
-        "resource_name"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "transaction_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "vm_path": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 1024
-        },
-        "resource_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "resource_type": {
-          "type": "string",
-          "enum": [
-            "embedded",
-            "linked",
-            "win32"
-          ],
-          "description": "linked path imports are normalized to embedded bytes; win32 uses the native type/name/language identity."
-        },
-        "type_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        },
-        "type_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "name_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        },
-        "lang_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        }
+       },
+       "required": [
+        "transaction",
+        "fingerprints",
+        "diffs",
+        "risks",
+        "review_cleared",
+        "capacity",
+        "operation_count",
+        "import"
+       ],
+       "type": "object"
       },
-      "not": {
-        "required": [
-          "type_id",
-          "type_name"
-        ]
-      }
-    },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "additionalProperties": false,
-              "properties": {
-                "capacity": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "apply_cache_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "apply_cache_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "diff_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "normalized_operation_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "object_ids": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "operations": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_entries": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "review_tombstone_bytes": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "current": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "maximum": {
-                          "maximum": 9223372036854775807,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "current",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "operations",
-                    "object_ids",
-                    "normalized_operation_bytes",
-                    "diff_bytes",
-                    "apply_cache_entries",
-                    "apply_cache_bytes",
-                    "review_tombstone_entries",
-                    "review_tombstone_bytes"
-                  ],
-                  "type": "object"
-                },
-                "created_object_ids": {
-                  "items": {
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "maxItems": 321,
-                  "type": "array"
-                },
-                "diffs": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "after": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "before": {
-                        "oneOf": [
-                          {
-                            "maxLength": 32,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "kind": {
-                        "enum": [
-                          "type_add",
-                          "type_update",
-                          "type_remove",
-                          "method_add",
-                          "method_update",
-                          "method_remove",
-                          "field_add",
-                          "field_update",
-                          "field_remove",
-                          "property_add",
-                          "property_update",
-                          "property_remove",
-                          "event_add",
-                          "event_update",
-                          "event_remove",
-                          "parameter_add",
-                          "parameter_update",
-                          "parameter_remove",
-                          "generic_parameter_add",
-                          "generic_parameter_update",
-                          "generic_parameter_remove",
-                          "method_body_replace",
-                          "attribute_add",
-                          "attribute_remove",
-                          "security_add",
-                          "security_remove",
-                          "assembly_update",
-                          "module_update",
-                          "assembly_ref_update",
-                          "entry_point_set",
-                          "managed_resource_add",
-                          "managed_resource_update",
-                          "managed_resource_remove",
-                          "win32_resource_add",
-                          "win32_resource_update",
-                          "win32_resource_remove",
-                          "strong_name_remove",
-                          "interface_add",
-                          "reference_add"
-                        ]
-                      },
-                      "operation_index": {
-                        "maximum": 4294967295,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "path": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_ids": {
-                        "items": {
-                          "maxLength": 48,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 17,
-                        "type": "array"
-                      },
-                      "target": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "operation_index",
-                      "kind",
-                      "target",
-                      "path",
-                      "before",
-                      "after",
-                      "risk_ids"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "fingerprints": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "baseline_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "current_live": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "private": {
-                      "maxLength": 64,
-                      "minLength": 1,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "baseline_live",
-                    "current_live",
-                    "private"
-                  ],
-                  "type": "object"
-                },
-                "kind": {
-                  "enum": [
-                    "type_add",
-                    "type_update",
-                    "type_remove",
-                    "method_add",
-                    "method_update",
-                    "method_remove",
-                    "field_add",
-                    "field_update",
-                    "field_remove",
-                    "property_add",
-                    "property_update",
-                    "property_remove",
-                    "event_add",
-                    "event_update",
-                    "event_remove",
-                    "parameter_add",
-                    "parameter_update",
-                    "parameter_remove",
-                    "generic_parameter_add",
-                    "generic_parameter_update",
-                    "generic_parameter_remove",
-                    "method_body_replace",
-                    "attribute_add",
-                    "attribute_remove",
-                    "security_add",
-                    "security_remove",
-                    "assembly_update",
-                    "module_update",
-                    "assembly_ref_update",
-                    "entry_point_set",
-                    "managed_resource_add",
-                    "managed_resource_update",
-                    "managed_resource_remove",
-                    "win32_resource_add",
-                    "win32_resource_update",
-                    "win32_resource_remove",
-                    "strong_name_remove",
-                    "interface_add",
-                    "reference_add"
-                  ]
-                },
-                "operation_index": {
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "review_cleared": {
-                  "const": true
-                },
-                "risks": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "confirmation_required": {
-                        "type": "boolean"
-                      },
-                      "description": {
-                        "maxLength": 96,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "assembly_identity_change",
-                          "assembly_ref_change",
-                          "attribute_change",
-                          "body_change",
-                          "cross_assembly_inbound",
-                          "data_section_change",
-                          "eh_change",
-                          "entry_point_change",
-                          "external_code_entry",
-                          "layout_change",
-                          "module_identity_change",
-                          "public_delete",
-                          "resource_change",
-                          "security_change",
-                          "signature_change",
-                          "strong_name_change",
-                          "visibility_change"
-                        ]
-                      },
-                      "object": {
-                        "maxLength": 32,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "risk_id": {
-                        "maxLength": 48,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "risk_id",
-                      "kind",
-                      "object",
-                      "description",
-                      "confirmation_required"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 256,
-                  "type": "array"
-                },
-                "transaction": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "last_activity_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "operation_count": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "review_revision": {
-                      "oneOf": [
-                        {
-                          "maximum": 4294967295,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "started_at_monotonic_ms": {
-                      "maximum": 9223372036854775807,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "transaction_id": {
-                      "maxLength": 128,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "work_revision": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "transaction_id",
-                    "work_revision",
-                    "review_revision",
-                    "operation_count",
-                    "started_at_monotonic_ms",
-                    "last_activity_monotonic_ms"
-                  ],
-                  "type": "object"
-                },
-                "import": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "file_id": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{32}$"
-                    },
-                    "length": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 8388608
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{64}$"
-                    },
-                    "vm_path": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "resource_name": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "resource_type": {
-                      "type": "string",
-                      "enum": [
-                        "embedded",
-                        "linked",
-                        "win32"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "file_id",
-                    "length",
-                    "sha256",
-                    "vm_path",
-                    "resource_name",
-                    "resource_type"
-                  ]
-                }
-              },
-              "required": [
-                "transaction",
-                "operation_index",
-                "kind",
-                "created_object_ids",
-                "fingerprints",
-                "diffs",
-                "risks",
-                "review_cleared",
-                "capacity",
-                "import"
-              ],
-              "type": "object"
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
-    }
-  },
-  "edit_resource_export": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "request_id",
-        "assembly_name",
-        "resource_name",
-        "output_path"
-      ],
-      "properties": {
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "assembly_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "resource_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "output_path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "resource_type": {
-          "type": "string",
-          "enum": [
-            "embedded",
-            "linked",
-            "win32"
-          ],
-          "description": "linked path imports are normalized to embedded bytes; win32 uses the native type/name/language identity."
-        },
-        "type_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        },
-        "type_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "name_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        },
-        "lang_id": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535
-        }
+      "schema_version": {
+       "const": "dnspy.edit.v1"
       },
-      "not": {
-        "required": [
-          "type_id",
-          "type_name"
-        ]
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
       }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
     },
-    "outputSchema": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "ok": {
-              "const": true
-            },
-            "result": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "export"
-              ],
-              "properties": {
-                "export": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "file_id": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{32}$"
-                    },
-                    "length": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 8388608
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[0-9a-f]{64}$"
-                    },
-                    "path": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "file_id",
-                    "length",
-                    "sha256",
-                    "path"
-                  ]
-                }
-              }
-            },
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "state": {
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "untrusted_sample_data": {
-              "const": true
-            },
-            "warnings": {
-              "items": {
-                "maxLength": 256,
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 8,
-              "type": "array"
-            }
-          },
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "result",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "type": "object"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "schema_version",
-            "ok",
-            "state",
-            "error",
-            "warnings",
-            "untrusted_sample_data"
-          ],
-          "properties": {
-            "schema_version": {
-              "const": "dnspy.edit.v1"
-            },
-            "ok": {
-              "const": false
-            },
-            "state": {
-              "type": "string",
-              "enum": [
-                "idle",
-                "editing",
-                "reviewed",
-                "applying",
-                "committing",
-                "committed_without_checkpoint",
-                "live_state_unknown"
-              ]
-            },
-            "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "code",
-                "message",
-                "current_state",
-                "recovery",
-                "details"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "enum": [
-                    "EDIT_TRANSACTION_BUSY",
-                    "EDIT_TRANSACTION_NOT_FOUND",
-                    "EDIT_OWNER_REQUIRED",
-                    "EDIT_OWNER_MISMATCH",
-                    "EDIT_REVISION_CONFLICT",
-                    "EDIT_LIVE_MODULE_CONFLICT",
-                    "EDIT_REVIEW_STALE",
-                    "EDIT_VALIDATION_FAILED",
-                    "EDIT_RISK_CONFIRMATION_REQUIRED",
-                    "EDIT_CAPABILITY_UNAVAILABLE",
-                    "EDIT_CAPACITY_EXCEEDED",
-                    "EDIT_DEBUG_NOT_IDLE",
-                    "EDIT_LIVE_STATE_UNKNOWN",
-                    "EDIT_CHECKPOINT_INVALID",
-                    "EDIT_CHECKPOINT_COMMIT_FAILED",
-                    "EDIT_CHECKPOINT_CLEANUP_FAILED",
-                    "EDIT_EXPORT_BLOCKED",
-                    "EDIT_REPLAY_CONFIRMATION_REQUIRED",
-                    "EDIT_REPLAY_UNVERIFIED",
-                    "EDIT_OPERATION_VERSION_UNSUPPORTED",
-                    "EDIT_HISTORY_CONFLICT",
-                    "EDIT_BRANCH_SELECTION_REQUIRED",
-                    "EDIT_LINEAGE_DIVERGED",
-                    "EDIT_SOURCE_IDENTITY_CONFLICT",
-                    "EDIT_RECOVERY_NOT_FOUND",
-                    "EDIT_INTERNAL_ERROR",
-                    "REQUEST_ID_REUSE"
-                  ]
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "current_state": {
-                  "type": "string",
-                  "enum": [
-                    "idle",
-                    "editing",
-                    "reviewed",
-                    "applying",
-                    "committing",
-                    "committed_without_checkpoint",
-                    "live_state_unknown"
-                  ]
-                },
-                "recovery": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 4096
-                },
-                "details": {}
-              }
-            },
-            "warnings": {
-              "type": "array",
-              "maxItems": 16,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              }
-            },
-            "untrusted_sample_data": {
-              "const": true
-            }
-          }
-        }
-      ]
+    {
+     "$ref": "#/$defs/Shared021"
     }
-  },
-  "edit_test_strong_name": {
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "assembly_name",
-        "assembly_version",
-        "public_key_token"
-      ],
-      "properties": {
-        "assembly_name": {
-          "type": "string"
-        },
-        "assembly_version": {
-          "type": "string"
-        },
-        "public_key_token": {
-          "type": "string",
-          "pattern": "^[0-9a-fA-F]{16}$"
-        }
-      }
-    },
-    "outputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "ok"
-      ],
-      "properties": {
-        "ok": {
-          "type": "boolean"
-        },
-        "session_id": {
-          "type": "string"
-        },
-        "event_cursor": {
-          "type": "integer"
-        }
-      }
-    }
+   ]
   }
+ },
+ "edit_impact_scan": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "transaction_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    }
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
+        },
+        "impact": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "scope": {
+           "const": "loaded_modules"
+          },
+          "modules": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+             "name": {
+              "type": "string"
+             },
+             "inbound_reference_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+             }
+            },
+            "required": [
+             "name",
+             "inbound_reference_count"
+            ]
+           }
+          },
+          "inbound_references": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+             "module": {
+              "type": "string"
+             },
+             "assembly_ref_token": {
+              "type": "string"
+             },
+             "matched_name": {
+              "type": "string"
+             },
+             "sites": {
+              "type": "array",
+              "items": {
+               "type": "string"
+              }
+             },
+             "risk_id": {
+              "type": "string"
+             }
+            },
+            "required": [
+             "module",
+             "assembly_ref_token",
+             "matched_name",
+             "sites",
+             "risk_id"
+            ]
+           }
+          },
+          "risk_ids": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "identity_operations": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+             "operation_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+             },
+             "kind": {
+              "type": "string"
+             },
+             "staged_name": {
+              "oneOf": [
+               {
+                "type": "string"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             }
+            },
+            "required": [
+             "operation_index",
+             "kind"
+            ]
+           }
+          }
+         },
+         "required": [
+          "scope",
+          "modules",
+          "inbound_references",
+          "risk_ids",
+          "identity_operations"
+         ]
+        }
+       },
+       "required": [
+        "transaction",
+        "impact"
+       ]
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_resource_import": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "transaction_id",
+    "expected_revision",
+    "vm_path",
+    "resource_name"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "transaction_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "expected_revision": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    },
+    "vm_path": {
+     "type": "string",
+     "minLength": 2,
+     "maxLength": 1024
+    },
+    "resource_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "resource_type": {
+     "$ref": "#/$defs/Shared113"
+    },
+    "type_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "type_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "name_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "lang_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    }
+   },
+   "not": {
+    "required": [
+     "type_id",
+     "type_name"
+    ]
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "additionalProperties": false,
+       "properties": {
+        "capacity": {
+         "$ref": "#/$defs/Shared014"
+        },
+        "created_object_ids": {
+         "items": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+         },
+         "maxItems": 321,
+         "type": "array"
+        },
+        "diffs": {
+         "$ref": "#/$defs/Shared027"
+        },
+        "fingerprints": {
+         "$ref": "#/$defs/Shared071"
+        },
+        "kind": {
+         "enum": [
+          "type_add",
+          "type_update",
+          "type_remove",
+          "method_add",
+          "method_update",
+          "method_remove",
+          "field_add",
+          "field_update",
+          "field_remove",
+          "property_add",
+          "property_update",
+          "property_remove",
+          "event_add",
+          "event_update",
+          "event_remove",
+          "parameter_add",
+          "parameter_update",
+          "parameter_remove",
+          "generic_parameter_add",
+          "generic_parameter_update",
+          "generic_parameter_remove",
+          "method_body_replace",
+          "attribute_add",
+          "attribute_remove",
+          "security_add",
+          "security_remove",
+          "assembly_update",
+          "module_update",
+          "assembly_ref_update",
+          "entry_point_set",
+          "managed_resource_add",
+          "managed_resource_update",
+          "managed_resource_remove",
+          "win32_resource_add",
+          "win32_resource_update",
+          "win32_resource_remove",
+          "strong_name_remove",
+          "interface_add",
+          "reference_add"
+         ]
+        },
+        "operation_index": {
+         "maximum": 4294967295,
+         "minimum": 0,
+         "type": "integer"
+        },
+        "review_cleared": {
+         "const": true
+        },
+        "risks": {
+         "$ref": "#/$defs/Shared044"
+        },
+        "transaction": {
+         "$ref": "#/$defs/Shared048"
+        },
+        "import": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "file_id": {
+           "type": "string",
+           "pattern": "^[0-9a-f]{32}$"
+          },
+          "length": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 8388608
+          },
+          "sha256": {
+           "type": "string",
+           "pattern": "^[0-9a-f]{64}$"
+          },
+          "vm_path": {
+           "type": "string",
+           "minLength": 1
+          },
+          "resource_name": {
+           "type": "string",
+           "minLength": 1
+          },
+          "resource_type": {
+           "type": "string",
+           "enum": [
+            "embedded",
+            "linked",
+            "win32"
+           ]
+          }
+         },
+         "required": [
+          "file_id",
+          "length",
+          "sha256",
+          "vm_path",
+          "resource_name",
+          "resource_type"
+         ]
+        }
+       },
+       "required": [
+        "transaction",
+        "operation_index",
+        "kind",
+        "created_object_ids",
+        "fingerprints",
+        "diffs",
+        "risks",
+        "review_cleared",
+        "capacity",
+        "import"
+       ],
+       "type": "object"
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_resource_export": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "request_id",
+    "assembly_name",
+    "resource_name",
+    "output_path"
+   ],
+   "properties": {
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assembly_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "resource_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "output_path": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "resource_type": {
+     "$ref": "#/$defs/Shared113"
+    },
+    "type_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "type_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "name_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "lang_id": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    }
+   },
+   "not": {
+    "required": [
+     "type_id",
+     "type_name"
+    ]
+   }
+  },
+  "outputSchema": {
+   "oneOf": [
+    {
+     "additionalProperties": false,
+     "properties": {
+      "ok": {
+       "const": true
+      },
+      "result": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "export"
+       ],
+       "properties": {
+        "export": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "file_id": {
+           "type": "string",
+           "pattern": "^[0-9a-f]{32}$"
+          },
+          "length": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 8388608
+          },
+          "sha256": {
+           "type": "string",
+           "pattern": "^[0-9a-f]{64}$"
+          },
+          "path": {
+           "type": "string",
+           "minLength": 1
+          }
+         },
+         "required": [
+          "file_id",
+          "length",
+          "sha256",
+          "path"
+         ]
+        }
+       }
+      },
+      "schema_version": {
+       "const": "dnspy.edit.v1"
+      },
+      "state": {
+       "enum": [
+        "idle",
+        "editing",
+        "reviewed",
+        "applying",
+        "committing",
+        "committed_without_checkpoint",
+        "live_state_unknown"
+       ]
+      },
+      "untrusted_sample_data": {
+       "const": true
+      },
+      "warnings": {
+       "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+       },
+       "maxItems": 8,
+       "type": "array"
+      }
+     },
+     "required": [
+      "schema_version",
+      "ok",
+      "state",
+      "result",
+      "warnings",
+      "untrusted_sample_data"
+     ],
+     "type": "object"
+    },
+    {
+     "$ref": "#/$defs/Shared021"
+    }
+   ]
+  }
+ },
+ "edit_test_strong_name": {
+  "inputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "assembly_name",
+    "assembly_version",
+    "public_key_token"
+   ],
+   "properties": {
+    "assembly_name": {
+     "type": "string"
+    },
+    "assembly_version": {
+     "type": "string"
+    },
+    "public_key_token": {
+     "type": "string",
+     "pattern": "^[0-9a-fA-F]{16}$"
+    }
+   }
+  },
+  "outputSchema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "ok"
+   ],
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "session_id": {
+     "type": "string"
+    },
+    "event_cursor": {
+     "type": "integer"
+    }
+   }
+  }
+ }
 }
 ```
 
