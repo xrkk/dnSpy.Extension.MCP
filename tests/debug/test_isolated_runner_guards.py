@@ -1,4 +1,5 @@
 """Static safety audit for the small isolated ACC handler allowlist."""
+import json
 import re
 import unittest
 from pathlib import Path
@@ -16,6 +17,12 @@ ALLOWED = (
 
 
 class IsolatedRunnerGuards(unittest.TestCase):
+    def test_acc001_only_manifest_field_is_not_written_into_other_cases(self):
+        self.assertIn("if ($Case -eq 'ACC-001') { $script:Manifest.env.testil_dll =", TEXT)
+        for case in ('ACC-002', 'ACC-003', 'ACC-023'):
+            manifest = json.loads((SCRIPT.parent / 'cases' / f'{case}.json').read_text(encoding='utf-8'))
+            self.assertNotIn('testil_dll', manifest['env'], case)
+
     def test_results_are_never_recursively_overwritten(self):
         self.assertIn('result already exists; refusing overwrite', TEXT)
         self.assertIn('isolated result already exists', TEXT)

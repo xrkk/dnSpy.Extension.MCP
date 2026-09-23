@@ -419,7 +419,7 @@ if (-not (Test-Path $manifestPath)) {
         $script:Manifest.env.sample_root = $privateFixture
         $script:Manifest.env.artifact_root = Join-Path $privateArchRoot 'artifact'
         $script:Manifest.env.fixture_exe = Join-Path $privateFixture 'AccFixture.exe'
-        $script:Manifest.env.testil_dll = Join-Path $privateFixture 'TestIL.dll'
+        if ($Case -eq 'ACC-001') { $script:Manifest.env.testil_dll = Join-Path $privateFixture 'TestIL.dll' }
         $script:Manifest.env.vm_ip = '192.168.204.240'
         if ($Case -in @('ACC-008','ACC-029')) {
             $privateRuntime = Join-Path $privateFixture 'dotnet10-x64'
