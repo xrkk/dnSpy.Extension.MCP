@@ -15386,7 +15386,13 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
            "enum": [
             "begin_after_copy",
             "apply_before_mutation",
-            "review_before_validation"
+            "review_before_validation",
+            "commit_after_guard_before_temp",
+            "commit_after_temp_validate",
+            "commit_dispatcher_queued",
+            "commit_after_live_first_mutation",
+            "commit_after_live_complete",
+            "commit_after_package_switch_before_response"
            ]
           },
           {
