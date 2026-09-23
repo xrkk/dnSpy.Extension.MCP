@@ -94,6 +94,17 @@ internal sealed class EditCSharpImporter : IDisposable {
 		foreach (var row in targets.EnumerateArray())
 			ImportRow(row);
 		FlushFills();
+		// A plan is still pure here.  Reject URL-equivalent but metadata-distinct
+		// documents across the target and every emitted body before the first
+		// operation can mutate the transaction's private module.
+		var documents = new List<EditPdbTransferCodec.DocumentRow>();
+		foreach (var row in rows)
+			if (row.Operation.TryGetValue("body", out var bodyValue)
+				&& bodyValue is Dictionary<string, object?> body
+				&& body.TryGetValue("sequence_points", out var pointsValue)
+				&& pointsValue is IEnumerable<EditPdbTransferCodec.PointRow> points)
+				documents.AddRange(points.Select(point => point.Document));
+		EditPdbTransferCodec.ValidateDocumentRows(target, documents);
 		return rows;
 	}
 

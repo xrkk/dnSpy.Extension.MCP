@@ -36,6 +36,7 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--workspace-new-methods") { TestWorkspaceNewMethods(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--definition-add-inverses") { TestDefinitionAddInverses(args[0]); TestMethodAddSymbolInverse(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--pdb-ownership") { PdbOwnershipProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--pdb-identity") { PdbOwnershipProbe.RunIdentity(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--pdb-compat") { PdbOwnershipProbe.RunCompatibility(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--zero-rid-reference") { TestZeroRidReference(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--writer-token-map") { TestWriterTokenMap(args[0]); return 0; }
@@ -74,6 +75,7 @@ static class Program {
 			TestDefinitionAddInverses(args[0]);
 			TestMethodAddSymbolInverse(args[0]);
 			PdbOwnershipProbe.Run(args[0]);
+			PdbOwnershipProbe.RunIdentity(args[0]);
 			TestZeroRidReference(args[0]);
 			TestReloadedTailInverses(args[0]);
 			TestWorkspaceNewMethods(args[0]);

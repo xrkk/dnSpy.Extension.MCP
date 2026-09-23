@@ -40,25 +40,17 @@ internal static partial class EditOperationRegistry {
 			};
 			if (kind == "method_add" && forward.TryGetProperty("body", out var body)
 				&& body.TryGetProperty("sequence_points", out var points) && points.ValueKind == JsonValueKind.Array) {
+				var pointRows = JsonSerializer.Deserialize<EditPdbTransferCodec.PointRow[]>(points.GetRawText(), EditWire.JsonOptions)
+					?? Array.Empty<EditPdbTransferCodec.PointRow>();
+				EditPdbTransferCodec.ValidateDocumentRows(before, pointRows.Select(point => point.Document));
 				var documents = new List<Dictionary<string, object?>>();
 				foreach (var point in points.EnumerateArray()) {
 					var document = point.GetProperty("document");
 					var name = document.GetProperty("name").GetString();
 					var hash = document.TryGetProperty("hash", out var checksum) && checksum.ValueKind == JsonValueKind.String
 						? checksum.GetString() : null;
-					// dnlib's PdbState deduplicates by URL alone. Distinct checksums
-					// cannot own independent rows at the same URL, including within
-					// one method body; reject before persisting an unsafe inverse.
-					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)
-						&& !string.Equals(existing.CheckSum == null ? null : Convert.ToBase64String(existing.CheckSum), hash, StringComparison.Ordinal)) == true
-						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase)
-							&& !string.Equals(existing["hash"] as string, hash, StringComparison.Ordinal)))
-						throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails(
-							"pdb_document_identity", "method_add", "A document URL already exists with a different checksum"));
-					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)
-						&& string.Equals(existing.CheckSum == null ? null : Convert.ToBase64String(existing.CheckSum), hash, StringComparison.Ordinal)) == true
-						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase)
-							&& string.Equals(existing["hash"] as string, hash, StringComparison.Ordinal))) continue;
+					if (before.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)) == true
+						|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase))) continue;
 					documents.Add(new() { ["name"] = name, ["hash"] = hash });
 				}
 				if (documents.Count != 0) state["release_documents"] = documents;
@@ -353,6 +345,9 @@ internal static partial class EditOperationRegistry {
 			// references them anymore (byte-level image equality).
 			if (forward.TryGetProperty("body", out var bodyElement) && bodyElement.ValueKind == JsonValueKind.Object
 				&& bodyElement.TryGetProperty("sequence_points", out var points) && points.ValueKind == JsonValueKind.Array) {
+				var pointRows = JsonSerializer.Deserialize<EditPdbTransferCodec.PointRow[]>(points.GetRawText(), EditWire.JsonOptions)
+					?? Array.Empty<EditPdbTransferCodec.PointRow>();
+				EditPdbTransferCodec.ValidateDocumentRows(before, pointRows.Select(point => point.Document));
 				var documents = new List<Dictionary<string, object?>>();
 				foreach (var point in points.EnumerateArray()) {
 					var document = point.GetProperty("document");

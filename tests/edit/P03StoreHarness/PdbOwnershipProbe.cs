@@ -5,9 +5,175 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
+using dnlib.DotNet.Pdb;
 using dnSpy.Extension.MCP.Editing;
 
 internal static class PdbOwnershipProbe {
+	public static void RunIdentity(string fixture) {
+		foreach (var (field, value) in new[] {
+			("language", "00000000-0000-0000-0000-000000000000"),
+			("vendor", "00000000-0000-0000-0000-000000000000"),
+			("type", "00000000-0000-0000-0000-000000000000"),
+			("hashAlgorithm", "00000000-0000-0000-0000-000000000000"),
+			("hash", "BAUG"),
+		}) {
+			using var module = Open(fixture);
+			Add(module, "R058Parent", "R058Same.cs", "AQID");
+			var parent = EditFingerprint.Compute(module);
+			var added = JsonNode.Parse(Operation(module, "R058Child", "R058Same.cs", "AQID"))!.AsObject();
+			added["body"]!["sequence_points"]![0]!["document"]![field] = value;
+			ExpectIdentityReject(module, added, parent, "method_add/" + field);
+			var replaced = Replace(module, added["body"]!.DeepClone());
+			ExpectIdentityReject(module, replaced, parent, "method_body_replace/" + field);
+			Console.WriteLine("PDB_IDENTITY collision " + field + " parent=" + parent + " docs=" + string.Join(",", Documents(module)));
+		}
+		using (var module = Open(fixture)) {
+			var paired = JsonNode.Parse(Operation(module, "R058Pair", "R058Pair.cs", "AQID"))!.AsObject();
+			var body = paired["body"]!.AsObject();
+			body["instructions"]!.AsArray().Insert(0, new JsonObject { ["opcode"] = "nop" });
+			var points = body["sequence_points"]!.AsArray();
+			var second = points[0]!.DeepClone();
+			second["start"]!["il"] = 1;
+			second["end"]!["il"] = 1;
+			second["document"]!["vendor"] = "00000000-0000-0000-0000-000000000000";
+			points.Add(second);
+			ExpectIdentityReject(module, paired, EditFingerprint.Compute(module), "one-operation/two-documents");
+			Check(module.PdbState == null, "pair conflict leaves absent PDB state absent");
+		}
+		using (var module = Open(fixture)) {
+			var parent = JsonNode.Parse(Operation(module, "R058Defaults", "R058Default.cs", "AQID"))!.AsObject();
+			var document = parent["body"]!["sequence_points"]![0]!["document"]!.AsObject();
+			foreach (var field in new[] { "language", "vendor", "type", "hashAlgorithm" }) document.Remove(field);
+			using (var parsed = ParsePublicOperation(parent)) EditOperationRegistry.Apply(module, parsed.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			var child = JsonNode.Parse(Operation(module, "R058Explicit", "R058Default.cs", "AQID"))!.AsObject();
+			var explicitDocument = child["body"]!["sequence_points"]![0]!["document"]!;
+			explicitDocument["vendor"] = "994b45c4-e6e9-11d2-903f-00c04fa302a4";
+			explicitDocument["hashAlgorithm"] = "8829d00f-11b8-4213-878b-770e8597ac16";
+			using (var parsed = ParsePublicOperation(child)) EditOperationRegistry.Apply(module, parsed.RootElement, new Dictionary<string, IMDTokenProvider>(), 1);
+			Check(Documents(module).SequenceEqual(new[] { "R058Default.cs:AQID:2" }), "absent and explicit defaults reuse one document");
+			var normalized = module.PdbState!.Documents.Single();
+			Check(normalized.Language == new Guid("3f5162f8-07c6-11d3-9053-00c04fa302a1")
+				&& normalized.LanguageVendor == new Guid("994b45c4-e6e9-11d2-903f-00c04fa302a4")
+				&& normalized.DocumentType == EditPdbTransferCodec.TextDocumentType
+				&& normalized.CheckSumAlgorithmId == EditPdbTransferCodec.Sha256ChecksumAlgorithm,
+				"omitted metadata normalizes to explicit defaults without losing the full key");
+			Console.WriteLine("PDB_IDENTITY defaults docs=" + string.Join(",", FullDocuments(module)));
+		}
+		using (var module = Open(fixture)) {
+			Add(module, "R058Parent", "R058Case.cs", "AQID");
+			var child = JsonNode.Parse(Operation(module, "R058Child", "r058case.cs", "AQID"))!.AsObject();
+			using (var parsed = ParsePublicOperation(child)) EditOperationRegistry.Apply(module, parsed.RootElement, new Dictionary<string, IMDTokenProvider>(), 1);
+			Check(Documents(module).SequenceEqual(new[] { "R058Case.cs:AQID:2" }), "URL case normalization reuses full identity");
+			var beforeReplace = EditFingerprint.Compute(module);
+			var replacement = Replace(module, child["body"]!.DeepClone());
+			using var forward = ParsePublicOperation(replacement);
+			var objects = new Dictionary<string, IMDTokenProvider>();
+			var inverse = EditOperationRegistry.CompileInverse(module, forward.RootElement, objects);
+			EditOperationRegistry.Apply(module, forward.RootElement, objects, 2);
+			using var state = JsonDocument.Parse(JsonSerializer.Serialize(inverse));
+			var compensate = EditOperationRegistry.ApplyCompiledInverse(module, state.RootElement, objects, 2).Undo;
+			Check(EditFingerprint.Compute(module) == beforeReplace && Documents(module).SequenceEqual(new[] { "R058Case.cs:AQID:2" }),
+				"replace inverse restores method and shared document");
+			compensate();
+			Check(Documents(module).SequenceEqual(new[] { "R058Case.cs:AQID:3" }), "replace compensation restores new method body reference");
+			Console.WriteLine("PDB_IDENTITY case/replacement docs=" + string.Join(",", FullDocuments(module)));
+		}
+		ImporterIdentity(fixture);
+		ImporterBatchIdentity(fixture);
+		Console.WriteLine("PASS pdb-identity complete-document collision/default/case/replacement matrix");
+	}
+
+	static void ImporterBatchIdentity(string fixture) {
+		using var target = Open(fixture);
+		var before = EditFingerprint.Compute(target);
+		var artifact = new ModuleDefUser("R058BatchArtifact");
+		var owner = new TypeDefUser("TestIL", "Members", null);
+		artifact.Types.Add(owner);
+		foreach (var (name, language) in new[] {
+			("R058BatchA", "3f5162f8-07c6-11d3-9053-00c04fa302a1"),
+			("R058BatchB", "00000000-0000-0000-0000-000000000000"),
+		}) {
+			var method = new MethodDefUser(name, MethodSig.CreateStatic(artifact.CorLibTypes.Void),
+				MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Static) { Body = new CilBody() };
+			method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+			owner.Methods.Add(method);
+			var document = new PdbDocument("R058Batch.cs", new Guid(language),
+				new Guid("994b45c4-e6e9-11d2-903f-00c04fa302a1"), EditPdbTransferCodec.TextDocumentType,
+				new Guid("ff1816ec-aa5e-4d10-87f7-6f4963833460"), new byte[] { 1, 2, 3 });
+			method.Body.Instructions[0].SequencePoint = new SequencePoint {
+				Document = document, StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 2,
+			};
+		}
+		using var targets = JsonDocument.Parse("[{\"compiled\":\"TestIL.Members::R058BatchA()\",\"action\":\"add\"},{\"compiled\":\"TestIL.Members::R058BatchB()\",\"action\":\"add\"}]");
+		using var importer = new EditCSharpImporter(artifact, target, new Dictionary<string, IMDTokenProvider>(), 0);
+		try {
+			importer.Compile(targets.RootElement);
+			throw new InvalidOperationException("PDB_IDENTITY_RED: one import plan contains colliding documents");
+		}
+		catch (EditDomainException ex) when (ex.Code == "EDIT_VALIDATION_FAILED") { }
+		Check(EditFingerprint.Compute(target) == before && target.PdbState == null,
+			"multi-operation import plan rejects before private mutation");
+		Console.WriteLine("PDB_IDENTITY batch conflict target=" + before);
+	}
+
+	static void ImporterIdentity(string fixture) {
+		using var target = Open(fixture);
+		Add(target, "R058Parent", "R058Import.cs", "AQID");
+		var before = EditFingerprint.Compute(target);
+		var artifact = new ModuleDefUser("R058Artifact");
+		var owner = new TypeDefUser("TestIL", "Members", null);
+		artifact.Types.Add(owner);
+		var method = new MethodDefUser("R058Imported", MethodSig.CreateStatic(artifact.CorLibTypes.Void),
+			MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Static);
+		method.Body = new CilBody();
+		method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+		owner.Methods.Add(method);
+		artifact.CreatePdbState(PdbFileKind.PortablePDB);
+		var document = new PdbDocument("R058Import.cs", new Guid("00000000-0000-0000-0000-000000000000"),
+			new Guid("994b45c4-e6e9-11d2-903f-00c04fa302a1"), EditPdbTransferCodec.TextDocumentType,
+			new Guid("ff1816ec-aa5e-4d10-87f7-6f4963833460"), new byte[] { 1, 2, 3 });
+		artifact.PdbState!.Add(document);
+		method.Body.Instructions[0].SequencePoint = new SequencePoint {
+			Document = document, StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 2,
+		};
+		using var targets = JsonDocument.Parse("[{\"compiled\":\"TestIL.Members::R058Imported()\",\"action\":\"add\"}]");
+		using var importer = new EditCSharpImporter(artifact, target, new Dictionary<string, IMDTokenProvider>(), 0);
+		try {
+			importer.Compile(targets.RootElement);
+			throw new InvalidOperationException("PDB_IDENTITY_RED: importer compiled a colliding document before private-write rejection");
+		}
+		catch (EditDomainException ex) when (ex.Code == "EDIT_VALIDATION_FAILED") { }
+		Check(EditFingerprint.Compute(target) == before && Documents(target).SequenceEqual(new[] { "R058Import.cs:AQID:1" }),
+			"importer collision rejects in pure compile before private mutation");
+		Console.WriteLine("PDB_IDENTITY importer conflict target=" + before);
+	}
+
+	static JsonObject Replace(ModuleDef module, JsonNode body) {
+		var method = module.GetTypes().Single(type => type.FullName == "TestIL.Members").Methods.Single(value => value.Name == "Die");
+		return new JsonObject { ["kind"] = "method_body_replace", ["target"] = new JsonObject { ["token"] = "0x" + method.MDToken.Raw.ToString("x8") }, ["body"] = body };
+	}
+
+	static JsonDocument ParsePublicOperation(JsonObject operation) {
+		var parsed = JsonDocument.Parse(operation.ToJsonString());
+		using var catalog = new EditSchemaCatalog();
+		EditJsonSchemaValidator.ValidateValue(catalog.InputElement("edit_apply").GetProperty("properties").GetProperty("operation"),
+			parsed.RootElement, "T058 public operation");
+		return parsed;
+	}
+
+	static void ExpectIdentityReject(ModuleDef module, JsonObject operation, string before, string label) {
+		using var parsed = ParsePublicOperation(operation);
+		var documentsBefore = FullDocuments(module);
+		try {
+			EditOperationRegistry.Apply(module, parsed.RootElement, new Dictionary<string, IMDTokenProvider>(), 0);
+			throw new InvalidOperationException("PDB_IDENTITY_RED: " + label + " silently merged");
+		}
+		catch (EditDomainException ex) when (ex.Code == "EDIT_VALIDATION_FAILED") { }
+		Check(EditFingerprint.Compute(module) == before && FullDocuments(module).SequenceEqual(documentsBefore),
+			label + " rejects before mutation");
+	}
+
 	public static void Run(string fixture) {
 		NoParentPdb(fixture);
 		ParentAndSharedDocument(fixture);
@@ -68,7 +234,7 @@ internal static class PdbOwnershipProbe {
 					document = new { name = documentName, language = "3f5162f8-07c6-11d3-9053-00c04fa302a1",
 						vendor = "994b45c4-e6e9-11d2-903f-00c04fa302a1", hash = checksum,
 						type = "5a869d0b-6611-11d3-bd2a-0000f80849bd", hashAlgorithm = "ff1816ec-aa5e-4d10-87f7-6f4963833460" },
-					start = new { il = 0, line = 1, column = 1 }, end = new { line = 1, column = 2 },
+					start = new { il = 0, line = 1, column = 1 }, end = new { il = 0, line = 1, column = 2 },
 				} },
 			},
 		});
@@ -93,6 +259,12 @@ internal static class PdbOwnershipProbe {
 			module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody)
 				.SelectMany(method => method.Body.Instructions)
 				.Count(instruction => ReferenceEquals(instruction.SequencePoint?.Document, document)))
+		.OrderBy(value => value, StringComparer.Ordinal).ToArray() ?? Array.Empty<string>();
+
+	static string[] FullDocuments(ModuleDef module) => module.PdbState?.Documents
+		.Select(document => document.Url + ":" + document.Language + ":" + document.LanguageVendor + ":"
+			+ document.DocumentType + ":" + document.CheckSumAlgorithmId + ":"
+			+ (document.CheckSum == null ? "<null>" : Convert.ToBase64String(document.CheckSum)))
 		.OrderBy(value => value, StringComparer.Ordinal).ToArray() ?? Array.Empty<string>();
 
 	static void NoParentPdb(string fixture) {

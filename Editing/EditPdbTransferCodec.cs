@@ -210,7 +210,8 @@ internal static class EditPdbTransferCodec {
 	/// through the SymbolDocument ctor — the direct PdbDocument ctor leaves the
 	/// writer-required CustomDebugInfos list null (S02 spike fact).</summary>
 	public static PdbDocument ResolveDocument(ModuleDef module, DocumentRow row) {
-		var candidate = new PdbDocument(new RowDocument(row));
+		ValidateDocumentRows(module, new[] { row });
+		var candidate = Candidate(row);
 		if (module.PdbState == null) module.SetPdbState(new PdbState(module, PdbFileKind.EmbeddedPortablePDB));
 		var state = module.PdbState;
 		var existing = state.GetExisting(candidate);
@@ -218,6 +219,39 @@ internal static class EditPdbTransferCodec {
 		state.Add(candidate);
 		return candidate;
 	}
+
+	/// <summary>dnlib's PdbState matches URLs without considering symbol metadata.
+	/// Check the complete normalized document key before any body/target state is
+	/// changed, including collisions between two rows in the same operation or
+	/// import plan.  URL casing follows dnlib's existing equivalence rule.</summary>
+	public static void ValidateDocumentRows(ModuleDef module, IEnumerable<DocumentRow> rows) {
+		var byUrl = new Dictionary<string, PdbDocument>(StringComparer.OrdinalIgnoreCase);
+		if (module.PdbState != null)
+			foreach (var existing in module.PdbState.Documents)
+				Remember(existing);
+		foreach (var row in rows)
+			Remember(Candidate(row));
+
+		void Remember(PdbDocument document) {
+			if (byUrl.TryGetValue(document.Url, out var prior)) {
+				if (!SameIdentity(prior, document))
+					throw Reject("document URL has a different language, vendor, type, checksum algorithm, or checksum: " + document.Url);
+			}
+			else byUrl.Add(document.Url, document);
+		}
+	}
+
+	static PdbDocument Candidate(DocumentRow row) {
+		try { return new PdbDocument(new RowDocument(row)); }
+		catch (FormatException) { throw Reject("document checksum is not valid base64: " + row.Name); }
+	}
+
+	static bool SameIdentity(PdbDocument left, PdbDocument right) =>
+		string.Equals(left.Url, right.Url, StringComparison.OrdinalIgnoreCase)
+		&& left.Language == right.Language && left.LanguageVendor == right.LanguageVendor
+		&& left.DocumentType == right.DocumentType && left.CheckSumAlgorithmId == right.CheckSumAlgorithmId
+		&& (left.CheckSum == null ? right.CheckSum == null
+			: right.CheckSum != null && left.CheckSum.SequenceEqual(right.CheckSum));
 
 	static Guid? ParseGuid(string? text) =>
 		text != null && Guid.TryParseExact(text, "D", out var value) ? value : null;
@@ -249,10 +283,14 @@ internal static class EditPdbTransferCodec {
 	}
 
 	public static void ApplyPoints(ModuleDef module, CilBody body, IEnumerable<PointRow> rows) {
+		var pending = rows.ToArray();
 		var seen = new HashSet<int>();
-		foreach (var row in rows) {
+		foreach (var row in pending) {
 			if (row.Start.Il < 0 || row.Start.Il >= body.Instructions.Count || !seen.Add(row.Start.Il))
 				throw Reject("sequence point location is outside the body");
+		}
+		ValidateDocumentRows(module, pending.Select(row => row.Document));
+		foreach (var row in pending) {
 			var document = ResolveDocument(module, row.Document);
 			body.Instructions[row.Start.Il].SequencePoint = new SequencePoint {
 				Document = document,
