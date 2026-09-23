@@ -52,7 +52,7 @@ if ($IsolationRoot) {
         throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* root'
     }
     if ($Case -notin @(
-        'ACC-005','ACC-006','ACC-007','ACC-009','ACC-010','ACC-011','ACC-012',
+        'ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-024','ACC-025','ACC-026','ACC-027',
         'ACC-004','ACC-028','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035')) {
@@ -413,6 +413,14 @@ if (-not (Test-Path $manifestPath)) {
         $script:Manifest.env.artifact_root = Join-Path $privateArchRoot 'artifact'
         $script:Manifest.env.fixture_exe = Join-Path $privateFixture 'AccFixture.exe'
         $script:Manifest.env.vm_ip = '192.168.204.240'
+        if ($Case -eq 'ACC-008') {
+            $privateRuntime = Join-Path $privateFixture 'dotnet10-x64'
+            $script:Manifest.env.dotnet10_x64 = Join-Path $privateRuntime 'dotnet.exe'
+            $script:Manifest.env.dotnet10_root = $privateRuntime
+            if (-not (Test-Path -LiteralPath $script:Manifest.env.dotnet10_x64 -PathType Leaf)) {
+                throw 'private .NET 10 x64 host is required for isolated ACC-008'
+            }
+        }
         foreach ($path in @($script:Manifest.env.dnspy_exe,$script:Manifest.env.extension_dll,
                 $script:Manifest.env.settings_xml,$script:Manifest.env.sample_root,$script:Manifest.env.artifact_root)) {
             if (-not (Test-Path -LiteralPath $path)) { throw "private manifest path missing: $path" }
