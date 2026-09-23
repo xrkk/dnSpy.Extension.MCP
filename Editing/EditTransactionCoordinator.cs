@@ -1788,6 +1788,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				if (dynamicGate.EvaluateEditDynamicValidation().State != DebugStates.Idle)
 					throw new EditDomainException("EDIT_DEBUG_NOT_IDLE");
 			}
+			using var serializedSource = ModuleDefMD.Load(tx.Workspace.BaselineBytes);
+			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(serializedSource, tx.Workspace.LiveModule);
 			try {
 				for (var i = 0; i < tx.Workspace.NormalizedOperations.Count; i++) {
 					using var document = JsonDocument.Parse(tx.Workspace.NormalizedOperations[i]);

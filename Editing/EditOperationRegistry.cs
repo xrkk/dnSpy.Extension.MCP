@@ -834,7 +834,50 @@ var slots=AccessorSlots(EventAccessors(e),owner);owner.Events.Remove(e);RemoveMa
 
 	static T Ref<T>(ModuleDef module,JsonElement reference,Dictionary<string,IMDTokenProvider> map) where T:class,IMDTokenProvider{IMDTokenProvider value;if(reference.TryGetProperty("token",out var token))value=ResolveToken(module,ParseToken(token.GetString()!));else if(reference.TryGetProperty("object_id",out var id)&&map.TryGetValue(id.GetString()!,out var found))value=found;else if(reference.TryGetProperty("object_id",out var objectId)&&reference.TryGetProperty("address",out var address)&&address.ValueKind==JsonValueKind.String){value=EditDefinitionAddress.Resolve(module,address.GetString()!);map[objectId.GetString()!]=value;}else throw Validation("reference","Unknown token or object ID");if(value is T typed)return typed;throw Validation("reference","Reference has the wrong metadata kind");}
 	static T? OptionalRef<T>(ModuleDef module,JsonElement op,string name,Dictionary<string,IMDTokenProvider> map) where T:class,IMDTokenProvider=>op.TryGetProperty(name,out var r)&&r.ValueKind!=JsonValueKind.Null?Ref<T>(module,r,map):null;
-	static IMDTokenProvider ResolveToken(ModuleDef module,uint token){try{return module.ResolveToken(token)??throw new Exception();}catch{throw Validation("token","Metadata token could not be resolved: 0x"+token.ToString("x8"));}}
+	[ThreadStatic] static TokenBindingScope? serializedTokenBindings;
+	sealed class TokenBindingScope : IDisposable {
+		readonly TokenBindingScope? previous;
+		public ModuleDef Target { get; }
+		public Dictionary<uint, IMDTokenProvider> Bindings { get; }
+		public TokenBindingScope(ModuleDef target, Dictionary<uint, IMDTokenProvider> bindings) {
+			previous = serializedTokenBindings;
+			Target = target; Bindings = bindings; serializedTokenBindings = this;
+		}
+		public void Dispose() => serializedTokenBindings = previous;
+	}
+
+	// A committed MethodDefUser has RID zero in dnSpy's live graph, while the
+	// next transaction's serialized private copy gives it a metadata token.
+	// Bind only definitions whose token is absent from the destination graph,
+	// using the exact pre-operation graph's positional address.  Callers bind
+	// this scope only after their existing live/checkpoint version gates.
+	internal static IDisposable BindSerializedTokens(ModuleDef source, ModuleDef target) {
+		var bindings = new Dictionary<uint, IMDTokenProvider>();
+		foreach (var type in source.GetTypes()) {
+			Bind(type);
+			foreach (var method in type.Methods) {
+				Bind(method);
+				foreach (var parameter in method.ParamDefs) Bind(parameter);
+				foreach (var generic in method.GenericParameters) Bind(generic);
+			}
+			foreach (var field in type.Fields) Bind(field);
+			foreach (var property in type.Properties) Bind(property);
+			foreach (var eventDef in type.Events) Bind(eventDef);
+			foreach (var generic in type.GenericParameters) Bind(generic);
+		}
+		void Bind(IMDTokenProvider row) {
+			if (row.MDToken.Rid == 0 || target.ResolveToken(row.MDToken.Raw) != null) return;
+			var match = EditDefinitionAddress.Resolve(target, EditDefinitionAddress.Capture(source, row));
+			if (match.MDToken.Table != row.MDToken.Table || match is IFullName named && row is IFullName original
+				&& !string.Equals(named.FullName, original.FullName, StringComparison.Ordinal))
+				throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			if (bindings.ContainsKey(row.MDToken.Raw)) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+			bindings.Add(row.MDToken.Raw, match);
+		}
+		return new TokenBindingScope(target, bindings);
+	}
+
+	static IMDTokenProvider ResolveToken(ModuleDef module,uint token){try{return module.ResolveToken(token)??(serializedTokenBindings is { } scope && ReferenceEquals(scope.Target,module) && scope.Bindings.TryGetValue(token,out var bound) ? bound : throw new Exception());}catch{throw Validation("token","Metadata token could not be resolved: 0x"+token.ToString("x8"));}}
 	static uint ParseToken(string text){uint token;if(text.Length!=10||!text.StartsWith("0x",StringComparison.OrdinalIgnoreCase)||!uint.TryParse(text.Substring(2),NumberStyles.HexNumber,CultureInfo.InvariantCulture,out token))throw Validation("token","Expected 0x followed by eight hex digits");return token;}
 	static (MethodDef method,ParamDef? param,int index) ResolveParameter(ModuleDef module,JsonElement r,Dictionary<string,IMDTokenProvider> map){if(r.TryGetProperty("owner_method",out var owner)){var m=Ref<MethodDef>(module,owner,map);var i=(int)RequiredUInt(r,"parameter_index");if(i>=m.MethodSig.Params.Count)Invalid("parameter_index","Parameter index is outside signature");return(m,m.ParamDefs.FirstOrDefault(p=>p.Sequence==i+1),i);}var p=Ref<ParamDef>(module,r,map);if(p.Sequence==0)Invalid("parameter_target","Return ParamDef cannot be edited");var method=p.DeclaringMethod;return(method,p,p.Sequence-1);}
 

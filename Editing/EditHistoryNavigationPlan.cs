@@ -33,8 +33,17 @@ internal sealed class EditHistoryNavigationPlan {
 		var beforeLiveFingerprint = EditFingerprint.Compute(live);
 		var inverses = new List<Action>();
 		var maps = new Dictionary<string, Dictionary<string, IMDTokenProvider>>(StringComparer.Ordinal);
+		ModuleDefMD? tokenSource = null;
+		IDisposable? tokenBindings = null;
+		string? boundCheckpoint = null;
 		try {
 			foreach (var step in steps) {
+				if (boundCheckpoint != step.CheckpointId) {
+					tokenBindings?.Dispose(); tokenSource?.Dispose();
+					tokenSource = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(live));
+					tokenBindings = EditOperationRegistry.BindSerializedTokens(tokenSource, live);
+					boundCheckpoint = step.CheckpointId;
+				}
 				if (!maps.TryGetValue(step.CheckpointId, out var map)) maps[step.CheckpointId] = map = new(StringComparer.Ordinal);
 				using var document = JsonDocument.Parse(step.Operation);
 				var outcome = step.IsInverse
@@ -57,6 +66,7 @@ internal sealed class EditHistoryNavigationPlan {
 			Restore(live, inverses, beforeLiveFingerprint);
 			throw;
 		}
+		finally { tokenBindings?.Dispose(); tokenSource?.Dispose(); }
 		var used = false;
 		var afterLiveFingerprint = EditFingerprint.Compute(live);
 		return () => {

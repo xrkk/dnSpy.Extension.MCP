@@ -633,6 +633,8 @@ internal sealed class EditHistoryModule : IDisposable {
 		var path = PathTo(lineage, checkpointId);
 		using var module = ModuleDefMD.Load(lineage.BaselineBytes);
 		foreach (var node in path.Skip(1)) {
+			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, module);
 			if (!lineage.Operations.TryGetValue(node.CheckpointId, out var entry)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 			for (var i = 0; i < entry.Operations.Count; i++) {
@@ -694,6 +696,8 @@ internal sealed class EditHistoryModule : IDisposable {
 		var undoByCheckpoint = new Dictionary<string, List<EditHistoryNavigationPlan.Step>>(StringComparer.Ordinal);
 		using var replay = ModuleDefMD.Load(lineage.BaselineBytes);
 		foreach (var node in fromPath.Skip(1)) {
+			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(replay));
+			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, replay);
 			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 			var inverses = new List<EditHistoryNavigationPlan.Step>();
 			var operations = lineage.Operations[node.CheckpointId].Operations;
@@ -1050,6 +1054,8 @@ internal sealed class EditHistoryModule : IDisposable {
 		// head image from it after return.
 		var module = ModuleDefMD.Load(lineage.BaselineBytes);
 		foreach (var node in PathTo(lineage, parentId).Skip(1)) {
+			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, module);
 			if (!lineage.Operations.TryGetValue(node.CheckpointId, out var ancestor)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 			var ancestorMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 			for (var i = 0; i < ancestor.Operations.Count; i++) {
@@ -1060,6 +1066,8 @@ internal sealed class EditHistoryModule : IDisposable {
 			EditStructuralValidator.Validate(module);
 		}
 		var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+		using var parentImage = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+		using var currentTokenBindings = EditOperationRegistry.BindSerializedTokens(parentImage, module);
 		for (var index = 0; index < rows.Count; index++) {
 			var raw = rows[index];
 			using var document = JsonDocument.Parse(raw);
