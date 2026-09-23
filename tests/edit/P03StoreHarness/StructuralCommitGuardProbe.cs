@@ -16,6 +16,7 @@ internal static class StructuralCommitGuardProbe {
 		using var workspace = EditWorkspace.CreateForTesting(live);
 		var method = live.ResolveToken(0x0600000D) as MethodDef;
 		Check(method != null && method.MethodSig.Params.Count == 0, "parameter fixture has empty target signature");
+		var beforeFingerprint = EditFingerprint.Compute(live);
 		var operation = "{\"kind\":\"parameter_add\",\"owner_method\":{\"token\":\"0x0600000D\"},\"parameter_index\":0,\"name\":\"added\",\"parameter_type\":\"System.Int32\"}";
 		using (var json = JsonDocument.Parse(operation))
 			EditOperationRegistry.Apply(workspace.PrivateModule, json.RootElement, workspace.ObjectIds, 0);
@@ -29,6 +30,29 @@ internal static class StructuralCommitGuardProbe {
 		history.Finalize(prepared, live);
 		Check(store.FinalCount == 1 && method!.MethodSig.Params.Count == 1
 			&& method.MethodSig.Params[0].FullName == "System.Int32", "parameter_add package commits and preserves signature");
+		var afterFingerprint = EditFingerprint.Compute(live);
+		var lineageId = prepared.Lineage.Manifest.LineageId;
+		var headId = prepared.PostHeadCheckpointId;
+		using var reopened = new EditHistoryModule(store, catalog.CheckpointPackage);
+		var lineage = reopened.Load(lineageId);
+		var rootId = lineage.Manifest.Checkpoints.Single(x => x.ParentCheckpointId == null).CheckpointId;
+		Check(lineage.Manifest.HeadCheckpointId == headId && lineage.Operations[headId].Operations.Single().Kind == "parameter_add",
+			"parameter_add persisted package cold-loads at committed head");
+		var undoWrite = reopened.PrepareHeadMove(lineageId, headId, rootId, "undo");
+		reopened.PlanNavigation(lineage, headId, rootId).Apply(live);
+		reopened.Finalize(undoWrite, live);
+		Check(method.MethodSig.Params.Count == 0 && method.ParamDefs.Count == 0
+			&& EditFingerprint.Compute(live) == beforeFingerprint
+			&& reopened.Load(lineageId).Manifest.HeadCheckpointId == rootId,
+			"parameter_add undo restores old signature, parameter row, fingerprint and root head");
+		var redoWrite = reopened.PrepareHeadMove(lineageId, rootId, headId, "redo");
+		reopened.PlanNavigation(reopened.Load(lineageId), rootId, headId).Apply(live);
+		reopened.Finalize(redoWrite, live);
+		Check(method.MethodSig.Params.Count == 1 && method.MethodSig.Params[0].FullName == "System.Int32"
+			&& method.ParamDefs.Count == 1 && method.ParamDefs[0].Sequence == 1 && method.ParamDefs[0].Name == "added"
+			&& EditFingerprint.Compute(live) == afterFingerprint
+			&& reopened.Load(lineageId).Manifest.HeadCheckpointId == headId,
+			"parameter_add redo restores owner, sequence, type, name, fingerprint and committed head");
 		Console.WriteLine("PASS parameter-add-checkpoint envelope=parameter_remove committed=true");
 	}
 
