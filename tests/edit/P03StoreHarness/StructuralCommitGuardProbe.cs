@@ -8,6 +8,7 @@ using dnSpy.Extension.MCP.Editing;
 
 internal static class StructuralCommitGuardProbe {
 	public static void RunParameterAdd(string fixture) {
+		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
 		using var catalog = new EditSchemaCatalog();
 		using var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "p03-parameter-commit-" + Guid.NewGuid().ToString("N")));
 		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
