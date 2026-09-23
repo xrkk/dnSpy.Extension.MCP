@@ -55,8 +55,12 @@ if ($IsolationRoot) {
         'ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-024','ACC-025','ACC-026','ACC-027',
-        'ACC-004','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035')) {
+        'ACC-004','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035','ACC-036')) {
         throw "case $Case has not passed the isolated handler safety audit"
+    }
+    if ($Case -eq 'ACC-036' -and ($PrivatePort -ge 65535 -or
+        @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq ($PrivatePort + 1) }).Count -gt 0)) {
+        throw 'isolated ACC-036 requires a free adjacent private secondary port'
     }
     $expectedScriptDir = Join-Path $rootPath 'repo\tests\debug'
     if (-not ([IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') -ieq [IO.Path]::GetFullPath($expectedScriptDir).TrimEnd('\'))) {
@@ -3966,6 +3970,7 @@ function Run-ACC023 {
 # ---------------------------------------------------------------- case: ACC-036 ----
 function Run-ACC036 {
     $m = $script:Manifest
+    $secondaryPort = $script:PrivatePort + 1
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
 
     # [1] The committed snapshot round-trips as the 11-field canonical JSON (sorted keys).
@@ -3987,7 +3992,7 @@ function Run-ACC036 {
 
     # [3] Canonical restore returns the server (fail-closed is reversible by committing
     # a valid snapshot — no legacy/migration shortcuts).
-    $good = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+    $good = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $good
     $up = Start-DnSpyAndWait
@@ -4015,13 +4020,13 @@ function Run-ACC036 {
     $bn = $bx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
     $bRoot = Join-Path $m.env.artifact_root ('instance-b-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $bRoot | Out-Null
-    $bJson = New-SnapshotJson $true $true 'localhost' 15379 $m.env.sample_root $bRoot
+    $bJson = New-SnapshotJson $true $true 'localhost' $secondaryPort $m.env.sample_root $bRoot
     $bn.SetAttribute('SettingsSnapshotJson', $bJson)
     $bn.RemoveAttribute('SettingsPendingJson')
     $bx.Save($settingsB)
     $bp = Start-Process -FilePath $m.env.dnspy_exe -WorkingDirectory (Split-Path $m.env.dnspy_exe) -ArgumentList @('--multiple','--settings-file',$settingsB) -PassThru
     $bpIdentity = Register-StartedDebugProcess $bp $m.env.dnspy_exe 'dnspy-secondary'
-    $bUrl = 'http://localhost:15379/'
+    $bUrl = "http://localhost:$secondaryPort/"
     $deadlineB = (Get-Date).AddSeconds(45); $bUp = $false
     while ((Get-Date) -lt $deadlineB -and -not $bUp) { Start-Sleep -Milliseconds 700; $bUp = (Get-HealthCode $bUrl) -eq 200 }
     $aBefore = Get-HealthCode $script:BaseUrl
