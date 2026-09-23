@@ -7,6 +7,64 @@ using dnlib.DotNet;
 using dnSpy.Extension.MCP.Editing;
 
 internal static class StructuralCommitGuardProbe {
+	public static void RunCreatedMethodParameter(string fixture) {
+		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
+		using var catalog = new EditSchemaCatalog();
+		using var store = new InMemoryEditCheckpointStore(Path.Combine(Path.GetTempPath(), "p03-created-parameter-" + Guid.NewGuid().ToString("N")));
+		using var history = new EditHistoryModule(store, catalog.CheckpointPackage);
+		using var live = ModuleDefMD.Load(Path.GetFullPath(fixture));
+		using var workspace = EditWorkspace.CreateForTesting(live);
+		var owner = live.GetTypes().Single(t => t.FullName == "P02Fixture.Program");
+		var ownerToken = "0x" + owner.MDToken.Raw.ToString("x8");
+		var beforeFingerprint = EditFingerprint.Compute(live);
+		var methodAdd = JsonSerializer.Serialize(new {
+			kind = "method_add", owner_type = new { token = ownerToken }, name = "T064CreatedParameter",
+			signature = new { return_type = "System.Void", has_this = false, parameters = Array.Empty<object>(), generic_parameters = Array.Empty<object>() },
+			body = new { init_locals = false, max_stack = 0, instructions = new[] { new { opcode = "ret" } },
+				locals = Array.Empty<object>(), exception_handlers = Array.Empty<object>() },
+		}, EditWire.JsonOptions);
+		var parameterAdd = "{\"kind\":\"parameter_add\",\"owner_method\":{\"object_id\":\"obj-000-00\"},\"parameter_index\":0,\"name\":\"createdArg\",\"parameter_type\":\"System.String\"}";
+		var operations = new[] { methodAdd, parameterAdd };
+		for (var index = 0; index < operations.Length; index++) {
+			using var json = JsonDocument.Parse(operations[index]);
+			EditOperationRegistry.Apply(workspace.PrivateModule, json.RootElement, workspace.ObjectIds, index);
+			workspace.NormalizedOperations.Add(operations[index]);
+		}
+		var bound = history.ResolveBegin(workspace, null);
+		var prepared = history.PrepareCommit(workspace, bound, workspace.NormalizedOperations,
+			"review-created-parameter", 1, Array.Empty<string>());
+		var liveMap = new Dictionary<string, IMDTokenProvider>();
+		for (var index = 0; index < operations.Length; index++) {
+			using var json = JsonDocument.Parse(operations[index]);
+			EditOperationRegistry.ApplyPersisted(live, json.RootElement, liveMap, index);
+		}
+		history.Finalize(prepared, live);
+		MethodDef? Added() => owner.Methods.SingleOrDefault(m => m.Name == "T064CreatedParameter");
+		Check(Added() is { } added && added.MethodSig.Params.Count == 1
+			&& added.MethodSig.Params[0].FullName == "System.String" && added.ParamDefs.Single().Name == "createdArg",
+			"created method object_id parameter commits on the intended owner");
+		var afterFingerprint = EditFingerprint.Compute(live);
+		var lineageId = prepared.Lineage.Manifest.LineageId;
+		var headId = prepared.PostHeadCheckpointId;
+		using var reopened = new EditHistoryModule(store, catalog.CheckpointPackage);
+		var lineage = reopened.Load(lineageId);
+		var rootId = lineage.Manifest.Checkpoints.Single(x => x.ParentCheckpointId == null).CheckpointId;
+		var undoWrite = reopened.PrepareHeadMove(lineageId, headId, rootId, "undo");
+		reopened.PlanNavigation(lineage, headId, rootId).Apply(live);
+		reopened.Finalize(undoWrite, live);
+		Check(Added() == null && EditFingerprint.Compute(live) == beforeFingerprint
+			&& reopened.Load(lineageId).Manifest.HeadCheckpointId == rootId,
+			"created method and parameter undo removes only the new graph");
+		var redoWrite = reopened.PrepareHeadMove(lineageId, rootId, headId, "redo");
+		reopened.PlanNavigation(reopened.Load(lineageId), rootId, headId).Apply(live);
+		reopened.Finalize(redoWrite, live);
+		Check(Added() is { } restored && restored.MethodSig.Params.Count == 1
+			&& restored.MethodSig.Params[0].FullName == "System.String" && restored.ParamDefs.Single().Sequence == 1
+			&& restored.ParamDefs.Single().Name == "createdArg" && EditFingerprint.Compute(live) == afterFingerprint
+			&& reopened.Load(lineageId).Manifest.HeadCheckpointId == headId,
+			"created method object_id parameter redo preserves owner and full checkpoint identity");
+	}
+
 	public static void RunParameterAdd(string fixture) {
 		Environment.SetEnvironmentVariable("DNMCP_TEST", "1");
 		using var catalog = new EditSchemaCatalog();

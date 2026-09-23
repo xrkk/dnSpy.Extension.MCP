@@ -383,12 +383,14 @@ internal static partial class EditOperationRegistry {
 			if (debug.Count != 0) inverse["custom_debug_infos"] = debug;
 			break;
 		}
-		case "parameter_add":
+		case "parameter_add": {
+			var owner = Ref<MethodDef>(before, forward.GetProperty("owner_method"), objects);
 			return new() { ["kind"] = "parameter_remove", ["remove_mode"] = "reject_if_referenced",
 				["parameter_target"] = new Dictionary<string, object?> {
-					["owner_method"] = forward.GetProperty("owner_method").Clone(),
+					["owner_method"] = InverseReference(before, owner, objects),
 					["parameter_index"] = forward.GetProperty("parameter_index").GetInt32(),
 				} };
+		}
 		case "parameter_remove": {
 			var value = ResolveParameter(before, forward.GetProperty("parameter_target"), objects);
 			return new() { ["parameter_tail_restore"] = new Dictionary<string, object?> {
