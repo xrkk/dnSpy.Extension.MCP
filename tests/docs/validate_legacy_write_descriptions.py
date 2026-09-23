@@ -85,6 +85,12 @@ assert appendix_match, "single-file static input appendix absent"
 appendix = json.loads(appendix_match.group(1))
 assert appendix["save_assembly"]["properties"]["output_path"]["description"] == output_path
 assert appendix["save_assembly"]["properties"]["assembly_name"]["description"] == "Name of the loaded assembly whose exact checkpoint is to be exported"
+baseline = json.loads((ROOT / "tests/snapshots/static-tools.baseline.json").read_text(encoding="utf-8"))
+baseline_by_name = {tool["name"]: tool for tool in baseline}
+assert len(baseline) == 32 and len(baseline_by_name) == 32
+for name in NAMES:
+    assert baseline_by_name[name]["description"] == descriptions[name], name
+    assert baseline_by_name[name]["inputSchema"] == appendix[name], name
 source_sha = hashlib.sha256((ROOT / "McpTools.cs").read_bytes()).hexdigest()
 assert f"`McpTools.cs` SHA256 `{source_sha}`" in reference
 for name in NAMES:
@@ -115,6 +121,7 @@ if args.wire_evidence:
         assert "outputSchema" not in wire[name], name
 
 print(json.dumps({"status": "PASS", "registry_tools": len(descriptions),
+                  "static_snapshot_compared": True,
                   "manual_appendix_output_path": "matches source", "source_sha256": source_sha,
                   "negative_mutations_rejected": 2, "other_documents_checked": 5,
                   "wire_registry_compared": bool(args.wire_evidence)}))
