@@ -70,12 +70,12 @@ not establish net10 dynamic-debugging support.
 #### IL & metadata viewing/editing
 
 1. **get_method_il** — instructions (index, offset, opcode, operand) + locals + exception handlers + body flags
-2. **patch_method_il** — ordered `replace` / `insert` / `delete` / `set_init_locals` edits; snapshot-on-first-patch
+2. **patch_method_il** — ordered `replace` / `insert` / `delete` / `set_init_locals` edits; commits through the structured transaction and checkpoint history
 3. **force_return** — replace a body with `return <value>` (true/false, a number, null, or `default`) without hand-writing IL — the common "make `IsPremium()` return true" patch. Void methods become a no-op
 4. **nop_method** — empty a method out (void → bare `ret`; value-returning → return default). For neutralizing a tick/telemetry/anti-cheat call
-5. **revert_method_il** — restore the pre-patch body shape (also undoes force_return / nop_method)
+5. **revert_method_il** — one constrained checkpoint Undo, only while the requested method's compatible IL edit is the current history head (also applies to force_return / nop_method)
 6. **rename_symbol_by_token** — unified metadata rename entry point. `target_kind` selects `type` / `class` / `enum` / `interface` / `struct` / `delegate`, `method`, `field`, `enum_member`, `enum_members`, `property`, `event`, `parameter`, or `generic_parameter`. Singular targets use `new_name`; `enum_members` uses the complete value-mapped `members` array. Matching same-module references and open decompiler tabs are refreshed where applicable
-7. **save_assembly** — write the module to disk (timestamped backup on overwrite, `NativeWrite` preserves native stubs / Win32 resources / delay-loaded imports, GAC refused)
+7. **save_assembly** — export an exact checkpoint below ArtifactRoot; the source file is never overwritten or backed up in place
 
 #### Transactional structured editing (18 advertised tools + 8 unadvertised test seams)
 
@@ -206,20 +206,20 @@ curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne",
       "edits":[{"op":"replace","index":1,"opcode":"ldc.i4","operand":"int:41"}]}}}'
 
-# 4. Save. Original file is backed up to <path>.<yyyyMMdd-HHmmss>.bak first.
+# 4. Export the exact checkpoint below ArtifactRoot. The original is unchanged.
 curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"save_assembly",
     "arguments":{"assembly_name":"TestIL"}}}'
 ```
 
-Reload the saved DLL in a fresh process and `AddOne(10)` returns **`51`** instead of **`11`**.
+Use the `saved_to` path returned by `save_assembly` for a separate validation load; for this example, `AddOne(10)` in the exported DLL returns **`51`** instead of **`11`**.
 
 ### Caveats
 
-- **No Ctrl+Z.** `patch_method_il` does not route through dnSpy's undo stack. Use `revert_method_il` — the snapshot is taken the first time a given method is patched, and dropped after revert or after a successful save.
-- **dnSpy's in-memory view is not refreshed after save.** Reopen the assembly in dnSpy to see the saved state in the running instance.
-- **GAC paths are refused.** Saving `mscorlib` etc. returns a `-32602` error.
+- **History, not a separate snapshot.** Each compatible legacy edit commits a checkpoint. `revert_method_il` only Undoes the matching current-head IL edit; use `edit_history` and `edit_undo` for other checkpoint navigation. A missing compatible head returns `EDIT_HISTORY_CONFLICT` with state and recovery guidance.
+- **Export is not an in-place save.** `save_assembly` uses the exact-checkpoint export gate and confines output to ArtifactRoot; `saved_to` names the output. It does not overwrite the source or create a source `.bak` file. The live in-memory module was changed by the edit commit, not by export.
+- **Unsupported targets remain guarded.** Legacy edits require a compatible loaded module and an idle edit/debug state; an arbitrary path or GAC assembly is not an overwrite target.
 - **Instruction-level only.** Adding / removing locals or exception handlers is out of scope; `get_method_il` exposes them read-only.
 
 ## Installation
@@ -580,7 +580,7 @@ git push origin v1.0.0
 - **Dependencies**: `dnSpy.Contracts.DnSpy`, `dnSpy.Contracts.Logic`, `dnlib`, `System.Text.Json` (package on `net48`, in-box on `net10.0-windows`).
 - **BFS path finding**: `find_path_to_type` does breadth-first search over each type's fields and properties.
 - **Decompilation**: uses dnSpy's default decompiler (usually C#) via `IDecompilerService`.
-- **IL writing**: `save_assembly` calls `((ModuleDefMD)module).NativeWrite(path, NativeModuleWriterOptions)` for modules loaded from disk (preserves native stubs, Win32 resources, delay-loaded imports, mixed-mode code) and `module.Write(path, ModuleWriterOptions)` for freshly constructed modules. Memory-mapped I/O is disabled via `peImage as dnlib.PE.IInternalPEImage` before the write — the internal `IMmapDisabler` in `dnSpy.AsmEditor` is inlined to avoid depending on AsmEditor.
+- **IL writing**: the six legacy write tools use `LegacyEditAdapter` and `EditTransactionCoordinator`. Mutations review and commit a private edit with checkpoint history; `save_assembly` replays and validates an exact checkpoint before an atomic ArtifactRoot output. The original sample is never a write target.
 - **Cross-method references** in `patch_method_il` operands (`method:`, `field:`, `type:`) are resolved by walking every loaded module for a `FullName` match and then imported into the destination module via `new Importer(module, ImporterOptions.TryToUseDefs)`.
 
 ## Troubleshooting

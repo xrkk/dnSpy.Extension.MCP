@@ -1,6 +1,6 @@
 # dnSpy MCP：AI 单文件工具与接口手册
 
-接口结构基线：`fca80b399a98446a551202b34163e8db88d3c39a`（2026-09-23，`feature/p01-public-contract-vm-gate`）；以下状态说明更新至异常修复提交 `03f84607bf67a77fa9bb8850edb85143abc93a31`。**静态规格不是实机验收证明**。运行中以当前 `tools/list` 为可通告事实，冷门条件分支与错误仍须按实际响应处理。
+接口结构沿用 2026-09-23 `feature/p01-public-contract-vm-gate` 当前版本；六旧写工具的注册描述和 `save_assembly.output_path` 参数说明已同步检查点/安全导出行为。**静态规格不是实机验收证明**。运行中以当前 `tools/list` 为可通告事实，冷门条件分支与错误仍须按实际响应处理。
 
 本文独立给出工具选择、参数/结果、状态关联和冻结结构，英文代码字段保持原样。文末附源 schema 的自包含 JSON：编辑工具完整 `inputSchema`/`outputSchema` 与全部 39 种操作；调试 `$defs` 与 `$ref` 均在同一文件内；静态工具的 `inputSchema` 亦在此。表格是快速入口，附录是精确嵌套语法，不必另开源码。
 
@@ -11,7 +11,7 @@
 - 服务由 dnSpy 扩展进程提供，典型 Streamable HTTP 端点 `http://127.0.0.1:<实际端口>/mcp`；旧版 HTTP+SSE 也受支持。实际端口看 dnSpy 选项/监听快照，不能把默认值当已绑定端口。远程模式需按实例配置的令牌/CIDR/隔离要求访问。支持协议 `2025-06-18`、`2025-03-26`、`2024-11-05`，不支持的版本协商到最新。
 - 先发送 JSON-RPC `initialize`，读取响应头 `Mcp-Session-Id` 并在后续 Streamable HTTP 请求中携带；随后 `notifications/initialized`，再 `tools/list`。旧 SSE 流在 `/sse` 建立、消息送其 endpoint；无会话的 plain POST 只属兼容路径，不可据此取得编辑事务所有权。
 - `tools/list` 的工具对象包含 `name`、`description`、`inputSchema`；只有协商 `2025-06-18` 才带可用的 `outputSchema`。`tools/call` 参数为 `{"name":"工具名","arguments":{...}}`。顶层 JSON-RPC 错误 `-32602` 为无效参数、`-32603` 为内部异常；未知工具是 `isError:true` 的文本内容。
-- 工具响应外层为 `result:{content:[{type:"text",text:"..."}],isError?:boolean,structuredContent?:object}`。在 `2025-06-18` 下若首个文本为合法 JSON，`structuredContent` 与之同值；旧协议省略。静态读工具多是直接 JSON 投影而非 `schema_version` 信封；静态工具没有统一错误码，异常变成 `Error executing tool ...` 文本。调试工具内部是 `dnspy.debug.v1` 成功/失败信封，编辑工具内部是 `dnspy.edit.v1`；`isError` 对应域失败。
+- 工具响应外层为 `result:{content:[{type:"text",text:"..."}],isError?:boolean,structuredContent?:object}`。在 `2025-06-18` 下若首个文本为合法 JSON，`structuredContent` 与之同值；旧协议省略。静态读工具多是直接 JSON 投影而非 `schema_version` 信封；其通用异常仍可能是 `Error executing tool ...` 文本。六旧写工具的编辑域拒绝经适配器返回 `dnspy.edit.v1` 错误信封（code/state/recovery），不能把它们一概按普通静态文本错误解析。调试工具内部是 `dnspy.debug.v1` 成功/失败信封，编辑工具内部是 `dnspy.edit.v1`；`isError` 对应域失败。
 - `resources/list` 另返回 `{resources:[{uri,name,description,mimeType}]}`；`resources/read` 输入 `{uri}` 返回 `{contents:[{uri,mimeType:"text/markdown",text}]}`，未知 URI 是 `-32602`。`resources/templates/list` 当前返回空模板页。资源是文档，不计为 tools/list 工具。
 - 资源 URI 固定为 `dnspy://docs/{index,overview,static-analysis,il-editing,dynamic-debugging,security,python-client,tool-workflows}` 与 `bepinex://docs/{plugin-structure,harmony-patching,configuration,common-scenarios,il2cpp-guide,mono-vs-il2cpp}` 共 14 个；`resources/read` 要传完整具体 URI，不能传上述花括号缩写。初始化返回的 `instructions` 是嵌入说明，不是额外工具；若其阶段性文字与当前实际 provider 能力冲突，以本基线源码和 live `tools/list` 为准。
 - 静态加载/反编译只解析 .NET 元数据和 IL，不执行目标程序集；`debug_launch` 与调试控制才跨入目标执行门。调试工具受冻结的专用实例确认、启动时调试器空闲采样、设置/执行环境门控制；`debug_capabilities` 常通告，其余会话工具只在门生效且 handler 存在时通告。`debug_attach`/`debug_detach`/`debug_list_attachable_processes` 固定不通告且调用返回 `CAPABILITY_UNAVAILABLE`。编辑工具的事务/编译有各自可用性、所有权和容量约束。
@@ -585,7 +585,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 
 ### revert_method_il
 
-仅对当前兼容检查点执行受限 Undo，不跨越其他历史 head；返回当前 IL 投影。
+仅对当前兼容检查点执行受限 Undo，不跨越其他历史 head；返回当前 IL 投影。无匹配历史头时为 `EDIT_HISTORY_CONFLICT` 信封，而非旧快照的 `-32602`。
 
 `{"name":"revert_method_il","arguments":{"assembly_name":"sample_assembly_name","type_full_name":"sample_type_full_name","method_name":"sample_method_name"}}`
 
@@ -617,7 +617,7 @@ Return the IL body of a method: instructions (index, offset, opcode, operand), l
 
 ### save_assembly
 
-从当前精确检查点导出到 ArtifactRoot，不覆盖源样本、也不创建原地备份。
+从当前精确检查点导出到 ArtifactRoot，不覆盖源样本、也不创建原地备份；`output_path` 可指定该根内目标，省略时由服务端选取路径。
 
 `{"name":"save_assembly","arguments":{"assembly_name":"sample_assembly_name"}}`
 
@@ -2431,11 +2431,11 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
     "properties": {
       "assembly_name": {
         "type": "string",
-        "description": "Name of the assembly to save"
+        "description": "Name of the loaded assembly whose exact checkpoint is to be exported"
       },
       "output_path": {
         "type": "string",
-        "description": "Optional. Target file path. If absent, overwrite original with a timestamped backup."
+        "description": "Optional output path below ArtifactRoot; omit to use the server-selected ArtifactRoot path. The source sample cannot be overwritten."
       }
     },
     "required": [
@@ -2447,7 +2447,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ## 附录 A2：静态工具成功返回结构（源码推导）
 
-以下 32 项是执行实现推导的成功文本投影，**不是** provider 声明的 outputSchema；唯一正式声明的是 `list_assemblies.outputSchema`，此处原样嵌入。表内 `required` 表示该成功分支构造时必有，未列入的字段只在所述条件出现；`null` 是实际 JSON null。`items` 的 `oneOf` 由 `names_only` 选择，`get_type_info.Methods` 的 `oneOf` 由 `compact` 选择；`get_type_info` 的 Fields/Properties/Events 仅无 cursor 的首请求出现。`nextCursor` 只在仍有下一页时出现；`get_assembly_info` 的 Namespaces 同理分页。`find_path_to_type` 无路径时是普通文本；五个反编译/生成工具直接返回文本。六个旧写工具通过编辑协调器：`checkpoint`/`history`/`confirmed_risks` 嵌套结构沿用冻结 `edit_commit` 输出定义，`revert_method_il.history` 沿用 `edit_undo` 输出定义；若事务分支没有某字段则该字段不出现。`rename_symbol_by_token` 普通分支仅出现 `updated_type_references` 或 `updated_member_references` 之一；`enum_members` 分支使用独立成员数组。错误没有统一冻结输出 schema：参数缺失、目标不存在、歧义、无 IL body、分页 cursor 无效等由执行实现抛出并映射成 `isError:true` 文本；不要将成功结构用于解析错误。`get_type_info.Fields[].Constant` 是源元数据值，可能是不同 JSON 基元；`search_constants.items[].value` 为数字。
+以下 32 项是执行实现推导的成功文本投影，**不是** provider 声明的 outputSchema；唯一正式声明的是 `list_assemblies.outputSchema`，此处原样嵌入。表内 `required` 表示该成功分支构造时必有，未列入的字段只在所述条件出现；`null` 是实际 JSON null。`items` 的 `oneOf` 由 `names_only` 选择，`get_type_info.Methods` 的 `oneOf` 由 `compact` 选择；`get_type_info` 的 Fields/Properties/Events 仅无 cursor 的首请求出现。`nextCursor` 只在仍有下一页时出现；`get_assembly_info` 的 Namespaces 同理分页。`find_path_to_type` 无路径时是普通文本；五个反编译/生成工具直接返回文本。六个旧写工具通过编辑协调器：`checkpoint`/`history`/`confirmed_risks` 嵌套结构沿用冻结 `edit_commit` 输出定义，`revert_method_il.history` 沿用 `edit_undo` 输出定义；若事务分支没有某字段则该字段不出现。`rename_symbol_by_token` 普通分支仅出现 `updated_type_references` 或 `updated_member_references` 之一；`enum_members` 分支使用独立成员数组。旧写工具的编辑域拒绝（如历史冲突、事务占用、导出受阻）是 `dnspy.edit.v1` 结构化错误，含 code/state/recovery；普通静态参数缺失、目标不存在、歧义、无 IL body、分页 cursor 无效等仍可能映射成 `isError:true` 文本。两者均无统一冻结的静态输出 schema，不要将成功结构用于解析错误。`get_type_info.Fields[].Constant` 是源元数据值，可能是不同 JSON 基元；`search_constants.items[].value` 为数字。
 
 ```json
 {
@@ -18039,7 +18039,7 @@ JSON Pointer 指向附录 B 中的定义；`direction` 区分入站、出站与�
 
 ## 来源与边界
 
-- `McpTools.cs` SHA256 `c5c540240b154d798c631fa16f87974f3f91edf62120d1a8e77ae6ecbf425427`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
+- `McpTools.cs` SHA256 `ce680df3f15f30847349cac1d7ed11baffcd5f5f2126b900f2ad21ed88f8841b`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
 - `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `e6033fe86785a99f978545198f4525381a9caa073b3fa1c6ee7e3d92bc43d822`；`Editing/EditToolProvider.cs` SHA256 `45c956b3da385c46e5d938a46ba630dfa74a309ed670d8e8537147280740db24`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
 - `tests/debug/contracts/dnspy.debug.utf8-limits.json` SHA256 `bf8741dd5054cbff6cbf23a429adeec533ab0b6e84689655763062621ee04b7f`；`McpServer.cs` SHA256 `cdde4fcd3408febe53c6d32a60d369a66eb1eb7ca2ac9481589abd5581358261`。
 - 这是源码接口手册，不是 VM 功能验收报告。运行时条件、实例配置、文件身份和目标架构须以 `debug_capabilities`、`tools/list`、调用返回和实际环境核对。

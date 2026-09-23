@@ -871,7 +871,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "patch_method_il",
-                    Description = "Apply an ordered list of IL edits to a method body in memory. Ops: {op:\"replace\",index,opcode,operand}, {op:\"insert\",index,opcode,operand} (insert BEFORE index), {op:\"delete\",index}, {op:\"set_init_locals\",value:bool}. Indices in later ops refer to the state BEFORE the whole batch. Operand grammar matches get_method_il output. Set optimize_macros=true to auto-shorten after edits. Changes are NOT written to disk — call save_assembly to persist. First patch to a method is snapshotted so revert_method_il can restore it.",
+                    Description = "Apply an ordered list of IL edits through one structured edit transaction and commit a checkpoint on the live module. Ops: {op:\"replace\",index,opcode,operand}, {op:\"insert\",index,opcode,operand} (insert BEFORE index), {op:\"delete\",index}, {op:\"set_init_locals\",value:bool}. Indices in later ops refer to the state BEFORE the whole batch. Operand grammar matches get_method_il output. Set optimize_macros=true to auto-shorten after edits. The source file is not overwritten; use save_assembly to export an exact checkpoint below ArtifactRoot. revert_method_il can Undo only when this method's compatible IL edit is the current history head.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -938,7 +938,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "force_return",
-                    Description = "Patch a method so it immediately returns a given value — the high-level alternative to hand-assembling IL with patch_method_il for the most common game-patching move (e.g. make IsPremium() return true, or a damage check return 0). Replaces the whole body with 'load value; ret'. 'value' accepts: true/false, a number, null, or 'default' (zero/null/empty-struct for the return type); omit it for default. Void methods are turned into a no-op (an immediate ret) — passing a value then is an error (use nop_method). Reference-return methods only accept null/default; structs only accept default. Shares the snapshot mechanism with patch_method_il: revert_method_il undoes it and save_assembly persists it. Disambiguate overloads with parameter_types / method_token.",
+                    Description = "Replace a method body with 'load value; ret' through one structured edit transaction and commit a checkpoint on the live module. 'value' accepts true/false, a number, null, or 'default' (zero/null/empty-struct for the return type); omit it for default. Void methods become an immediate ret; passing a value then is an error (use nop_method). Reference-return methods accept only null/default; structs only default. revert_method_il can Undo only when this method's compatible IL edit is the current history head. save_assembly exports an exact checkpoint below ArtifactRoot without overwriting the source. Disambiguate overloads with parameter_types / method_token.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -972,7 +972,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "nop_method",
-                    Description = "Empty out a method so it does nothing: a void method becomes a single 'ret'; a value-returning method returns its default (zero/null/empty-struct). Equivalent to force_return with value='default'. Use it to neutralize a method (e.g. disable an anti-cheat tick or a telemetry call). Shares the snapshot mechanism with patch_method_il — revert_method_il undoes it, save_assembly persists it. Disambiguate overloads with parameter_types / method_token.",
+                    Description = "Empty a method through one structured edit transaction and commit a checkpoint on the live module: void becomes a single 'ret'; a value-returning method returns its default (zero/null/empty-struct). Equivalent to force_return with value='default'. revert_method_il can Undo only when this method's compatible IL edit is the current history head. save_assembly exports an exact checkpoint below ArtifactRoot without overwriting the source. Disambiguate overloads with parameter_types / method_token.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -1003,7 +1003,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "revert_method_il",
-                    Description = "Restore the method body that was captured on first patch_method_il. Fails with -32602 if no pending snapshot exists for the method.",
+                    Description = "Perform one constrained checkpoint Undo when the current history head is a compatible patch_method_il, force_return, or nop_method edit of this exact method. Never crosses another history head or uses a separate snapshot. If no compatible head exists, returns EDIT_HISTORY_CONFLICT with state and recovery advice; an active edit transaction is rejected.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -1021,7 +1021,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "rename_symbol_by_token",
-                    Description = "Unified metadata rename tool. target_kind selects type/class/enum/interface/struct/delegate, method, field, enum_member, enum_members, property, event, parameter, or generic_parameter. token is the matching metadata token copied from dnSpy (decimal uint or 0x hex); assembly_name is recommended for module disambiguation. Singular targets require new_name; enum_members requires a complete value-mapped members array. Matching same-module TypeRef/MemberRef rows and open decompiler tabs are refreshed where applicable. Call save_assembly afterwards to persist changes. Two caveats: there is no revert for renames (unlike revert_method_il) — rename back to the old name to undo; and only references inside the target's own module are rewritten, so other loaded assemblies that reference the old name will no longer bind once this one is saved.",
+                    Description = "Rename metadata through one structured edit transaction and commit a checkpoint. target_kind selects type/class/enum/interface/struct/delegate, method, field, enum_member, enum_members, property, event, parameter, or generic_parameter. token is the matching metadata token copied from dnSpy (decimal uint or 0x hex); assembly_name is recommended for module disambiguation. Singular targets require new_name; enum_members requires a complete value-mapped members array. Matching same-module TypeRef/MemberRef rows and open decompiler tabs are refreshed where applicable. Use edit_history/edit_undo for checkpoint navigation; revert_method_il is only for a current-head IL edit. save_assembly exports below ArtifactRoot without overwriting the source. References in other loaded assemblies are not rewritten.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -1066,17 +1066,17 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "save_assembly",
-                    Description = "Write the (possibly patched) module of an assembly back to disk. When output_path is omitted, the original file is overwritten after a timestamped backup (<path>.<yyyyMMdd-HHmmss>.bak) is created. GAC paths are refused. Memory-mapped I/O is disabled before writing so the live dnSpy process releases the file. Note: dnSpy's in-memory tree is NOT refreshed — reopen the assembly to see the saved state inside this instance.",
+                    Description = "Export the assembly's current exact checkpoint to a file below ArtifactRoot; an unchanged source with no history first gains one baseline checkpoint. If output_path is omitted, the server selects a path under ArtifactRoot. An explicit ArtifactRoot output may replace an existing output, but never the source sample; no in-place source backup is created. Export is blocked while an edit transaction or incompatible debug state is active and when checkpoint replay is not exact.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
                             ["assembly_name"] = new Dictionary<string, object> {
                                 ["type"] = "string",
-                                ["description"] = "Name of the assembly to save"
+                                ["description"] = "Name of the loaded assembly whose exact checkpoint is to be exported"
                             },
                             ["output_path"] = new Dictionary<string, object> {
                                 ["type"] = "string",
-                                ["description"] = "Optional. Target file path. If absent, overwrite original with a timestamped backup."
+                                ["description"] = "Optional output path below ArtifactRoot; omit to use the server-selected ArtifactRoot path. The source sample cannot be overwritten."
                             }
                         },
                         ["required"] = new List<string> { "assembly_name" }

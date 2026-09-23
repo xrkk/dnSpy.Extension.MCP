@@ -12,15 +12,18 @@ the target module, method token and output path before calling them.
 5. Use `revert_method_il` if validation fails.
 6. Call `save_assembly` only after the destination is explicit and approved.
 
-`patch_method_il` supports ordered replace/insert/delete/init-locals edits and snapshots the original
-body on the first mutation. `force_return` and `nop_method` are higher-level helpers using the same
-rollback model. `revert_method_il` is session-local and is not dnSpy Ctrl+Z.
+`patch_method_il` supports ordered replace/insert/delete/init-locals edits. Like `force_return` and
+`nop_method`, each call uses the structured edit transaction and commits a checkpoint. There is no
+separate first-patch snapshot. `revert_method_il` performs one constrained checkpoint Undo only when
+the requested method's compatible IL edit is the current history head; otherwise it returns
+`EDIT_HISTORY_CONFLICT` with state and recovery advice. Use `edit_history` for other navigation.
 
 `rename_symbol_by_token` renames types, methods, fields, enum members, properties, events, parameters
 and generic parameters and updates applicable references in the current module.
 
-When saving over the source path, the server first creates a timestamped `.bak`. Saving to another
-path does not modify the original and returns no backup path. GAC targets are rejected. No static
+`save_assembly` exports the current exact checkpoint to a path below ArtifactRoot. An omitted
+`output_path` selects a server path there; an explicit path outside that root or pointing at the
+source is rejected. The source is never overwritten and no in-place backup is created. No static
 write tool (`patch_method_il`, `force_return`, `nop_method`, `revert_method_il`,
 `rename_symbol_by_token`, `save_assembly`) may run while dynamic debugging is active.
 

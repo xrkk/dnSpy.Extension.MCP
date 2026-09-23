@@ -69,12 +69,12 @@ net10 动态调试通过。
 #### IL 与元数据查看/编辑
 
 1. **get_method_il** — 方法 IL 指令（index、offset、opcode、operand）+ 局部变量 + 异常处理块 + 方法体标志
-2. **patch_method_il** — 按序执行 `replace` / `insert` / `delete` / `set_init_locals` 编辑；首次补丁会自动快照
+2. **patch_method_il** — 按序执行 `replace` / `insert` / `delete` / `set_init_locals` 编辑，并通过结构化事务提交检查点
 3. **force_return** — 不用手写 IL，直接把方法体改成 `return <值>`（true/false、数字、null 或 `default`）——最常见的"让 `IsPremium()` 返回 true"补丁。void 方法会变成空操作
 4. **nop_method** — 清空方法（void → 单个 `ret`；有返回值 → 返回默认值）。用于让某个 tick/遥测/反作弊调用失效
-5. **revert_method_il** — 回滚到补丁前的方法体（force_return / nop_method 也能回滚）
+5. **revert_method_il** — 仅当请求方法的兼容 IL 编辑是当前历史头时执行一次受限检查点 Undo（也适用于 force_return / nop_method）
 6. **rename_symbol_by_token** — 统一的元数据重命名入口。用 `target_kind` 选择 `type` / `class` / `enum` / `interface` / `struct` / `delegate`、`method`、`field`、`enum_member`、`enum_members`、`property`、`event`、`parameter` 或 `generic_parameter`。单个符号传 `new_name`；批量枚举成员传完整的按值映射 `members`。适用时会同步当前模块引用并刷新已打开的反编译标签页
-7. **save_assembly** — 将模块写回磁盘（覆盖原文件时会自动生成带时间戳的备份，`NativeWrite` 保留本机 stub / Win32 资源 / 延迟加载导入，GAC 路径被拒绝）
+7. **save_assembly** — 将精确检查点导出到 ArtifactRoot 下，不覆盖源文件，也不在源目录生成备份
 
 #### 事务式结构化编辑（通告 18 个工具 + 9 个不通告的测试面）
 
@@ -195,20 +195,20 @@ curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '
     "arguments":{"assembly_name":"TestIL","type_full_name":"TestIL.Simple","method_name":"AddOne",
       "edits":[{"op":"replace","index":1,"opcode":"ldc.i4","operand":"int:41"}]}}}'
 
-# 4. 保存。覆盖原文件前会先生成 <path>.<yyyyMMdd-HHmmss>.bak 备份
+# 4. 将精确检查点导出到 ArtifactRoot 下，源文件不变
 curl -s -X POST http://localhost:15378/ -H "Content-Type: application/json" -d '{
   "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
     "name":"save_assembly",
     "arguments":{"assembly_name":"TestIL"}}}'
 ```
 
-重新加载保存后的 DLL，`AddOne(10)` 将返回 **`51`**，而不是原本的 **`11`**。
+使用 `save_assembly` 返回的 `saved_to` 路径另行加载导出 DLL；本示例中的 `AddOne(10)` 将返回 **`51`**，而不是原本的 **`11`**。
 
 ### 注意事项
 
-- **没有 Ctrl+Z**。`patch_method_il` 不走 dnSpy 的撤销栈，想回退请用 `revert_method_il` — 每个方法在第一次被补丁时自动建立快照，revert 后或一次成功 save 后快照会被清理。
-- **保存后 dnSpy 的内存视图不会自动刷新**。要在当前 dnSpy 窗口里看到落盘后的状态，需要重新打开该程序集。
-- **GAC 路径会被拒绝**。保存 `mscorlib` 等 GAC 程序集会返回 `-32602` 错误。
+- **使用检查点历史而非独立快照**。每次兼容旧编辑提交检查点；`revert_method_il` 只能撤销当前历史头的匹配 IL 编辑，其他导航用 `edit_history` / `edit_undo`。没有兼容历史头时返回带状态和恢复建议的 `EDIT_HISTORY_CONFLICT`。
+- **导出不是原地保存**。`save_assembly` 经过精确检查点导出门，输出只在 ArtifactRoot 下，路径见 `saved_to`；不覆盖源文件，也不生成源文件 `.bak`。实时内存模块由编辑提交改变，导出本身不负责改变它。
+- **不支持目标仍受门禁限制**。旧编辑要求兼容的已加载模块以及空闲的编辑/调试状态；任意路径或 GAC 程序集不是可覆盖目标。
 - **仅限指令层面**。添加/删除局部变量或异常处理块不在当前范围内；`get_method_il` 会以只读形式暴露它们。
 
 ## 安装
@@ -556,7 +556,7 @@ git push origin v1.0.0
 - **依赖**：`dnSpy.Contracts.DnSpy`、`dnSpy.Contracts.Logic`、`dnlib`；`System.Text.Json`（`net48` 通过 NuGet 包，`net10.0-windows` 随 BCL）。
 - **BFS 路径查找**：`find_path_to_type` 对每个类型的字段和属性做广度优先搜索。
 - **反编译**：通过 `IDecompilerService` 使用 dnSpy 默认反编译器（默认 C#）。
-- **IL 写盘**：`save_assembly` 对从磁盘加载的模块调用 `((ModuleDefMD)module).NativeWrite(path, NativeModuleWriterOptions)`（保留本机 stub、Win32 资源、延迟加载导入、混合代码）；对内存里新建的模块调用 `module.Write(path, ModuleWriterOptions)`。落盘前先通过 `peImage as dnlib.PE.IInternalPEImage` 关闭内存映射 I/O — `dnSpy.AsmEditor` 里的 `IMmapDisabler` 是 internal，因此直接内联一行调用，避免把 AsmEditor 作为依赖。
+- **IL 写盘**：六个旧写工具经 `LegacyEditAdapter` 与 `EditTransactionCoordinator`；变更先在私有编辑中审查、提交并写入检查点。`save_assembly` 重放并验证精确检查点，再向 ArtifactRoot 原子输出；源样本不作为写入目标。
 - **跨方法引用解析**：`patch_method_il` 里 `method:` / `field:` / `type:` 操作数的解析方式是遍历所有已加载模块按 `FullName` 精确匹配，再用 `new Importer(module, ImporterOptions.TryToUseDefs)` 导入到目标模块。
 
 ## 故障排查

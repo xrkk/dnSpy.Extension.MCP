@@ -14,6 +14,8 @@
 
 open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 逐工具参数及返回结构见[单文件 AI 工具手册](AI-TOOL-REFERENCE.zh-CN.md)。
 
+末尾六个旧写工具只是通往结构化编辑协调器的兼容入口。修改会提交检查点；`revert_method_il` 只能撤销匹配的当前历史头 IL 编辑，无匹配时返回 `EDIT_HISTORY_CONFLICT`。`save_assembly` 仅在 ArtifactRoot 下导出精确检查点，不覆盖源样本，也不创建原地备份。这些工具不声明静态 outputSchema，但编辑域拒绝仍返回 code/state/recovery。
+
 ## 3. 仅启动式动态调试（生产面 22 个；验收模式 28 个）
 
 debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy。验收模式另通告 `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`。启动是唯一执行门禁：静态工具绝不运行样本代码。
