@@ -52,11 +52,14 @@ if ($IsolationRoot) {
         throw 'isolated case requires an existing unique E:\dnspy-t072-r02-* or E:\dnspy-t072-r03-* root'
     }
     if ($Case -notin @(
-        'ACC-001','ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
+        'ACC-001','ACC-002','ACC-003','ACC-005','ACC-006','ACC-007','ACC-008','ACC-009','ACC-010','ACC-011','ACC-012',
         'ACC-013','ACC-014','ACC-015','ACC-016','ACC-017','ACC-018','ACC-019',
         'ACC-020','ACC-021','ACC-022','ACC-024','ACC-025','ACC-026','ACC-027',
-        'ACC-004','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035','ACC-036')) {
+        'ACC-004','ACC-023','ACC-028','ACC-029','ACC-030','ACC-031','ACC-032','ACC-034','ACC-035','ACC-036')) {
         throw "case $Case has not passed the isolated handler safety audit"
+    }
+    if (@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $PrivatePort }).Count -gt 0) {
+        throw "isolated private port is already listening: $PrivatePort"
     }
     if ($Case -eq 'ACC-036' -and ($PrivatePort -ge 65535 -or
         @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq ($PrivatePort + 1) }).Count -gt 0)) {
@@ -1009,6 +1012,7 @@ function Invoke-ComboSequence {
 }
 function Run-ACC002 {
     $m = $script:Manifest
+    $remotePort = if ($IsolationRoot) { $script:PrivatePort } else { 15100 }
     $orig = $null
     try {
         # snapshot backup
@@ -1016,9 +1020,9 @@ function Run-ACC002 {
         $orig = $d.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']").GetAttribute('SettingsSnapshotJson')
         Save-Text 'settings-backup.json' $orig | Out-Null
 
-        $snapA = New-SnapshotJson $false $false 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
-        $snapB = New-SnapshotJson $true $false 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
-        $snapC = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+        $snapA = New-SnapshotJson $false $false 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
+        $snapB = New-SnapshotJson $true $false 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
+        $snapC = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
 
         $up = Restart-WithSnapshot $snapA
         Assert-Cond 'combo-A-restart' 'health 200 after (false,false) restart' "health=$(Get-HealthCode $script:BaseUrl)" $up
@@ -1097,39 +1101,23 @@ function Run-ACC002 {
         }
         Assert-Cond 'structuredcontent-deepequal' 'structuredContent deep-equals parsed text' "equal=$eq" $eq $evc
 
-        # Remote snapshot: bind 15100 with token/CIDR, read security tuple over auth, then restore.
+        # Remote snapshot: use only the case's private listener; no system-rule mutation.
         $tokenBytes = New-Object byte[] 32
         ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
         $b64 = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
         $shaProv = [Security.Cryptography.SHA256]::Create()
         $verifierHex = ([BitConverter]::ToString($shaProv.ComputeHash($tokenBytes))).Replace('-', '').ToLower()
-        $remoteUrl = "http://$($m.env.vm_ip):15100/"
-        # Remote binding needs a one-time elevated urlacl+firewall provisioning (deploy runbook,
-        # same step ACC-023 prescribes); a non-elevated driver records it as a precondition.
-        $windowsIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-        $windowsPrincipal = New-Object Security.Principal.WindowsPrincipal($windowsIdentity)
-        $elevated = $windowsPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        # Deploy-runbook provisioning (tests/debug/provision-remote.ps1, run once elevated)
-        # makes the reservation persistent; the driver only needs it to exist.
-        $urlaclPresent = ((& netsh http show urlacl) -join ' ') -match [regex]::Escape("$($m.env.vm_ip):15100/")
-        if ($urlaclPresent) {
-            'pre-provisioned urlacl detected' | Set-Content (Join-Path $script:OutDir 'urlacl-preprovisioned.log')
-        } elseif ($elevated) {
-            & netsh http add urlacl url="http://$($m.env.vm_ip):15100/" user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-add.log')
-            & netsh advfirewall firewall add rule name="dnspy-mcp-acc-remote" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-add.log')
-        }
+        $remoteUrl = "http://$($m.env.vm_ip):$remotePort/"
         # JCS canonical CIDR arrays are ordinal-sorted ("192.168.204.1/32" < "192.168.204.149/32").
         $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
         $cidrJson = '["' + ($cidrSorted -join '","') + '"]'
-        $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
+        $snapR = New-SnapshotJson $true $true $m.env.vm_ip $remotePort $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
         $script:RemoteUp = $false
         Stop-DnSpyAndTargets
         Set-SnapshotJson $snapR
         $script:RemoteUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
         $upR = $script:RemoteUp
-        if (-not ($urlaclPresent -or $elevated)) {
-            Fail-Precondition 'remote-admin-provisioning' 'elevated one-time urlacl+firewall provisioning (deploy runbook / ACC-023 reversible script)'
-        } elseif ($upR) {
+        if ($upR) {
             $noAuth = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
             $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Authorization: Bearer $b64" -BaseUrlOverride $remoteUrl
             $rdom = $null
@@ -1137,14 +1125,15 @@ function Run-ACC002 {
             $tupleOk = $rdom -and ($rdom.result.security.bind_mode -eq 'remote_host_only') -and ($rdom.result.security.auth_required) -and ($rdom.result.security.cidr_required)
             Assert-Cond 'remote-security-tuple' 'remote: (remote_host_only,true,true); unauthenticated request 401' "tuple_ok=$tupleOk no_auth=$noAuth" ($tupleOk -and ("$noAuth" -eq '401')) @((Save-Text 'remote-capabilities.resp.txt' ($rCap.body + "`nstatus=" + $rCap.status)))
         } else {
-            Assert-Cond 'remote-restart' 'health 200 on remote snapshot' 'failed to come up' $false @('urlacl-add.log')
+            $script:PreconditionFailed = $true
+            Assert-Cond 'remote-listener-precondition' 'private remote listener starts without modifying system rules' 'failed to come up' $false @()
         }
 
         # (true, true, startup IsDebugging=true): the startup gate sample freezes CLOSED
         # (EffectiveDebugLaunch=false) - simulated through the DNMCP_TEST_STARTUP_DEBUGGING
         # seam inherited by the spawned dnSpy.
         $env:DNMCP_TEST_STARTUP_DEBUGGING = '1'
-        $comboDJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+        $comboDJson = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
         if (Restart-WithSnapshot $comboDJson) {
             $tlD = Get-ToolList $v
             $namesD = @($tlD.tools | ForEach-Object { $_.name })
@@ -1161,8 +1150,6 @@ function Run-ACC002 {
         if ($orig) {
             try { Restart-WithSnapshot $orig | Out-Null } catch { }
         }
-        & netsh http delete urlacl url="http://$($m.env.vm_ip):15100/" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'urlacl-del.log')
-        & netsh advfirewall firewall delete rule name="dnspy-mcp-acc-remote" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'firewall-del.log')
     }
 }
 
@@ -3893,7 +3880,8 @@ function Read-SettingsSnapshot {
 function Run-ACC023 {
     $m = $script:Manifest
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
-    $remoteUrl = "http://$($m.env.vm_ip):15100/"
+    $remotePort = if ($IsolationRoot) { $script:PrivatePort } else { 15100 }
+    $remoteUrl = "http://$($m.env.vm_ip):$remotePort/"
     $tokenBytes = New-Object byte[] 32
     ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
@@ -3909,19 +3897,15 @@ function Run-ACC023 {
     $ev1 = Save-Json 'a23-defaults.json' $defaultsProbe.domain.result
     Assert-Cond 'a23-default-snapshot' 'defaults: server off, 192.168.204.149:15378, host peer /32, no verifier, host-only ack' "ok=$defOk" $defOk @($ev1)
 
-    # [2] Provision remote (urlacl + firewall + single ApplySnapshot) and prove authenticated
-    # reachability with unauthenticated 401.
-    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
-    & netsh http add urlacl url=$remoteUrl user=Everyone 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-urlacl-add.log')
-    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc23" 2>&1 | Out-Null
-    & netsh advfirewall firewall add rule name="dnspy-mcp-acc23" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-firewall-add.log')
+    # [2] Commit the private remote snapshot without changing system rules, then prove
+    # authenticated reachability and unauthenticated 401.
     $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
     $cidrJson = '["' + ($cidrSorted -join '","') + '"]'
-    $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
+    $snapR = New-SnapshotJson $true $true $m.env.vm_ip $remotePort $m.env.sample_root $m.env.artifact_root $cidrJson $true ('"' + $verifierHex + '"')
     Stop-DnSpyAndTargets
     Set-SnapshotJson $snapR
     $up = Start-DnSpyAndWait -HealthUrl $remoteUrl
-    if (-not $up) { Assert-Cond 'a23-remote-up' 'health reachable on the remote snapshot' 'failed' $false @('a23-urlacl-add.log'); return }
+    if (-not $up) { $script:PreconditionFailed = $true; Assert-Cond 'a23-remote-up' 'private remote listener starts without system-rule changes' 'failed to come up' $false @(); return }
     $noAuth = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
     $rCap = Send-Rpc 'tools/call' @{ name = 'debug_capabilities'; arguments = @{} } -AuthHeader "Authorization: Bearer $b64" -BaseUrlOverride $remoteUrl
     $rdom = $null
@@ -3936,7 +3920,7 @@ function Run-ACC023 {
     # then prove the VM peer is denied by the live HTTP wall. The host-side orchestrator owns
     # the complementary positive end-to-end request.
     $tokenlessCidrJson = '["' + $m.env.host_ip + '/32"]'
-    $snapTokenless = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root $tokenlessCidrJson $true 'null'
+    $snapTokenless = New-SnapshotJson $true $true $m.env.vm_ip $remotePort $m.env.sample_root $m.env.artifact_root $tokenlessCidrJson $true 'null'
     Stop-DnSpyAndTargets
     Set-SnapshotJson $snapTokenless
     $tokenlessUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
@@ -3955,19 +3939,16 @@ function Run-ACC023 {
         "health-wait-200=$tokenlessUp health-from-vm=$tokenlessHealth configured=$tokenlessConfigured hostOnly=$hostOnlyPredicate" `
         ($hostOnlyPredicate -and $tokenlessConfigured -and ("$tokenlessHealth" -eq '403')) @($evTokenless, $defaultsProbe.rpc.resp)
 
-    # [4] Revoke: delete the urlacl/firewall rules, single ApplySnapshot back to every
-    # default network field, restart — only loopback listens afterwards.
-    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-urlacl-del.log')
-    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc23" 2>&1 | Out-String | Set-Content (Join-Path $script:OutDir 'a23-firewall-del.log')
-    $defaultJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+    # [4] Revoke the private remote snapshot back to loopback. System rules remain untouched.
+    $defaultJson = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $defaultJson
     $upL = Start-DnSpyAndWait
     $afterRemote = Invoke-PyHttp -Url "$($remoteUrl.TrimEnd('/'))/" -Method POST -BodyText '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' -Headers @('Accept:application/json','Content-Type:application/json') -Format status -MaxSec 5
     $revokedSnap = Read-SettingsSnapshot
-    $revOk = $revokedSnap -and ("$($revokedSnap.Host)" -eq 'localhost') -and ([int]$revokedSnap.Port -eq 15378) -and (@($revokedSnap.RemoteAllowedCidrs).Count -eq 0) -and (-not $revokedSnap.RemoteTokenVerifier) -and (-not $revokedSnap.RemoteHostOnlyAcknowledged)
+    $revOk = $revokedSnap -and ("$($revokedSnap.Host)" -eq 'localhost') -and ([int]$revokedSnap.Port -eq $script:PrivatePort) -and (@($revokedSnap.RemoteAllowedCidrs).Count -eq 0) -and (-not $revokedSnap.RemoteTokenVerifier) -and (-not $revokedSnap.RemoteHostOnlyAcknowledged)
     $ev3 = Save-Json 'a23-revoked.json' @{ snapshot = $revokedSnap; remoteProbe = $afterRemote; loopbackHealth = (Get-HealthCode $script:BaseUrl) }
-    Assert-Cond 'a23-revoked-loopback-only' 'revocation: default snapshot restored, loopback healthy, remote port closed' "snap=$revOk remote=$afterRemote health=$(Get-HealthCode $script:BaseUrl)" ($revOk -and $upL -and ("$afterRemote" -ne '200') -and ((Get-HealthCode $script:BaseUrl) -eq 200)) @($ev3, 'a23-urlacl-del.log')
+    Assert-Cond 'a23-revoked-loopback-only' 'revocation: default snapshot restored, loopback healthy, remote port closed' "snap=$revOk remote=$afterRemote health=$(Get-HealthCode $script:BaseUrl)" ($revOk -and $upL -and ("$afterRemote" -ne '200') -and ((Get-HealthCode $script:BaseUrl) -eq 200)) @($ev3)
 }
 # ---------------------------------------------------------------- case: ACC-036 ----
 function Run-ACC036 {
@@ -4201,7 +4182,8 @@ function Run-ACC022 {
 function Run-ACC003 {
     $m = $script:Manifest
     if (-not (Ensure-CanonicalDnSpy)) { Assert-Cond 'env-dnspy-up' 'health 200' (Get-HealthCode $script:BaseUrl) $false; return }
-    $remoteUrl = "http://$($m.env.vm_ip):15100/"
+    $remotePort = if ($IsolationRoot) { $script:PrivatePort } else { 15100 }
+    $remoteUrl = "http://$($m.env.vm_ip):$remotePort/"
     $tokenBytes = New-Object byte[] 32
     ([Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($tokenBytes)
     $verifierHex = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($tokenBytes)).Replace('-','').ToLower()
@@ -4210,17 +4192,14 @@ function Run-ACC003 {
     $badBytes[31] = $badBytes[31] -bxor 1
     $badTok = [Convert]::ToBase64String($badBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
 
-    # Remote posture: host-pinned 15100, Ubuntu+VM CIDR, verifier, ack.
-    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
-    & netsh http add urlacl url=$remoteUrl user=Everyone 2>&1 | Out-Null
-    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc3" 2>&1 | Out-Null
-    & netsh advfirewall firewall add rule name="dnspy-mcp-acc3" dir=in action=allow protocol=TCP localport=15100 2>&1 | Out-Null
+    # Remote posture: private port, host+VM CIDR, verifier, ack. No URL ACL or
+    # firewall rule is created, replaced or deleted by this case.
     $cidrSorted = @("$($m.env.host_ip)/32", "$($m.env.vm_ip)/32") | Sort-Object
-    $snapR = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + ($cidrSorted -join '","') + '"]') $true ('"' + $verifierHex + '"')
+    $snapR = New-SnapshotJson $true $true $m.env.vm_ip $remotePort $m.env.sample_root $m.env.artifact_root ('["' + ($cidrSorted -join '","') + '"]') $true ('"' + $verifierHex + '"')
     Stop-DnSpyAndTargets
     Set-SnapshotJson $snapR
     $up = Start-DnSpyAndWait -HealthUrl $remoteUrl
-    if (-not $up) { Assert-Cond 'a3-remote-up' 'remote posture up' 'failed' $false @(); return }
+    if (-not $up) { $script:PreconditionFailed = $true; Assert-Cond 'a3-remote-up' 'private remote listener starts without system-rule changes' 'failed to come up' $false @(); return }
 
     function Probe([string]$Url, [string[]]$Headers, [string]$Body) {
         $allHeaders = @('Accept:application/json','Content-Type:application/json') + @($Headers)
@@ -4279,17 +4258,15 @@ function Run-ACC003 {
     Assert-Cond 'a3-all-endpoint-walls' 'all routed HTTP/SSE/Streamable endpoints reject unauthenticated before endpoint semantics' "ok=$endpointOk" $endpointOk @($epEv)
 
     # A valid token from a peer outside RemoteAllowedCidrs is the fixed empty-body 403.
-    $cidrDeny = New-SnapshotJson $true $true $m.env.vm_ip 15100 $m.env.sample_root $m.env.artifact_root ('["' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
+    $cidrDeny = New-SnapshotJson $true $true $m.env.vm_ip $remotePort $m.env.sample_root $m.env.artifact_root ('["' + $m.env.host_ip + '/32"]') $true ('"' + $verifierHex + '"')
     Stop-DnSpyAndTargets
     Set-SnapshotJson $cidrDeny
     $denyUp = Start-DnSpyAndWait -HealthUrl $remoteUrl
     $denyCode = Invoke-PyHttp -Url $healthUrl -Method GET -Format status -MaxSec 6 -Token $goodTok
     Assert-Cond 'a3-cidr-deny' 'valid token but direct peer outside allowlist = 403' "health-wait-200=$denyUp code=$denyCode" ("$denyCode" -eq '403') @(Save-Text 'a3-cidr-deny.txt' "code=$denyCode")
 
-    # Restore loopback defaults + drop the provisioning (reversible).
-    & netsh http delete urlacl url=$remoteUrl 2>&1 | Out-Null
-    & netsh advfirewall firewall delete rule name="dnspy-mcp-acc3" 2>&1 | Out-Null
-    $defaultJson = New-SnapshotJson $true $true 'localhost' 15378 $m.env.sample_root $m.env.artifact_root
+    # Restore only this case's private settings/listener.
+    $defaultJson = New-SnapshotJson $true $true 'localhost' $script:PrivatePort $m.env.sample_root $m.env.artifact_root
     Stop-DnSpyAndTargets
     Set-SnapshotJson $defaultJson
     $upL = Start-DnSpyAndWait
