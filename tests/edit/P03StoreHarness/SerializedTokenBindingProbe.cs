@@ -19,6 +19,17 @@ internal static class SerializedTokenBindingProbe {
 		try { Resolve(module, token); return false; }
 		catch (EditDomainException) { return true; }
 	}
+	static bool WrongKindRejected(ModuleDef module, uint token) {
+		var method = typeof(EditOperationRegistry).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+			.Single(m => m.Name == "Ref" && m.IsGenericMethodDefinition).MakeGenericMethod(typeof(MethodDef));
+		using var document = System.Text.Json.JsonDocument.Parse("{\"token\":\"0x" + token.ToString("x8") + "\"}");
+		try {
+			method.Invoke(null, new object[] { module, document.RootElement, new Dictionary<string, IMDTokenProvider>() });
+			return false;
+		} catch (System.Reflection.TargetInvocationException error) when (error.InnerException is EditDomainException domain) {
+			return domain.Code == "EDIT_VALIDATION_FAILED";
+		}
+	}
 	static IEnumerable<IMDTokenProvider> Definitions(ModuleDef module) {
 		foreach (var type in module.GetTypes()) {
 			yield return type;
@@ -78,6 +89,9 @@ internal static class SerializedTokenBindingProbe {
 		}
 		Console.WriteLine("RID_IDENTITY_COUNTS " + System.Text.Json.JsonSerializer.Serialize(checkedRows));
 		Check(checkedRows.Count >= 4, "multiple metadata definition kinds inspected");
+		var beforeWrongKind = EditFingerprint.Compute(live);
+		Check(WrongKindRejected(live, owner.MDToken.Raw) && EditFingerprint.Compute(live) == beforeWrongKind,
+			"wrong metadata kind rejected without graph mutation");
 		Check(Rejected(live, serialized.MDToken.Raw), "unbound serialized token rejected");
 		using (EditOperationRegistry.BindSerializedTokens(source, live)) {
 			Check(ReferenceEquals(Resolve(live, serialized.MDToken.Raw), added), "bound token resolves exact live addition");
