@@ -4475,7 +4475,9 @@ foreach ($a in $script:Assertions) {
         }
     }
 }
-$missingEvidence | Set-Content (Join-Path $script:OutDir 'evidence-gate.log')
+# Set-Content on an empty pipeline does not create a file in Windows PowerShell 5.1.
+# The gate's own assertion references this log, so create it even when nothing is missing.
+[IO.File]::WriteAllText((Join-Path $script:OutDir 'evidence-gate.log'), ($missingEvidence -join "`r`n"), (New-Object Text.UTF8Encoding($false)))
 Assert-Cond 'result-evidence-complete' 'every assertion evidence path exists under the result directory' "missing=$($missingEvidence.Count)" ($missingEvidence.Count -eq 0) @('evidence-gate.log')
 
 # Schema-driven conformance gate (external finding: the former shape check only inspected

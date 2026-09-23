@@ -19,6 +19,7 @@ class IsolatedRunnerGuards(unittest.TestCase):
         self.assertIn('result already exists; refusing overwrite', TEXT)
         self.assertIn('isolated result already exists', TEXT)
         self.assertNotRegex(TEXT, r'Remove-Item\s+-Recurse\s+-Force\s+\$script:OutDir')
+        self.assertIn("[IO.File]::WriteAllText((Join-Path $script:OutDir 'evidence-gate.log')", TEXT)
 
     def test_isolated_parameters_are_fail_closed(self):
         self.assertIn('partial isolation parameters are forbidden', TEXT)
