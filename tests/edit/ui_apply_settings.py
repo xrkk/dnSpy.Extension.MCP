@@ -116,8 +116,9 @@ def _ps_json(client: DnSpyClient, script: str, timeout: int = 60):
 # path the caller expects. The pair is verified on the VM BEFORE any UI write.
 
 
-def resolve_target(client: DnSpyClient, pid: int, exe_path: str) -> dict:
-    """Verify the (pid, exe_path) pair on the VM; return pid/path/hwnd or raise."""
+def resolve_target(client: DnSpyClient, pid: int, exe_path: str,
+                   creation_ticks: int | None = None) -> dict:
+    """Verify the target process identity on the VM before any UI write."""
     if pid is None or not exe_path:
         raise RuntimeError("UI target refused: no explicit target (pid + exe path) supplied")
     script = (
@@ -127,14 +128,16 @@ def resolve_target(client: DnSpyClient, pid: int, exe_path: str) -> dict:
         "$path=$p.Path;"
         "if(-not $path){ [pscustomobject]@{ok=$false;reason='path-unreadable';path=$null;hwnd=0}|ConvertTo-Json -Compress; exit }"
         "$expect='" + str(exe_path).replace("'", "''") + "';"
+        "$ticks=([datetime](Get-CimInstance Win32_Process -Filter ('ProcessId=' + $p.Id)).CreationDate).ToUniversalTime().Ticks;"
         "$match=($path -ieq $expect);"
-        "$hwnd=if($p.MainWindowHandle){[int64]$p.MainWindowHandle}else{0};"
-        "[pscustomobject]@{ok=($match -and $hwnd -ne 0);reason=if(-not $match){'path-mismatch'}elseif($hwnd -eq 0){'no-main-window'}else{'ok'};path=$path;hwnd=$hwnd}|ConvertTo-Json -Compress"
+        + ("$match=($match -and $ticks -eq " + str(int(creation_ticks)) + ");" if creation_ticks is not None else "")
+        + "$hwnd=if($p.MainWindowHandle){[int64]$p.MainWindowHandle}else{0};"
+        "[pscustomobject]@{ok=($match -and $hwnd -ne 0);reason=if(-not $match){'identity-mismatch'}elseif($hwnd -eq 0){'no-main-window'}else{'ok'};path=$path;hwnd=$hwnd;ticks=$ticks}|ConvertTo-Json -Compress"
     )
     row = _ps_json(client, script)
     if not row.get("ok"):
         raise RuntimeError(f"UI target refused: pid={pid} exe={exe_path!r} reason={row.get('reason')} actual={row.get('path')!r}")
-    return {"pid": int(pid), "path": row["path"], "hwnd": row["hwnd"]}
+    return {"pid": int(pid), "path": row["path"], "hwnd": row["hwnd"], "ticks": row.get("ticks")}
 
 
 def find_target(client: DnSpyClient, exe_path: str) -> dict:
@@ -155,8 +158,8 @@ def find_target(client: DnSpyClient, exe_path: str) -> dict:
 def focus_target_window(client: DnSpyClient, target: dict) -> None:
     """Bring the verified target window to the foreground (PID-scoped, no name switching)."""
     script = (
-        "$ErrorActionPreference='Stop';"
-        "$ws=New-Object -ComObject WScript.Shell;"
+        "$ErrorActionPreference='Stop';" + _guard(target)
+        + "$ws=New-Object -ComObject WScript.Shell;"
         "$ok=$ws.AppActivate(" + str(int(target["pid"])) + ");"
         "Start-Sleep -Milliseconds 400;"
         "[pscustomobject]@{focused=[bool]$ok}|ConvertTo-Json -Compress"
@@ -171,7 +174,10 @@ def _guard(target: dict) -> str:
         "$p=Get-Process -Id " + str(int(target["pid"])) + " -ErrorAction SilentlyContinue;"
         "if(-not $p){ throw 'target pid gone' }"
         "if(-not $p.Path -or -not ($p.Path -ieq '" + str(target["path"]).replace("'", "''") + "')){ throw ('target path mismatch: ' + $p.Path) }"
-        "if(-not $p.MainWindowHandle){ throw 'target has no main window' }"
+        + ("$ticks=([datetime](Get-CimInstance Win32_Process -Filter ('ProcessId=' + $p.Id)).CreationDate).ToUniversalTime().Ticks;"
+           "if($ticks -ne " + str(int(target["ticks"])) + "){ throw 'target creation ticks mismatch' }"
+           if target.get("ticks") is not None else "")
+        + "if(-not $p.MainWindowHandle){ throw 'target has no main window' }"
     )
 
 
@@ -486,7 +492,7 @@ def select_mcp_page(client: DnSpyClient, target: dict) -> None:
 
 
 def apply_settings(client: DnSpyClient, enable: bool | None = None, host: str = "",
-                   port: int | None = None, target: dict | None = None) -> None:
+                   port: int | None = None, target: dict | None = None) -> dict:
     """Drive the MCP settings page of the verified target with control-identity writes.
 
     host='' leaves the host (and its combination-dependent fields) untouched; port-only
@@ -497,7 +503,7 @@ def apply_settings(client: DnSpyClient, enable: bool | None = None, host: str = 
     compared before/after, and success requires the owned Options window to be GONE."""
     if target is None:
         raise RuntimeError("apply_settings refused: no explicit UI target supplied (pid + exe path)")
-    resolve_target(client, target["pid"], target["path"])
+    resolve_target(client, target["pid"], target["path"], target.get("ticks"))
     open_options(client, target)
     select_mcp_page(client, target)
     before = read_field_values(client, target)
@@ -559,7 +565,9 @@ def apply_settings(client: DnSpyClient, enable: bool | None = None, host: str = 
     deadline = time.time() + 12
     while time.time() < deadline:
         if not _options_window_present(client, target):
-            return
+            return {"target": {"pid": target["pid"], "path": target["path"],
+                               "ticks": target.get("ticks")}, "before": before,
+                    "after": after, "changes": changes, "ok_button": ok_row}
         time.sleep(0.4)
     raise RuntimeError("owned Options dialog still present after OK invoke")
 
