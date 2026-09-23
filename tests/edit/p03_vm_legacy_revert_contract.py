@@ -87,6 +87,14 @@ def main(url: str, fixture: Path, output: Path) -> int:
 
         reverted = call("revert_method_il", greet)
         require("valid_revert", reverted.get("reverted") is True and reverted.get("has_pending_patch") is False)
+        before_blocked = call("edit_history", {})
+        blocked = call("save_assembly", {"assembly_name": "TestIL", "output_path": str(fixture)})
+        blocked_error = blocked.get("error") or {}
+        require("legacy_export_root_gate", blocked.get("ok") is False and blocked.get("state") == "idle"
+                and blocked_error.get("code") == "EDIT_EXPORT_BLOCKED"
+                and blocked_error.get("current_state") == "idle" and bool(blocked_error.get("recovery")))
+        require("blocked_export_no_history_change", before_blocked == call("edit_history", {}))
+        require("blocked_export_no_source_write", hashlib.sha256(fixture.read_bytes()).hexdigest() == original_sha)
         saved = call("save_assembly", {"assembly_name": "TestIL"})
         require("safe_export", saved.get("source_preserved") is True and saved.get("backup_path") is None
                 and str(saved.get("saved_to", "")).lower() != str(fixture).lower())
