@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using dnlib.DotNet;
 using dnSpy.Extension.MCP.Editing;
 
@@ -111,7 +113,95 @@ internal static class StructuralCommitGuardProbe {
 			&& EditFingerprint.Compute(live) == afterFingerprint
 			&& reopened.Load(lineageId).Manifest.HeadCheckpointId == headId,
 			"parameter_add redo restores owner, sequence, type, name, fingerprint and committed head");
+		var validPackage = store.FinalBytes(lineageId);
+		var malformed = RewriteInverse(validPackage, inverse => inverse["state"]!["parameter_target"] = new JsonObject());
+		var rejected = false;
+		try { reopened.ValidatePackageForTesting(malformed); }
+		catch (EditDomainException ex) when (ex.Code == "EDIT_CHECKPOINT_INVALID") { rejected = true; }
+		Check(rejected && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+			&& EditFingerprint.Compute(live) == afterFingerprint,
+			"empty parameter inverse target rejects without package or live mutation");
+		var malformedStates = new (string label, Action<JsonObject> mutate)[] {
+			("missing_kind", inverse => inverse["state"]!.AsObject().Remove("kind")),
+			("extra_key", inverse => inverse["state"]!["extra"] = true),
+			("wrong_kind", inverse => inverse["state"]!["kind"] = "field_remove"),
+			("wrong_mode", inverse => inverse["state"]!["remove_mode"] = "cascade"),
+			("target_string", inverse => inverse["state"]!["parameter_target"] = "invalid"),
+			("target_missing_index", inverse => inverse["state"]!["parameter_target"]!.AsObject().Remove("parameter_index")),
+			("target_extra_key", inverse => inverse["state"]!["parameter_target"]!["extra"] = true),
+			("target_wrong_index_type", inverse => inverse["state"]!["parameter_target"]!["parameter_index"] = "0"),
+			("owner_empty", inverse => inverse["state"]!["parameter_target"]!["owner_method"] = new JsonObject()),
+			("owner_extra_key", inverse => inverse["state"]!["parameter_target"]!["owner_method"]!["extra"] = true),
+		};
+		foreach (var (label, mutate) in malformedStates) {
+			var copy = RewriteInverse(validPackage, mutate);
+			var invalid = false;
+			try { reopened.ValidatePackageForTesting(copy); }
+			catch (EditDomainException ex) when (ex.Code == "EDIT_CHECKPOINT_INVALID") { invalid = true; }
+			Check(invalid && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+				&& EditFingerprint.Compute(live) == afterFingerprint, "parameter inverse load rejects " + label);
+		}
+		foreach (var (label, token) in new[] { ("wrong_metadata_kind", "0x02000001"), ("wrong_owner", "0x0600ffff") }) {
+			var copy = RewriteInverse(validPackage,
+				inverse => inverse["state"]!["parameter_target"]!["owner_method"]!["token"] = token);
+			var loaded = reopened.ValidatePackageForTesting(copy);
+			var invalid = false;
+			try { reopened.PlanNavigation(loaded, headId, rootId); }
+			catch (EditDomainException) { invalid = true; }
+			Check(invalid && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+				&& EditFingerprint.Compute(live) == afterFingerprint, "parameter inverse navigation rejects " + label);
+		}
+		var otherMethod = live.GetTypes().SelectMany(type => type.Methods)
+			.First(candidate => candidate != method && candidate.MethodSig.Params.Count == 1 && !candidate.IsConstructor);
+		var wrongOwnerPackage = RewriteInverse(validPackage, inverse => inverse["state"]!["parameter_target"]!["owner_method"]!["token"]
+			= "0x" + otherMethod.MDToken.Raw.ToString("x8"));
+		var wrongOwnerLineage = reopened.ValidatePackageForTesting(wrongOwnerPackage);
+		rejected = false;
+		try { reopened.PlanNavigation(wrongOwnerLineage, headId, rootId); }
+		catch (EditDomainException) { rejected = true; }
+		Check(rejected && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+			&& EditFingerprint.Compute(live) == afterFingerprint, "different valid MethodDef owner rejects before live navigation");
+		var wrongOperationKind = RewriteInverse(validPackage, inverse => inverse["operation_kind"] = "method_add");
+		rejected = false;
+		try { reopened.ValidatePackageForTesting(wrongOperationKind); }
+		catch (EditDomainException ex) when (ex.Code == "EDIT_CHECKPOINT_INVALID") { rejected = true; }
+		Check(rejected && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+			&& EditFingerprint.Compute(live) == afterFingerprint, "parameter inverse remains bound to operation.Kind");
+		var differentOperation = RewriteInverse(validPackage, row => {
+			row["kind"] = "method_add";
+			row["forward"]!["kind"] = "method_add";
+			row["inverse"]!["operation_kind"] = "method_add";
+		}, wholeOperation: true);
+		rejected = false;
+		try { reopened.ValidatePackageForTesting(differentOperation); }
+		catch (EditDomainException ex) when (ex.Code is "EDIT_CHECKPOINT_INVALID" or "EDIT_OPERATION_VERSION_UNSUPPORTED") { rejected = true; }
+		Check(rejected && store.FinalBytes(lineageId).SequenceEqual(validPackage)
+			&& EditFingerprint.Compute(live) == afterFingerprint, "non-parameter operation cannot reuse parameter inverse shape");
 		Console.WriteLine("PASS parameter-add-checkpoint envelope=parameter_remove committed=true");
+	}
+
+	static byte[] RewriteInverse(byte[] package, Action<JsonObject> mutate, bool wholeOperation = false) {
+		var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+		using (var input = new MemoryStream(package, writable: false))
+		using (var archive = new ZipArchive(input, ZipArchiveMode.Read))
+			foreach (var entry in archive.Entries) {
+				using var stream = entry.Open(); using var bytes = new MemoryStream(); stream.CopyTo(bytes);
+				entries[entry.FullName] = bytes.ToArray();
+			}
+		var manifest = JsonSerializer.Deserialize<EditCheckpointManifest>(entries["manifest.json"], EditWire.JsonOptions)!;
+		var head = manifest.Checkpoints.Single(x => x.CheckpointId == manifest.HeadCheckpointId);
+		var document = JsonNode.Parse(entries[head.OperationEntry])!;
+		var operation = document["operations"]![0]!.AsObject();
+		mutate(wholeOperation ? operation : operation["inverse"]!.AsObject());
+		entries[head.OperationEntry] = JsonSerializer.SerializeToUtf8Bytes(document, EditWire.JsonOptions);
+		head.OperationSha256 = EditWire.Sha256(entries[head.OperationEntry]);
+		entries["manifest.json"] = JsonSerializer.SerializeToUtf8Bytes(manifest, EditWire.JsonOptions);
+		using var output = new MemoryStream();
+		using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+			foreach (var entry in entries) {
+				using var stream = archive.CreateEntry(entry.Key).Open(); stream.Write(entry.Value);
+			}
+		return output.ToArray();
 	}
 
 	public static void Run(string fixture) {

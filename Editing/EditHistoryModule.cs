@@ -976,7 +976,7 @@ internal sealed class EditHistoryModule : IDisposable {
 				&& string.Equals(ValueString(stateKind), "parameter_remove", StringComparison.Ordinal)
 				&& StringProperty(state, "remove_mode", "reject_if_referenced")
 				&& state.TryGetProperty("parameter_target", out var parameterTarget)
-				&& parameterTarget.ValueKind == JsonValueKind.Object;
+				&& ValidParameterInverseTarget(parameterTarget);
 			if (hits != 1 && !bodyShape && !parameterRemoveShape) throw new EditDomainException("EDIT_CHECKPOINT_INVALID",
 				new Dictionary<string, object?> { ["kind"] = "envelope_shape", ["operation_kind"] = operation.Kind, ["state_keys"] = state.EnumerateObject().Select(x => x.Name).ToArray() });
 			if (operation.Kind == EditOperationVersions.LegacySymbolRename) {
@@ -990,6 +990,20 @@ internal sealed class EditHistoryModule : IDisposable {
 			using var forward = JsonDocument.Parse(JsonSerializer.Serialize(operation.Forward, EditWire.JsonOptions));
 			ValidatePayloadReferences(operation, forward.RootElement, root, payloads);
 		}
+	}
+
+	static bool ValidParameterInverseTarget(JsonElement target) {
+		if (target.ValueKind != JsonValueKind.Object || target.EnumerateObject().Count() != 2
+			|| !target.TryGetProperty("owner_method", out var owner) || owner.ValueKind != JsonValueKind.Object
+			|| !target.TryGetProperty("parameter_index", out var index) || index.ValueKind != JsonValueKind.Number
+			|| !index.TryGetInt32(out var position) || position < 0) return false;
+		var count = owner.EnumerateObject().Count();
+		if (owner.TryGetProperty("token", out var token))
+			return count == 1 && token.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(token.GetString());
+		return owner.TryGetProperty("object_id", out var id) && id.ValueKind == JsonValueKind.String
+			&& !string.IsNullOrWhiteSpace(id.GetString())
+			&& (count == 1 || count == 2 && owner.TryGetProperty("address", out var address)
+				&& address.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(address.GetString()));
 	}
 
 	static void ValidatePayloadReferences(EditSerializedOperation operation, JsonElement forward, JsonElement inverse, HashSet<string> payloads) {
