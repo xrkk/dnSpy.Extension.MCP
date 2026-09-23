@@ -45,6 +45,7 @@ internal static class SerializedTokenBindingProbe {
 		}
 	}
 	public static void Run(string fixture) {
+		RunMethodSignatureMatrix(fixture);
 		using var live = ModuleDefMD.Load(System.IO.Path.GetFullPath(fixture));
 		using var other = ModuleDefMD.Load(System.IO.Path.GetFullPath(fixture));
 		var owner = live.GetTypes().Single(t => t.FullName == "TestIL.Simple");
@@ -115,5 +116,63 @@ internal static class SerializedTokenBindingProbe {
 		}
 		Check(Rejected(live, serialized.MDToken.Raw), "disposed outer scope cannot resolve binding");
 		Console.WriteLine("PASS serialized-token-binding");
+	}
+	static void RunMethodSignatureMatrix(string fixture) {
+		using var live = ModuleDefMD.Load(System.IO.Path.GetFullPath(fixture));
+		var owner = live.GetTypes().Single(t => t.FullName == "TestIL.Simple");
+		var other = new TypeDefUser("TestIL", "R065OtherScope", live.CorLibTypes.Object.TypeDefOrRef);
+		live.Types.Add(other);
+		MethodDef Add(TypeDef type) {
+			var method = new MethodDefUser("R065Generic", new MethodSig(CallingConvention.Default | CallingConvention.Generic,
+				1, live.CorLibTypes.Void, new TypeSig[] { new GenericMVar(0) }),
+				MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Static);
+			method.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+			method.Body = new CilBody();
+			method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+			type.Methods.Add(method);
+			return method;
+		}
+		var first = Add(owner);
+		var second = Add(other);
+		using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(live));
+		var firstRow = source.GetTypes().Single(t => t.FullName == owner.FullName).Methods.Single(m => m.Name == first.Name);
+		var secondRow = source.GetTypes().Single(t => t.FullName == other.FullName).Methods.Single(m => m.Name == second.Name);
+		Check(firstRow.MDToken.Rid != 0 && secondRow.MDToken.Rid != 0
+			&& live.ResolveToken(firstRow.MDToken.Raw) == null && live.ResolveToken(secondRow.MDToken.Raw) == null,
+			"generic additions require serialized-token binding");
+		Check(new SigComparer().Equals(firstRow.MethodSig, first.MethodSig),
+			"materialized and live generic signatures are semantically equal");
+		Console.WriteLine("GENERIC_DISPLAY serialized=" + firstRow.FullName + " live=" + first.FullName);
+		Check(firstRow.FullName != first.FullName, "display T versus !!0 is an actual positive binding case");
+		using (EditOperationRegistry.BindSerializedTokens(source, live)) {
+			Check(ReferenceEquals(Resolve(live, firstRow.MDToken.Raw), first)
+				&& ReferenceEquals(Resolve(live, secondRow.MDToken.Raw), second),
+				"same-name generic methods bind to their exact owners");
+		}
+		void Reject(string label, Action mutate, Action restore) {
+			var before = EditFingerprint.Compute(live);
+			mutate();
+			var changed = EditFingerprint.Compute(live);
+			Check(changed != before, label + " changes the owner/signature graph");
+			var rejected = false;
+			try { using var scope = EditOperationRegistry.BindSerializedTokens(source, live); }
+			catch (EditDomainException error) when (error.Code == "EDIT_HISTORY_CONFLICT") { rejected = true; }
+			Check(rejected && EditFingerprint.Compute(live) == changed, label + " rejects without side effects");
+			restore();
+			Check(EditFingerprint.Compute(live) == before, label + " test graph restored");
+		}
+		var originalName = first.Name;
+		Reject("generic name drift", () => first.Name = "R065Changed", () => first.Name = originalName);
+		var originalParameter = first.MethodSig.Params[0];
+		Reject("generic parameter signature drift", () => first.MethodSig.Params[0] = live.CorLibTypes.Int32,
+			() => first.MethodSig.Params[0] = originalParameter);
+		var originalArity = first.MethodSig.GenParamCount;
+		Reject("generic arity drift", () => first.MethodSig.GenParamCount = originalArity + 1,
+			() => first.MethodSig.GenParamCount = originalArity);
+		var originalCalling = first.MethodSig.CallingConvention;
+		Reject("generic calling convention drift", () => first.MethodSig.CallingConvention = CallingConvention.VarArg | CallingConvention.Generic,
+			() => first.MethodSig.CallingConvention = originalCalling);
+		Reject("generic owner/address drift", () => owner.Methods.Remove(first), () => owner.Methods.Add(first));
+		Console.WriteLine("PASS t065-generic-binding-matrix");
 	}
 }

@@ -40,6 +40,8 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--new-method-history") { NewMethodHistoryProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--serialized-token-binding") { SerializedTokenBindingProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--t065-debug-writer") { T065DebugWriterProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t065-inverse-boundary") { T065InverseBoundaryProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t065-inverse-package") { T065InverseBoundaryProbe.RunPackage(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--t059-regression") {
 				NewMethodHistoryProbe.Run(args[0]);
 				PdbOwnershipProbe.RunIdentity(args[0]);

@@ -1196,7 +1196,8 @@ internal static partial class EditOperationRegistry {
 		PdbDocument[] removedDocuments = Array.Empty<PdbDocument>();
 		try {
 			if (inverseBody.TryGetProperty("local_var_sig_token", out var originalSigToken)) {
-				var token = originalSigToken.GetUInt32();
+				if (originalSigToken.ValueKind != JsonValueKind.Number || !originalSigToken.TryGetUInt32(out var token))
+					throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 				if (token != 0) {
 					var originalSig = module.ResolveToken(token) as StandAloneSig;
 					var locals = originalSig?.LocalSig?.Locals;
