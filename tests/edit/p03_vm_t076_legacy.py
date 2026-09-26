@@ -5,6 +5,8 @@ from dnspy_mcp import DnSpyClient
 root=Path(sys.argv[1]);url=sys.argv[2];fixture=sys.argv[3];case=sys.argv[4]
 lineage='lineage-c8650beb46dd4e2678cff8f2164db531'
 method='checkpoint-66fbfb78816b8ebc971a5f3b029c14fe'
+original='checkpoint-ded7fbd63c66d70d7d8594c620a41258'
+resource='checkpoint-f42fcc7a093ae964b1c7bce9f0df2d9b'
 package=root/(case+'-artifact')/'edit-checkpoints'/(lineage+'.dnspy-mcp-checkpoints')
 evidence=root/'runs'/(case+'-evidence.json')
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None
@@ -21,6 +23,10 @@ def expect(condition, label):
     records.setdefault('assertions',[]).append({'name':label,'pass':bool(condition)});save()
     if not condition: raise AssertionError(label)
 def code(response):return response.get('error',{}).get('code')
+def head():
+    history=call('edit_history',{'lineage_id':lineage,'page_size':100})
+    expect(history.get('ok') is True,'history readable')
+    return next(node['checkpoint_id'] for node in history['result']['checkpoints'] if node['is_head'])
 try:
     records['session_id']=c.session_id;records['initial']=state();save()
     call('open_files',{'paths':[fixture]})
@@ -54,6 +60,12 @@ try:
             if migrated.get('ok'):
                 first=migrated['result']['migration_checkpoint']['checkpoint_id']
                 expect(first!=method and migrated['result']['from_checkpoint_id']==method,'migration child retains original')
+                nodes=history.get('result',{}).get('checkpoints',[])
+                expect(any(node['checkpoint_id']==first and node['parent_checkpoint_id']==method and node['is_head'] for node in nodes),
+                    'migration parent, child, and head persist')
+                expect(any(node['checkpoint_id']==original and node['parent_checkpoint_id'] is None for node in nodes)
+                    and any(node['checkpoint_id']==resource and node['parent_checkpoint_id']==original for node in nodes),
+                    'original root and resource branch remain intact')
                 records['first_migration']=first;save()
                 call('edit_status',{})
                 expect(call('edit_export',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':first,
@@ -65,7 +77,18 @@ try:
                     again={'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':method,'action':'apply',
                         'replay_id':ret['replay_id'],'expected_live_fingerprint':records['live_fingerprint'],'confirm_validated_drift':True}
                     expect(call('edit_restore',again).get('ok') is True,'confirmed original can create second child')
-                    call('edit_history',{'lineage_id':lineage,'page_size':100})
+                    second=head()
+                    expect(second not in (first,method,original),'second migration has distinct child')
+                    root_assess=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'assess'})
+                    root_replay=root_assess.get('result',{}).get('replay',{})
+                    expect(root_replay.get('classification')=='exact','original root exact')
+                    exact_root=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'apply',
+                        'replay_id':root_replay['replay_id'],'expected_live_fingerprint':records['live_fingerprint'],'confirm_validated_drift':False})
+                    expect(exact_root.get('ok') is True and head()==original,'exact ancestor navigation updates live and head')
+                    redone=call('edit_redo',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'expected_checkpoint_id':original,'child_checkpoint_id':resource})
+                    expect(redone.get('ok') is True and head()==resource,'resource child redo after old PDB inverse')
+                    undone=call('edit_undo',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'expected_checkpoint_id':resource})
+                    expect(undone.get('ok') is True and head()==original,'resource child undo returns exact root')
     records['final']=state();save()
 finally:c.close();save()
 print(json.dumps({'begin':begin.get('ok'),'calls':len(records['calls']),'errors':[x['envelope'].get('error',{}).get('code') for x in records['calls'] if x['envelope'].get('ok') is False]}))

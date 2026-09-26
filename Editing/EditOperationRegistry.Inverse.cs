@@ -561,7 +561,19 @@ internal static partial class EditOperationRegistry {
 				kind = kind.Substring(0, kind.Length - 4) + "_remove", target = new { object_id = "inverse-definition-tail" }, remove_mode = "reject_if_referenced",
 			}));
 			EditOperationOutcome applied;
-			try { applied = Apply(module, removal.RootElement, temporary, index); }
+			try {
+				// An inverse of a method_add removes the last row created by that
+				// checkpoint.  If it is also the last live Method row, preserving it
+				// in a tombstone would introduce a new Type row and change the exact
+				// ancestor image. Ordinary public method_remove still preserves rows.
+				var methodTail = target as MethodDef;
+				var finalMethodRid = methodTail == null ? 0 : module.GetTypes().SelectMany(type => type.Methods)
+					.Select(method => method.MDToken.Rid).DefaultIfEmpty().Max();
+				applied = kind == "method_add" && methodTail != null
+					&& (methodTail.MDToken.Rid == 0 || methodTail.MDToken.Rid == finalMethodRid)
+					? MethodRemove(module, removal.RootElement, temporary, preserveDeletedRow: false)
+					: Apply(module, removal.RootElement, temporary, index);
+			}
 			catch { if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row); throw; }
 			var removedDocuments = ReleaseRecordedDocuments(module, definitionTail);
 			foreach (var binding in bindings) objects.Remove(binding.Key);
@@ -1245,12 +1257,14 @@ internal static partial class EditOperationRegistry {
 				}
 			if (match == null) continue;
 			bool Referenced() {
-				foreach (var type in module.GetTypes())
+				foreach (var type in module.GetTypes()) {
+					if (EditDeletedRowsTombstone.IsTombstone(type)) continue;
 					foreach (var method in type.Methods) {
 						if (!method.HasBody) continue;
 						foreach (var instruction in method.Body.Instructions)
 							if (ReferenceEquals(instruction.SequencePoint?.Document, match)) return true;
 					}
+				}
 				return false;
 			}
 			if (!Referenced()) { state.Remove(match); removed.Add(match); }

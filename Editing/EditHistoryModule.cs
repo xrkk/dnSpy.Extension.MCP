@@ -715,7 +715,7 @@ internal sealed class EditHistoryModule : IDisposable {
 						|| stateElement.ValueKind != JsonValueKind.Object)
 						throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 					inverses.Add(new EditHistoryNavigationPlan.Step { CheckpointId = node.CheckpointId, Index = index,
-						IsInverse = true, Operation = ExpandPersistedInverseState(lineage, stateElement) });
+						IsInverse = true, Operation = NavigationInverseState(lineage, operations[index], stateElement, forward.RootElement, replay) });
 				}
 				EditOperationRegistry.ApplyPersisted(replay, forward.RootElement, map, index);
 			}
@@ -1227,6 +1227,37 @@ internal sealed class EditHistoryModule : IDisposable {
 			stateObject[shape] = restored;
 		}
 		return JsonSerializer.Serialize(stateObject, EditWire.JsonOptions);
+	}
+
+	// Old method_add inverses did not record the optional document release list.
+	// Recover only that list from the package's verified forward and the replayed
+	// parent, without changing the persisted inverse or recompiling its action.
+	static string NavigationInverseState(EditLoadedLineage lineage, EditSerializedOperation operation,
+		JsonElement state, JsonElement forward, ModuleDef parent) {
+		var expanded = ExpandPersistedInverseState(lineage, state);
+		if (!IsV2(lineage.Manifest.Format) || operation.Kind != "method_add"
+			|| !state.TryGetProperty("definition_tail_remove", out var tail)
+			|| tail.TryGetProperty("release_documents", out _)
+			|| !forward.TryGetProperty("body", out var body)
+			|| !body.TryGetProperty("sequence_points", out var points)
+			|| points.ValueKind != JsonValueKind.Array) return expanded;
+		var pointRows = JsonSerializer.Deserialize<EditPdbTransferCodec.PointRow[]>(points.GetRawText(), EditWire.JsonOptions)
+			?? Array.Empty<EditPdbTransferCodec.PointRow>();
+		EditPdbTransferCodec.ValidateDocumentRows(parent, pointRows.Select(point => point.Document));
+		var documents = new List<Dictionary<string, object?>>();
+		foreach (var point in points.EnumerateArray()) {
+			var document = point.GetProperty("document");
+			var name = document.GetProperty("name").GetString();
+			var hash = document.TryGetProperty("hash", out var checksum) && checksum.ValueKind == JsonValueKind.String
+				? checksum.GetString() : null;
+			if (parent.PdbState?.Documents.Any(existing => string.Equals(existing.Url, name, StringComparison.OrdinalIgnoreCase)) == true
+				|| documents.Any(existing => string.Equals(existing["name"] as string, name, StringComparison.OrdinalIgnoreCase))) continue;
+			documents.Add(new() { ["name"] = name, ["hash"] = hash });
+		}
+		if (documents.Count == 0) return expanded;
+		var copy = JsonNode.Parse(expanded)?.AsObject() ?? throw EnvelopeInvalid("envelope_state_missing");
+		copy["definition_tail_remove"]!.AsObject()["release_documents"] = JsonSerializer.SerializeToNode(documents, EditWire.JsonOptions);
+		return copy.ToJsonString();
 	}
 
 	static bool HasExternalizedInversePayload(JsonElement state) {

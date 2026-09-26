@@ -211,11 +211,30 @@ internal static class PdbOwnershipProbe {
 		Console.WriteLine("PDB_COMPAT method classification=" + oldMethod.Classification + " image=" + oldMethod.ImageSha256
 			+ " expected=" + lineage.Checkpoint(method).ResultImageSha256 + " semantic=" + oldMethod.SemanticFingerprint
 			+ " expected_semantic=" + lineage.Checkpoint(method).ResultSemanticFingerprint);
-		try { history.PlanNavigation(lineage, method, root); throw new InvalidOperationException("old method package unexpectedly undid"); }
-		catch (EditDomainException ex) when (ex.Code == "EDIT_HISTORY_CONFLICT") { }
+		Check(oldMethod.Classification == "validated_drift", "old v2 PDB head remains classified as validated drift");
+		using (var imageMismatch = ModuleDefMD.Load(Path.Combine(Path.GetDirectoryName(packagePath)!, "legacy-image-mismatch.dll"))) {
+			Check(EditHistoryModule.SemanticDigest(lineage.Manifest.Format, imageMismatch) == oldMethod.SemanticFingerprint
+				&& EditWire.Sha256(EditWorkspace.WriteCheckpointImage(imageMismatch)) != oldMethod.ImageSha256,
+				"derived entrypoint fixture keeps v2 semantic digest but changes the complete live image");
+		}
+		using (var live = ModuleDefMD.Load(fixture)) {
+			var before = EditFingerprint.Compute(live);
+			var beforeImage = EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live));
+			var added = live.GetTypes().SelectMany(type => type.Methods).Single(value => value.Name.String == "T057Added");
+			var undo = history.PlanNavigation(lineage, method, root).Apply(live);
+			var rootImage = history.Assess(lineage.Manifest.LineageId, root, string.Empty).ImageSha256;
+			Check(EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == rootImage
+				&& EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live) == lineage.Checkpoint(root).ResultSemanticFingerprint
+				&& live.PdbState == null && !live.GetTypes().SelectMany(type => type.Methods).Contains(added),
+				"old PDB method inverse restores complete exact root image and releases its document");
+			undo();
+			Check(EditFingerprint.Compute(live) == before && EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)) == beforeImage
+				&& live.GetTypes().SelectMany(type => type.Methods).Contains(added),
+				"old PDB method inverse compensation restores same live object and image");
+		}
 		Check(EditWire.Sha256(store.FinalBytes(lineage.Manifest.LineageId)) == originalSha,
 			"old package remained byte-for-byte unchanged");
-		Console.WriteLine("PASS pdb-compat old-package-sha=" + originalSha + " resource-only=undo-ok method-with-PDB=EDIT_HISTORY_CONFLICT unchanged");
+		Console.WriteLine("PASS pdb-compat old-package-sha=" + originalSha + " resource-only=undo-ok method-with-PDB=exact-root+compensation unchanged");
 	}
 
 	static ModuleDefMD Open(string fixture) => ModuleDefMD.Load(Path.GetFullPath(fixture));

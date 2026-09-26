@@ -254,12 +254,12 @@ internal static partial class EditOperationRegistry {
 		return Outcome("method_update",null,m,before,m.FullName,()=>{m.Name=oldName;m.Attributes=oldAttrs;m.ImplAttributes=oldImpl;m.MethodSig.RetType=oldRet;m.MethodSig.HasThis=oldHas;m.Overrides.Clear();foreach(var o in oldOverrides)m.Overrides.Add(o);m.ImplMap=oldImplMap;if(oldPInvokeBit)m.IsPinvokeImpl=true;else m.IsPinvokeImpl=false;},risks);
 	}
 
-	static EditOperationOutcome MethodRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map) {
+	static EditOperationOutcome MethodRemove(ModuleDef module, JsonElement op, Dictionary<string, IMDTokenProvider> map, bool preserveDeletedRow = true) {
 		RequireRemoveMode(op); var m=Ref<MethodDef>(module,op.GetProperty("target"),map); if(HasReference(module,m)||HasAttachment(module,m)) Invalid("operation.target","Method is referenced or attached");
 		var owner=m.DeclaringType; var index=owner.Methods.IndexOf(m); var before=m.FullName; owner.Methods.Remove(m); RemoveMapValue(map,m);
 		// P03-CHANGE-002 v3 §2.6: real-row removals re-own to the tombstone so the
 		// writer never creates dummy_ptr placeholders (and their reference rows).
-		var tombstoneRow=m.MDToken.Rid!=0; dnlib.DotNet.TypeDef? tombstone=null;
+		var tombstoneRow=preserveDeletedRow && m.MDToken.Rid!=0; dnlib.DotNet.TypeDef? tombstone=null;
 		if(tombstoneRow){tombstone=EditDeletedRowsTombstone.GetOrCreate(module);EditDeletedRowsTombstone.AcquireRow(module,m);}
 		var risks=IsPublic(m.Attributes)?new[]{Risk("public_delete",m)}:Array.Empty<Dictionary<string,object?>>();
 		return Outcome("method_remove",null,m,before,null,()=>{if(tombstoneRow)EditDeletedRowsTombstone.ReleaseRow(m,tombstone!);owner.Methods.Insert(index,m);},risks);
