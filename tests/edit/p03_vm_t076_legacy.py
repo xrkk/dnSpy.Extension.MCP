@@ -1,8 +1,11 @@
-"""Public v2 PDB migration regression. Provision an isolated host and pass root, URL, fixture, case."""
+"""Public v2 PDB regression: root, URL, old-head fixture, case, optional --fault.
+
+The optional late-fault path requires an isolated host with DNMCP_TEST=1.
+"""
 import hashlib,json,sys,uuid
 from pathlib import Path
 from dnspy_mcp import DnSpyClient
-root=Path(sys.argv[1]);url=sys.argv[2];fixture=sys.argv[3];case=sys.argv[4]
+root=Path(sys.argv[1]);url=sys.argv[2];fixture=sys.argv[3];case=sys.argv[4];fault_mode=len(sys.argv)>5 and sys.argv[5]=='--fault'
 lineage='lineage-c8650beb46dd4e2678cff8f2164db531'
 method='checkpoint-66fbfb78816b8ebc971a5f3b029c14fe'
 original='checkpoint-ded7fbd63c66d70d7d8594c620a41258'
@@ -82,6 +85,25 @@ try:
                     root_assess=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'assess'})
                     root_replay=root_assess.get('result',{}).get('replay',{})
                     expect(root_replay.get('classification')=='exact','original root exact')
+                    if fault_mode:
+                        expect(call('edit_test_storage_fault',{'action':'arm','stage':'navigate_forward'}).get('ok') is True,
+                            'arm late navigation fault')
+                        injected=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'apply',
+                            'replay_id':root_replay['replay_id'],'expected_live_fingerprint':records['live_fingerprint'],'confirm_validated_drift':False})
+                        expect(code(injected)=='EDIT_CHECKPOINT_COMMIT_FAILED','late navigation fault is reported')
+                        expect(records['calls'][-1]['before']==records['calls'][-1]['after'],'late failure preserves package and outputs')
+                        expect(head()==second,'late failure retains migration head')
+                        expect(call('edit_status',{}).get('result',{}).get('state')=='idle','late failure compensates coordinator state')
+                        rebound=call('edit_begin',{'request_id':str(uuid.uuid4()),'assembly_name':'TestIL'})
+                        expect(rebound.get('ok') is True
+                            and rebound['result']['source']['file_path']==begin['result']['source']['file_path']
+                            and rebound['result']['source']['mvid']==begin['result']['source']['mvid'],
+                            'late failure preserves loaded UI module identity')
+                        expect(call('edit_rollback',{'request_id':str(uuid.uuid4()),'transaction_id':rebound['result']['transaction']['transaction_id']}).get('ok') is True,
+                            'late failure binding rollback')
+                        root_assess=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'assess'})
+                        root_replay=root_assess.get('result',{}).get('replay',{})
+                        expect(root_replay.get('classification')=='exact','root ticket remains exact after compensation')
                     exact_root=call('edit_restore',{'request_id':str(uuid.uuid4()),'lineage_id':lineage,'checkpoint_id':original,'action':'apply',
                         'replay_id':root_replay['replay_id'],'expected_live_fingerprint':records['live_fingerprint'],'confirm_validated_drift':False})
                     expect(exact_root.get('ok') is True and head()==original,'exact ancestor navigation updates live and head')
