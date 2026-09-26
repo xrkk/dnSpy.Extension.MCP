@@ -69,6 +69,9 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		(IReadOnlyDictionary<string, long>)SpyCounters.ToDictionary(kv => kv.Key, kv => kv.Value);
 	public static void SpyReset() => SpyCounters.Clear();
 	DbgProcess? ownedProcess;
+	DbgProcess? ownedProcessAwaitingExitMessage;
+	string? exitMessageSessionId;
+	int exitMessageGeneration;
 	DbgProcessControlAdapter? adapter;
 	LaunchPlan? activePlan;
 	List<FileIdentityDto> launchIdentities = new();
@@ -239,6 +242,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			dbgManager.ProcessesChanged += OnProcessesChanged;
 			dbgManager.IsDebuggingChanged += OnIsDebuggingChanged;
 			dbgManager.MessageExceptionThrown += OnOwnedExceptionThrown;
+			dbgManager.MessageProcessExited += OnOwnedProcessExited;
 		}
 	}
 
@@ -261,6 +265,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			dbgManager.ProcessesChanged -= OnProcessesChanged;
 			dbgManager.IsDebuggingChanged -= OnIsDebuggingChanged;
 			dbgManager.MessageExceptionThrown -= OnOwnedExceptionThrown;
+			dbgManager.MessageProcessExited -= OnOwnedProcessExited;
 		}
 		ReleaseLeases();
 		artifactFs?.Dispose();
@@ -3333,49 +3338,77 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				}
 			}
 			else {
-				DbgProcess? owned;
-				lock (sessionLock) owned = ownedProcess;
-				if (process != owned)
-					continue;
-				process.IsRunningChanged -= OnOwnedIsRunningChanged;
 				var terminalSessionId = coordinator.ActiveSessionId;
-				var result = coordinator.ObserveProcessRemoved(terminalSessionId, coordinator.Generation, ownedIdentityMatch: true, exitCode: null, processHandle: $"proc-{process.Id}");
+				var terminalGeneration = coordinator.Generation;
 				lock (sessionLock) {
-					adapter?.Dispose();
-					adapter = null;
-					ownedProcess = null;
-					// A step pending at removal never gets its StepComplete; a stale registration
-					// would block every future step in this process ("a step is already pending").
-					currentStep = null;
+					if (!ReferenceEquals(process, ownedProcess))
+						continue;
+					ownedProcessAwaitingExitMessage = process;
+					exitMessageSessionId = terminalSessionId;
+					exitMessageGeneration = terminalGeneration;
 				}
-				TaskCompletionSource<string>? controlTcs;
-				lock (sessionLock) controlTcs = controlOutcomeTcs;
-				if (result.Outcome == "pending-restart")
-					controlTcs?.TrySetResult("removed-pending-restart");
-			else {
-				TerminalArtifactSession(terminalSessionId);
-				sideEffectCache.MarkSessionTerminal(DateTime.UtcNow);
-				controlTcs?.TrySetResult("removed");
-				ReleaseLeases();
-				// Session teardown must remove the OWNED dnSpy breakpoints too — clearing only
-				// the maps would leak engine breakpoints that then collide with the next
-				// session's Add at the same location (dnSpy returns null for duplicates).
-				DbgCodeBreakpoint[]? leaked = null;
-				lock (sessionLock) {
-					var ownedDnSpy = dnSpyBreakpointsByMcp.Values.SelectMany(v => v).Where(b => b is not null).ToArray();
-					if (ownedDnSpy.Length > 0)
-						leaked = ownedDnSpy;
-					bpStore = new DebugBreakpointStore();
-					moduleByOwnedBp.Clear();
-					mcpIdByDnSpyBreakpoint.Clear();
-					dnSpyIdByMcpBreakpoint.Clear();
-					dnSpyBreakpointsByMcp.Clear();
-					modulesByHandle.Clear();
-				}
-				if (leaked is not null)
-					breakpointsService?.Remove(leaked);
+				process.IsRunningChanged -= OnOwnedIsRunningChanged;
+				// dnSpy sends MessageProcessExited with its real exit code immediately after
+				// ProcessesChanged(removed), before closing the process handle. Settling here
+				// would turn the still-unknown code into a misleading zero.
 			}
+		}
+	}
+
+	void OnOwnedProcessExited(object? sender, DbgMessageProcessExitedEventArgs e) {
+		DbgProcess process = e.Process;
+		string? terminalSessionId;
+		int terminalGeneration;
+		bool ownedIdentityMatch;
+		lock (sessionLock) {
+			if (!ReferenceEquals(process, ownedProcessAwaitingExitMessage))
+				return;
+			ownedProcessAwaitingExitMessage = null;
+			terminalSessionId = exitMessageSessionId;
+			terminalGeneration = exitMessageGeneration;
+			exitMessageSessionId = null;
+			ownedIdentityMatch = ReferenceEquals(process, ownedProcess);
+		}
+		if (!ownedIdentityMatch)
+			return;
+		var result = coordinator.ObserveProcessRemoved(terminalSessionId, terminalGeneration,
+			ownedIdentityMatch: true, exitCode: e.ExitCode, processHandle: $"proc-{process.Id}");
+		lock (sessionLock) {
+			if (!ReferenceEquals(process, ownedProcess))
+				return;
+			adapter?.Dispose();
+			adapter = null;
+			ownedProcess = null;
+			// A step pending at removal never gets its StepComplete; a stale registration
+			// would block every future step in this process ("a step is already pending").
+			currentStep = null;
+		}
+		TaskCompletionSource<string>? controlTcs;
+		lock (sessionLock) controlTcs = controlOutcomeTcs;
+		if (result.Outcome == "pending-restart")
+			controlTcs?.TrySetResult("removed-pending-restart");
+		else {
+			TerminalArtifactSession(terminalSessionId);
+			sideEffectCache.MarkSessionTerminal(DateTime.UtcNow);
+			controlTcs?.TrySetResult("removed");
+			ReleaseLeases();
+			// Session teardown must remove the OWNED dnSpy breakpoints too — clearing only
+			// the maps would leak engine breakpoints that then collide with the next
+			// session's Add at the same location (dnSpy returns null for duplicates).
+			DbgCodeBreakpoint[]? leaked = null;
+			lock (sessionLock) {
+				var ownedDnSpy = dnSpyBreakpointsByMcp.Values.SelectMany(v => v).Where(b => b is not null).ToArray();
+				if (ownedDnSpy.Length > 0)
+					leaked = ownedDnSpy;
+				bpStore = new DebugBreakpointStore();
+				moduleByOwnedBp.Clear();
+				mcpIdByDnSpyBreakpoint.Clear();
+				dnSpyIdByMcpBreakpoint.Clear();
+				dnSpyBreakpointsByMcp.Clear();
+				modulesByHandle.Clear();
 			}
+			if (leaked is not null)
+				breakpointsService?.Remove(leaked);
 		}
 	}
 
