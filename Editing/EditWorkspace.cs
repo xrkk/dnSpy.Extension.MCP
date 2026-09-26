@@ -58,14 +58,27 @@ internal sealed class EditWorkspace : IDisposable {
 		for (var attempt = 0; live == null && attempt < 9; attempt++) {
 			if (attempt != 0) System.Threading.Thread.Sleep(250);
 			live = OnDispatcher(() => {
-				var modules = tree.GetAllModuleNodes().Select(n => n.Document?.ModuleDef).Where(m => m != null)
-					.Cast<ModuleDef>().Where(m => string.Equals(m.Assembly?.Name, assemblyName, StringComparison.OrdinalIgnoreCase)).ToList();
-				if (requestedMvid != null) modules = modules.Where(m => string.Equals(m.Mvid?.ToString("D"), requestedMvid, StringComparison.OrdinalIgnoreCase)).ToList();
-				return modules.Count == 1 ? modules[0] : null;
+				return EditTargetResolver.AssemblyModule(tree.GetAllModuleNodes()
+					.Select(n => n.Document?.ModuleDef).Where(m => m != null).Cast<ModuleDef>(),
+					assemblyName, requestedMvid);
 			});
 		}
 		if (live == null) throw Capability("target_ambiguous_or_not_found", "Exactly one loaded module must match assembly_name and module_mvid");
 		return OnDispatcher(() => CreateFromLive(live, assemblyName));
+	}
+
+	// Explicit, rejection-only selector. It never constructs a workspace or writes a module.
+	internal static void RejectStandaloneNetModule(IDocumentTreeView tree, string netmoduleName, string requestedMvid) {
+		var mvid = EditTargetResolver.DiagnosticMvid(requestedMvid);
+		for (var attempt = 0; attempt < 9; attempt++) {
+			if (attempt != 0) System.Threading.Thread.Sleep(250);
+			var count = OnDispatcher(() => EditTargetResolver.StandaloneMatchCount(tree.GetAllModuleNodes()
+				.Select(n => n.Document?.ModuleDef).Where(m => m != null).Cast<ModuleDef>(),
+				netmoduleName, mvid));
+			if (count == 1) throw Capability("netmodule", "NetModule targets are not supported");
+			if (count > 1) break; // Stable ambiguity cannot be resolved by hydration.
+		}
+		throw Capability("target_ambiguous_or_not_found", "Exactly one loaded standalone NetModule must match netmodule_name and module_mvid");
 	}
 
 	static EditWorkspace CreateFromLive(ModuleDef live, string assemblyName) {

@@ -26,7 +26,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 | 工具 | 用途 |
 | --- | --- |
-| `edit_begin` | 为一个已加载纯托管单模块程序集取得进程级编辑租约；创建私有副本 |
+| `edit_begin` | 为一个已加载纯托管单模块程序集取得编辑租约，或用显式模块名和 MVID 诊断并拒绝独立 NetModule |
 | `edit_status` | 不改变事务地查询状态/修订/指纹/容量/风险 |
 | `edit_apply` | 向私有副本应用 **39** 类操作之一（必须携带 `request_id` 与 `expected_revision`） |
 | `edit_review` | 审查固定修订；规范 diff + 必需风险确认 |

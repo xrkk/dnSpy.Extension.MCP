@@ -993,12 +993,15 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 `{"name":"edit_begin","arguments":{"request_id":"sample_request_id","assembly_name":"sample_assembly_name"}}`
 
+独立 NetModule 仅可走互斥的拒绝诊断分支：`{"name":"edit_begin","arguments":{"request_id":"r","netmodule_name":"BoundaryModule.netmodule","module_mvid":"cec6a9a1-2d28-4010-88ed-b469551880f4"}}`；唯一已加载且无 Assembly 时返回 `EDIT_CAPABILITY_UNAVAILABLE/details.capability=netmodule`，不会建立事务；错配或多匹配返回 `target_ambiguous_or_not_found`。旧 `assembly_name` 仍只表示程序集名。
+
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
-| `assembly_name` | 是 | string; minLength=1; maxLength=512 |
-| `module_mvid` | 否 | string; minLength=1; maxLength=36 |
+| `assembly_name` | 程序集分支必填 | string; minLength=1; maxLength=512 |
+| `netmodule_name` | 拒绝诊断分支必填 | string; minLength=1; maxLength=512; 含非空白字符 |
+| `module_mvid` | 程序集分支可选；诊断分支必填 | 程序集分支保留原字符串约束；诊断分支为非全零 D 形 GUID |
 | `request_id` | 是 | string; minLength=1; maxLength=128 |
-| `source_family_id` | 否 | string; pattern="^family-[0-9a-f]{32}$" |
+| `source_family_id` | 仅程序集分支可选 | string; pattern="^family-[0-9a-f]{32}$" |
 
 输出 schema 顶层字段：`capabilities`、`capacity`、`fingerprints`、`limits`、`source`、`transaction`、`history`。完整成功 `result`、失败、分支结构见附录 C 中 `edit_begin.outputSchema`；参数复杂对象见 `edit_begin.inputSchema`。
 
@@ -14198,13 +14201,58 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
     "source_family_id": {
      "type": "string",
      "pattern": "^family-[0-9a-f]{32}$"
+    },
+    "netmodule_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512,
+     "pattern": "\\S"
     }
    },
    "required": [
-    "request_id",
-    "assembly_name"
+    "request_id"
    ],
-   "type": "object"
+   "type": "object",
+   "oneOf": [
+    {
+     "required": [
+      "assembly_name"
+     ],
+     "not": {
+      "required": [
+       "netmodule_name"
+      ]
+     }
+    },
+    {
+     "required": [
+      "netmodule_name",
+      "module_mvid"
+     ],
+     "properties": {
+      "module_mvid": {
+       "type": "string",
+       "pattern": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      }
+     },
+     "allOf": [
+      {
+       "not": {
+        "required": [
+         "assembly_name"
+        ]
+       }
+      },
+      {
+       "not": {
+        "required": [
+         "source_family_id"
+        ]
+       }
+      }
+     ]
+    }
+   ]
   },
   "outputSchema": {
    "oneOf": [
@@ -18046,6 +18094,6 @@ JSON Pointer 指向附录 B 中的定义；`direction` 区分入站、出站与�
 ## 来源与边界
 
 - `McpTools.cs` SHA256 `ce680df3f15f30847349cac1d7ed11baffcd5f5f2126b900f2ad21ed88f8841b`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
-- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `e6033fe86785a99f978545198f4525381a9caa073b3fa1c6ee7e3d92bc43d822`；`Editing/EditToolProvider.cs` SHA256 `45c956b3da385c46e5d938a46ba630dfa74a309ed670d8e8537147280740db24`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
+- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `88f2b32a299cb725ff04a2aa5b8c3271bd786b1a53e961bfb96a996a24a642f4`；`Editing/EditToolProvider.cs` SHA256 `0fea0d0ed0d1950a762fc00ababe463adcd8ee54842c4843428fd7be704bc5a6`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
 - `tests/debug/contracts/dnspy.debug.utf8-limits.json` SHA256 `bf8741dd5054cbff6cbf23a429adeec533ab0b6e84689655763062621ee04b7f`；`McpServer.cs` SHA256 `cdde4fcd3408febe53c6d32a60d369a66eb1eb7ca2ac9481589abd5581358261`。
 - 这是源码接口手册，不是 VM 功能验收报告。运行时条件、实例配置、文件身份和目标架构须以 `debug_capabilities`、`tools/list`、调用返回和实际环境核对。

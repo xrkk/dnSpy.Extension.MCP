@@ -26,7 +26,7 @@ PRODUCT = [
 TEST = [
     "edit_test_clock", "edit_test_barrier", "edit_test_external_mutation",
     "edit_test_live_mutation", "edit_test_fault", "edit_test_apply_and_restore",
-    "edit_test_storage_fault", "edit_test_lineage_mutation",
+    "edit_test_storage_fault", "edit_test_lineage_mutation", "edit_test_strong_name",
 ]
 OPERATIONS = [
     "type_add", "type_update", "type_remove", "method_add", "method_update",
@@ -81,7 +81,7 @@ def main() -> int:
     project = PROJECT.read_text(encoding="utf-8")
 
     check(list(schemas) == PRODUCT[:5] + TEST[:6] + PRODUCT[5:] + TEST[6:] or set(schemas) == set(PRODUCT + TEST), "schemas:tool-set", failures)
-    check(len(schemas) == 25, "schemas:tool-count", failures)
+    check(len(schemas) == 26, "schemas:tool-count", failures)
     check(all("$ref" not in node for node in walk(schemas) if isinstance(node, dict)), "schemas:no-ref", failures)
     check(all(isinstance(schemas[name].get("inputSchema"), dict) and isinstance(schemas[name].get("outputSchema"), dict) for name in schemas), "schemas:object-roots", failures)
     for name in PRODUCT:

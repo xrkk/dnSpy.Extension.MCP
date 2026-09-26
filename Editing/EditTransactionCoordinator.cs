@@ -579,7 +579,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		RequireOwnerContext(context); var requestId = EditWire.String(args, "request_id"); var payload = PayloadHash(args);
 		var session=context.AuthoritativeSessionId!;
 		lock(gate){if (beginCache.TryReplay(session + ":" + requestId, payload, out var replay)) return ParseEnvelope(replay);if (active != null) throw new EditDomainException("EDIT_TRANSACTION_BUSY");state="editing";pendingBeginSessions.Add(session);pendingBeginOwner=session;pendingBeginTransport=context.TransportKind;}
-		var assembly = EditWire.String(args, "assembly_name"); string? mvid = null;
+		var standaloneDiagnostic = args != null && args.ContainsKey("netmodule_name");
+		var assembly = standaloneDiagnostic ? null : EditWire.String(args, "assembly_name"); string? mvid = null;
 		if (args != null && args.TryGetValue("module_mvid", out var m) && m != null) mvid = m is JsonElement je ? je.GetString() : m.ToString();
 		string? sourceFamilyId = null;
 		if (args != null && args.TryGetValue("source_family_id", out var family) && family != null)
@@ -587,7 +588,14 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		EditWorkspace? workspace=null;
 		EditHistoryBinding? historyBinding=null;
 		try{
-			workspace = EditWorkspace.Create(tree, assembly, mvid);
+			if (standaloneDiagnostic) {
+				if (args!.ContainsKey("assembly_name") || args.ContainsKey("source_family_id"))
+					throw new ArgumentException("netmodule_name cannot be combined with assembly_name or source_family_id");
+				EditWorkspace.RejectStandaloneNetModule(tree,
+					EditWire.String(args, "netmodule_name"), EditWire.String(args, "module_mvid"));
+				throw new InvalidOperationException("Standalone NetModule diagnostic selector must reject");
+			}
+			workspace = EditWorkspace.Create(tree, assembly!, mvid);
 			BarrierPoint("begin_after_copy",session);
 			lock(gate)if(closedPendingBeginSessions.Contains(session))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 			historyBinding = history.ResolveBegin(workspace, sourceFamilyId);

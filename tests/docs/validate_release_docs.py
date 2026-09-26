@@ -68,6 +68,10 @@ for stage in range(1, 9):
 source_description = (ROOT / "Editing/EditToolProvider.cs").read_text(encoding="utf-8")
 source_operations = registry.source_registry("production", "enabled")[1]
 schema = json.loads((ROOT / "Editing/Contracts/p03-tool-schemas.json").read_text(encoding="utf-8"))
+# The appendix projection for the new edit_begin branch comes from the embedded
+# authoritative schema, including its strict mutually exclusive selectors.
+appendix = reference.split("## 附录 C：", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+assert json.loads(appendix)["edit_begin"]["inputSchema"] == schema["edit_begin"]["inputSchema"]
 schema_operations = [branch["properties"]["kind"]["const"] for branch in
                      schema["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]]
 assert schema_operations == source_operations, "edit_apply schema differs from OperationKinds"

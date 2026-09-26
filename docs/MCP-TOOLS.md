@@ -26,7 +26,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 | Tool | Purpose |
 | --- | --- |
-| `edit_begin` | Acquire the process-wide edit lease for one loaded pure-managed single-module assembly; create the private copy |
+| `edit_begin` | Acquire the edit lease for one loaded pure-managed single-module assembly, or explicitly diagnose and refuse a standalone NetModule by name and MVID |
 | `edit_status` | State/revision/fingerprints/capacity/risks without mutation |
 | `edit_apply` | Apply one of **39** operation kinds to the private copy (`request_id` + `expected_revision` required) |
 | `edit_review` | Validate the fixed revision; canonical diffs + required risk confirmations |

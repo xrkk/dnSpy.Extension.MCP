@@ -9997,13 +9997,58 @@
         "source_family_id": {
           "type": "string",
           "pattern": "^family-[0-9a-f]{32}$"
+        },
+        "netmodule_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "\\S"
         }
       },
       "required": [
-        "request_id",
-        "assembly_name"
+        "request_id"
       ],
-      "type": "object"
+      "type": "object",
+      "oneOf": [
+        {
+          "required": [
+            "assembly_name"
+          ],
+          "not": {
+            "required": [
+              "netmodule_name"
+            ]
+          }
+        },
+        {
+          "required": [
+            "netmodule_name",
+            "module_mvid"
+          ],
+          "properties": {
+            "module_mvid": {
+              "type": "string",
+              "pattern": "^(?!00000000-0000-0000-0000-000000000000$)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "assembly_name"
+                ]
+              }
+            },
+            {
+              "not": {
+                "required": [
+                  "source_family_id"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     },
     "outputSchema": {
       "oneOf": [

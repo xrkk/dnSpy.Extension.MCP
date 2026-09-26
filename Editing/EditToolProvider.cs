@@ -32,7 +32,7 @@ internal sealed class EditToolProvider : IMcpToolProvider, IDisposable {
 	}
 	ToolInfo Tool(string name) => new() { Name = name, Description = Description(name), InputSchema = schemas.InputSchema(name), OutputSchema = schemas.OutputSchema(name) };
 	static string Description(string name) => name switch {
-		"edit_begin" => "Begin the process-wide structured edit transaction for one loaded pure-managed single-module assembly. All changes remain private until a later P03 commit workflow.",
+		"edit_begin" => "Begin a private edit transaction for one loaded pure-managed single-module assembly, or diagnose a standalone NetModule by explicit netmodule_name plus module_mvid with a capability refusal.",
 		"edit_status" => "Read process-wide edit state. The owning MCP session receives transaction fingerprints, capacity, review and risk details.",
 		"edit_apply" => "Apply one of the 39 structured metadata/body operations atomically to the transaction private copy.",
 		"edit_import" => "Import compiled C# members from a registered edit_compile artifact into the transaction private copy as frozen structured operations. The compile mapping is all-or-nothing: any unmapped reference or ambiguous target rejects the whole import with zero side effects (OUT-006).",

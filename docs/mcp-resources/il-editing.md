@@ -33,7 +33,8 @@ Use the 18 advertised `edit_*` product tools when an edit spans metadata objects
 commit, history or export boundary:
 
 1. `edit_begin(request_id, assembly_name[, module_mvid])` acquires the single process-wide lease and
-   creates a private copy. It accepts only an initialized Streamable HTTP or legacy SSE owner.
+   creates a private copy. The alternative `edit_begin(request_id, netmodule_name, module_mvid)`
+   only diagnoses a uniquely loaded standalone NetModule and always refuses editing. It accepts only an initialized Streamable HTTP or legacy SSE owner.
 2. `edit_apply(request_id, transaction_id, expected_revision, operation)` applies one typed operation
    to that private copy. Carry forward the returned `work_revision`; never guess or auto-replay IDs.
 3. `edit_review(request_id, transaction_id, expected_revision[, dynamic_validation])` validates the
