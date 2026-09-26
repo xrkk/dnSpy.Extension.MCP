@@ -69,9 +69,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		(IReadOnlyDictionary<string, long>)SpyCounters.ToDictionary(kv => kv.Key, kv => kv.Value);
 	public static void SpyReset() => SpyCounters.Clear();
 	DbgProcess? ownedProcess;
-	DbgProcess? ownedProcessAwaitingExitMessage;
-	string? exitMessageSessionId;
-	int exitMessageGeneration;
+	readonly PendingExitMessage<DbgProcess> pendingExitMessage = new();
 	DbgProcessControlAdapter? adapter;
 	LaunchPlan? activePlan;
 	List<FileIdentityDto> launchIdentities = new();
@@ -3343,9 +3341,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				lock (sessionLock) {
 					if (!ReferenceEquals(process, ownedProcess))
 						continue;
-					ownedProcessAwaitingExitMessage = process;
-					exitMessageSessionId = terminalSessionId;
-					exitMessageGeneration = terminalGeneration;
+					pendingExitMessage.Record(process, terminalSessionId, terminalGeneration);
 				}
 				process.IsRunningChanged -= OnOwnedIsRunningChanged;
 				// dnSpy sends MessageProcessExited with its real exit code immediately after
@@ -3357,21 +3353,15 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 
 	void OnOwnedProcessExited(object? sender, DbgMessageProcessExitedEventArgs e) {
 		DbgProcess process = e.Process;
-		string? terminalSessionId;
-		int terminalGeneration;
-		bool ownedIdentityMatch;
+		var activeSessionId = coordinator.ActiveSessionId;
+		var activeGeneration = coordinator.Generation;
+		PendingExitMessage<DbgProcess>.Snapshot pending;
 		lock (sessionLock) {
-			if (!ReferenceEquals(process, ownedProcessAwaitingExitMessage))
+			if (!pendingExitMessage.TryTake(process, ownedProcess, activeSessionId, activeGeneration, out pending))
 				return;
-			ownedProcessAwaitingExitMessage = null;
-			terminalSessionId = exitMessageSessionId;
-			terminalGeneration = exitMessageGeneration;
-			exitMessageSessionId = null;
-			ownedIdentityMatch = ReferenceEquals(process, ownedProcess);
 		}
-		if (!ownedIdentityMatch)
-			return;
-		var result = coordinator.ObserveProcessRemoved(terminalSessionId, terminalGeneration,
+		var terminalSessionId = pending.SessionId;
+		var result = coordinator.ObserveProcessRemoved(terminalSessionId, pending.Generation,
 			ownedIdentityMatch: true, exitCode: e.ExitCode, processHandle: $"proc-{process.Id}");
 		lock (sessionLock) {
 			if (!ReferenceEquals(process, ownedProcess))

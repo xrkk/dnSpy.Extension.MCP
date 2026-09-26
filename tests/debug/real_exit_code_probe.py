@@ -8,9 +8,11 @@ from dnspy_mcp import DnSpyClient
 p=argparse.ArgumentParser()
 p.add_argument('--url',required=True);p.add_argument('--fixture',required=True)
 p.add_argument('--arch',choices=('x64','x86'),required=True);p.add_argument('--expected-exit',type=int,required=True)
+p.add_argument('--launch-mode',choices=('net48-exe','coreclr-apphost'),default='net48-exe')
+p.add_argument('--break-kind',choices=('entry','process'),default='entry')
 p.add_argument('--evidence',required=True);a=p.parse_args()
 f=Path(a.fixture);out=Path(a.evidence)
-d={'fixture':str(f),'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),'arch':a.arch,'expected_exit':a.expected_exit,'calls':[],'verdict':'ERROR'}
+d={'fixture':str(f),'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),'arch':a.arch,'expected_exit':a.expected_exit,'launch_mode':a.launch_mode,'break_kind':a.break_kind,'calls':[],'verdict':'ERROR'}
 def save():out.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 def call(name,args=None):
     row={'name':name,'arguments':args or {},'utc':time.time()}
@@ -34,21 +36,25 @@ def cim():
 c=None;active=None;handle=None
 try:
     c=DnSpyClient.connect(a.url,client_name='real-exit-code-'+a.arch,timeout=90)
-    launch=result(call('debug_launch',{'request_id':rid(),'target_path':str(f),'expected_sha256':d['sha256'],'launch_mode':'net48-exe','architecture':a.arch,'break_kind':'entry'}))
+    launch=result(call('debug_launch',{'request_id':rid(),'target_path':str(f),'expected_sha256':d['sha256'],'launch_mode':a.launch_mode,'architecture':a.arch,'break_kind':a.break_kind}))
     active=(launch['session_id'],int(launch['generation']));d['session_id'],d['generation']=active;save()
+    expected_family='coreclr' if a.launch_mode=='coreclr-apphost' else 'net48'
+    if launch.get('runtime_family')!=expected_family:raise AssertionError('wrong target runtime family: '+str(launch))
     for _ in range(80):
         state=call('debug_status')
         if result(state)['state']=='paused':break
         time.sleep(.1)
     else:raise RuntimeError('entry pause absent')
-    d['identity_at_entry']=cim();save()
     k=ctypes.windll.kernel32
     k.OpenProcess.argtypes=[ctypes.c_ulong,ctypes.c_int,ctypes.c_ulong];k.OpenProcess.restype=ctypes.c_void_p
     k.WaitForSingleObject.argtypes=[ctypes.c_void_p,ctypes.c_ulong];k.WaitForSingleObject.restype=ctypes.c_ulong
     k.GetExitCodeProcess.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_ulong)];k.GetExitCodeProcess.restype=ctypes.c_int
     k.CloseHandle.argtypes=[ctypes.c_void_p]
-    handle=k.OpenProcess(0x00100000|0x1000,0,int(d['identity_at_entry']['pid']))
+    paused_pid=int(result(state)['owned_process']['pid'])
+    handle=k.OpenProcess(0x00100000|0x1000,0,paused_pid)
     if not handle:raise RuntimeError('cannot open owned target process handle')
+    d['identity_at_pause']=cim();save()
+    if int(d['identity_at_pause']['pid'])!=paused_pid:raise AssertionError('CIM process identity differs from paused target')
     for _ in range(100):
         status=call('debug_status');state=result(status)['state'];ctx=status.get('debug_context',{})
         if state=='paused':
