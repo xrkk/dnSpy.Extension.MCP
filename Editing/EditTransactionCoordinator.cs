@@ -1626,7 +1626,16 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var liveGuard = EditWorkspace.OnDispatcher(() => EditFingerprint.ComputeExternalGuard(live));
 		var liveImage = EditWorkspace.OnDispatcher(() => EditWire.Sha256(EditWorkspace.WriteCheckpointImage(live)));
 		var current = history.Assess(lineage.Manifest.LineageId, lineage.Manifest.HeadCheckpointId, liveFingerprint);
-		if (current.Classification != "exact" || current.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live)) || current.ImageSha256 != liveImage)
+		// An older v2 head can itself be validated drift on a newer writer.  A
+		// confirmed restore of that same checkpoint is the one safe way to move
+		// the lineage to a current exact migration child.  Other navigation still
+		// requires an exact current head, and the live image/semantic gates below
+		// must match the current replay before anything is written.
+		var confirmedCurrentHead = target.Checkpoint.CheckpointId == lineage.Manifest.HeadCheckpointId
+			&& current.Classification == "validated_drift";
+		if ((current.Classification != "exact" && !confirmedCurrentHead)
+			|| current.SemanticFingerprint != EditWorkspace.OnDispatcher(() => EditHistoryModule.SemanticDigest(lineage.Manifest.Format, live))
+			|| current.ImageSha256 != liveImage)
 			throw new EditDomainException("EDIT_LINEAGE_DIVERGED");
 		var navigationPlan = history.PlanNavigation(lineage, lineage.Manifest.HeadCheckpointId, target.Checkpoint.CheckpointId);
 		EditPreparedHistoryWrite? prepared = null;
