@@ -58,12 +58,22 @@ def main() -> int:
     active = None
 
     def call(who: DnSpyClient, tool: str, values: dict) -> dict:
+        wire = None
         try:
-            reply = who.call_tool_json(tool, values)
+            wire = who.request("tools/call", {"name": tool, "arguments": values})
+            if not isinstance(wire, dict):
+                raise ValueError("tools/call result is not an object")
+            if "structuredContent" in wire:
+                reply = wire["structuredContent"]
+            else:
+                text = next(item["text"] for item in wire.get("content", [])
+                            if item.get("type") == "text")
+                reply = json.loads(text)
         except Exception as exc:  # transport errors remain failures, never business refusals
             reply = {"ok": False, "error": {"code": "DRIVER_TRANSPORT", "message": str(exc)}}
         evidence["calls"].append({"session": "owner" if who is client else "foreign",
-                                  "tool": tool, "request": values, "response": reply})
+                                  "tool": tool, "request": values, "response": reply,
+                                  "wire_result": wire})
         print(json.dumps(evidence["calls"][-1], ensure_ascii=False, default=str), flush=True)
         return reply
 
@@ -155,6 +165,7 @@ def main() -> int:
                                                              "status": after_reject})
         rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx})
         check(rolled.get("ok") is True, "first rollback", rolled)
+        retired_tx = tx
         active = None
 
         tx, rev = begin("ImportHost")
@@ -188,8 +199,9 @@ def main() -> int:
               "same scan preserves review and risk cardinality", after_repeat)
 
         rev, changed = apply(tx, rev, {"kind": "assembly_update", "version": "7.8.9.11"})
-        status_stale = data(call(client, "edit_status", {}))
-        check(changed.get("warnings") and status_stale.get("warnings")
+        status_stale_reply = call(client, "edit_status", {})
+        status_stale = data(status_stale_reply)
+        check(changed.get("warnings") and status_stale_reply.get("warnings")
               and not any(r.get("kind") == "cross_assembly_inbound"
                           for r in status_stale.get("risks", [])),
               "apply marks report stale and clears old facts", status_stale)
@@ -202,7 +214,7 @@ def main() -> int:
                                                "expected_revision": rev, "review_id": review_id,
                                                "review_revision": rev, "confirmed_risk_ids": []})
         check(error(blocked) == "EDIT_RISK_CONFIRMATION_REQUIRED", "unconfirmed commit refused", blocked)
-        malformed = call(client, "edit_commit", {"request_id": rid(), "transaction_id": "edit-wrong",
+        malformed = call(client, "edit_commit", {"request_id": rid(), "transaction_id": retired_tx,
                                                  "expected_revision": rev, "review_id": review_id,
                                                  "review_revision": rev, "confirmed_risk_ids": required})
         check(error(malformed) == "EDIT_TRANSACTION_NOT_FOUND", "structural confirmation rejected", malformed)
@@ -235,9 +247,10 @@ def main() -> int:
                             "expected_revision": rev, "compile_id": compile_id,
                             "targets": [{"compiled": "ImportHost.Program::Main()", "action": "replace_body"}]})
         new_rev = data(imported).get("transaction", {}).get("work_revision")
-        import_status = data(call(client, "edit_status", {}))
+        import_status_reply = call(client, "edit_status", {})
+        import_status = data(import_status_reply)
         check(imported.get("ok") is True and isinstance(new_rev, int) and new_rev > rev
-              and imported.get("warnings") and import_status.get("warnings")
+              and imported.get("warnings") and import_status_reply.get("warnings")
               and not any(row.get("kind") == "cross_assembly_inbound"
                           for row in import_status.get("risks", [])),
               "import marks old scan stale", {"import": imported, "status": import_status})
