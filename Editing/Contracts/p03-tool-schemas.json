@@ -9744,6 +9744,33 @@
                         "maxLength": 48,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "assembly_ref_token": {
+                        "type": "string"
+                      },
+                      "matched_name": {
+                        "type": "string"
+                      },
+                      "operation_indices": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4294967295
+                        }
+                      },
+                      "scan_revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "transaction_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [
@@ -11354,6 +11381,33 @@
                         "maxLength": 48,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "assembly_ref_token": {
+                        "type": "string"
+                      },
+                      "matched_name": {
+                        "type": "string"
+                      },
+                      "operation_indices": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4294967295
+                        }
+                      },
+                      "scan_revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "transaction_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [
@@ -17138,6 +17192,33 @@
                         "maxLength": 48,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "assembly_ref_token": {
+                        "type": "string"
+                      },
+                      "matched_name": {
+                        "type": "string"
+                      },
+                      "operation_indices": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4294967295
+                        }
+                      },
+                      "scan_revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "transaction_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [
@@ -17691,6 +17772,24 @@
                           },
                           "risk_id": {
                             "type": "string"
+                          },
+                          "operation_indices": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 4294967295
+                            }
+                          },
+                          "scan_revision": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4294967295
+                          },
+                          "transaction_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
                           }
                         },
                         "required": [
@@ -17698,7 +17797,10 @@
                           "assembly_ref_token",
                           "matched_name",
                           "sites",
-                          "risk_id"
+                          "risk_id",
+                          "operation_indices",
+                          "scan_revision",
+                          "transaction_id"
                         ]
                       }
                     },
@@ -17738,6 +17840,14 @@
                           "kind"
                         ]
                       }
+                    },
+                    "scan_revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    },
+                    "stale": {
+                      "const": false
                     }
                   },
                   "required": [
@@ -17745,7 +17855,9 @@
                     "modules",
                     "inbound_references",
                     "risk_ids",
-                    "identity_operations"
+                    "identity_operations",
+                    "scan_revision",
+                    "stale"
                   ]
                 }
               },
@@ -18408,6 +18520,33 @@
                         "maxLength": 48,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "assembly_ref_token": {
+                        "type": "string"
+                      },
+                      "matched_name": {
+                        "type": "string"
+                      },
+                      "operation_indices": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4294967295
+                        }
+                      },
+                      "scan_revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "transaction_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [

@@ -90,14 +90,28 @@ def main() -> int:
             check(result(now).get("transaction", {}).get("work_revision") == revision
                   and result(now).get("fingerprints") == result(baseline).get("fingerprints"),
                   name + " transaction unchanged", now)
-        scan = call(client, "edit_impact_scan", {"request_id": rid(), "transaction_id": tx,
+        empty_scan = call(client, "edit_impact_scan", {"request_id": rid(), "transaction_id": tx,
             "expected_revision": revision})
-        check(scan.get("ok") is True and result(scan).get("impact", {}).get("scope") == "loaded_modules"
-              and len(result(scan).get("impact", {}).get("inbound_references", [])) >= 1,
-              "inbound impact remains available", scan)
+        empty_impact = result(empty_scan).get("impact", {})
+        check(empty_scan.get("ok") is True and empty_impact.get("scope") == "loaded_modules"
+              and empty_impact.get("identity_operations") == []
+              and empty_impact.get("inbound_references") == [] and empty_impact.get("risk_ids") == []
+              and any(row.get("name") == "InboundStrong" and row.get("inbound_reference_count") == 0
+                      for row in empty_impact.get("modules", []) if isinstance(row, dict)),
+              "no staged identity gives empty impact with scanned scope", empty_scan)
         ordinary = call(client, "edit_apply", {"request_id": rid(), "transaction_id": tx,
             "expected_revision": revision, "operation": {"kind": "module_update", "name": "StrongHostEdited"}})
         check(ordinary.get("ok") is True, "unrelated edit usable", ordinary)
+        revision = result(ordinary).get("transaction", {}).get("work_revision", revision)
+        scan = call(client, "edit_impact_scan", {"request_id": rid(), "transaction_id": tx,
+            "expected_revision": revision})
+        impact = result(scan).get("impact", {})
+        check(scan.get("ok") is True and impact.get("scope") == "loaded_modules"
+              and any(row.get("kind") == "module_update" and row.get("operation_index") == 0
+                      for row in impact.get("identity_operations", []) if isinstance(row, dict))
+              and any(row.get("matched_name") == "StrongHost" and row.get("operation_indices") == [0]
+                      for row in impact.get("inbound_references", []) if isinstance(row, dict)),
+              "inbound impact after staged identity remains available", scan)
     finally:
         rolled = call(client, "edit_rollback", {"request_id": rid(), "transaction_id": tx})
         check(rolled.get("ok") is True, "rollback", rolled)

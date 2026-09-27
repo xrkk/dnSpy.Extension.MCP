@@ -43,6 +43,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		public string CommitOperationKind = "commit";
 		public bool CommitStarted;
 		public bool LiveLinearized;
+		public string BaselineAssemblyName = string.Empty;
+		public readonly EditImpactScanState Impact = new();
 	}
 	sealed class PartialCommit {
 		public string RecoveryId = string.Empty;
@@ -124,8 +126,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 	readonly EditCompileFrontend compileFrontend;
 	readonly Debugger.DebugSessionService debugSessions;
-	// CHK-007: last scanned inbound references keyed by risk_id for commit echo
-	readonly Dictionary<string, object?> LastInboundReferences = new(StringComparer.Ordinal);
+		const string ImpactRescanWarning = "Impact report is stale after edit_apply/edit_import; run edit_impact_scan again before using inbound risk facts";
 	// P08 one-time strong-name failure evidence: (session_id, event_cursor) -> consumed module mvid
 
 	public string State { get { lock (gate) { ExpireLocked(); return state; } } }
@@ -606,7 +607,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 		// Create() has already proved the private copy and live module have the same complete
 		// fingerprint.  Reuse that proven value rather than serializing the module a third time.
-		var now = Now; var tx = new Transaction { Id = EditWire.NewId("edit"), Owner = session, Transport = context.TransportKind, Generation = ++generation, Started = now, LastActivity = now, Workspace = workspace, CurrentLiveFingerprint=workspace.BaselineLiveFingerprint, PrivateFingerprint=workspace.BaselineLiveFingerprint, HistoryBinding=historyBinding! };
+		var now = Now; var tx = new Transaction { Id = EditWire.NewId("edit"), Owner = session, Transport = context.TransportKind, Generation = ++generation, Started = now, LastActivity = now, Workspace = workspace, CurrentLiveFingerprint=workspace.BaselineLiveFingerprint, PrivateFingerprint=workspace.BaselineLiveFingerprint, HistoryBinding=historyBinding!, BaselineAssemblyName=EditWorkspace.OnDispatcher(() => workspace.LiveModule.Assembly?.Name?.String ?? string.Empty) };
 		lock(gate){pendingBeginSessions.Remove(session);closedPendingBeginSessions.Remove(session);pendingBeginOwner=null;active = tx; state = "editing";}
 		var env = EditWire.Success(state, new Dictionary<string, object?> {
 			["transaction"] = TransactionResult(tx), ["source"] = SourceResult(workspace), ["fingerprints"] = Fingerprints(tx),
@@ -623,7 +624,9 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	Dictionary<string, object?> Status(McpCallContext context) {
 		lock(gate){ExpireLocked();if(active==null&&pendingBeginOwner!=null)return EditWire.Success("editing",new Dictionary<string,object?>{{"busy",true},{"state","editing"},{"owner_transport_kind",pendingBeginTransport.ToWireName()}});if (active == null) return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = state!="idle", ["state"] = state, ["history"] = SafeHistorySummary(), ["recovery"] = RecoveryResult(partial), ["capacity"] = SafeHistoryCapacity() });
 		if (context.AuthoritativeSessionId != active.Owner) return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["owner_transport_kind"] = active.Transport.ToWireName() });
-		return EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["transaction"] = TransactionResult(active), ["fingerprints"] = Fingerprints(active), ["review"] = ReviewSummary(active), ["history"] = HistoryBindingResult(active.HistoryBinding), ["recovery"] = RecoveryResult(partial), ["capacity"] = MergeCapacity(Capacity(active), SafeHistoryCapacity()), ["risks"] = active.Workspace.Risks.ToArray() });}
+			var response = EditWire.Success(state, new Dictionary<string, object?> { ["busy"] = true, ["state"] = state, ["transaction"] = TransactionResult(active), ["fingerprints"] = Fingerprints(active), ["review"] = ReviewSummary(active), ["history"] = HistoryBindingResult(active.HistoryBinding), ["recovery"] = RecoveryResult(partial), ["capacity"] = MergeCapacity(Capacity(active), SafeHistoryCapacity()), ["risks"] = active.Workspace.Risks.ToArray() });
+			if (active.Impact.Stale) response["warnings"] = new[] { ImpactRescanWarning };
+			return response;}
 	}
 
 	Dictionary<string, object?> Apply(Dictionary<string, object>? args, McpCallContext context) {
@@ -648,10 +651,11 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx)){tx.Workspace.RestoreCommittedState();throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");}
 			tx.Workspace.NormalizedOperations.Add(normalized); tx.Workspace.Diffs.Add(diff); tx.Revision++; tx.LastActivity = Now;tx.PrivateFingerprint=newPrivate; staged=true;
 			foreach (var risk in outcome.Risks) if (!tx.Workspace.Risks.Any(r => Equals(r["risk_id"], risk["risk_id"]))) tx.Workspace.Risks.Add(risk);
-			var env = EditWire.Success("editing", new Dictionary<string, object?> { ["transaction"] = TransactionResult(tx,tx.LastActivity,tx.Revision,null), ["operation_index"] = tx.Workspace.NormalizedOperations.Count - 1, ["kind"] = outcome.Kind, ["created_object_ids"] = outcome.CreatedObjectIds, ["fingerprints"] = Fingerprints(tx), ["diffs"] = new[] { diff }, ["risks"] = outcome.Risks, ["review_cleared"] = true, ["capacity"] = CapacityAfterApply(tx) });
-			var json = EditWire.CanonicalPayload(env); tx.ApplyCache.EnsureCanAdd(json);
-			tx.PrivateUndo.Add(outcome.Undo); tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; state = "editing";
-			tx.ApplyCache.Add(requestId, payload, json);return env;}
+				var env = EditWire.Success("editing", new Dictionary<string, object?> { ["transaction"] = TransactionResult(tx,tx.LastActivity,tx.Revision,null), ["operation_index"] = tx.Workspace.NormalizedOperations.Count - 1, ["kind"] = outcome.Kind, ["created_object_ids"] = outcome.CreatedObjectIds, ["fingerprints"] = Fingerprints(tx), ["diffs"] = new[] { diff }, ["risks"] = outcome.Risks, ["review_cleared"] = true, ["capacity"] = CapacityAfterApply(tx) });
+				if (tx.Impact.Revision.HasValue) env["warnings"] = new[] { ImpactRescanWarning };
+				var json = EditWire.CanonicalPayload(env); tx.ApplyCache.EnsureCanAdd(json);
+				tx.PrivateUndo.Add(outcome.Undo); tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; state = "editing";
+				tx.ApplyCache.Add(requestId, payload, json); MarkImpactStale(tx); return env;}
 		}
 		catch {
 			if (staged) {
@@ -738,6 +742,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				tx.LastActivity = Now;
 				tx.PrivateFingerprint = newPrivate;
 				tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; state = "editing";
+				var staleInboundRiskIds = new HashSet<string>(tx.Impact.InboundReferences.Keys, StringComparer.Ordinal);
 				var envelope = EditWire.Success("editing", new Dictionary<string, object?> {
 					["transaction"] = TransactionResult(tx, tx.LastActivity, tx.Revision, null),
 					["import"] = new Dictionary<string, object?> {
@@ -750,10 +755,13 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 					["operation_count"] = stagedCount,
 					["fingerprints"] = Fingerprints(tx),
 					["diffs"] = newDiffs.ToArray(),
-					["risks"] = tx.Workspace.Risks.ToArray(),
+					["risks"] = tx.Workspace.Risks.Where(r => !r.TryGetValue("risk_id", out var id)
+						|| id is not string riskId || !staleInboundRiskIds.Contains(riskId)).ToArray(),
 					["review_cleared"] = true,
 					["capacity"] = CapacityAfterApply(tx),
 				});
+				if (tx.Impact.Revision.HasValue) envelope["warnings"] = new[] { ImpactRescanWarning };
+				MarkImpactStale(tx);
 				return envelope;
 			}
 		}
@@ -966,6 +974,10 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		return EditWire.Success(state, new Dictionary<string, object?> { ["export"] = OutputResult(output) });
 	}
 
+	static void MarkImpactStale(Transaction tx) {
+		tx.Impact.MarkStale(tx.Workspace.Risks);
+	}
+
 	// P07 edit_impact_scan: machine-readable cross-assembly impact report over
 	// the CURRENTLY LOADED modules only (CON-013/CON-017/NON-017 — never a
 	// global-completeness claim).  Inbound references match the union of the
@@ -992,28 +1004,30 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				identityRows.Add((index, kind!, stagedName));
 			}
 			var live = tx.Workspace.LiveModule;
-			var oldName = live.Assembly?.Name?.String ?? string.Empty;
+			var oldName = tx.BaselineAssemblyName;
 			var names = new HashSet<string>(StringComparer.Ordinal) { oldName };
 			foreach (var row in identityRows)
 				if (row.name is { Length: > 0 }) names.Add(row.name);
-			var liveMvid = live.Mvid?.ToString("D") ?? string.Empty;
 			var modules = new List<object>();
 			var inbound = new List<object>();
 			var riskIds = new List<string>();
-			var scanned = EditWorkspace.OnDispatcher(() => tree.GetAllModuleNodes()
-				.Select(node => node.Document?.ModuleDef).Where(m => m != null).Cast<ModuleDef>()
-				.Where(m => !string.Equals(m.Mvid?.ToString("D") ?? string.Empty, liveMvid, StringComparison.OrdinalIgnoreCase))
+			var inboundByRisk = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+			var riskFacts = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+			var scanned = EditWorkspace.OnDispatcher(() => EditImpactScanSelection.OtherLoadedModules(tree.GetAllModuleNodes()
+				.Select(node => node.Document?.ModuleDef).Where(m => m != null).Cast<ModuleDef>(), live)
 				.Select(m => (module: m, hits: m.GetAssemblyRefs()
-					.Where(r => names.Contains(r.Name?.String ?? string.Empty))
+					.Where(r => identityRows.Count != 0 && names.Contains(r.Name?.String ?? string.Empty))
 					.Select(r => (row: r, matched: r.Name?.String ?? string.Empty)).ToArray()))
 				.ToList());
-			foreach (var entry in scanned) {
+			foreach (var (entry, moduleIndex) in scanned.Select((entry, index) => (entry, index))) {
 				modules.Add(new Dictionary<string, object?> {
 					["name"] = entry.module.Assembly?.Name?.String ?? entry.module.Name.String,
 					["inbound_reference_count"] = entry.hits.Length,
 				});
 				foreach (var hit in entry.hits) {
-					var riskId = "risk-cross_assembly_inbound-" + (entry.module.Assembly?.Name?.String ?? entry.module.Name.String).Replace('.', '_') + "-" + hit.row.MDToken.Rid.ToString(System.Globalization.CultureInfo.InvariantCulture);
+					var riskId = "risk-cross_assembly_inbound-" + moduleIndex.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-" + hit.row.MDToken.Rid.ToString(System.Globalization.CultureInfo.InvariantCulture);
+					var operationIndices = identityRows.Where(row => hit.matched == oldName || row.name == hit.matched)
+						.Select(row => row.index).ToArray();
 					var sites = entry.module.GetTypes()
 						.Where(type => type.Fields.Any(f => f.FieldType is TypeDefOrRefSig fieldRef && ScopeIs(fieldRef, hit.row))
 							|| type.Methods.Any(m => m.MethodSig.Params.Any(p => p is TypeDefOrRefSig paramRef && ScopeIs(paramRef, hit.row))))
@@ -1024,23 +1038,31 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						["matched_name"] = hit.matched,
 						["sites"] = sites,
 						["risk_id"] = riskId,
+						["operation_indices"] = operationIndices,
+						["scan_revision"] = tx.Revision,
+						["transaction_id"] = tx.Id,
 					};
 					inbound.Add(inboundRow);
 					riskIds.Add(riskId);
-					LastInboundReferences[riskId] = inboundRow;
-				}
-			}
-			lock (gate) {
-				if (tx.CancelRequested || !ReferenceEquals(active, tx)) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
-				foreach (var riskId in riskIds) {
-					if (tx.Workspace.Risks.Any(r => Equals(r["risk_id"], riskId))) continue;
-					tx.Workspace.Risks.Add(new Dictionary<string, object?> {
+					inboundByRisk[riskId] = inboundRow;
+					riskFacts[riskId] = new Dictionary<string, object?> {
 						["risk_id"] = riskId, ["kind"] = "cross_assembly_inbound",
 						["object"] = "loaded_modules", ["description"] = "Another loaded module references this assembly by a staged identity name",
-						["confirmation_required"] = true,
-					});
+						["confirmation_required"] = true, ["module"] = inboundRow["module"],
+						["assembly_ref_token"] = inboundRow["assembly_ref_token"], ["matched_name"] = inboundRow["matched_name"],
+						["operation_indices"] = operationIndices, ["scan_revision"] = tx.Revision,
+						["transaction_id"] = tx.Id,
+					};
 				}
-				if (riskIds.Count != 0) { tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; }
+			}
+			var factSignature = EditWire.Sha256(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
+				modules, inbound, identity_operations = identityRows.Select(row => new { operation_index = row.index, row.kind, staged_name = row.name }).ToArray(),
+			}, EditWire.JsonOptions)));
+			lock (gate) {
+				if (tx.CancelRequested || !ReferenceEquals(active, tx)) throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+				if (tx.Impact.Accept(tx.Revision, factSignature, inboundByRisk, riskFacts, tx.Workspace.Risks)) {
+					tx.ReviewCache.Clear(); tx.ReviewId = null; tx.ReviewRevision = null; state = "editing";
+				}
 				return EditWire.Success(state, new Dictionary<string, object?> {
 					["impact"] = new Dictionary<string, object?> {
 						["scope"] = "loaded_modules",
@@ -1049,6 +1071,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						["risk_ids"] = riskIds.ToArray(),
 						["identity_operations"] = identityRows.Select(row => (object)new Dictionary<string, object?> {
 							["operation_index"] = row.index, ["kind"] = row.kind, ["staged_name"] = row.name }).ToArray(),
+						["scan_revision"] = tx.Revision, ["stale"] = false,
 					},
 					["transaction"] = TransactionResult(tx, tx.LastActivity, tx.Revision, tx.ReviewRevision),
 				});
@@ -1069,6 +1092,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 		var reviewId=EditWire.NewId("review");var activity=tx.LastActivity;var privateFingerprint=tx.PrivateFingerprint;
 		var env=EditWire.Success("reviewed", new Dictionary<string, object?> { ["transaction"] = TransactionResult(tx, activity, tx.Revision, tx.Revision), ["review"] = ReviewSummary(reviewId, tx.Revision, tx.Workspace), ["fingerprints"] = new Dictionary<string,object?>{{"baseline_live",tx.Workspace.BaselineLiveFingerprint},{"current_live",currentLive},{"private",privateFingerprint}}, ["diffs"] = tx.Workspace.Diffs.ToArray(), ["structural_validation"] = ValidationResult(structuralRules), ["roundtrip_validation"] = ValidationResult(1), ["dynamic_validation"] = dynamic, ["risks"] = tx.Workspace.Risks.ToArray(), ["limits"] = Limits() });
+		if (tx.Impact.Stale) env["warnings"] = new[] { ImpactRescanWarning };
 		var json=EditWire.CanonicalPayload(env);tx.ReviewCache.EnsureResponseFits(json);tx.ReviewCache.Store(requestId,payload,reviewId,tx.Revision,json);
 		tx.CurrentLiveFingerprint=currentLive;tx.PrivateFingerprint=privateFingerprint;tx.ReviewId=reviewId;tx.ReviewRevision=tx.Revision;tx.LastActivity=activity;state="reviewed";return env;}}
 		finally{lock(gate){tx.OperationBusy=false;if(tx.CancelRequested&&!ReferenceEquals(active,tx))tx.Workspace.Dispose();else if(tx.CancelRequested&&tx.OwnerClosed&&ReferenceEquals(active,tx))EndLocked(tx,"session_closed");}}
@@ -1153,7 +1177,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 						?? new Dictionary<string, object?> { ["risk_id"] = id, ["kind"] = "unknown", ["description"] = "risk fact not found at commit" };
 					var row = new Dictionary<string, object?>(risk, StringComparer.Ordinal);
 					if (string.Equals(risk.TryGetValue("kind", out var riskKind) ? riskKind as string : null, "cross_assembly_inbound", StringComparison.Ordinal)
-						&& LastInboundReferences.TryGetValue(id, out var inboundRow))
+						&& tx.Impact.InboundReferences.TryGetValue(id, out var inboundRow))
 						row["affected_references"] = inboundRow;
 					return (object)row;
 				}).ToArray(),
