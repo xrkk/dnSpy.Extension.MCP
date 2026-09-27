@@ -64,7 +64,7 @@ CASE_MODULES = {
     "EDIT-ACC-021": "p03_vm_acc021",
     "EDIT-ACC-023": "p03_vm_acc023",
     "EDIT-ACC-008": "p03_vm_acc008",
-    "EDIT-ACC-016": "p03_vm_acc016",
+    "EDIT-ACC-016": "t083_vm_strong_name_deferred",
 }
 
 # Headless harness probes: run the registered P03StoreHarness mode and keep

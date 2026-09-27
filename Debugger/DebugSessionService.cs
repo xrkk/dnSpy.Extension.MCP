@@ -3721,17 +3721,17 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		};
 	}
 
-	/// <summary>PLAN-CHANGE 2026.09.22 edit-gate entry: atomically validates and consumes the
-	/// loader strong-name rejection recorded at the given session/cursor, bound to the exact
-	/// target assembly identity. One observation authorizes exactly one removal.</summary>
+	/// <summary>Historical 2026.09.22 observation-consumption helper. The
+	/// S02-STRONGNAME-DEFER-01 public gate does not call it to authorize a new edit;
+	/// this retained event alone cannot establish the selected file or verifier cause.</summary>
 	internal string? ActiveSessionId => coordinator.ActiveSessionId;
 
 	internal bool TryAuthorizeStrongNameRemove(string sessionId, long cursor,
 		string assemblyName, string assemblyVersion, string publicKeyToken) =>
 		coordinator.TryConsumeStrongNameFailure(sessionId, cursor, assemblyName, assemblyVersion, publicKeyToken);
 
-	/// <summary>DNMCP_TEST-only: records a synthetic loader rejection and returns its event
-	/// cursor for MCP-level strong_name_remove success-branch verification.</summary>
+	/// <summary>DNMCP_TEST-only: records a synthetic historical observation.
+	/// It cannot authorize a new public strong_name_remove edit while S02 is deferred.</summary>
 	internal long RecordStrongNameRejectionForTest(string assemblyName, string assemblyVersion, string publicKeyToken) {
 		if (!TestModeEnabled) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE");
 		return coordinator.WriteStrongNameRejectionForTest(assemblyName, assemblyVersion, publicKeyToken);

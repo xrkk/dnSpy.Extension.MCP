@@ -48,7 +48,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`, `module_update`, `assembly_ref_update`, `entry_point_set`
 - `managed_resource_add/update/remove`, `win32_resource_add/update/remove`
-- `strong_name_remove` requires a live, retained, one-time CLR loader strong-name rejection bound to the target assembly. The gate can authorize matching evidence, but a real trusted-source success and one-time consumption have not passed ACC016 acceptance.
+- New `strong_name_remove` edits are deferred and return `EDIT_CAPABILITY_UNAVAILABLE` with `capability=strong_name_remove`, regardless of the supplied evidence. ACC016 positive authorization remains unfinished; historical replay support remains.
 
 ### 4.4 The 39 operation kinds
 

@@ -100,7 +100,7 @@ restore/export/recover/accept_live，并覆盖 compile/import/impact_scan 与 re
 操作清单必须为 39 类，含 `interface_add`、`reference_add`。语法有效但版本未知返回
 `EDIT_OPERATION_VERSION_UNSUPPORTED`，畸形输入仍为 schema/参数无效。`edit_compile.documents`
 每项字段闭集只有 `path`、`content`。v1 检查点仅 exact；漂移须显式建立 v2 新谱系，v2 的
-`validated_drift`/`unverified_drift` 迁移均按契约要求明确确认。`strong_name_remove` 仅在存活、留存、绑定目标的 CLR loader 强名称拒绝证据通过一次消费门控时可成功；真实可信来源和成功路径尚未验收，
+`validated_drift`/`unverified_drift` 迁移均按契约要求明确确认。`strong_name_remove` 新公开授权暂缓，任何证据均须业务拒绝且零副作用；ACC016 正向来源和成功路径未完成，
 必须把 ACC016 记 BLOCKED，不得用普通拒绝或测试缝冒充成功路径。
 
 `edit_recover` 只有实际形成受支持的部分提交状态时才有成功恢复路径；`edit_accept_live` 只有真实 UI 漂移且显式确认新 v2 谱系时才可成功。不得为凑工具计数制造共享现场故障或把普通拒绝计为成功。若当前宿主只给智能体一个 MCP 会话，第二会话所有权项记 BLOCKED 并明确写“宿主限制”；
@@ -148,7 +148,7 @@ restore/export/recover/accept_live，并覆盖 compile/import/impact_scan 与 re
 
 最终输出中文审计报告：按实际 profile 逐工具列 PASS/FAIL/BLOCKED/未运行，并给出请求/响应定位；14 资源单列支持宿主、实例/构建绑定与逐 URI 证据。还须列私有编辑→审查→回滚/提交及历史导航、旧写入→验证→恢复、动态状态时间线、两层 value expansion、幂等性、最终 idle、受保护进程复核。FAIL 与 BLOCKED 分开；明确 ACC016、覆盖原文件与否、残留测试进程/事务、本轮架构及未执行项。
 
-通过标准：本轮实际启用的 78 工具 profile 中每项均有真实成功/负例区分的结论，且由支持 resources 的宿主独立完成同一实例 14/14；若门关闭仅有 57 工具，或 ZCode 不提供 resources 而无第二宿主，完整目标不能判通过。ACC016 `strong_name_remove` 的可信来源/一次消费/成功去强名称仍须单列未闭合，不得用预期拒绝冒充成功。所有临时修改恢复、原始样本未覆盖、两协调器 idle、受保护现场不变；即使这些满足，也不等于 RACC-022 总体验收。
+通过标准：本轮实际启用的 78 工具 profile 中每项均有真实成功/负例区分的结论，且由支持 resources 的宿主独立完成同一实例 14/14；若门关闭仅有 57 工具，或 ZCode 不提供 resources 而无第二宿主，完整目标不能判通过。ACC016 `strong_name_remove` 的可信来源/一次消费/成功去强名称仍须单列暂缓且未完成，不得用预期拒绝冒充成功。所有临时修改恢复、原始样本未覆盖、两协调器 idle、受保护现场不变；即使这些满足，也不等于 RACC-022 总体验收。
 
 ### 资源路径导入导出补充
 

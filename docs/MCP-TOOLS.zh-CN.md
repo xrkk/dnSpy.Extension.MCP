@@ -48,7 +48,7 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 - `assembly_update`、`module_update`、`assembly_ref_update`、`entry_point_set`
 - `managed_resource_add/update/remove`、`win32_resource_add/update/remove`
-- `strong_name_remove` 要求存活、留存、一次消费且绑定目标程序集的 CLR loader 强名称拒绝事件；门控可授权匹配证据，但真实可信来源的成功路径和一次消费仍未通过 ACC016 验收。
+- 新 `strong_name_remove` 编辑暂缓，任何证据均返回带 `capability=strong_name_remove` 的 `EDIT_CAPABILITY_UNAVAILABLE`。ACC016 正向授权仍未完成；历史回放保留。
 
 ### 4.4 39 类操作清单
 

@@ -4,7 +4,7 @@
 
 本文独立给出工具选择、参数/结果、状态关联和冻结结构，英文代码字段保持原样。文末附源 schema 的自包含 JSON：编辑工具完整 `inputSchema`/`outputSchema` 与全部 39 种操作；调试 `$defs` 与 `$ref` 均在同一文件内；静态工具的 `inputSchema` 亦在此。表格是快速入口，附录是精确嵌套语法，不必另开源码。
 
-已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。T053 在新隔离根复验了 x86/x64 四种 `break_kind` 的启动、重启、完整分页事件流和真实首机会异常；这不代表全调试套件或所有异常策略已验收。`strong_name_remove` 有可信事件门控分支，但真实可信来源的成功路径尚未完成 ACC016 验收，不能当作已验收的成功能力。其他动态/编辑能力也受下述运行门限限制。
+已知状态：T051-R02 曾记录真实首机会异常事件缺失的 x64 红态；T051-R03 随后在隔离 .240 上完成 x86/x64 定向复验，实际异常 payload 符合冻结 schema。T053 在新隔离根复验了 x86/x64 四种 `break_kind` 的启动、重启、完整分页事件流和真实首机会异常；这不代表全调试套件或所有异常策略已验收。`strong_name_remove` 新编辑暂缓并返回 `EDIT_CAPABILITY_UNAVAILABLE`；ACC016 正向授权未完成。其他动态/编辑能力也受下述运行门限限制。
 
 ## 1. MCP 接入、信封与能力门
 
@@ -1287,7 +1287,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 定义目标可以是 token 或事务 object_id 等 schema 指定地址；不能把跨修订 token/name 当稳定身份。检查点 replay 的定义地址形式为 `t/<index>[/t/<nested-index>][/m|f|p|e/<index>][/a|g/<index>]`，绑定预期图指纹，不是永久对象 ID。`reference_add.reference.form` 闭集是 `assembly_ref,type_ref,type_spec,member_ref,method_spec`；`type_ref` 必须显式 scope，`assembly_ref` 的 public key/token 必须显式 kind，不从字节长度猜，具体字段见附录 C。IL body 指令、operand、局部变量、异常处理、CDI/资源 base64 的全量约束均在对应 operation 子对象里。
 
-持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 虽有输入和可信事件门控分支，但真实来源成功路径尚未验收，不能宣称 ACC016 已通过。
+持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 保留输入/持久种类，但新公开授权暂缓并返回 `EDIT_CAPABILITY_UNAVAILABLE`；历史回放保留，ACC016 正向分支未完成。
 
 ### 编辑代表流程（ID 均由前一步实际响应替换）
 

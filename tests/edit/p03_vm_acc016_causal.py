@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Historical positive-path experiment, superseded for active ACC-016 by S02-STRONGNAME-DEFER-01.
 """T026: causal, fail-closed ACC-016 strong-name branch evidence."""
 
 from __future__ import annotations

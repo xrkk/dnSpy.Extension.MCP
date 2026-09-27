@@ -100,11 +100,11 @@ not establish net10 dynamic-debugging support.
 **Resources & large payloads**
 13. **edit_resource_import** — read resource bytes from a VM file path server-side and stage them as an inline-payload operation (large payloads never ride the MCP request body; inline limits unchanged)
 14. **edit_resource_export** — write a committed resource below ArtifactRoot and return the full file identity (path/length/SHA-256)
-15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` has a target-bound, one-time trusted-event gate, but its real success path has not passed ACC016 acceptance
+15. *(edit_apply kinds)* `managed_resource_add/update/remove`, `win32_resource_add/update/remove` — standard `.resources` entry edits (scalars/strings/byte arrays; custom serialized objects are metadata + whole-blob replacement only — never deserialized), icon-group structural validation; `strong_name_remove` is temporarily unavailable for new edits (`EDIT_CAPABILITY_UNAVAILABLE`); ACC016 positive authorization remains unfinished
 
 The 39 operation kinds cover add/update/remove for types, methods, fields, properties, events,
 parameters, generic parameters, assembly/module identity, AssemblyRef, entry point, managed and
-Win32 resources, strong-name removal, interface/reference additions, plus whole method-body replacement. References use metadata
+Win32 resources, a currently deferred strong-name removal kind, interface/reference additions, plus whole method-body replacement. References use metadata
 tokens or transaction-scoped object IDs; raw PE/heap/RVA/hex editing is intentionally rejected.
 While a structured-edit transaction is active, legacy live write tools are rejected to prevent
 bypassing the transaction. A read-only **MCP Edit Explorer** window (View menu) shows the

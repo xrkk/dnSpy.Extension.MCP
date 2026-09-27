@@ -843,44 +843,17 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		return rows.OrderBy(x => x, StringComparer.Ordinal).ToArray();
 	}
 
-	/// <summary>P08 strong-name gate (adjudicated AUD-004): strong_name_remove
-	/// carries a one-time dynamic-failure evidence tuple; the event at that
-	/// cursor must be a module load/validation failure naming the target
-	/// assembly, and each evidence tuple is consumed exactly once.</summary>
+	/// <summary>S02-STRONGNAME-DEFER-01: no current debugger event proves the
+	/// selected file and signature-verification cause for one binding attempt.
+	/// Reject new public authorization before consuming evidence or mutating the
+	/// private copy. Historical operation replay remains in the registry.</summary>
 	void ValidateStrongNameEvidence(Transaction tx, JsonElement op) {
 		if (!op.TryGetProperty("kind", out var kindValue) || kindValue.GetString() != "strong_name_remove")
 			return;
-		var assembly = tx.Workspace.PrivateModule.Assembly;
-		if (assembly?.PublicKey is null || assembly.PublicKey.Data is null || assembly.PublicKey.Data.Length == 0
-			|| (assembly.Attributes & dnlib.DotNet.AssemblyAttributes.PublicKey) == 0)
-			throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
-				["kind"] = "capability", ["capability"] = "strong_name_remove",
-				["reason"] = "the target assembly has no applicable strong-name public key",
-			});
-		if (!op.TryGetProperty("dynamic_failure", out var evidence) || evidence.ValueKind != JsonValueKind.Object)
-			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "strong_name_remove requires a dynamic_failure evidence object"));
-		var sessionId = evidence.TryGetProperty("session_id", out var sessionValue) && sessionValue.ValueKind == JsonValueKind.String ? sessionValue.GetString()! : throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence session_id is missing"));
-		var cursor = evidence.TryGetProperty("event_cursor", out var cursorValue) && cursorValue.ValueKind == JsonValueKind.Number && cursorValue.TryGetInt64(out var parsedCursor) ? parsedCursor : -1;
-		if (cursor <= 0)
-			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence", "the evidence event_cursor must be a positive cursor"));
-		var claimedKind = evidence.TryGetProperty("event_kind", out var kindText) && kindText.ValueKind == JsonValueKind.String ? kindText.GetString()! : string.Empty;
-		if (!string.Equals(claimedKind, "exception", StringComparison.Ordinal))
-			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-				"the evidence event kind must be a retained CLR strong-name validation exception: " + claimedKind));
-		// PLAN-CHANGE 2026.09.22: the dynamic failure must be a live, unconsumed loader
-		// strong-name rejection (ICorDebug loader-module attribution + strong-name failure
-		// HRESULT + loader-authored rejected identity) whose rejected assembly identity
-		// matches THIS transaction's target assembly exactly; consumption is atomic and
-		// one-shot. Anything else — including sample-thrown look-alikes, stale cursors,
-		// foreign sessions or identity drift — fails closed exactly as before.
-		var targetName = assembly.Name.String;
-		var targetVersion = assembly.Version?.ToString() ?? string.Empty;
-		var targetTokenBytes = assembly.PublicKey.Token?.Data;
-		var targetToken = targetTokenBytes is null || targetTokenBytes.Length == 0
-			? string.Empty : string.Concat(targetTokenBytes.Select(b => b.ToString("x2")));
-		if (!debugSessions.TryAuthorizeStrongNameRemove(sessionId, cursor, targetName, targetVersion, targetToken))
-			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("strong_name_evidence",
-				"the dynamic failure evidence does not match a live loader strong-name rejection of this target assembly (unknown session/cursor, already consumed, or assembly identity mismatch)"));
+		throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE", new Dictionary<string, object?> {
+			["kind"] = "capability", ["capability"] = "strong_name_remove",
+			["reason"] = "strong-name removal authorization is deferred until a trusted binding-source proof is accepted",
+		});
 	}
 
 	// P08 edit_resource_import: reads VM file bytes server-side and stages the

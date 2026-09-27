@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Historical positive-path experiment, superseded for active ACC-016 by S02-STRONGNAME-DEFER-01.
 """P08 ACC-016: minimal strong-name compatibility.  Default edits preserve the
 signature identity; a dynamic failure (the edited, now-invalidly-signed image
 fails to run) supplies one-time evidence that unlocks the strong_name_remove
