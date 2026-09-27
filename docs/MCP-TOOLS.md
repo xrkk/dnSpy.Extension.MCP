@@ -68,6 +68,8 @@ PDB document identity uses the normalized full metadata key; an incompatible sam
 
 The MCP resources face exposes 14 concrete resources (assembly list, type index, edit status, debug events, …); `resources/templates/list` is intentionally empty. The tools/list and resources faces are the two machine-readable registries.
 
+`managed_resource_update.entry` accepts 17 exact `value_kind` values (18 stored CLR resource codes, since `bytes` preserves ByteArray or Stream): the prior 13 plus `char` as `{code_unit: 0..65535}`, `decimal` as `{lo,mid,hi,negative,scale}`, `timespan` as `{ticks: "canonical signed int64"}`, and `datetime` as `{binary: "canonical signed int64 DateTime.ToBinary"}`. Edits preserve the original storage code and every untouched raw entry; custom values are never deserialized. The four new kinds require persisted operation `kind_version=2`; the prior kinds and whole blob remain v1. Windows public acceptance is pending.
+
 ### Resource path import and export
 
 `edit_resource_import` reads only ordinary, non-reparse files below `AllowedSampleRoot`, checking the size before allocation. Returned `file_id`, length and SHA-256 describe the same opened Windows file handle. `resource_type` accepts `embedded`, `linked`, or `win32`; linked imports normalize to embedded bytes and retain no external file dependency.

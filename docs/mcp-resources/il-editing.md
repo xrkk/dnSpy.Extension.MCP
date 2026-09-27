@@ -46,6 +46,7 @@ commit, history or export boundary:
 
 The 39 operation kinds cover types, methods, fields, properties, events, parameters, generic
 parameters, attributes, security, identities, entry point, resources, interface/reference additions,
+Resource entry updates cover the 13 original value kinds plus exact char code unit, decimal bits, TimeSpan ticks, and DateTime binary. The four new kinds use persisted operation version 2; old kinds and whole-blob replacement stay version 1. Custom serialized values remain raw and untouched.
 strong-name removal and `method_body_replace`. A newly created object is addressed
 by the returned transaction-scoped `object_id`; an existing object is addressed by its exact
 metadata token. Removal is only `reject_if_referenced`. Unknown raw fields such as `raw_metadata`,

@@ -1270,7 +1270,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 | `assembly_ref_update` | v1 | `kind`, `target` | `kind`, `target`, `name`, `version`, `culture` |
 | `entry_point_set` | v1 | `kind` | `kind`, `entry_point` |
 | `managed_resource_add` | v1 | `kind`, `name`, `data_base64` | `kind`, `name`, `attributes`, `data_base64` |
-| `managed_resource_update` | v1 | `kind`, `target` | `kind`, `target`, `entry`, `data_base64` |
+| `managed_resource_update` | v1/v2（四类精确条目） | `kind`, `target` | `kind`, `target`, `entry`, `data_base64` |
 | `managed_resource_remove` | v1 | `kind`, `target`, `remove_mode` | `kind`, `target`, `remove_mode` |
 | `win32_resource_add` | v1 | `kind`, `data_base64` | `kind`, `type_id`, `type_name`, `name_id`, `name_string`, `lang_id`, `data_base64` |
 | `win32_resource_update` | v1 | `kind`, `data_base64` | `kind`, `type_id`, `type_name`, `name_id`, `name_string`, `lang_id`, `data_base64` |
@@ -1286,6 +1286,8 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 `CallNode` 字段为 `Kind:string`、`Convention:byte`、`Arity:uint`、`Extra?:byte[]`、`Result?:TypeNode`、`Parameters?:TypeNode[]`、`Optional?:TypeNode[]`；Kind 闭集 `FieldSig,MethodSig,PropertySig,LocalSig,GenericInstMethodSig`。FieldSig 要 Result；MethodSig/PropertySig 要 Result，可带 Parameters/Optional；LocalSig、GenericInstMethodSig 以 Parameters 表示局部/泛型实参。`Convention` 与 Kind 不符会拒绝；循环或空节点拒绝。结构体的更细 oneOf/长度约束仍按附录 C 中实际使用位置检查。
 
 定义目标可以是 token 或事务 object_id 等 schema 指定地址；不能把跨修订 token/name 当稳定身份。检查点 replay 的定义地址形式为 `t/<index>[/t/<nested-index>][/m|f|p|e/<index>][/a|g/<index>]`，绑定预期图指纹，不是永久对象 ID。`reference_add.reference.form` 闭集是 `assembly_ref,type_ref,type_spec,member_ref,method_spec`；`type_ref` 必须显式 scope，`assembly_ref` 的 public key/token 必须显式 kind，不从字节长度猜，具体字段见附录 C。IL body 指令、operand、局部变量、异常处理、CDI/资源 base64 的全量约束均在对应 operation 子对象里。
+
+`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows 公开验收待执行。
 
 持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 保留输入/持久种类，但新公开授权暂缓并返回 `EDIT_CAPABILITY_UNAVAILABLE`；历史回放保留，ACC016 正向分支未完成。
 
@@ -13631,7 +13633,18 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
          "const": "managed_resource_update"
         },
         "target": {
-         "$ref": "#/$defs/Shared130"
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "name"
+         ],
+         "properties": {
+          "name": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          }
+         }
         },
         "entry": {
          "type": "object",
@@ -13662,11 +13675,147 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
             "u8",
             "r4",
             "r8",
-            "bytes"
+            "bytes",
+            "char",
+            "decimal",
+            "datetime",
+            "timespan"
            ]
           },
           "value": {}
-         }
+         },
+         "oneOf": [
+          {
+           "properties": {
+            "value_kind": {
+             "enum": [
+              "string",
+              "boolean",
+              "i1",
+              "u1",
+              "i2",
+              "u2",
+              "i4",
+              "u4",
+              "i8",
+              "u8",
+              "r4",
+              "r8",
+              "bytes"
+             ]
+            },
+            "value": {}
+           }
+          },
+          {
+           "properties": {
+            "value_kind": {
+             "const": "char"
+            },
+            "value": {
+             "type": "object",
+             "additionalProperties": false,
+             "required": [
+              "code_unit"
+             ],
+             "properties": {
+              "code_unit": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 65535
+              }
+             }
+            }
+           }
+          },
+          {
+           "properties": {
+            "value_kind": {
+             "const": "decimal"
+            },
+            "value": {
+             "type": "object",
+             "additionalProperties": false,
+             "required": [
+              "lo",
+              "mid",
+              "hi",
+              "negative",
+              "scale"
+             ],
+             "properties": {
+              "lo": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 4294967295
+              },
+              "mid": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 4294967295
+              },
+              "hi": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 4294967295
+              },
+              "negative": {
+               "type": "boolean"
+              },
+              "scale": {
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 28
+              }
+             }
+            }
+           }
+          },
+          {
+           "properties": {
+            "value_kind": {
+             "const": "datetime"
+            },
+            "value": {
+             "type": "object",
+             "additionalProperties": false,
+             "required": [
+              "binary"
+             ],
+             "properties": {
+              "binary": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 20,
+               "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
+              }
+             }
+            }
+           }
+          },
+          {
+           "properties": {
+            "value_kind": {
+             "const": "timespan"
+            },
+            "value": {
+             "type": "object",
+             "additionalProperties": false,
+             "required": [
+              "ticks"
+             ],
+             "properties": {
+              "ticks": {
+               "type": "string",
+               "minLength": 1,
+               "maxLength": 20,
+               "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
+              }
+             }
+            }
+           }
+          }
+         ]
         },
         "data_base64": {
          "type": "string",
@@ -18094,6 +18243,6 @@ JSON Pointer 指向附录 B 中的定义；`direction` 区分入站、出站与�
 ## 来源与边界
 
 - `McpTools.cs` SHA256 `ce680df3f15f30847349cac1d7ed11baffcd5f5f2126b900f2ad21ed88f8841b`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
-- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `88f2b32a299cb725ff04a2aa5b8c3271bd786b1a53e961bfb96a996a24a642f4`；`Editing/EditToolProvider.cs` SHA256 `0fea0d0ed0d1950a762fc00ababe463adcd8ee54842c4843428fd7be704bc5a6`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
+- `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `49773ac1caf72682af2f1c0d46ed98ebc7ec5691b1f8097da110a43c167ca086`；`Editing/EditToolProvider.cs` SHA256 `0fea0d0ed0d1950a762fc00ababe463adcd8ee54842c4843428fd7be704bc5a6`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
 - `tests/debug/contracts/dnspy.debug.utf8-limits.json` SHA256 `bf8741dd5054cbff6cbf23a429adeec533ab0b6e84689655763062621ee04b7f`；`McpServer.cs` SHA256 `cdde4fcd3408febe53c6d32a60d369a66eb1eb7ca2ac9481589abd5581358261`。
 - 这是源码接口手册，不是 VM 功能验收报告。运行时条件、实例配置、文件身份和目标架构须以 `debug_capabilities`、`tools/list`、调用返回和实际环境核对。

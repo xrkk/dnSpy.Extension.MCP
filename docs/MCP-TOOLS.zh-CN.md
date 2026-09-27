@@ -72,6 +72,8 @@ MCP resources 面通告 14 个具体资源（程序集列表、类型索引、�
 
 View 菜单的只读浏览窗口：当前事务、暂存操作、diff、风险、检查点谱系树与逐检查点详情（含空闲历史浏览）；本地取消面向当前活动事务（属主在线即可，操作/提交执行期间除外；孤儿事务同样受操作/提交忙态守卫约束），走等价回滚路径——UI 不提供任何提交/恢复入口，不绕 MCP 门禁。
 
+`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows 公开验收待执行。
+
 ### 资源路径导入导出补充
 
 `edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。

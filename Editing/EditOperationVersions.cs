@@ -33,6 +33,7 @@ internal static class EditOperationVersions {
 		"event_add", "event_update",
 		"parameter_add", "parameter_update",
 		"generic_parameter_add", "generic_parameter_update",
+		"managed_resource_update",
 	};
 	// CDI kinds added after the frozen v1 symbol domain.
 	internal static bool IsV2CdiKind(string kind) =>
@@ -63,10 +64,19 @@ internal static class EditOperationVersions {
 		if (!IsSupported(kind, version)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 		if (version == V1 && RequiredVersion(kind, forward) != V1)
 			throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+		if (kind == "managed_resource_update" && version != RequiredVersion(kind, forward))
+			throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 	}
 
 	static bool UsesV2Domain(string kind, JsonElement forward) {
 		switch (kind) {
+		case "managed_resource_update":
+			return forward.ValueKind == JsonValueKind.Object
+				&& forward.TryGetProperty("entry", out var resourceEntry)
+				&& resourceEntry.ValueKind == JsonValueKind.Object
+				&& resourceEntry.TryGetProperty("value_kind", out var resourceKind)
+				&& resourceKind.ValueKind == JsonValueKind.String
+				&& resourceKind.GetString() is "char" or "decimal" or "datetime" or "timespan";
 		case "type_add":
 		case "type_update":
 			return Structured(forward, "base_type");

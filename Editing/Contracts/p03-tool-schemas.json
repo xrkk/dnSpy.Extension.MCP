@@ -8753,11 +8753,147 @@
                         "u8",
                         "r4",
                         "r8",
-                        "bytes"
+                        "bytes",
+                        "char",
+                        "decimal",
+                        "datetime",
+                        "timespan"
                       ]
                     },
                     "value": {}
-                  }
+                  },
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "value_kind": {
+                          "enum": [
+                            "string",
+                            "boolean",
+                            "i1",
+                            "u1",
+                            "i2",
+                            "u2",
+                            "i4",
+                            "u4",
+                            "i8",
+                            "u8",
+                            "r4",
+                            "r8",
+                            "bytes"
+                          ]
+                        },
+                        "value": {}
+                      }
+                    },
+                    {
+                      "properties": {
+                        "value_kind": {
+                          "const": "char"
+                        },
+                        "value": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "code_unit"
+                          ],
+                          "properties": {
+                            "code_unit": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "value_kind": {
+                          "const": "decimal"
+                        },
+                        "value": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "lo",
+                            "mid",
+                            "hi",
+                            "negative",
+                            "scale"
+                          ],
+                          "properties": {
+                            "lo": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 4294967295
+                            },
+                            "mid": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 4294967295
+                            },
+                            "hi": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 4294967295
+                            },
+                            "negative": {
+                              "type": "boolean"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 28
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "value_kind": {
+                          "const": "datetime"
+                        },
+                        "value": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "binary"
+                          ],
+                          "properties": {
+                            "binary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20,
+                              "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "value_kind": {
+                          "const": "timespan"
+                        },
+                        "value": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "ticks"
+                          ],
+                          "properties": {
+                            "ticks": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20,
+                              "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
                 },
                 "data_base64": {
                   "type": "string",

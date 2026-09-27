@@ -150,6 +150,8 @@ restore/export/recover/accept_live，并覆盖 compile/import/impact_scan 与 re
 
 通过标准：本轮实际启用的 78 工具 profile 中每项均有真实成功/负例区分的结论，且由支持 resources 的宿主独立完成同一实例 14/14；若门关闭仅有 57 工具，或 ZCode 不提供 resources 而无第二宿主，完整目标不能判通过。ACC016 `strong_name_remove` 的可信来源/一次消费/成功去强名称仍须单列暂缓且未完成，不得用预期拒绝冒充成功。所有临时修改恢复、原始样本未覆盖、两协调器 idle、受保护现场不变；即使这些满足，也不等于 RACC-022 总体验收。
 
+`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows 公开验收待执行。
+
 ### 资源路径导入导出补充
 
 `edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。

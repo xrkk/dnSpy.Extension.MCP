@@ -23,6 +23,8 @@
 - 文件清单（资源/导出类断言）。
 - 每条标真实宿主/测试缝/静态检查及未执行项；接口字段见 [AI 单文件手册](AI-TOOL-REFERENCE.zh-CN.md)。
 
+`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows 公开验收待执行。
+
 ### 资源路径导入导出补充
 
 `edit_resource_import` 仅从 `AllowedSampleRoot` 内的非 reparse 普通文件读取，容量在读取分配前检查；返回的 `file_id`、长度和 SHA-256 来自同一个 Windows 文件句柄。`resource_type` 可选 `embedded`、`linked` 或 `win32`；`linked` 导入读取后转为内嵌字节，不保留运行时外部文件依赖。

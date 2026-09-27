@@ -48,12 +48,14 @@ internal static class EditResourceCodec {
 		CodeDateTime = 15, CodeTimeSpan = 16, CodeByteArray = 32, CodeStream = 33,
 		CodeStartOfUserTypes = 64;
 
-	// The frozen P08 standard edit domain (adjudicated AUD-006): strings, bool,
-	// the nine numeric scalars and byte arrays (stream rows read/write as bytes).
+	// P08 standard edit domain: the original 13 kinds plus four precisely encoded
+	// CLR values. ByteArray and Stream share the bytes input but retain their codes.
 	static readonly Dictionary<int, string> StandardKinds = new() {
 		[CodeString] = "string", [CodeBoolean] = "boolean", [CodeByte] = "u1", [CodeSByte] = "i1",
 		[CodeInt16] = "i2", [CodeUInt16] = "u2", [CodeInt32] = "i4", [CodeUInt32] = "u4",
 		[CodeInt64] = "i8", [CodeUInt64] = "u8", [CodeSingle] = "r4", [CodeDouble] = "r8",
+		[CodeChar] = "char", [CodeDecimal] = "decimal", [CodeDateTime] = "datetime",
+		[CodeTimeSpan] = "timespan",
 		[CodeByteArray] = "bytes", [CodeStream] = "bytes",
 	};
 	public static readonly string[] EditableKinds = StandardKinds.Values.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToArray();
@@ -80,11 +82,7 @@ internal static class EditResourceCodec {
 
 	public static string KindOf(int typeCode) =>
 		StandardKinds.TryGetValue(typeCode, out var kind) ? kind
-		: typeCode switch {
-			CodeNull => "null", CodeChar => "char", CodeDecimal => "decimal",
-			CodeDateTime => "datetime", CodeTimeSpan => "timespan",
-			_ => "custom",
-		};
+		: typeCode == CodeNull ? "null" : "custom";
 
 	public static ParsedResource Parse(byte[] blob) {
 		var stream = new SpanReader(blob);
@@ -240,6 +238,36 @@ internal static class EditResourceCodec {
 		case CodeUInt64: return BitConverter.GetBytes(value.GetUInt64());
 		case CodeSingle: return BitConverter.GetBytes(value.GetSingle());
 		case CodeDouble: return BitConverter.GetBytes(value.GetDouble());
+		case CodeChar: {
+			ExactObject(value, "code_unit");
+			return BitConverter.GetBytes((ushort)UnsignedNumber(value.GetProperty("code_unit"), ushort.MaxValue));
+		}
+		case CodeDecimal: {
+			ExactObject(value, "lo", "mid", "hi", "negative", "scale");
+			var lo = UnsignedNumber(value.GetProperty("lo"), uint.MaxValue);
+			var mid = UnsignedNumber(value.GetProperty("mid"), uint.MaxValue);
+			var hi = UnsignedNumber(value.GetProperty("hi"), uint.MaxValue);
+			var scale = UnsignedNumber(value.GetProperty("scale"), 28);
+			var sign = value.GetProperty("negative");
+			if (sign.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw Reject("decimal.negative must be boolean");
+			var bits = decimal.GetBits(new decimal(unchecked((int)lo), unchecked((int)mid), unchecked((int)hi), sign.GetBoolean(), (byte)scale));
+			using var output = new MemoryStream();
+			foreach (var bit in bits) output.Write(BitConverter.GetBytes(bit), 0, 4);
+			return output.ToArray();
+		}
+		case CodeTimeSpan: {
+			ExactObject(value, "ticks");
+			return BitConverter.GetBytes(CanonicalInt64(value.GetProperty("ticks"), "timespan.ticks"));
+		}
+		case CodeDateTime: {
+			ExactObject(value, "binary");
+			var bits = CanonicalInt64(value.GetProperty("binary"), "datetime.binary");
+			try {
+				if (DateTime.FromBinary(bits).ToBinary() != bits) throw Reject("datetime.binary is not a canonical DateTime binary");
+			}
+			catch (ArgumentException) { throw Reject("datetime.binary is not a valid DateTime binary"); }
+			return BitConverter.GetBytes(bits);
+		}
 		case CodeByteArray:
 		case CodeStream: {
 			// arrays carry an INT32 length prefix (verified format), unlike
@@ -252,6 +280,29 @@ internal static class EditResourceCodec {
 		}
 		default: throw Reject("the resource value kind is outside the P08 edit domain");
 		}
+	}
+
+	static void ExactObject(JsonElement value, params string[] names) {
+		if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Count() != names.Length
+			|| names.Any(name => !value.TryGetProperty(name, out _))) throw Reject("resource value object has missing or extra fields");
+	}
+
+	static uint UnsignedNumber(JsonElement value, uint max) {
+		if (value.ValueKind != JsonValueKind.Number || !uint.TryParse(value.GetRawText(), NumberStyles.None,
+			CultureInfo.InvariantCulture, out var number) || number > max)
+			throw Reject("resource value integer is outside the required unsigned range");
+		return number;
+	}
+
+	static long CanonicalInt64(JsonElement value, string field) {
+		if (value.ValueKind != JsonValueKind.String) throw Reject(field + " must be a canonical decimal string");
+		var text = value.GetString() ?? string.Empty;
+		if (text.Length == 0 || text == "-0" || text[0] == '+' || (text[0] == '0' && text.Length > 1)
+			|| (text.StartsWith("-0", StringComparison.Ordinal) && text.Length > 2)
+			|| !long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number)
+			|| number.ToString(CultureInfo.InvariantCulture) != text)
+			throw Reject(field + " must be a canonical int64 decimal string");
+		return number;
 	}
 
 	static byte[] SevenBitPrefixed(byte[] payload) {
@@ -275,6 +326,18 @@ internal static class EditResourceCodec {
 		case CodeUInt64: return BitConverter.ToUInt64(raw, 0);
 		case CodeSingle: return BitConverter.ToSingle(raw, 0);
 		case CodeDouble: return BitConverter.ToDouble(raw, 0);
+		case CodeChar: return new { code_unit = (int)BitConverter.ToUInt16(raw, 0) };
+		case CodeDecimal: {
+			var flags = BitConverter.ToUInt32(raw, 12);
+			var scale = (int)((flags >> 16) & 0xff);
+			if ((flags & 0x7f00ffffU) != 0 || scale > 28) throw Reject("a .resources decimal flags field is corrupt");
+			return new {
+				lo = BitConverter.ToUInt32(raw, 0), mid = BitConverter.ToUInt32(raw, 4),
+				hi = BitConverter.ToUInt32(raw, 8), negative = (flags & 0x80000000U) != 0, scale,
+			};
+		}
+		case CodeDateTime: return new { binary = BitConverter.ToInt64(raw, 0).ToString(CultureInfo.InvariantCulture) };
+		case CodeTimeSpan: return new { ticks = BitConverter.ToInt64(raw, 0).ToString(CultureInfo.InvariantCulture) };
 		case CodeByteArray:
 		case CodeStream: {
 			// the raw bytes carry an INT32 length prefix; decode returns the payload
@@ -400,6 +463,8 @@ internal static class EditResourceCodec {
 			"u1" => CodeByte, "i1" => CodeSByte, "i2" => CodeInt16, "u2" => CodeUInt16,
 			"i4" => CodeInt32, "u4" => CodeUInt32, "i8" => CodeInt64, "u8" => CodeUInt64,
 			"r4" => CodeSingle, "r8" => CodeDouble,
+			"char" => CodeChar, "decimal" => CodeDecimal,
+			"datetime" => CodeDateTime, "timespan" => CodeTimeSpan,
 			"bytes" => preservedTypeCode is CodeByteArray or CodeStream ? preservedTypeCode.Value : CodeByteArray,
 			_ => throw Reject("the resource value kind is outside the P08 edit domain: " + kind),
 		};
