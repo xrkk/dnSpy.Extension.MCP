@@ -98,8 +98,57 @@ assert "误写“37”" not in texts[ROOT / "docs/MCP-TOOLS.zh-CN.md"]
 csproj = (ROOT / "dnSpy.Extension.MCP.csproj").read_text(encoding="utf-8")
 assert 'Include="docs/mcp-resources/overview.md" LogicalName="dnspy.docs.overview.md"' in csproj
 
+# initialize.instructions is published before tools/list. Keep its editing workflow
+# consistent with the live registry/schema and the embedded editing document.
+documentation_source = (ROOT / "McpDocumentationResources.cs").read_text(encoding="utf-8")
+instructions_block = documentation_source.split("public const string Instructions =", 1)[1].split(
+    "sealed class Definition", 1)[0]
+instructions_chunks = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', instructions_block)
+instructions = "".join(instructions_chunks)
+server_source = (ROOT / "McpServer.cs").read_text(encoding="utf-8")
+resource_source = (ROOT / "BepInExResources.cs").read_text(encoding="utf-8")
+editing_resource = (ROOT / "docs/mcp-resources/il-editing.md").read_text(encoding="utf-8")
+assert "Instructions = McpDocumentationResources.Instructions" in server_source
+assert "McpDocumentationResources.AddTo(resources)" in resource_source
+assert len(re.findall(r'new Definition\("dnspy://docs/', documentation_source)) == 8
+assert len(re.findall(r'resources\["bepinex://docs/', resource_source)) == 6
+assert all(name in source_description and name in schema for name in
+           ("edit_begin", "edit_apply", "edit_review", "edit_rollback", "edit_commit",
+            "edit_history", "edit_export"))
+assert "confirmed_risk_ids" in schema["edit_commit"]["inputSchema"]["required"]
+assert all(name in editing_resource for name in ("edit_commit", "edit_rollback", "edit_history", "edit_export"))
+assert "New `strong_name_remove` edits are deferred" in editing_resource
+
+def validate_initialize_guidance(guidance: str) -> None:
+    assert not re.search(r"no product commit/export|must end with edit_rollback|remain private in P02",
+                         guidance, re.I), "obsolete P02-only initialize guidance"
+    assert all(term in guidance for term in ("dnspy://docs/index", "dnspy://docs/il-editing",
+            "verify target/output paths", "initialized owner", "debugger idle",
+            "edit_begin/edit_apply/edit_review", "edit_commit", "confirmed_risk_ids",
+            "edit_rollback", "edit_history", "edit_export", "ArtifactRoot",
+            "strong_name_remove", "EDIT_CAPABILITY_UNAVAILABLE"))
+    assert re.search(r"edit_commit needs a reviewed revision and explicit confirmed_risk_ids"
+                     r" and persists a checkpoint", guidance)
+    assert re.search(r"edit_rollback to discard uncommitted changes", guidance)
+    assert re.search(r"edit_export to write only below ArtifactRoot without overwriting the source", guidance)
+
+validate_initialize_guidance(instructions)
+assert len(instructions) > 512 and instructions[:512].endswith(". ")
+stale_instructions = instructions.replace(
+    "edit_commit needs a reviewed revision and explicit confirmed_risk_ids and persists a checkpoint for audits.",
+    "changes must end with edit_rollback; no product commit/export exists yet.", 1)
+assert stale_instructions != instructions
+try:
+    validate_initialize_guidance(stale_instructions)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("obsolete P02 initialize guidance escaped release validation")
+
 print(json.dumps({"status": "PASS", "profiles": profiles, "operations": 39,
                   "unadvertised_edit_tests": len(test_seams), "documents_checked": len(docs),
                   "links_checked": sum(len(re.findall(r"\[[^]]+\]\([^)]+\)", body)) for body in texts.values()),
                   "registry_description_operations": 39,
-                  "negative_mutation_37_rejected": True}, ensure_ascii=False))
+                  "negative_mutation_37_rejected": True,
+                  "negative_mutation_old_initialize_rejected": True,
+                  "initialize_resources_checked": 14}, ensure_ascii=False))
