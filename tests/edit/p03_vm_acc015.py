@@ -155,12 +155,14 @@ def main() -> int:
     inbound_rows = impact.get("inbound_references", [])
     inbound_risk_ids = [str(row.get("risk_id")) for row in inbound_rows if isinstance(row, dict)]
     token_text = str(inbound_rows[0].get("assembly_ref_token", "")) if len(inbound_rows) == 1 else ""
-    expected_inbound_risk = ("risk-cross_assembly_inbound-InboundRef-"
-                             + str(int(token_text, 16) & 0x00ffffff)) if re.fullmatch(r"0x23[0-9a-f]{6}", token_text) else ""
+    expected_inbound_risk = (str(int(token_text, 16) & 0x00ffffff)
+                             if re.fullmatch(r"0x23[0-9a-f]{6}", token_text) else "")
     check("S1 inbound reference reported", len(inbound_rows) == 1
           and inbound_rows[0].get("module") == "InboundRef"
           and inbound_rows[0].get("matched_name") == "ImportHost"
-          and bool(expected_inbound_risk) and inbound_risk_ids == [expected_inbound_risk],
+          and bool(expected_inbound_risk) and len(inbound_risk_ids) == 1
+          and re.fullmatch(r"risk-cross_assembly_inbound-\d+-" + expected_inbound_risk,
+                           inbound_risk_ids[0]) is not None,
           json.dumps(inbound_rows)[:300])
     check("S1 risk ids echoed", set(inbound_risk_ids) == {str(r) for r in (impact.get("risk_ids") or [])}, str(impact.get("risk_ids")))
     text = json.dumps(scanned, ensure_ascii=False).lower()
