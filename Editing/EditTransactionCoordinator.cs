@@ -635,15 +635,21 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var oldPrivate = tx.PrivateFingerprint;
 		var oldRisks = tx.Workspace.Risks.Select(x => new Dictionary<string, object?>(x, StringComparer.Ordinal)).ToList();
 		var staged = false;
+		var mutationAttempted = false;
 		try {
 			BarrierPoint("apply_before_mutation",tx.Owner);
 			if (args == null || !args.TryGetValue("operation", out var raw) || raw is not JsonElement op || op.ValueKind != JsonValueKind.Object) throw new ArgumentException("operation is required", "operation");
 			ValidateStrongNameEvidence(tx, op);
 			var normalized = op.GetRawText(); var newBytes = Encoding.UTF8.GetByteCount(normalized); if (tx.Workspace.NormalizedOperations.Sum(Encoding.UTF8.GetByteCount) + newBytes > EditWire.MaxNormalizedOperationBytes) CapacityError("normalized_operation_bytes", newBytes, EditWire.MaxNormalizedOperationBytes);
-			var outcome = EditOperationRegistry.Apply(tx.Workspace.PrivateModule, op, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count);
-			// Apply is an in-memory atomic edit plus hard structural validation.  The single
-			// authoritative write/reload gate is review(), where the fixed revision is assessed.
-			EditStructuralValidator.Validate(tx.Workspace.PrivateModule);var newPrivate=tx.Workspace.PrivateFingerprint();
+			var outcome = EditApplyCandidateGate.Validate(
+				() => EditOperationRegistry.Apply(tx.Workspace.PrivateModule, op, tx.Workspace.ObjectIds, tx.Workspace.NormalizedOperations.Count),
+				() => EditStructuralValidator.Validate(tx.Workspace.PrivateModule),
+				() => { tx.Workspace.ValidateRoundtrip(); },
+				() => tx.Workspace.RestoreCommittedState());
+			mutationAttempted = true;
+			// P02 requires the complete in-memory writer/reload gate before an
+			// apply result can publish a revision, object IDs, diffs or risks.
+			var newPrivate=tx.Workspace.PrivateFingerprint();
 			var diff = new Dictionary<string, object?> { ["operation_index"] = tx.Workspace.NormalizedOperations.Count, ["kind"] = outcome.Kind, ["target"] = outcome.Target, ["path"] = "metadata/" + outcome.Kind, ["before"] = outcome.Before, ["after"] = outcome.After, ["risk_ids"] = outcome.Risks.Select(r => r["risk_id"]).ToArray() };
 			var prospectiveDiffBytes = EditWire.Utf8Bytes(tx.Workspace.Diffs.Concat(new[] { diff }).ToArray());
 			if (prospectiveDiffBytes > EditWire.MaxDiffBytes) throw new EditDomainException("EDIT_CAPACITY_EXCEEDED", CapacityDetails("diff_bytes", prospectiveDiffBytes, EditWire.MaxDiffBytes));
@@ -665,10 +671,13 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 				tx.Workspace.Risks.Clear(); foreach (var risk in oldRisks) tx.Workspace.Risks.Add(risk);
 				staged = false;
 			}
-			if (!tx.CancelRequested) {
-				try { if (tx.Workspace.PrivateFingerprint() != oldPrivate) tx.Workspace.RestoreCommittedState(); }
-				catch { tx.Workspace.RestoreCommittedState(); }
+			if (!tx.CancelRequested && mutationAttempted) {
+				// The writer can assign RIDs and mutate the object graph even if its
+				// canonical fingerprint ends up unchanged. Rebuild the graph and map.
+				tx.Workspace.RestoreCommittedState();
 				tx.PrivateFingerprint = tx.Workspace.PrivateFingerprint();
+				if (tx.PrivateFingerprint != oldPrivate)
+					throw new EditDomainException("EDIT_LIVE_STATE_UNKNOWN", Internal("private rollback did not restore the accepted revision"));
 			}
 			throw;
 		}

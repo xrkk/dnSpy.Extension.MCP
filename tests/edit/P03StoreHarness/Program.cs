@@ -21,6 +21,7 @@ static class Program {
 		if (args.Length == 2 && args[1] == "--image-spike") { TestImageEncodingSpike(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--tombstone-gate") { TestTombstoneGate(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--t076-inverse-boundary") { T076InverseBoundaryProbe.Run(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t088-apply-roundtrip") { T088ApplyRoundtripProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--dual-tool-classification") { TestDualToolClassification(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--capacity-resolution") { TestCapacityResolution(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--p04-slice1") { TestP04Slice1(args[0]); return 0; }
