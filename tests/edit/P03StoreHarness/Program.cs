@@ -74,6 +74,7 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--import-matrix") { ImportMatrixProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--identity-matrix") { IdentityMatrixProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--resource-matrix") { ResourceMatrixProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t091-resource-types") { T091ResourceTypesProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--resource-payload-dedup") { ResourcePayloadDedupProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--cdi-guard-content") { CdiGuardProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--owner-version") { OwnerVersionProbe.Run(args[0]); return 0; }
