@@ -103,7 +103,7 @@ def main() -> int:
             check(reviewed.get("ok") is True and review_id, "baseline review", reviewed)
             before = body(call("edit_status", {}))
             for bad in ({"name": "i4", "value_kind": "u4", "value": 1},
-                        {"name": "char", "value_kind": "char", "value": "R"}):
+                        {"name": "char", "value_kind": "string", "value": "R"}):
                 rejected = call("edit_apply", {"request_id": ident(), "transaction_id": active,
                                  "expected_revision": revision, "operation": {"kind": "managed_resource_update",
                                  "target": {"name": "T091.Values.resources"}, "entry": bad}})
