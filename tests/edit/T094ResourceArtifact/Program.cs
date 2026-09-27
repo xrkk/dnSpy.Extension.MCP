@@ -14,6 +14,10 @@ internal static class Program {
 
     static int Main(string[] args) {
         try {
+            if (args.Length == 4 && args[0] == "verify-matrix") {
+                T094MatrixReader.Verify(args[1], args[2], args[3]);
+                return 0;
+            }
             if (args.Length != 3 || args[0] is not ("make" or "verify" or "verify-blob" or "extract"))
                 throw new ArgumentException("usage: T094ResourceArtifact make <source.dll> <fixture.dll> | verify <image.dll> <baseline|first|second> | verify-blob <file.resources> <baseline|first|second> | extract <image.dll> <file.resources>");
             if (args[0] == "make") Make(args[1], args[2]);
