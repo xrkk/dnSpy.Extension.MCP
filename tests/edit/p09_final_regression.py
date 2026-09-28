@@ -275,7 +275,7 @@ $src = Join-Path 'FIXTURES' 'ResourceHost.cs'
 & $csc @('/nologo','/target:library','/platform:anycpu','/optimize-',"`/resource:$strings,ResourceHost.Strings.resources","`/win32icon:$(Join-Path $out 'app.ico')","`/out:$dll",$src) | Out-Null
 if (-not (Test-Path $dll)) { throw 'ResourceHost build failed' }
 # strong-name fixture: generate an snk via RSACryptoServiceProvider, sign StrongHost, reference from InboundStrong
-$sn = '${env:ProgramFiles(x86)}\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\sn.exe'
+$sn = "${env:ProgramFiles(x86)}\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\sn.exe"
 & $sn -k 'FIXTURES\bin\p08.snk' | Out-Null
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $strong = 'FIXTURES\bin\StrongHost'
