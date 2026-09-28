@@ -11,11 +11,9 @@ internal static class EditStructuralValidator {
 	public static int Validate(ModuleDef module) {
 		var rules = 0;
 		foreach (var type in module.GetTypes()) {
-			// P03-CHANGE-002 v3 / AUD-106 registered exemption: the deleted-rows
-			// tombstone intentionally hosts ParamDef rows behind a zero-parameter
-			// void() signature while a deletion is active. It is writer bookkeeping
-			// excluded from semantic fingerprints, not sample metadata to validate.
-			if (EditDeletedRowsTombstone.IsTombstone(type)) continue;
+			// Preserve the historical Object-marker exemption for v1/v2.
+			// v3 validates generated owners and all same-shape user rows normally.
+			if (EditDeletedRowsTombstone.UseObjectRepresentation(module) && EditDeletedRowsTombstone.IsLegacyTombstone(type)) continue;
 			rules++;
 			if (type.DeclaringType == null && !module.Types.Contains(type)) Fail("owner", type.FullName, "Top-level type is not owned by the module");
 			if (type.DeclaringType != null && !type.DeclaringType.NestedTypes.Contains(type)) Fail("owner", type.FullName, "Nested type owner is inconsistent");
@@ -24,6 +22,7 @@ internal static class EditStructuralValidator {
 			foreach (var method in type.Methods) {
 				rules++;
 				if (!ReferenceEquals(method.DeclaringType, type)) Fail("owner", method.FullName, "Method owner is inconsistent");
+				if (EditDeletedRowsTombstone.LegacyMode && EditDeletedRowsTombstone.IsGlobalParamHost(method)) continue;
 				ValidateMethod(method, ref rules);
 			}
 			foreach (var property in type.Properties) ValidateProperty(type, property, ref rules);

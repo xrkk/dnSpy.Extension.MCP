@@ -17,9 +17,6 @@
     <Reference Include="dnSpy.Contracts.DnSpy">
       <HintPath>$(DNSPY_CONTRACTS_DIR)dnSpy.Contracts.DnSpy.dll</HintPath>
     </Reference>
-    <Reference Include="dnlib">
-      <HintPath>$(DNSPY_CONTRACTS_DIR)dnlib.dll</HintPath>
-    </Reference>
     <Reference Include="dnSpy.Contracts.Logic">
       <HintPath>$(DNSPY_CONTRACTS_DIR)dnSpy.Contracts.Logic.dll</HintPath>
     </Reference>

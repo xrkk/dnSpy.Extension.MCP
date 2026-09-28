@@ -34,6 +34,12 @@ internal sealed class EditWorkspace : IDisposable {
 	public List<string> NormalizedOperations { get; } = new();
 	public List<Dictionary<string, object?>> Diffs { get; } = new();
 	public List<Dictionary<string, object?>> Risks { get; } = new();
+	// Set once by edit_begin from the bound lineage, before any private edit.
+	// A later TypeRef addition cannot silently switch this transaction's
+	// deletion representation or its replay/rollback rules.
+	internal string? HistoryFormat { get; set; }
+	internal IDisposable UseHistoryMode() => EditDeletedRowsTombstone.UseLegacy(
+			!string.Equals(HistoryFormat, EditHistoryModule.PackageFormatV3, StringComparison.Ordinal));
 
 	EditWorkspace(ModuleDef live, ModuleDefMD privateModule, byte[] baselinePrivateBytes, string assemblyName, string fileSha256, string baseline) {
 		LiveModule = live;
@@ -131,9 +137,11 @@ internal sealed class EditWorkspace : IDisposable {
 		// depend on whether a ModuleDefMD came from source or an emitted baseline.
 		// This is the actual checkpoint/export image; no hash regions are ignored.
 		var semantic = EditFingerprint.ComputeRoundtrip(module);
+		var referenceRows = EditReferenceImageProjection.Get(module);
+		var methodRids = EditMethodImageProjection.Get(module);
 		var originalNames = new HashSet<string>(module.GetTypes().Select(t => t.FullName), StringComparer.Ordinal);
 		const MetadataFlags flags = MetadataFlags.PreserveRids | MetadataFlags.PreserveExtraSignatureData | MetadataFlags.KeepOldMaxStack;
-		var bytes = WriteCore(module, flags);
+		var bytes = WriteCore(module, flags, referenceRows, methodRids);
 		using var materialized = ModuleDefMD.Load(bytes);
 		if (EditFingerprint.ComputeRoundtrip(materialized) != semantic)
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", ValidationDetails("checkpoint_image_semantics", "module", "Image serialization changed module semantics: " + EditFingerprint.Difference(module, materialized)));
@@ -194,13 +202,28 @@ internal sealed class EditWorkspace : IDisposable {
 		}
 	}
 
-	static byte[] WriteCore(ModuleDef module, MetadataFlags metadataFlags) {
+	static byte[] WriteCore(ModuleDef module, MetadataFlags metadataFlags, uint[]? referenceRows = null,
+		IReadOnlyDictionary<MethodDef,uint>? methodRids = null) {
 		using var stream = new MemoryStream();
 		var options = new ModuleWriterOptions(module) { Logger = DummyLogger.NoThrowInstance };
 		options.MetadataOptions.Flags = metadataFlags;
+		if (methodRids != null) options.MetadataOptions.MethodDefRidMap = methodRids;
 		var originalTopLevelTypes = new HashSet<TypeDef>(module.Types);
 		var pdbState = module.PdbState;
 		var oldPdbKind = pdbState?.PdbFileKind;
+		if (referenceRows != null) {
+			if (referenceRows.Length != 5 || module is not ModuleDefMD)
+				throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE");
+			var source = (ModuleDefMD)module;
+			// A later checkpoint may contain new rows absent from this older source PE.
+			// Those rows are emitted from the live graph; only shorter source prefixes need a view.
+			options.MetadataOptions.ReferenceSourceRows = new dnlib.DotNet.Writer.ReferenceSourceRows(
+				Math.Min(referenceRows[0], source.TablesStream.TypeRefTable.Rows),
+				Math.Min(referenceRows[1], source.TablesStream.MemberRefTable.Rows),
+				Math.Min(referenceRows[2], source.TablesStream.StandAloneSigTable.Rows),
+				Math.Min(referenceRows[3], source.TablesStream.TypeSpecTable.Rows),
+				Math.Min(referenceRows[4], source.TablesStream.MethodSpecTable.Rows));
+		}
 		try {
 			if (pdbState != null) {
 				pdbState.PdbFileKind = PdbFileKind.EmbeddedPortablePDB;
@@ -239,9 +262,12 @@ internal sealed class EditWorkspace : IDisposable {
 	public string CurrentLiveSemanticFingerprintFor(string format) =>
 		OnDispatcher(() => EditHistoryModule.SemanticDigest(format, LiveModule));
 	string? baselineSemanticV2;
+	string? baselineSemanticV3;
 	public string BaselineSemanticFingerprintFor(string format) {
 		if (EditHistoryModule.IsV2(format))
 			return baselineSemanticV2 ??= EditHistoryModule.BaselineSemanticDigest(format, BaselineBytes);
+		if (string.Equals(format, EditHistoryModule.PackageFormatV3, StringComparison.Ordinal))
+			return baselineSemanticV3 ??= EditHistoryModule.BaselineSemanticDigest(format, BaselineBytes);
 		if (EditHistoryModule.IsKnownFormat(format)) return BaselineSemanticFingerprint;
 		throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 	}
@@ -264,6 +290,7 @@ internal sealed class EditWorkspace : IDisposable {
 
 	/// <summary>Rebuild the private graph and its transaction object map from committed operations.</summary>
 	public void RestoreCommittedState() {
+		using var historyMode = UseHistoryMode();
 		var previous = PrivateModule;
 		var rebuilt = ModuleDefMD.Load(baselinePrivateBytes);
 		var rebuiltIds = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);

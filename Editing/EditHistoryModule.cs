@@ -85,6 +85,8 @@ internal sealed class EditCheckpointOperations {
 }
 
 internal sealed class EditLoadedLineage {
+	// Derived while validating a v3 package; never serialized into the package.
+	public Dictionary<string, uint[]> ReferenceRowCounts { get; } = new(StringComparer.Ordinal);
 	// ZIP DOS entry times have no persisted offset. Retain their wall-clock values
 	// for display/rewrite; the reader-supplied offset is not a creation-time fact.
 	public Dictionary<string, DateTimeOffset> CheckpointTimes { get; init; } = new(StringComparer.Ordinal);
@@ -100,6 +102,7 @@ internal sealed class EditLoadedLineage {
 
 internal sealed class EditHistoryBinding {
 	public string FamilyId { get; init; } = string.Empty;
+	public string? Format { get; init; }
 	public string? LineageId { get; init; }
 	public string? BaseCheckpointId { get; init; }
 	public string[] MatchBasis { get; init; } = Array.Empty<string>();
@@ -147,15 +150,18 @@ internal sealed class EditHistoryModule : IDisposable {
 	const int MaxZipEntries = 4096;
 	const int MaxLineages = 128;
 	// T003 / CHK-022: the package format selects the persistent semantic
-	// algorithm.  v1 keeps the historical (owner-less) projection; v2 uses the
-	// owner-bound strong projection.  New lineages are always v2; existing v1
-	// packages stay byte-for-byte on the historical algorithm.
+	// algorithm. v1 keeps its historical projection and v2 its frozen
+	// owner-bound strong projection. New no-Object lineages use v3 with every
+	// user and operation-marker row included; old packages retain their format.
 	internal const string PackageFormatV1 = "dnspy.edit.checkpoints.v1";
 	internal const string PackageFormatV2 = "dnspy.edit.checkpoints.v2";
+	internal const string PackageFormatV3 = "dnspy.edit.checkpoints.v3";
 	internal static bool IsV2(string format) => string.Equals(format, PackageFormatV2, StringComparison.Ordinal);
+	internal static bool IsOwnerBound(string format) => IsV2(format) || string.Equals(format, PackageFormatV3, StringComparison.Ordinal);
 	internal static bool IsKnownFormat(string format) =>
-		IsV2(format) || string.Equals(format, PackageFormatV1, StringComparison.Ordinal);
+		IsOwnerBound(format) || string.Equals(format, PackageFormatV1, StringComparison.Ordinal);
 	internal static string SemanticDigest(string format, ModuleDef module) {
+		if (string.Equals(format, PackageFormatV3, StringComparison.Ordinal)) return EditFingerprint.ComputeRoundtripStrongV3(module);
 		if (IsV2(format)) return EditFingerprint.ComputeRoundtripStrong(module);
 		if (string.Equals(format, PackageFormatV1, StringComparison.Ordinal)) return EditFingerprint.ComputeRoundtrip(module);
 		// Never treat an arbitrary format string as the historical algorithm:
@@ -165,6 +171,17 @@ internal sealed class EditHistoryModule : IDisposable {
 	internal static string BaselineSemanticDigest(string format, byte[] baselineBytes) {
 		using var module = ModuleDefMD.Load(baselineBytes);
 		return SemanticDigest(format, module);
+	}
+	static string NewFormat(EditWorkspace workspace) {
+		using var baseline = ModuleDefMD.Load(workspace.BaselineBytes);
+		return baseline.GetTypeRefs().Any(t => t.FullName == "System.Object") ? PackageFormatV2 : PackageFormatV3;
+	}
+	internal string FormatForBinding(EditWorkspace workspace, EditHistoryBinding binding) {
+		if (binding.Format != null) {
+			if (!IsKnownFormat(binding.Format)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+			return binding.Format;
+		}
+		return binding.LineageId == null ? NewFormat(workspace) : Load(binding.LineageId).Manifest.Format;
 	}
 	// P08 resource payload whitelist: the only persisted slots whose bytes are
 	// externalized as a payload reference.  Everything else keeps its inline
@@ -178,6 +195,10 @@ internal sealed class EditHistoryModule : IDisposable {
 	readonly JsonElement operationSchema;
 	readonly Dictionary<ModuleDef, EditHistoryBinding> processBindings = new();
 	readonly Dictionary<string, EditReplayAssessment> replayTickets = new(StringComparer.Ordinal);
+	// One verifier at a time across all coordinator instances in this host. The
+	// 256 MiB branch cache is an internal optimization, never an input limit.
+	static readonly System.Threading.SemaphoreSlim verifierLease = new(1, 1);
+	readonly System.Threading.AsyncLocal<System.Threading.CancellationToken> requestCancellation = new();
 	IEditCheckpointStore? store;
 	string? storeRoot;
 	bool disposed;
@@ -198,6 +219,20 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	internal EditLoadedLineage ValidatePackageForTesting(byte[] package) => ParsePackage(package);
+	internal IDisposable UseVerificationCancellation(System.Threading.CancellationToken cancellationToken) {
+		var previous = requestCancellation.Value;
+		requestCancellation.Value = cancellationToken;
+		return new VerificationCancellationScope(requestCancellation, previous);
+	}
+	sealed class VerificationCancellationScope : IDisposable {
+		readonly System.Threading.AsyncLocal<System.Threading.CancellationToken> slot;
+		readonly System.Threading.CancellationToken previous;
+		public VerificationCancellationScope(System.Threading.AsyncLocal<System.Threading.CancellationToken> slot,
+			System.Threading.CancellationToken previous) { this.slot = slot; this.previous = previous; }
+		public void Dispose() => slot.Value = previous;
+	}
+    internal EditLoadedLineage ValidatePackageForTesting(byte[] package, long spillCapBytes, System.Threading.CancellationToken cancellationToken = default)
+        => ParsePackage(package, spillCapBytes, cancellationToken);
 
 	public EditHistoryBinding ResolveBegin(EditWorkspace workspace, string? explicitFamilyId) {
 		ThrowIfDisposed();
@@ -249,14 +284,14 @@ internal sealed class EditHistoryModule : IDisposable {
 					["kind"] = "lineage_diverged", ["family_id"] = candidate.Lineage.Manifest.FamilyId,
 					["lineage_id"] = candidate.Lineage.Manifest.LineageId, ["match_basis"] = candidate.Basis,
 				});
-			bound = new EditHistoryBinding { FamilyId = candidate.Lineage.Manifest.FamilyId, LineageId = candidate.Lineage.Manifest.LineageId,
+			bound = new EditHistoryBinding { FamilyId = candidate.Lineage.Manifest.FamilyId, Format = candidate.Lineage.Manifest.Format, LineageId = candidate.Lineage.Manifest.LineageId,
 				BaseCheckpointId = candidate.Lineage.Manifest.HeadCheckpointId, MatchBasis = candidate.Basis };
 			processBindings[workspace.LiveModule] = bound;
 			return bound;
 		}
 		if (candidates.Count > 1 || aliasConflicts.Count != 0 || explicitFamilyId != null)
 			throw SourceConflict(candidates.Select(x => CandidateSummary(x.Lineage, x.Basis)).Concat(aliasConflicts).ToArray());
-		bound = new EditHistoryBinding { FamilyId = EditWire.NewId("family"), MatchBasis = new[] { "new_source" } };
+		bound = new EditHistoryBinding { FamilyId = EditWire.NewId("family"), Format = NewFormat(workspace), MatchBasis = new[] { "new_source" } };
 		processBindings[workspace.LiveModule] = bound;
 		return bound;
 	}
@@ -278,7 +313,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			var rootId = EditWire.NewId("checkpoint");
 			var rootOps = EmptyOperations(rootId);
 			var rootBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
-			format = PackageFormatV2;
+			format = NewFormat(workspace);
 			var root = Node(rootId, null, "baseline", rootBytes, workspace.BaselineImageSha256,
 				BaselineSemanticDigest(format, workspace.BaselineBytes), 0, reviewId, reviewRevision, Array.Empty<string>());
 			var manifest = new EditCheckpointManifest {
@@ -300,6 +335,9 @@ internal sealed class EditHistoryModule : IDisposable {
 			preHead = next.Manifest.HeadCheckpointId;
 			if (binding.BaseCheckpointId != preHead) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		}
+		if (binding.Format != null && !string.Equals(binding.Format, format, StringComparison.Ordinal)
+			|| workspace.HistoryFormat != null && !string.Equals(workspace.HistoryFormat, format, StringComparison.Ordinal))
+			throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var targetSemantic = SemanticDigest(format, workspace.PrivateModule);
 		var checkpointId = EditWire.NewId("checkpoint");
 		var operations = SerializeOperations(next, checkpointId, preHead, normalizedOperations, out var replayModule);
@@ -339,10 +377,11 @@ internal sealed class EditHistoryModule : IDisposable {
 		var rootId = EditWire.NewId("checkpoint");
 		var rootOps = EmptyOperations(rootId);
 		var rootBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
+		var format = NewFormat(workspace);
 		var root = Node(rootId, null, "baseline", rootBytes, workspace.BaselineImageSha256,
-			BaselineSemanticDigest(PackageFormatV2, workspace.BaselineBytes), 0, "legacy-save-baseline", 0, Array.Empty<string>());
+			BaselineSemanticDigest(format, workspace.BaselineBytes), 0, "legacy-save-baseline", 0, Array.Empty<string>());
 		var manifest = new EditCheckpointManifest {
-			Format = PackageFormatV2, LineageId = lineageId, FamilyId = binding.FamilyId,
+			Format = format, LineageId = lineageId, FamilyId = binding.FamilyId,
 			SourceIdentity = SourceIdentity(workspace),
 			Baseline = new EditBaselineEntry { Length = workspace.BaselineBytes.LongLength, Sha256 = workspace.BaselineImageSha256 },
 			HeadCheckpointId = rootId, Checkpoints = new List<EditCheckpointNode> { root },
@@ -391,7 +430,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	public void Finalize(EditPreparedHistoryWrite prepared, ModuleDef liveModule) {
 		Store.FinalizeTemp(prepared.Temp, prepared.ReplacesExisting);
 		processBindings[liveModule] = new EditHistoryBinding {
-			FamilyId = prepared.Lineage.Manifest.FamilyId, LineageId = prepared.Lineage.Manifest.LineageId,
+			FamilyId = prepared.Lineage.Manifest.FamilyId, Format = prepared.Lineage.Manifest.Format, LineageId = prepared.Lineage.Manifest.LineageId,
 			BaseCheckpointId = prepared.PostHeadCheckpointId, MatchBasis = new[] { "process_binding" },
 		};
 	}
@@ -410,7 +449,7 @@ internal sealed class EditHistoryModule : IDisposable {
 		// A v1 lineage can never prove a byte-level drift because its historical
 		// algorithm has no method ownership; accepting the current live is the
 		// only path and it creates a new v2 lineage.
-		if (!IsV2(target.Lineage.Manifest.Format)) throw new EditDomainException("EDIT_REPLAY_UNVERIFIED");
+		if (!IsOwnerBound(target.Lineage.Manifest.Format)) throw new EditDomainException("EDIT_REPLAY_UNVERIFIED");
 		if (target.Classification != "validated_drift") throw new EditDomainException("EDIT_REPLAY_CONFIRMATION_REQUIRED");
 		var next = Clone(Load(target.Lineage.Manifest.LineageId));
 		if (next.Manifest.HeadCheckpointId != target.HeadCheckpointId) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
@@ -433,10 +472,14 @@ internal sealed class EditHistoryModule : IDisposable {
 		var lineageId = EditWire.NewId("lineage"); var rootId = EditWire.NewId("checkpoint");
 		var rootOps = EmptyOperations(rootId); var rootOpsBytes = JsonSerializer.SerializeToUtf8Bytes(rootOps, EditWire.JsonOptions);
 		var bytes = workspace.BaselineBytes; var image = EditWire.Sha256(bytes);
-		var semantic = BaselineSemanticDigest(PackageFormatV2, bytes);
+		// REQ-011 / CON-023 explicitly require accept_live to create a v2
+		// lineage from an old v1/v2 source. Candidate v3 selection applies only
+		// to an ordinary new edit lineage; never silently upgrade this path.
+		var format = PackageFormatV2;
+		var semantic = BaselineSemanticDigest(format, bytes);
 		var root = Node(rootId, null, "accepted_baseline", rootOpsBytes, image, semantic, 0, "accepted-live", 0, Array.Empty<string>());
 		var manifest = new EditCheckpointManifest {
-			Format = PackageFormatV2, LineageId = lineageId, FamilyId = familyId, SupersededLineageId = supersededLineageId,
+			Format = format, LineageId = lineageId, FamilyId = familyId, SupersededLineageId = supersededLineageId,
 			SourceIdentity = SourceIdentity(workspace), Baseline = new EditBaselineEntry { Length = bytes.LongLength, Sha256 = image },
 			HeadCheckpointId = rootId, Checkpoints = new List<EditCheckpointNode> { root },
 			DefaultOutput = CreateDefaultOutput(lineageId, workspace.FilePath, image),
@@ -594,7 +637,10 @@ internal sealed class EditHistoryModule : IDisposable {
 			catch (EditDomainException ex) when (ex.Code == "EDIT_EXPORT_BLOCKED") { throw; }
 			catch (Exception) { throw new EditDomainException("EDIT_EXPORT_BLOCKED"); }
 		});
-		return WriteValidatedOutput(replay.Bytes, requestedPath ?? replay.Lineage.Manifest.DefaultOutput.RelativePath, sourcePath, validation);
+		var defaultPath = replay.Lineage.Manifest.DefaultOutput.RelativePath;
+		if (string.Equals(replay.Lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal))
+			defaultPath = defaultPath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+		return WriteValidatedOutput(replay.Bytes, requestedPath ?? defaultPath, sourcePath, validation);
 	}
 
 	public EditOutputResult ExportResource(byte[] bytes, string path, string sourcePath) {
@@ -619,7 +665,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	public void BindHead(ModuleDef module, EditLoadedLineage lineage) => processBindings[module] = new EditHistoryBinding {
-		FamilyId = lineage.Manifest.FamilyId, LineageId = lineage.Manifest.LineageId, BaseCheckpointId = lineage.Manifest.HeadCheckpointId,
+		FamilyId = lineage.Manifest.FamilyId, Format = lineage.Manifest.Format, LineageId = lineage.Manifest.LineageId, BaseCheckpointId = lineage.Manifest.HeadCheckpointId,
 		MatchBasis = new[] { "process_binding" },
 	};
 
@@ -632,10 +678,36 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	EditReplayAssessment Replay(EditLoadedLineage lineage, string checkpointId, string liveFingerprint) {
+		using var tombstoneMode = EditDeletedRowsTombstone.UseLegacy(!string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal));
 		var checkpoint = lineage.Manifest.Checkpoints.SingleOrDefault(x => x.CheckpointId == checkpointId)
 			?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var path = PathTo(lineage, checkpointId);
+		if (string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal)) {
+			// The authenticated v3 image is the boundary between checkpoints.
+			// Replaying all ancestors in one mutable graph can assign different
+			// MethodDef RIDs when later additions return to an earlier owner.
+			var verifiedImage = lineage.BaselineBytes;
+			using (var baseline = ModuleDefMD.Load(verifiedImage)) {
+				if (EditWire.Sha256(verifiedImage) != path[0].ResultImageSha256
+					|| SemanticDigest(PackageFormatV3, baseline) != path[0].ResultSemanticFingerprint)
+					throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			}
+			foreach (var node in path.Skip(1)) {
+				using var parent = ModuleDefMD.Load(verifiedImage);
+				verifiedImage = ApplyV3Node(lineage, parent, node);
+			}
+			return new EditReplayAssessment {
+				ReplayId = EditWire.NewId("replay"), Classification = "exact", Lineage = lineage, Checkpoint = checkpoint,
+				Bytes = verifiedImage, ImageSha256 = EditWire.Sha256(verifiedImage), SemanticFingerprint = checkpoint.ResultSemanticFingerprint,
+				PackageSha256 = lineage.PackageSha256, LiveFingerprint = liveFingerprint,
+				HeadCheckpointId = lineage.Manifest.HeadCheckpointId,
+			};
+		}
 		using var module = ModuleDefMD.Load(lineage.BaselineBytes);
+		if (string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal)
+			&& (EditWire.Sha256(lineage.BaselineBytes) != path[0].ResultImageSha256
+				|| SemanticDigest(PackageFormatV3, module) != path[0].ResultSemanticFingerprint))
+			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		foreach (var node in path.Skip(1)) {
 			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
 			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, module);
@@ -649,9 +721,14 @@ internal sealed class EditHistoryModule : IDisposable {
 					throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 				using var json = ExpandedForward(lineage, row);
 				EditOperationVersions.Validate(row.Kind, row.KindVersion, json.RootElement);
+				VerifyV3Inverse(lineage, row, module, map, json.RootElement);
 				EditOperationRegistry.ApplyPersisted(module, json.RootElement, map, i);
 			}
 			EditStructuralValidator.Validate(module);
+			if (string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal)
+				&& (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(module)) != node.ResultImageSha256
+					|| SemanticDigest(PackageFormatV3, module) != node.ResultSemanticFingerprint))
+				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		}
 		var bytes = EditWorkspace.WriteCheckpointImage(module);
 		using var reloaded = ModuleDefMD.Load(bytes);
@@ -667,13 +744,32 @@ internal sealed class EditHistoryModule : IDisposable {
 		// as a new v2 lineage.
 		string classification;
 		if (image == checkpoint.ResultImageSha256 && semantic == checkpoint.ResultSemanticFingerprint) classification = "exact";
-		else if (!IsV2(format)) classification = "unverified_drift";
+		else if (!IsOwnerBound(format)) classification = "unverified_drift";
 		else classification = semantic == checkpoint.ResultSemanticFingerprint ? "validated_drift" : "unverified_drift";
 		return new EditReplayAssessment {
 			ReplayId = EditWire.NewId("replay"), Classification = classification, Lineage = lineage, Checkpoint = checkpoint,
 			Bytes = bytes, ImageSha256 = image, SemanticFingerprint = semantic, PackageSha256 = lineage.PackageSha256,
 			LiveFingerprint = liveFingerprint, HeadCheckpointId = lineage.Manifest.HeadCheckpointId,
 		};
+	}
+
+	// For v3 the inverse is a checked claim about the transition, not a source
+	// certificate. Recompile it from the verified baseline prefix before each
+	// forward step; a rewritten envelope hash alone cannot authorize a marker.
+	static void VerifyV3Inverse(EditLoadedLineage lineage, EditSerializedOperation row, ModuleDef before,
+		Dictionary<string, IMDTokenProvider> map, JsonElement forward) {
+		if (!string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal)) return;
+		if (!row.Inverse.TryGetValue("state", out var raw) || raw is not JsonElement stored || stored.ValueKind != JsonValueKind.Object)
+			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+		var computed = EditOperationRegistry.CompileInverse(before, forward, map);
+		using var computedJson = JsonDocument.Parse(JsonSerializer.Serialize(computed, EditWire.JsonOptions));
+		// The envelope and its permitted payload slots were validated before
+		// replay. Compare the complete executable state after decoding those
+		// references; a raw payload_sha256 object is not semantically different
+		// from the pre-state bytes captured by CompileInverse.
+		using var storedNode = JsonDocument.Parse(ExpandPersistedInverseState(lineage, stored));
+		if (!JsonElement.DeepEquals(computedJson.RootElement, storedNode.RootElement))
+			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 	}
 
 	static List<EditCheckpointNode> PathTo(EditLoadedLineage lineage, string checkpointId) {
@@ -687,6 +783,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	public EditHistoryNavigationPlan PlanNavigation(EditLoadedLineage lineage, string fromId, string targetId) {
+		using var tombstoneMode = EditDeletedRowsTombstone.UseLegacy(!string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal));
 		// T003-R03: the plan binds to the verified lineage format and every
 		// before/after gate below uses that version's semantic digest; an
 		// unknown format never falls back to the historical algorithm.
@@ -694,58 +791,119 @@ internal sealed class EditHistoryModule : IDisposable {
 		if (!IsKnownFormat(format)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 		var fromPath = PathTo(lineage, fromId);
 		var toPath = PathTo(lineage, targetId);
+		var methodRows = new Dictionary<string, EditMethodImageProjection.Row[]>(StringComparer.Ordinal);
+		if (format == PackageFormatV3) {
+			void CapturePath(IReadOnlyList<EditCheckpointNode> path) {
+				var image = lineage.BaselineBytes;
+				foreach (var node in path) {
+					if (node.ParentCheckpointId != null) {
+						using var parent = ModuleDefMD.Load(image);
+						image = ApplyV3Node(lineage, parent, node);
+					}
+					if (!methodRows.ContainsKey(node.CheckpointId)) {
+						using var persisted = ModuleDefMD.Load(image);
+						methodRows.Add(node.CheckpointId, EditMethodImageProjection.Capture(persisted));
+					}
+				}
+			}
+			CapturePath(fromPath);
+			CapturePath(toPath);
+		}
 		var shared = 0;
 		while (shared < fromPath.Count && shared < toPath.Count && fromPath[shared].CheckpointId == toPath[shared].CheckpointId) shared++;
 		if (shared == 0) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var undoByCheckpoint = new Dictionary<string, List<EditHistoryNavigationPlan.Step>>(StringComparer.Ordinal);
-		using var replay = ModuleDefMD.Load(lineage.BaselineBytes);
+		var replay = ModuleDefMD.Load(lineage.BaselineBytes);
+		try {
 		foreach (var node in fromPath.Skip(1)) {
-			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(replay));
-			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, replay);
-			var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
-			var inverses = new List<EditHistoryNavigationPlan.Step>();
-			var operations = lineage.Operations[node.CheckpointId].Operations;
-			for (var index = 0; index < operations.Count; index++) {
-				using var forward = ExpandedForward(lineage, operations[index]);
-				if (node.Sequence >= fromPath[shared - 1].Sequence && node.CheckpointId != fromPath[shared - 1].CheckpointId) {
+			{
+				using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(replay));
+				using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, replay);
+				var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+				var inverses = new List<EditHistoryNavigationPlan.Step>();
+				var operations = lineage.Operations[node.CheckpointId].Operations;
+				for (var index = 0; index < operations.Count; index++) {
+					using var forward = ExpandedForward(lineage, operations[index]);
+					if (node.Sequence >= fromPath[shared - 1].Sequence && node.CheckpointId != fromPath[shared - 1].CheckpointId) {
 					// Consume the persisted compiled inverse; there is no silent
 					// recompile fallback (P03-CHANGE-001 single representation).
 					var envelope = operations[index].Inverse;
 					if (!envelope.TryGetValue("state", out var persisted) || persisted is not JsonElement stateElement
 						|| stateElement.ValueKind != JsonValueKind.Object)
 						throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-					inverses.Add(new EditHistoryNavigationPlan.Step { CheckpointId = node.CheckpointId, Index = index,
-						IsInverse = true, Operation = NavigationInverseState(lineage, operations[index], stateElement, forward.RootElement, replay) });
+						inverses.Add(new EditHistoryNavigationPlan.Step { CheckpointId = node.CheckpointId, Index = index,
+						IsInverse = true, Operation = NavigationInverseState(lineage, operations[index], stateElement, forward.RootElement, replay),
+						ReferenceRowsAfter = index == 0 && node.ParentCheckpointId != null && lineage.ReferenceRowCounts.TryGetValue(node.ParentCheckpointId, out var parentRows)
+							? parentRows : null,
+						MethodRowsAfter = index == 0 && node.ParentCheckpointId != null && methodRows.TryGetValue(node.ParentCheckpointId, out var parentMethods)
+							? parentMethods : null });
+					}
+					VerifyV3Inverse(lineage, operations[index], replay, map, forward.RootElement);
+					EditOperationRegistry.ApplyPersisted(replay, forward.RootElement, map, index);
 				}
-				EditOperationRegistry.ApplyPersisted(replay, forward.RootElement, map, index);
+				undoByCheckpoint[node.CheckpointId] = inverses;
 			}
-			undoByCheckpoint[node.CheckpointId] = inverses;
+			if (format == PackageFormatV3) {
+				var image = EditWorkspace.WriteCheckpointImage(replay);
+				if (EditWire.Sha256(image) != node.ResultImageSha256)
+					throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				var persisted = ModuleDefMD.Load(image);
+				replay.Dispose();
+				replay = persisted;
+			}
 		}
 		var beforeFingerprint = SemanticDigest(format, replay);
+		var beforeImage = EditWorkspace.WriteCheckpointImage(replay);
+		var beforeImageSha256 = EditWire.Sha256(beforeImage);
+		string[]? sourceTypeRefs = null;
+		uint[]? sourceReferenceRows = null;
+		if (format == PackageFormatV3) {
+			using var sourceModule = ModuleDefMD.Load(beforeImage);
+			sourceTypeRefs = sourceModule.GetTypeRefs().OrderBy(x => x.Rid)
+				.Select(x => x.FullName + "|" + x.ResolutionScope).ToArray();
+			sourceReferenceRows = ReferenceRows(beforeImage);
+		}
 		var steps = fromPath.Skip(shared).Reverse().SelectMany(x => undoByCheckpoint[x.CheckpointId].AsEnumerable().Reverse()).ToList();
 		foreach (var node in toPath.Skip(shared)) {
 			var operations = lineage.Operations[node.CheckpointId].Operations;
 			for (var index = 0; index < operations.Count; index++) {
 				using var forward = ExpandedForward(lineage, operations[index]);
 				steps.Add(new EditHistoryNavigationPlan.Step { CheckpointId = node.CheckpointId, Index = index,
-					IsInverse = false, Operation = forward.RootElement.GetRawText() });
+					IsInverse = false, Operation = forward.RootElement.GetRawText(),
+					ReferenceRowsAfter = index == operations.Count - 1 && lineage.ReferenceRowCounts.TryGetValue(node.CheckpointId, out var nodeRows)
+						? nodeRows : null,
+					MethodRowsAfter = index == operations.Count - 1 && methodRows.TryGetValue(node.CheckpointId, out var checkpointMethods)
+						? checkpointMethods : null });
 			}
 		}
 		var target = Replay(lineage, targetId, beforeFingerprint);
 		string afterFingerprint;
 		bool targetHasPdb;
+		string[] targetTypeRefs;
+		uint[] targetReferenceRows;
 		using (var targetModule = ModuleDefMD.Load(target.Bytes)) {
 			afterFingerprint = SemanticDigest(format, targetModule);
 			targetHasPdb = targetModule.PdbState != null;
+			targetTypeRefs = targetModule.GetTypeRefs().OrderBy(x => x.Rid)
+				.Select(x => x.FullName + "|" + x.ResolutionScope).ToArray();
+			targetReferenceRows = new[] { targetModule.TablesStream.TypeRefTable.Rows,
+				targetModule.TablesStream.MemberRefTable.Rows, targetModule.TablesStream.StandAloneSigTable.Rows,
+				targetModule.TablesStream.TypeSpecTable.Rows, targetModule.TablesStream.MethodSpecTable.Rows };
 		}
-		var plan = new EditHistoryNavigationPlan(format, steps, beforeFingerprint, afterFingerprint, targetHasPdb);
+		var plan = new EditHistoryNavigationPlan(format, steps, beforeFingerprint, afterFingerprint, beforeImageSha256, targetHasPdb, target.ImageSha256, targetTypeRefs, targetReferenceRows, sourceTypeRefs, sourceReferenceRows);
 		plan.Apply(replay);
 		if (EditWire.Sha256(EditWorkspace.WriteCheckpointImage(replay)) != target.ImageSha256)
 			throw new EditDomainException("EDIT_VALIDATION_FAILED", EditWorkspace.ValidationDetails("navigation_plan_image", "checkpoint", "The operation-level replay did not restore the target checkpoint image"));
 		return plan;
+		}
+		finally { replay.Dispose(); }
 	}
 
-	EditLoadedLineage ParsePackage(byte[] package) {
+	EditLoadedLineage ParsePackage(byte[] package, long? verifierSpillCapBytes = null, System.Threading.CancellationToken cancellationToken = default) {
+		var traceCost = Environment.GetEnvironmentVariable("T095_R07_TRACE_COST") == "1";
+		var parseElapsed = traceCost ? System.Diagnostics.Stopwatch.StartNew() : null;
+		if (traceCost) Console.Error.WriteLine($"V3_PACKAGE stage=start bytes={package.LongLength}");
+		if (!cancellationToken.CanBeCanceled) cancellationToken = requestCancellation.Value;
 		if (package.LongLength > ArtifactStoreLedger.MaxFileBytes) throw Capacity("package_file_bytes", package.LongLength, ArtifactStoreLedger.MaxFileBytes);
 		var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 		var entryTimes = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
@@ -775,6 +933,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			}
 		}
 		catch (InvalidDataException) { throw new EditDomainException("EDIT_CHECKPOINT_INVALID"); }
+		if (traceCost) Console.Error.WriteLine($"V3_PACKAGE stage=zip entries={entries.Count} elapsed_ms={parseElapsed!.ElapsedMilliseconds}");
 		if (!entries.TryGetValue("manifest.json", out var manifestBytes)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		EditCheckpointManifest manifest;
 		try {
@@ -832,10 +991,199 @@ internal sealed class EditHistoryModule : IDisposable {
 			ValidateOperationEnvelopes(node, op, manifest);
 			operations.Add(node.CheckpointId, op);
 		}
-		return new EditLoadedLineage { Manifest = manifest, BaselineBytes = entries["baseline/module.bin"], Operations = operations,
+		var loaded = new EditLoadedLineage { Manifest = manifest, BaselineBytes = entries["baseline/module.bin"], Operations = operations,
 			CheckpointTimes = manifest.Checkpoints.ToDictionary(x => x.CheckpointId, x => entryTimes[x.OperationEntry], StringComparer.Ordinal),
 			PayloadBytes = manifest.Payloads.ToDictionary(x => x.Sha256, x => entries[x.Entry], StringComparer.Ordinal),
 			PackageBytes = package, PackageSha256 = EditWire.Sha256(package) };
+		if (string.Equals(manifest.Format, PackageFormatV3, StringComparison.Ordinal)) {
+			if (traceCost) Console.Error.WriteLine($"V3_PACKAGE stage=verify checkpoints={manifest.Checkpoints.Count} elapsed_ms={parseElapsed!.ElapsedMilliseconds}");
+			VerifyV3Tree(loaded, verifierSpillCapBytes ?? 256L * 1024 * 1024, cancellationToken,
+				store is WindowsEditCheckpointStore windowsStore ? windowsStore.OpenVerifierTemp : OpenLocalVerifierTemp);
+		}
+		if (traceCost) Console.Error.WriteLine($"V3_PACKAGE stage=done elapsed_ms={parseElapsed!.ElapsedMilliseconds}");
+		return loaded;
+	}
+
+	sealed class V3ReplayFrame {
+		public EditCheckpointNode Node { get; }
+		public List<EditCheckpointNode> Children { get; }
+		public byte[]? Image { get; set; }
+		public long SpillOffset { get; set; } = -1;
+		public int SpillLength { get; set; }
+		public int NextChild { get; set; }
+		public V3ReplayFrame(EditCheckpointNode node, List<EditCheckpointNode> children, byte[] image) {
+			Node = node; Children = children; Image = image;
+		}
+		public byte[] ReadImage(FileStream? spill) {
+			if (Image != null) return Image;
+			if (spill == null || SpillOffset < 0) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			var result = new byte[SpillLength];
+			spill.Position = SpillOffset;
+			var read = 0;
+			while (read < result.Length) {
+				var count = spill.Read(result, read, result.Length - read);
+				if (count == 0) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				read += count;
+			}
+			return result;
+		}
+	}
+
+	static byte[] ApplyV3Node(EditLoadedLineage lineage, ModuleDef module, EditCheckpointNode node) {
+		using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+		using var bindings = EditOperationRegistry.BindSerializedTokens(source, module);
+		if (!lineage.Operations.TryGetValue(node.CheckpointId, out var entry)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+		var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+		for (var i = 0; i < entry.Operations.Count; i++) {
+			var row = entry.Operations[i];
+			if (row.Forward.TryGetValue("kind", out var rawKind) == false
+				|| !string.Equals(rawKind?.ToString(), row.Kind, StringComparison.Ordinal)
+				|| !EditOperationVersions.IsSupported(row.Kind, row.KindVersion))
+				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
+			using var json = ExpandedForward(lineage, row);
+			EditOperationVersions.Validate(row.Kind, row.KindVersion, json.RootElement);
+			VerifyV3Inverse(lineage, row, module, map, json.RootElement);
+			EditOperationRegistry.ApplyPersisted(module, json.RootElement, map, i);
+		}
+		EditStructuralValidator.Validate(module);
+		var image = EditWorkspace.WriteCheckpointImage(module);
+		if (EditWire.Sha256(image) != node.ResultImageSha256
+			|| SemanticDigest(PackageFormatV3, module) != node.ResultSemanticFingerprint)
+		{
+			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+		}
+		return image;
+	}
+
+	static uint[] ReferenceRows(byte[] image) {
+		using var module = ModuleDefMD.Load(image);
+		return new[] { module.TablesStream.TypeRefTable.Rows, module.TablesStream.MemberRefTable.Rows,
+			module.TablesStream.StandAloneSigTable.Rows, module.TablesStream.TypeSpecTable.Rows,
+			module.TablesStream.MethodSpecTable.Rows };
+	}
+
+	static (FileStream Stream, string Path) OpenLocalVerifierTemp() {
+		var path = Path.Combine(Path.GetTempPath(), "dnspy-v3-replay-" + Guid.NewGuid().ToString("N") + ".tmp");
+		return (new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
+			64 * 1024, FileOptions.DeleteOnClose), path);
+	}
+	static void VerifyV3Tree(EditLoadedLineage lineage, long spillCapBytes, System.Threading.CancellationToken cancellationToken,
+		Func<(FileStream Stream, string Path)> openSpill) {
+        if (spillCapBytes < 0) throw new ArgumentOutOfRangeException(nameof(spillCapBytes));
+		verifierLease.Wait(cancellationToken);
+		try { VerifyV3TreeLeased(lineage, spillCapBytes, cancellationToken, openSpill); }
+		finally { verifierLease.Release(); }
+	}
+
+	static void VerifyV3TreeLeased(EditLoadedLineage lineage, long spillCapBytes, System.Threading.CancellationToken cancellationToken,
+		Func<(FileStream Stream, string Path)> openSpill) {
+		FileStream? spill = null;
+		string? spillPath = null;
+		var checkedNodes = 0; var checkedOperations = 0; var spillWrites = 0; var evictions = 0; var recomputedNodes = 0; long peakSpillBytes = 0;
+		var elapsed = System.Diagnostics.Stopwatch.StartNew();
+		try {
+			void SpillBranch(V3ReplayFrame frame) {
+				if (frame.Children.Count <= 1 || frame.Image == null) return;
+                if (spillCapBytes - (spill?.Length ?? 0) < frame.Image.Length) {
+                    frame.SpillOffset = -2; // reconstruct from verified lineage on sibling revisit
+                    frame.Image = null;
+                    evictions++;
+                    return;
+                }
+				if (spill == null) {
+					(spill, spillPath) = openSpill();
+				}
+				spill.Position = spill.Length;
+				frame.SpillOffset = spill.Position;
+				frame.SpillLength = frame.Image.Length;
+				spill.Write(frame.Image, 0, frame.Image.Length);
+				spillWrites++; peakSpillBytes = Math.Max(peakSpillBytes, spill.Length);
+				frame.Image = null;
+			}
+            var byId = lineage.Manifest.Checkpoints.ToDictionary(x => x.CheckpointId, StringComparer.Ordinal);
+            var activeFrames = new Dictionary<string, V3ReplayFrame>(StringComparer.Ordinal);
+            byte[] ReadFrame(V3ReplayFrame frame) {
+                if (frame.SpillOffset != -2) return frame.ReadImage(spill);
+                // Reapply from the nearest still-active authenticated ancestor.
+                // A spill eviction must not make every sibling restart at the root.
+                var path = new List<EditCheckpointNode>();
+                var cursor = frame.Node;
+                byte[] image = lineage.BaselineBytes;
+                while (cursor.ParentCheckpointId != null) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    path.Add(cursor);
+                    if (activeFrames.TryGetValue(cursor.ParentCheckpointId, out var ancestor)
+                        && (ancestor.Image != null || ancestor.SpillOffset >= 0)) {
+                        image = ancestor.ReadImage(spill);
+                        break;
+                    }
+                    cursor = byId[cursor.ParentCheckpointId];
+                }
+                for (var index = path.Count - 1; index >= 0; index--) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var parent = ModuleDefMD.Load(image);
+                    image = ApplyV3Node(lineage, parent, path[index]);
+                    recomputedNodes++;
+                }
+                return image;
+            }
+			using var mode = EditDeletedRowsTombstone.UseLegacy(false);
+			using var module = ModuleDefMD.Load(lineage.BaselineBytes);
+			var children = lineage.Manifest.Checkpoints.Where(x => x.ParentCheckpointId != null)
+				.GroupBy(x => x.ParentCheckpointId!, StringComparer.Ordinal)
+				.ToDictionary(g => g.Key, g => g.OrderBy(x => x.Sequence).ToList(), StringComparer.Ordinal);
+			var root = lineage.Manifest.Checkpoints.Single(x => x.ParentCheckpointId == null);
+			if (EditWire.Sha256(lineage.BaselineBytes) != root.ResultImageSha256
+				|| SemanticDigest(PackageFormatV3, module) != root.ResultSemanticFingerprint)
+				throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+			lineage.ReferenceRowCounts[root.CheckpointId] = ReferenceRows(lineage.BaselineBytes);
+			var stack = new Stack<V3ReplayFrame>();
+            var rootFrame = new V3ReplayFrame(root, children.TryGetValue(root.CheckpointId, out var rootChildren) ? rootChildren : new(), lineage.BaselineBytes);
+            SpillBranch(rootFrame);
+            stack.Push(rootFrame);
+            activeFrames.Add(root.CheckpointId, rootFrame);
+			while (stack.Count != 0) {
+                cancellationToken.ThrowIfCancellationRequested();
+				var frame = stack.Peek();
+				if (frame.NextChild < frame.Children.Count) {
+					var child = frame.Children[frame.NextChild++];
+					using var parent = ModuleDefMD.Load(ReadFrame(frame));
+					var image = ApplyV3Node(lineage, parent, child);
+					checkedNodes++; checkedOperations += lineage.Operations[child.CheckpointId].Operations.Count;
+					if (checkedNodes % 8 == 0 && Environment.GetEnvironmentVariable("T095_R07_TRACE_COST") == "1")
+						Console.Error.WriteLine($"V3_PROGRESS nodes={checkedNodes} recomputed_nodes={recomputedNodes} spill_writes={spillWrites} elapsed_ms={elapsed.ElapsedMilliseconds}");
+					lineage.ReferenceRowCounts[child.CheckpointId] = ReferenceRows(image);
+					// A single-child chain does not need to retain every ancestor PE.
+					// Branch points keep only their own image until the last sibling.
+					if (frame.NextChild == frame.Children.Count) frame.Image = null;
+					var childFrame = new V3ReplayFrame(child, children.TryGetValue(child.CheckpointId, out var descendants) ? descendants : new(), image);
+                    SpillBranch(childFrame);
+                    stack.Push(childFrame);
+                    activeFrames.Add(child.CheckpointId, childFrame);
+                    continue;
+                }
+                stack.Pop();
+                activeFrames.Remove(frame.Node.CheckpointId);
+				if (frame.SpillOffset >= 0 && spill != null) spill.SetLength(frame.SpillOffset);
+			}
+			if (Environment.GetEnvironmentVariable("T095_R07_TRACE_COST") == "1")
+				Console.Error.WriteLine($"V3_TREE nodes={checkedNodes} operations={checkedOperations} image_writes={checkedNodes * 2} spill_writes={spillWrites} evictions={evictions} recomputed_nodes={recomputedNodes} spill_cap_bytes={spillCapBytes} peak_spill_bytes={peakSpillBytes} elapsed_ms={elapsed.ElapsedMilliseconds}");
+		}
+        catch (OperationCanceledException) {
+            if (Environment.GetEnvironmentVariable("T095_R07_TRACE_COST") == "1")
+                Console.Error.WriteLine($"V3_CANCEL nodes={checkedNodes} spill_writes={spillWrites} evictions={evictions} peak_spill_bytes={peakSpillBytes}");
+            throw;
+        }
+        catch (EditDomainException ex) {
+            if (Environment.GetEnvironmentVariable("T095_R07_TRACE_COST") == "1")
+                Console.Error.WriteLine($"V3_ERROR code={ex.Code} nodes={checkedNodes} spill_writes={spillWrites} evictions={evictions} peak_spill_bytes={peakSpillBytes}");
+            if (ex.Code != "EDIT_CHECKPOINT_INVALID") throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+            throw;
+        }
+		finally {
+			spill?.Dispose();
+			if (spillPath != null && File.Exists(spillPath)) File.Delete(spillPath);
+		}
 	}
 
 	static List<int> UnsupportedOperationVersionIndexes(JsonElement root) {
@@ -884,6 +1232,19 @@ internal sealed class EditHistoryModule : IDisposable {
 		using var output = entry.Open(); output.Write(bytes, 0, bytes.Length);
 	}
 
+	// v3 packages can be prepared on another OS. Both separators denote the
+	// same relative edit-output path; the frozen v1/v2 check stays unchanged.
+	internal static bool ValidDefaultOutputRelativePath(string format, string relative) {
+		if (string.IsNullOrEmpty(relative) || Path.IsPathRooted(relative)
+			|| relative[0] == '/' || relative[0] == '\\'
+			|| relative.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Any(x => x == "." || x == ".."))
+			return false;
+		if (string.Equals(format, PackageFormatV3, StringComparison.Ordinal))
+			return relative.StartsWith("edit-output/", StringComparison.OrdinalIgnoreCase)
+				|| relative.StartsWith("edit-output\\", StringComparison.OrdinalIgnoreCase);
+		return relative.StartsWith("edit-output" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+	}
+
 	static void ValidateManifest(EditCheckpointManifest manifest, IReadOnlyDictionary<string, byte[]> entries) {
 		if (!IsKnownFormat(manifest.Format)) throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 		if (!EditHistoryIds.Is(manifest.LineageId, "lineage") || !EditHistoryIds.Is(manifest.FamilyId, "family")
@@ -896,9 +1257,7 @@ internal sealed class EditHistoryModule : IDisposable {
 			|| manifest.Baseline.Entry != "baseline/module.bin") throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		if (manifest.Checkpoints.Count + manifest.Payloads.Count + 2 > MaxZipEntries)
 			throw Capacity("zip_entries", manifest.Checkpoints.Count + manifest.Payloads.Count + 2L, MaxZipEntries);
-		if (Path.IsPathRooted(manifest.DefaultOutput.RelativePath)
-			|| manifest.DefaultOutput.RelativePath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Any(x => x == "." || x == "..")
-			|| !manifest.DefaultOutput.RelativePath.StartsWith("edit-output" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+		if (!ValidDefaultOutputRelativePath(manifest.Format, manifest.DefaultOutput.RelativePath))
 			throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
 		var ids = new HashSet<string>(StringComparer.Ordinal); var sequences = new HashSet<int>();
 		foreach (var node in manifest.Checkpoints) {
@@ -925,8 +1284,9 @@ internal sealed class EditHistoryModule : IDisposable {
 		foreach (var node in manifest.Checkpoints) allowed.Add(node.OperationEntry);
 		foreach (var payload in manifest.Payloads) allowed.Add(payload.Entry);
 		if (entries.Keys.Any(x => !allowed.Contains(x)) || allowed.Any(x => !entries.ContainsKey(x))) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-		var graph = new EditLoadedLineage { Manifest = manifest };
-		foreach (var node in manifest.Checkpoints) PathTo(graph, node.CheckpointId);
+		// Unique root, existing parent IDs, and strictly decreasing parent
+		// sequences already prove every path reaches that root without cycles.
+		// Rewalking each path here used quadratic work before replay began.
 	}
 
 	static void ValidateOperationEnvelopes(EditCheckpointNode node, EditCheckpointOperations entry, EditCheckpointManifest manifest) {
@@ -955,6 +1315,8 @@ internal sealed class EditHistoryModule : IDisposable {
 			// The state must carry exactly one known executable inverse shape.
 			if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
 				throw new EditDomainException("EDIT_CHECKPOINT_INVALID", new Dictionary<string, object?> { ["kind"] = "envelope_state_missing", ["operation_kind"] = operation.Kind });
+			if (!string.Equals(manifest.Format, PackageFormatV3, StringComparison.Ordinal) && HasV3SourceField(state))
+				throw new EditDomainException("EDIT_OPERATION_VERSION_UNSUPPORTED");
 			var shapes = new[] {
 				"field_state", "type_state", "method_state", "property_state", "event_state", "generic_state",
 				"parameter_state", "member_restore", "definition_tail_remove", "absent_body",
@@ -994,6 +1356,16 @@ internal sealed class EditHistoryModule : IDisposable {
 			using var forward = JsonDocument.Parse(JsonSerializer.Serialize(operation.Forward, EditWire.JsonOptions));
 			ValidatePayloadReferences(operation, forward.RootElement, root, payloads);
 		}
+	}
+
+	static bool HasV3SourceField(JsonElement element) {
+		if (element.ValueKind == JsonValueKind.Object) {
+			foreach (var property in element.EnumerateObject())
+				if (property.Name.StartsWith("v3_", StringComparison.Ordinal) || HasV3SourceField(property.Value)) return true;
+		}
+		else if (element.ValueKind == JsonValueKind.Array)
+			foreach (var item in element.EnumerateArray()) if (HasV3SourceField(item)) return true;
+		return false;
 	}
 
 	static bool ValidParameterInverseTarget(JsonElement target) {
@@ -1073,6 +1445,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	}
 
 	static EditCheckpointOperations SerializeOperations(EditLoadedLineage lineage, string checkpointId, string parentId, IReadOnlyList<string> rows, out ModuleDef replayModule) {
+		using var tombstoneMode = EditDeletedRowsTombstone.UseLegacy(!string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal));
 		var result = new EditCheckpointOperations { CheckpointId = checkpointId };
 		// P03-CHANGE-001: the envelope carries the executable compiled inverse.
 		// Each inverse is compiled against the replayed pre-state of its own
@@ -1082,16 +1455,28 @@ internal sealed class EditHistoryModule : IDisposable {
 		// head image from it after return.
 		var module = ModuleDefMD.Load(lineage.BaselineBytes);
 		foreach (var node in PathTo(lineage, parentId).Skip(1)) {
-			using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
-			using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, module);
-			if (!lineage.Operations.TryGetValue(node.CheckpointId, out var ancestor)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
-			var ancestorMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
-			for (var i = 0; i < ancestor.Operations.Count; i++) {
-				using var json = ExpandedForward(lineage, ancestor.Operations[i]);
-				EditOperationVersions.Validate(ancestor.Operations[i].Kind, ancestor.Operations[i].KindVersion, json.RootElement);
-				EditOperationRegistry.ApplyPersisted(module, json.RootElement, ancestorMap, i);
+			{
+				using var source = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+				using var tokenBindings = EditOperationRegistry.BindSerializedTokens(source, module);
+				if (!lineage.Operations.TryGetValue(node.CheckpointId, out var ancestor)) throw new EditDomainException("EDIT_CHECKPOINT_INVALID");
+				var ancestorMap = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
+				for (var i = 0; i < ancestor.Operations.Count; i++) {
+					using var json = ExpandedForward(lineage, ancestor.Operations[i]);
+					EditOperationVersions.Validate(ancestor.Operations[i].Kind, ancestor.Operations[i].KindVersion, json.RootElement);
+					VerifyV3Inverse(lineage, ancestor.Operations[i], module, ancestorMap, json.RootElement);
+					EditOperationRegistry.ApplyPersisted(module, json.RootElement, ancestorMap, i);
+				}
+				EditStructuralValidator.Validate(module);
 			}
-			EditStructuralValidator.Validate(module);
+			// The v3 validator loads each authenticated parent image before the
+			// next node. Match that physical row layout here: a later method_add
+			// may otherwise append behind an earlier owner's MethodDef row in this
+			// in-memory graph while the validator must emit a MethodPtr table.
+			if (string.Equals(lineage.Manifest.Format, PackageFormatV3, StringComparison.Ordinal)) {
+				var persisted = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
+				module.Dispose();
+				module = persisted;
+			}
 		}
 		var map = new Dictionary<string, IMDTokenProvider>(StringComparer.Ordinal);
 		using var parentImage = ModuleDefMD.Load(EditWorkspace.WriteCheckpointImage(module));
@@ -1235,7 +1620,7 @@ internal sealed class EditHistoryModule : IDisposable {
 	static string NavigationInverseState(EditLoadedLineage lineage, EditSerializedOperation operation,
 		JsonElement state, JsonElement forward, ModuleDef parent) {
 		var expanded = ExpandPersistedInverseState(lineage, state);
-		if (!IsV2(lineage.Manifest.Format) || operation.Kind != "method_add"
+		if (!IsOwnerBound(lineage.Manifest.Format) || operation.Kind != "method_add"
 			|| !state.TryGetProperty("definition_tail_remove", out var tail)
 			|| tail.TryGetProperty("release_documents", out _)
 			|| !forward.TryGetProperty("body", out var body)

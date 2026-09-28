@@ -199,7 +199,7 @@ internal static class EditFingerprint {
 			"assembly|" + (module.Assembly?.FullName ?? string.Empty),
 		};
 			foreach (var type in module.GetTypes().OrderBy(TypeKey, StringComparer.Ordinal)) {
-			if (excludeWriterTombstones && (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsTombstone(type)))
+			if (excludeWriterTombstones && (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsLegacyTombstone(type)))
 				continue;
 				rows.Add("type|" + TypeKey(type) + "|" + (uint)type.Attributes + "|" + Sig(type.BaseType?.ToTypeSig()) + "|" + Attributes(type.CustomAttributes));
 				foreach (var gp in type.GenericParameters.OrderBy(g => g.Number)) rows.Add(GenericRow("tgp", gp));
@@ -253,7 +253,10 @@ internal static class EditFingerprint {
 	/// Compute/ComputeRoundtrip/Channels definitions above stay unchanged.</summary>
 	public static string ComputeRoundtripStrong(ModuleDef module) =>
 		EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n",
-			StrongProjection(module).OrderBy(x => x, StringComparer.Ordinal))));
+			StrongProjection(module, false).OrderBy(x => x, StringComparer.Ordinal))));
+	public static string ComputeRoundtripStrongV3(ModuleDef module) =>
+		EditWire.Sha256(Encoding.UTF8.GetBytes(string.Join("\n",
+			StrongProjection(module, true).OrderBy(x => x, StringComparer.Ordinal))));
 
 	// A legal metadata signature/scope graph is a tree (or a DAG); the bound is
 	// far beyond what any real compiler emits.  Exceeding it fails with
@@ -286,7 +289,7 @@ internal static class EditFingerprint {
 	/// structured owners are rejected because the projection cannot tell two
 	/// same-named entities apart, and encoding an ambiguous state as a stable
 	/// hash would silently merge them.</summary>
-	static IEnumerable<string> StrongProjection(ModuleDef module) {
+	static IEnumerable<string> StrongProjection(ModuleDef module, bool v3) {
 		var rows = new List<string> {
 				"module|" + module.Name + "|" + (module.Mvid?.ToString("D") ?? string.Empty) + "|" + module.Kind + "|" + module.RuntimeVersion,
 			"assembly|" + (module.Assembly?.FullName ?? string.Empty),
@@ -295,7 +298,7 @@ internal static class EditFingerprint {
 		var typeOwners = new HashSet<string>(StringComparer.Ordinal);
 		var methodOwners = new HashSet<string>(StringComparer.Ordinal);
 		foreach (var type in module.GetTypes().OrderBy(t => t.Name?.String, StringComparer.Ordinal)) {
-			if (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsTombstone(type)) continue;
+			if (!v3 && (IsWriterTombstoneType(type) || EditDeletedRowsTombstone.IsLegacyTombstone(type))) continue;
 			var typeOwner = StrongTypeOwnerText(type, walk);
 			if (!typeOwners.Add(typeOwner))
 				throw StrongFailure("duplicate type owner: " + OwnerLabel(type, null));

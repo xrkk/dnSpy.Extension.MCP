@@ -359,7 +359,7 @@ internal static class PdbOwnershipProbe {
 		var semantic = EditHistoryModule.SemanticDigest(EditHistoryModule.PackageFormatV2, module);
 		var plan = new EditHistoryNavigationPlan(EditHistoryModule.PackageFormatV2,
 			new[] { new EditHistoryNavigationPlan.Step { CheckpointId = "checkpoint-r02", Index = 0, IsInverse = true, Operation = inverse } },
-			semantic, "deliberate-late-semantic-failure", targetHasPdb: false);
+			semantic, "deliberate-late-semantic-failure", EditWire.Sha256(EditWorkspace.WriteCheckpointImage(module)), targetHasPdb: false);
 		try { plan.Apply(module); throw new InvalidOperationException("late navigation failure was not observed"); }
 		catch (EditDomainException ex) when (ex.Code == "EDIT_VALIDATION_FAILED") { }
 		Check(EditFingerprint.Compute(module) == before && Documents(module).SequenceEqual(new[] { "R02Navigate.cs:AQID:1" })

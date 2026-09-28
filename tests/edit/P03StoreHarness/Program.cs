@@ -16,6 +16,31 @@ using dnSpy.Extension.MCP.Transport;
 static class Program {
 	static int Main(string[] args) {
 		try {
+		if (args.Length == 2 && args[1] == "--t095-r04-empty") { T095R04Probe.Empty(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r04-cache") { T095R04Probe.Cache(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r04-inspect") { T095R04Probe.Inspect(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-r04-collisions") { T095R04Probe.MakeCollisions(args[0], args[1]); return 0; }
+		if (args.Length == 4 && args[3] == "--t095-r04-negative") { T095R04Probe.Negative(args[0], args[1], args[2]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-no-object") { T095NoObjectProbe.Run(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-read-inverse") { T095NoObjectProbe.RunInverse(args[0], args[1]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-make-spoof") { T095NoObjectProbe.MakeSpoof(args[0], args[1]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-make-global-conflict") { T095NoObjectProbe.MakeGlobalConflict(args[0], args[1]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-try-remove") { T095NoObjectProbe.TryRemove(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-old-package") { T095NoObjectProbe.OldPackage(args[0], args[1]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-history") { T095NoObjectProbe.RunHistory(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-validate-package") { T095NoObjectProbe.ValidateOnly(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-r13-validate-windows-store") { T095NoObjectProbe.ValidateWindowsStore(args[0],args[1]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-r13-validate-windows-store-existing") { T095NoObjectProbe.ValidateWindowsStore(args[0],args[1],true); return 0; }
+		if (args.Length == 1 && args[0] == "--t095-r13-path-contract") { T095NoObjectProbe.PathContract(); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-member") { T095NoObjectProbe.RunMember(args[0], args[1]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-history-member") { T095NoObjectProbe.RunHistoryMember(args[0], args[1]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-history-many") { T095NoObjectProbe.RunHistoryMany(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-global-probe") { T095NoObjectProbe.ProbeGlobal(args[0], args[1]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-global-field") { T095NoObjectProbe.MakeGlobalField(args[0], args[1]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-global-rename") { T095NoObjectProbe.ProbeGlobalFieldRename(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-null-base") { T095NoObjectProbe.ProbeNullBase(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-interface-marker") { T095NoObjectProbe.ProbeInterfaceMarker(args[0]); return 0; }
+		if (args.Length == 3 && args[2] == "--t095-spoof-interface") { T095NoObjectProbe.MakeSpoofInterface(args[0], args[1]); return 0; }
 		if (args.Length == 2 && args[1] == "--export") { Environment.SetEnvironmentVariable("DNMCP_TEST", "1"); TestExport(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--tail-inverses") { TestTailInverses(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--image-spike") { TestImageEncodingSpike(args[0]); return 0; }
@@ -78,6 +103,38 @@ static class Program {
 			if (args.Length == 2 && args[1] == "--t091-resource-types") { T091ResourceTypesProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--t094-resource-precision") { T094ResourcePrecisionProbe.Run(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--resource-payload-dedup") { ResourcePayloadDedupProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t095-r06-payload") { T095R06PayloadProbe.Run(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t095-r06-v3-object") { T095R06ModeProbe.V3ObjectAndBranch(args[0]); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r10-export") { T095R06ModeProbe.V3FreshProcessExport(args[0], args[2]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-reopen") { T095R06ModeProbe.V3FreshProcessReopen(args[0]); return 0; }
+		if (args.Length == 4 && args[1] == "--t095-r10-large-fixture") { T095R06ModeProbe.CreateLargeFixture(args[0], args[2], int.Parse(args[3])); return 0; }
+		if (args.Length >= 3 && args[1] == "--t095-r10-spill") { T095R06ModeProbe.V3SpillBound(args[0], long.Parse(args[2]), args.Length >= 4 ? int.Parse(args[3]) : 0); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r11-fixture-tokens") { T095R06ModeProbe.FixtureTokens(args[0], args[2]); return 0; }
+		if (args.Length == 4 && args[1] == "--t095-r11-readback-four") { T095R06ModeProbe.ReadbackFour(args[2], args[0], args[3]); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r11-methodptr-fixture") { T095R06ModeProbe.CreateMethodPtrFixture(args[0], args[2]); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r12-multi-fixture") { T095R06ModeProbe.CreateMultiMethodFixture(args[0], args[2]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r11-verifier-lifecycle") { T095R06ModeProbe.V3VerifierLifecycle(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r11-methodspec-collisions") { T095R06ModeProbe.V3MethodSpecCollisions(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r12-inspect-methods") { T095R06ModeProbe.InspectMethodRows(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r12-ordinary-delete") { T095R06ModeProbe.OrdinaryMethodDeletePreservesRow(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r12-multi-method-add") { T095R06ModeProbe.V3MultiMethodAdd(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r12-multi-method-spec") { T095R06ModeProbe.V3MultiMethodAdd(args[0], true); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r12-multi-method-save-head") { T095R06ModeProbe.V3MultiMethodAdd(args[0], false, args[2]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r12-multi-checkpoint-add") { T095R06ModeProbe.V3MultiCheckpointMethodAdd(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-methodspec") { T095R06ModeProbe.V3MethodSpec(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-memberref") { T095R06ModeProbe.V3MemberRef(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-typespec") { T095R06ModeProbe.V3TypeSpec(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-standalone") { T095R06ModeProbe.V3StandAloneSig(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r10-badscope") { T095R06ModeProbe.V3AssemblyBadScope(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r09-assembly-scope") { T095R06ModeProbe.V3NewAssemblyScope(args[0]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r07-assembly-scope") { T095R06ModeProbe.V3AssemblyScope(args[0]); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r07-unused-fixture") { T095R06ModeProbe.CreateUnusedReferenceFixture(args[0], args[2]); return 0; }
+		if (args.Length == 3 && args[1] == "--t095-r07-duplicate-fixture") { T095R06ModeProbe.CreateDuplicateScopeFixture(args[0], args[2]); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r07-parse") { using var c = new EditSchemaCatalog(); using var h = new EditHistoryModule(new InMemoryEditCheckpointStore(), c.CheckpointPackage); var sw = System.Diagnostics.Stopwatch.StartNew(); var line = h.ValidatePackageForTesting(File.ReadAllBytes(args[0])); sw.Stop(); Console.WriteLine($"PARSE checkpoints={line.Manifest.Checkpoints.Count} elapsed_ms={sw.ElapsedMilliseconds}"); return 0; }
+		if (args.Length == 2 && args[1] == "--t095-r07-tamper") { using var c = new EditSchemaCatalog(); using var h = new EditHistoryModule(new InMemoryEditCheckpointStore(), c.CheckpointPackage); try { h.ValidatePackageForTesting(File.ReadAllBytes(args[0])); throw new Exception("FAIL tampered middle accepted"); } catch (EditDomainException ex) when (ex.Code == "EDIT_CHECKPOINT_INVALID") { Console.WriteLine("REJECT tampered middle EDIT_CHECKPOINT_INVALID"); return 0; } }
+		if (args.Length == 5 && args[1] == "--t095-r07-cost") { T095R06ModeProbe.V3BranchCost(args[0], int.Parse(args[2]), int.Parse(args[3]), args[4]); return 0; }
+			if (args.Length == 2 && args[1] == "--t095-r06-v2-append") { T095R06ModeProbe.ExistingV2BaselineAppend(args[0]); return 0; }
+			if (args.Length == 2 && args[1] == "--t095-r06-pdb") { T095R06ModeProbe.V3PdbPayload(args[0]); return 0; }
 			if (args.Length == 2 && args[1] == "--cdi-guard-content") { CdiGuardProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--owner-version") { OwnerVersionProbe.Run(args[0]); return 0; }
 		if (args.Length == 2 && args[1] == "--legacy-history") { LegacyHistoryProbe.Run(args[0]); return 0; }

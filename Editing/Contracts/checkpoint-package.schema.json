@@ -18,7 +18,8 @@
       "format": {
         "enum": [
           "dnspy.edit.checkpoints.v1",
-          "dnspy.edit.checkpoints.v2"
+          "dnspy.edit.checkpoints.v2",
+          "dnspy.edit.checkpoints.v3"
         ]
       },
       "lineage_id": {

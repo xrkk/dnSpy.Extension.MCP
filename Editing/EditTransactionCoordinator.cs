@@ -76,6 +76,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 
 	readonly object gate = new();
 	readonly SemaphoreSlim operationGate = new(1, 1);
+	readonly Dictionary<string, List<CancellationTokenSource>> verifyingBySession = new(StringComparer.Ordinal);
 	readonly IDocumentTreeView tree;
 	readonly StaticWriteGate staticWriteGate;
 	readonly IEditDynamicValidationGate dynamicGate;
@@ -329,6 +330,14 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	public CallToolResult Execute(string toolName, Dictionary<string, object>? args, McpCallContext context) {
 		var serialized = toolName is not "edit_status" and not "edit_test_clock" and not "edit_test_barrier";
 		var acquired = false;
+		var verifierCancellation = new CancellationTokenSource();
+		var verifierSession = context.AuthoritativeSessionId;
+		lock (gate) if (verifierSession != null) {
+			if (!verifyingBySession.TryGetValue(verifierSession, out var pending))
+				verifyingBySession[verifierSession] = pending = new List<CancellationTokenSource>();
+			pending.Add(verifierCancellation);
+		}
+		using var verificationScope = history.UseVerificationCancellation(verifierCancellation.Token);
 		string? requestKey = null;
 		string? requestPayload = null;
 		try {
@@ -400,9 +409,17 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		}
 		catch (EditReviewAttemptException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);failure["validation_attempt"]=ex.Attempt;CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
 		catch (EditDomainException ex) { lock (gate) { var failure=EditWire.Failure(state, ex.Code, ex.Details, ex.Message);if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
+		catch (OperationCanceledException) { lock (gate) { var failure=EditWire.Failure(state, "EDIT_TRANSACTION_NOT_FOUND", Internal("owner session ended during verification"));return EditWire.Result(failure); } }
 		catch (ArgumentException) { throw; }
 		catch (Exception ex) { lock (gate) { var failure=EditWire.Failure(state, "EDIT_INTERNAL_ERROR", Internal(ex.GetType().Name + ": " + ex.Message));if(toolName=="edit_test_apply_and_restore")failure["execution_evidence"]=ExecutionEvidence();CacheFailure(toolName,requestKey,requestPayload,failure);return EditWire.Result(failure); } }
-		finally { if(acquired){lock(gate)pendingRequestKey=null;operationGate.Release();} }
+		finally {
+			lock (gate) if (verifierSession != null && verifyingBySession.TryGetValue(verifierSession, out var pending)) {
+				pending.Remove(verifierCancellation);
+				if (pending.Count == 0) verifyingBySession.Remove(verifierSession);
+			}
+			verifierCancellation.Dispose();
+			if(acquired){lock(gate)pendingRequestKey=null;operationGate.Release();}
+		}
 	}
 
 	/// <summary>Runs one legacy mutation through the same private graph, review, live apply and
@@ -421,6 +438,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			if (sourceArgs != null && sourceArgs.TryGetValue("module_mvid", out var mvid) && mvid != null) beginArgs["module_mvid"] = mvid;
 			Begin(beginArgs, context);
 			lock (gate) tx = active ?? throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
+			using var legacyHistoryMode = tx.Workspace.UseHistoryMode();
 			plan = lower(tx.Workspace);
 			if (!plan.Changed) {
 				lock (gate) EndLocked(tx, "legacy_no_change");
@@ -600,6 +618,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			BarrierPoint("begin_after_copy",session);
 			lock(gate)if(closedPendingBeginSessions.Contains(session))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
 			historyBinding = history.ResolveBegin(workspace, sourceFamilyId);
+			workspace.HistoryFormat = history.FormatForBinding(workspace, historyBinding);
 		}catch{
 			workspace?.Dispose();
 			lock(gate){pendingBeginSessions.Remove(session);closedPendingBeginSessions.Remove(session);pendingBeginOwner=null;state="idle";}
@@ -636,6 +655,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var oldRisks = tx.Workspace.Risks.Select(x => new Dictionary<string, object?>(x, StringComparer.Ordinal)).ToList();
 		var staged = false;
 		var mutationAttempted = false;
+		using var applyHistoryMode = tx.Workspace.UseHistoryMode();
 		try {
 			BarrierPoint("apply_before_mutation",tx.Owner);
 			if (args == null || !args.TryGetValue("operation", out var raw) || raw is not JsonElement op || op.ValueKind != JsonValueKind.Object) throw new ArgumentException("operation is required", "operation");
@@ -702,6 +722,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var oldPrivate = tx.PrivateFingerprint;
 		var oldRisks = tx.Workspace.Risks.Select(x => new Dictionary<string, object?>(x, StringComparer.Ordinal)).ToList();
 		var stagedCount = 0;
+		using var importHistoryMode = tx.Workspace.UseHistoryMode();
 		try {
 			BarrierPoint("apply_before_mutation", tx.Owner);
 			var compileId = EditWire.String(args, "compile_id");
@@ -1096,6 +1117,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	}
 
 	Dictionary<string, object?> Review(Dictionary<string, object>? args, McpCallContext context) {		Transaction tx;uint expected;var requestId=EditWire.String(args,"request_id");var payload=PayloadHash(args);lock(gate){tx = RequireTransactionLocked(args, context);if(tx.ReviewCache.TryReplay(requestId,payload,out var replay,out var stale)){if(stale!=null)throw new EditDomainException("EDIT_REVIEW_STALE");return ParseEnvelope(replay);}expected = checked((uint)EditWire.Integer(args, "expected_revision")); if (expected != tx.Revision) throw Revision(expected, tx.Revision);tx.ReviewCache.EnsureCanReplace();tx.OperationBusy=true;}
+		using var reviewHistoryMode = tx.Workspace.UseHistoryMode();
 		try{BarrierPoint("review_before_validation",tx.Owner);var currentLive=tx.Workspace.CurrentLiveFingerprint();EnsureLiveUnchanged(tx,currentLive);EnsureExternalUnchanged(tx,tx.Workspace.CurrentExternalGuard());AssertIdentityRowsUnchanged(tx);var structuralRules=EditStructuralValidator.Validate(tx.Workspace.PrivateModule); tx.Workspace.ValidateRoundtrip();
 		var dynamic = dynamicValidation.Run(tx.Workspace, args);
 		lock(gate){if(tx.CancelRequested||!ReferenceEquals(active,tx))throw new EditDomainException("EDIT_TRANSACTION_NOT_FOUND");
@@ -1138,6 +1160,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 		var inverses = new List<Action>();
 		var preLive = string.Empty;
 		var postLive = string.Empty;
+		using var commitHistoryMode = tx.Workspace.UseHistoryMode();
 		try {
 			var currentLive = tx.Workspace.CurrentLiveFingerprint(); EnsureLiveUnchanged(tx, currentLive);
 			EnsureExternalUnchanged(tx, tx.Workspace.CurrentExternalGuard());
@@ -1853,6 +1876,7 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 							// pre-operation state; its own undo (the forward redo) must
 							// NOT be executed — only the fully-applied prefix undos run.
 							using var failedOp = JsonDocument.Parse(pregeneratedInverses[inverseIndex + 1]);
+							using var verifiedV3Rollback = EditDeletedRowsTombstone.UseVerifiedV3(tx.Workspace.LiveModule);
 							EditOperationRegistry.ApplyCompiledInverse(
 								tx.Workspace.LiveModule, failedOp.RootElement, map, inverseIndex + 1);
 						}
@@ -2079,6 +2103,8 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 	};
 
 	public void OnSessionClosed(McpTransportSessionClosed closed) { lock (gate) {
+		if (verifyingBySession.TryGetValue(closed.SessionId, out var pendingVerifiers))
+			foreach (var cancellation in pendingVerifiers) cancellation.Cancel();
 		if(pendingBeginSessions.Contains(closed.SessionId))closedPendingBeginSessions.Add(closed.SessionId);
 		ReleaseBarrierLocked(closed.SessionId);
 		if (active?.Owner == closed.SessionId) {

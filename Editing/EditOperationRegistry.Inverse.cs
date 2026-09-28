@@ -406,7 +406,7 @@ internal static partial class EditOperationRegistry {
 		}
 		case "parameter_remove": {
 			var value = ResolveParameter(before, forward.GetProperty("parameter_target"), objects);
-			return new() { ["parameter_tail_restore"] = new Dictionary<string, object?> {
+			var parameterState = new Dictionary<string, object?> {
 				["owner_method"] = InverseReference(before, value.method, objects), ["parameter_index"] = value.index,
 				// FullName text loses fidelity and reparsing appends duplicate TypeRef
 				// rows; capture the signature with reference identity instead.
@@ -415,7 +415,9 @@ internal static partial class EditOperationRegistry {
 					["token"] = value.param.MDToken.Raw, ["position"] = value.method.ParamDefs.IndexOf(value.param),
 					["name"] = value.param.Name?.String, ["attributes"] = (uint)value.param.Attributes,
 				},
-			} };
+			};
+			if (!EditDeletedRowsTombstone.LegacyMode && value.param != null) parameterState["v3_marker_name"] = EditDeletedRowsTombstone.NextMarkerName(before);
+			return new() { ["parameter_tail_restore"] = parameterState };
 		}
 		case "generic_parameter_add":
 			return new() { ["generic_tail_remove"] = new Dictionary<string, object?> {
@@ -462,10 +464,14 @@ internal static partial class EditOperationRegistry {
 			// compiled inverse only needs the row/owner identities and position
 			// to move it back; no parallel snapshot representation exists.
 			var rowTarget = forward.GetProperty("target");
-			Dictionary<string, object?> Emit(IMDTokenProvider row, TypeDef owner, int index) => new() {
-				["kind"] = kind, ["row"] = InverseReference(before, row, objects),
-				["owner"] = InverseReference(before, owner, objects), ["owner_index"] = index,
-			};
+			Dictionary<string, object?> Emit(IMDTokenProvider row, TypeDef owner, int index) {
+				var state = new Dictionary<string, object?> {
+					["kind"] = kind, ["row"] = InverseReference(before, row, objects),
+					["owner"] = InverseReference(before, owner, objects), ["owner_index"] = index,
+				};
+				if (!EditDeletedRowsTombstone.LegacyMode) state["v3_marker_name"] = EditDeletedRowsTombstone.NextMarkerName(before);
+				return state;
+			}
 			switch (kind) {
 			case "field_remove": { var row = Ref<FieldDef>(before, rowTarget, objects); return new() { ["member_restore"] = Emit(row, row.DeclaringType!, row.DeclaringType!.Fields.IndexOf(row)) }; }
 			case "method_remove": { var row = Ref<MethodDef>(before, rowTarget, objects); return new() { ["member_restore"] = Emit(row, row.DeclaringType!, row.DeclaringType!.Methods.IndexOf(row)) }; }
@@ -493,6 +499,10 @@ internal static partial class EditOperationRegistry {
 					["top_level"] = parent == null, ["parent"] = parent == null ? null : InverseReference(before, parent, objects),
 					["owner_index"] = collection.IndexOf(row),
 				};
+				if (!EditDeletedRowsTombstone.LegacyMode) {
+					state["v3_original_name"] = row.Name.String;
+					state["v3_global_name"] = EditDeletedRowsTombstone.NextGlobalTypeName(before, row);
+				}
 				return new() { ["member_restore"] = state };
 			}
 			}
@@ -562,16 +572,26 @@ internal static partial class EditOperationRegistry {
 			}));
 			EditOperationOutcome applied;
 			try {
-				// An inverse of a method_add removes the last row created by that
-				// checkpoint.  If it is also the last live Method row, preserving it
-				// in a tombstone would introduce a new Type row and change the exact
-				// ancestor image. Ordinary public method_remove still preserves rows.
+				// This definition was created by method_add. Its inverse owns the row
+				// even when another created method has a higher physical RID (owner
+				// grouping can differ from operation order). Remove it directly;
+				// MethodRemove still rejects live references and attachments. Ordinary
+				// public method_remove continues to preserve its deleted row.
 				var methodTail = target as MethodDef;
-				var finalMethodRid = methodTail == null ? 0 : module.GetTypes().SelectMany(type => type.Methods)
-					.Select(method => method.MDToken.Rid).DefaultIfEmpty().Max();
-				applied = kind == "method_add" && methodTail != null
-					&& (methodTail.MDToken.Rid == 0 || methodTail.MDToken.Rid == finalMethodRid)
+				var fieldTail = target as FieldDef;
+			var finalFieldRid = fieldTail == null ? 0 : module.GetTypes().SelectMany(type => type.Fields)
+				.Select(field => field.MDToken.Rid).DefaultIfEmpty().Max();
+			var typeTail = target as TypeDef;
+			var finalTypeRid = typeTail == null ? 0 : module.GetTypes()
+				.Select(type => type.MDToken.Rid).DefaultIfEmpty().Max();
+			applied = kind == "method_add" && methodTail != null
 					? MethodRemove(module, removal.RootElement, temporary, preserveDeletedRow: false)
+					: kind == "field_add" && !EditDeletedRowsTombstone.LegacyMode && fieldTail != null
+					&& (fieldTail.MDToken.Rid == 0 || fieldTail.MDToken.Rid == finalFieldRid)
+					? FieldRemove(module, removal.RootElement, temporary, preserveDeletedRow: false)
+					: kind == "type_add" && !EditDeletedRowsTombstone.LegacyMode && typeTail != null
+					&& (typeTail.MDToken.Rid == 0 || typeTail.MDToken.Rid == finalTypeRid)
+					? TypeRemove(module, removal.RootElement, temporary, preserveDeletedRow: false)
 					: Apply(module, removal.RootElement, temporary, index);
 			}
 			catch { if (detachedOverrides != null) foreach (var row in detachedOverrides) detachedMethod!.Overrides.Add(row); throw; }
@@ -883,6 +903,7 @@ internal static partial class EditOperationRegistry {
 	};
 
 	static EditOperationOutcome RestoreParameterTail(ModuleDef module, JsonElement state, Dictionary<string, IMDTokenProvider> objects) {
+		EditDeletedRowsTombstone.RequireVerifiedV3(module);
 		var owner = Ref<MethodDef>(module, state.GetProperty("owner_method"), objects);
 		var number = state.GetProperty("parameter_index").GetInt32();
 		if (number < 0 || number != owner.MethodSig.Params.Count || owner.ParamDefs.Any(p => p.Sequence == number + 1))
@@ -930,12 +951,15 @@ internal static partial class EditOperationRegistry {
 				var hostSuffix = value.MDToken.Rid.ToString("x6");
 				var hostName = owners[0].Name.String ?? string.Empty;
 				if (owners.Length != 1 || owners[0].DeclaringType is not { } hostType
-					|| !EditDeletedRowsTombstone.IsTombstone(hostType)
+					|| !(EditDeletedRowsTombstone.IsTombstone(hostType) || EditDeletedRowsTombstone.IsGlobalParamHost(owners[0]))
+					|| (!EditDeletedRowsTombstone.LegacyMode && (state.GetProperty("v3_marker_name").ValueKind != JsonValueKind.String
+						|| hostType.Name.String != state.GetProperty("v3_marker_name").GetString()))
 					|| !EditDeletedRowsTombstone.IsParamHost(owners[0])
 					// The host is named after the row it holds; a mismatching name is
 					// a foreign or tampered structure and must not be restored from.
 					|| (!hostName.Equals("d" + hostSuffix, StringComparison.Ordinal)
-						&& !hostName.StartsWith("d" + hostSuffix + "-", StringComparison.Ordinal)))
+						&& !hostName.StartsWith("d" + hostSuffix + "-", StringComparison.Ordinal)
+						&& !hostName.Equals(EditDeletedRowsTombstone.GlobalHostPrefix + "d" + hostSuffix, StringComparison.Ordinal)))
 					throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 				placeholderOwner = owners[0]; placeholderPosition = placeholderOwner.ParamDefs.IndexOf(value);
 				// The emptied host and (once hostless) the tombstone type sit at
@@ -945,7 +969,7 @@ internal static partial class EditOperationRegistry {
 				if (index >= 0) {
 					tombstoneType = hostType; tombstoneTypeList = list; tombstoneTypeIndex = index;
 					tombstoneMethodIndex = hostType.Methods.IndexOf(placeholderOwner);
-					removeTombstoneStructure = true;
+					removeTombstoneStructure = !EditDeletedRowsTombstone.IsGlobalParamHost(placeholderOwner);
 				}
 			}
 			else if (value.Sequence != number + 1 || value.Name != name || value.Attributes != attrs)
@@ -970,7 +994,10 @@ internal static partial class EditOperationRegistry {
 				placeholderOwner?.ParamDefs.Remove(value);
 				value.Name = restoredName; value.Sequence = (ushort)(number + 1); value.Attributes = restoredAttributes;
 				owner.ParamDefs.Insert(position, value);
-				if (removeTombstoneStructure && placeholderOwner!.ParamDefs.Count == 0) {
+				if (EditDeletedRowsTombstone.IsGlobalParamHost(placeholderOwner!) && placeholderOwner.ParamDefs.Count == 0) {
+					tombstoneType!.Methods.RemoveAt(tombstoneMethodIndex); tombstoneMethodRemoved = true;
+				}
+				if (removeTombstoneStructure && placeholderOwner.ParamDefs.Count == 0) {
 					tombstoneType!.Methods.RemoveAt(tombstoneMethodIndex); tombstoneMethodRemoved = true;
 					tombstoneTypeList!.RemoveAt(tombstoneTypeIndex); tombstoneTypeRemoved = true;
 				}
@@ -1258,7 +1285,7 @@ internal static partial class EditOperationRegistry {
 			if (match == null) continue;
 			bool Referenced() {
 				foreach (var type in module.GetTypes()) {
-					if (EditDeletedRowsTombstone.IsTombstone(type)) continue;
+					if (EditDeletedRowsTombstone.UseObjectRepresentation(module) && EditDeletedRowsTombstone.IsLegacyTombstone(type)) continue;
 					foreach (var method in type.Methods) {
 						if (!method.HasBody) continue;
 						foreach (var instruction in method.Body.Instructions)
@@ -1417,13 +1444,22 @@ internal static partial class EditOperationRegistry {
 			}).ToArray();
 
 	static EditOperationOutcome RestoreMemberFromTombstone(ModuleDef module, JsonElement state, Dictionary<string, IMDTokenProvider> objects) {
+		EditDeletedRowsTombstone.RequireVerifiedV3(module);
 		var kind = RequiredString(state, "kind");
 		// type_restore addresses its parent (or the top-level list) explicitly.
 		TypeDef? owner = state.TryGetProperty("owner", out var ownerRef) ? Ref<TypeDef>(module, ownerRef, objects) : null;
 		var index = state.GetProperty("owner_index").GetInt32();
-		var tombstones = module.Types.Where(EditDeletedRowsTombstone.IsTombstone).ToArray();
+		state.TryGetProperty("v3_original_name", out var v3OriginalName);
+		state.TryGetProperty("v3_global_name", out var v3GlobalName);
+		state.TryGetProperty("v3_marker_name", out var v3MarkerName);
+			var globalTypeRestore = kind == "type_remove" && !EditDeletedRowsTombstone.LegacyMode
+				&& v3OriginalName.ValueKind == JsonValueKind.String;
+		var tombstones = globalTypeRestore ? new[] { module.GlobalType } : module.Types.Where(t => EditDeletedRowsTombstone.IsTombstone(t)
+			&& (EditDeletedRowsTombstone.LegacyMode || v3MarkerName.ValueKind == JsonValueKind.String && t.Name.String == v3MarkerName.GetString())).ToArray();
 		if (tombstones.Length != 1) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		var tombstone = tombstones[0];
+		var v3MarkerText = v3MarkerName.ValueKind == JsonValueKind.String ? v3MarkerName.GetString() : null;
+		var v3GlobalText = v3GlobalName.ValueKind == JsonValueKind.String ? v3GlobalName.GetString() : null;
 		var rowRef = state.GetProperty("row");
 		IMDTokenProvider? moved = null;
 		Action? removeFromOwner = null;
@@ -1448,6 +1484,10 @@ internal static partial class EditOperationRegistry {
 			var typeIndex = state.GetProperty("owner_index").GetInt32();
 			if (typeIndex < 0 || typeIndex > parentCollection.Count) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 			tombstone.NestedTypes.Remove(typeRow);
+			if (globalTypeRestore) {
+				if (v3GlobalName.ValueKind != JsonValueKind.String || typeRow.Name.String != v3GlobalName.GetString()) throw new EditDomainException("EDIT_HISTORY_CONFLICT");
+				typeRow.Name = v3OriginalName.GetString();
+			}
 			parentCollection.Insert(typeIndex, typeRow);
 			moved = typeRow;
 			removeFromOwner = () => parentCollection.Remove(typeRow);
@@ -1475,7 +1515,7 @@ internal static partial class EditOperationRegistry {
 				OwnerMethods().Insert(accessorIndex, accessor);
 			}
 		}
-		EditDeletedRowsTombstone.RemoveIfEmpty(tombstone);
+		if (!globalTypeRestore) EditDeletedRowsTombstone.RemoveIfEmpty(tombstone);
 		var restoredRow = moved!;
 		var detach = removeFromOwner ?? throw new EditDomainException("EDIT_HISTORY_CONFLICT");
 		return new EditOperationOutcome { Kind = kind, Target = owner?.FullName ?? "<type>", Undo = () => {
@@ -1483,8 +1523,10 @@ internal static partial class EditOperationRegistry {
 			// (recreated if needed) tombstone, mirroring the forward removal.
 			foreach (var (accessor, _) in accessorSlots) OwnerMethods().Remove(accessor);
 			detach();
-			var redoTombstone = EditDeletedRowsTombstone.GetOrCreate(module);
-			EditDeletedRowsTombstone.AcquireRow(module, restoredRow);
+			var redoTombstone = globalTypeRestore ? module.GlobalType : EditDeletedRowsTombstone.GetOrCreate(module,
+			EditDeletedRowsTombstone.LegacyMode ? null : v3MarkerText);
+			if (globalTypeRestore && restoredRow is TypeDef typeRow) typeRow.Name = v3GlobalText;
+			EditDeletedRowsTombstone.AcquireRow(module, restoredRow, redoTombstone);
 			foreach (var (accessor, _) in accessorSlots) redoTombstone.Methods.Add(accessor);
 		} };
 	}

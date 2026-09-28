@@ -83,6 +83,27 @@ internal sealed class WindowsEditCheckpointStore : IEditCheckpointStore {
 	}
 
 	public string ArtifactRoot { get; }
+	internal (FileStream Stream, string Path) OpenVerifierTemp() {
+		ThrowIfDisposed();
+		var directory = EnsureDirectDirectory("edit-verifier-temp");
+		var path = Path.Combine(directory, "dnspy-v3-replay-" + Guid.NewGuid().ToString("N") + ".tmp");
+		FileStream? stream = null;
+		try {
+			stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
+				64 * 1024, FileOptions.DeleteOnClose);
+			// The root chain is leased. Recheck the child and bind its path to the
+			// open handle before any untrusted bytes are written to the spill.
+			if (!string.Equals(directory, EnsureDirectDirectory("edit-verifier-temp"), StringComparison.OrdinalIgnoreCase))
+				throw new IOException("verifier temporary ownership changed");
+			RejectReparse(path, allowMissing: false);
+			return (stream, path);
+		}
+		catch {
+			stream?.Dispose();
+			try { if (File.Exists(path)) File.Delete(path); } catch { }
+			throw;
+		}
+	}
 
 	public IReadOnlyList<EditStoreObject> EnumerateCheckpointObjects() {
 		ThrowIfDisposed();

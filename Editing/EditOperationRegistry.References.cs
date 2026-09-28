@@ -58,6 +58,7 @@ internal static partial class EditOperationRegistry {
 	static PublicKeyBase? BuildPublicKeyOrToken(string kind, byte[] data) => kind switch {
 		"token" => new PublicKeyToken(data.Length == 0 ? null : data),
 		"public_key" => new PublicKey(data.Length == 0 ? null : data),
+		"none" => new PublicKeyToken(Array.Empty<byte>()),
 		_ => null,
 	};
 
@@ -211,6 +212,28 @@ internal static partial class EditOperationRegistry {
 		if (!descriptor.TryGetProperty("arguments", out var arguments) || arguments.ValueKind != JsonValueKind.Array)
 			throw Validation("reference.method_spec", "method_spec requires the full generic argument list");
 		var args = arguments.EnumerateArray().Select(node => RestoreTypeNode(node, module, map)).ToArray();
+        // During exact navigation the live ModuleDefMD can retain a verified
+        // later checkpoint's source MethodSpec tail behind the current view.
+        // Rebind a structurally identical call to its old RID so Redo does
+        // not append a duplicate. The final image SHA still gates acceptance.
+        if (module is ModuleDefMD source) {
+            var view = EditReferenceImageProjection.Get(module);
+            if (view?.Length == 5) {
+                for (uint rid = view[4] + 1; rid <= source.TablesStream.MethodSpecTable.Rows; rid++) {
+                    var candidate = source.ResolveMethodSpec(rid);
+                    if (candidate?.Method is not MethodDef sourceMethod || method is not MethodDef targetMethod
+                        || targetMethod.DeclaringType?.Rid == 0
+                        || SourceMethodOwnerRid(source, sourceMethod.Rid) != targetMethod.DeclaringType.Rid
+                        || sourceMethod.Name != targetMethod.Name
+                        || sourceMethod.MethodSig?.ToString() != targetMethod.MethodSig?.ToString()
+                        || candidate.GenericInstMethodSig?.GenericArguments.Count != args.Length) continue;
+                    if (candidate.GenericInstMethodSig.GenericArguments.Select(SignatureText).SequenceEqual(args.Select(SignatureText))) {
+                        EditReferenceImageProjection.RebindSourceMethodSpec(module, candidate, method);
+                        return (candidate, false);
+                    }
+                }
+            }
+        }
 		foreach (var existing in map.Values.OfType<MethodSpec>()) {
 			if (!ReferenceEquals(existing.Method, method) && existing.Method is IMethodDefOrRef candidate && !SameMethodRow(candidate, method)) continue;
 			if (existing.GenericInstMethodSig?.GenericArguments.Count == args.Length
@@ -219,6 +242,37 @@ internal static partial class EditOperationRegistry {
 		}
 		return (new MethodSpecUser(method, new GenericInstMethodSig(args)), true);
 	}
+
+    // The live graph can replace a source MethodDefMD with a RID-zero user
+    // definition while the original source method row remains in TablesStream.
+    // Read its physical owner range instead of relying on DeclaringType, which
+    // can be null for that orphaned source object after an exact Undo.
+    static uint SourceMethodOwnerRid(ModuleDefMD source, uint methodRid) {
+        if (methodRid == 0 || methodRid > source.TablesStream.MethodTable.Rows) return 0;
+        var hasPointers = source.TablesStream.MethodPtrTable.Rows != 0;
+        var listRows = hasPointers ? source.TablesStream.MethodPtrTable.Rows : source.TablesStream.MethodTable.Rows;
+        uint found = 0;
+        for (uint typeRid = 1; typeRid <= source.TablesStream.TypeDefTable.Rows; typeRid++) {
+            if (!source.TablesStream.TryReadTypeDefRow(typeRid, out var row)) return 0;
+            var end = listRows + 1;
+            if (typeRid < source.TablesStream.TypeDefTable.Rows) {
+                if (!source.TablesStream.TryReadTypeDefRow(typeRid + 1, out var next)) return 0;
+                end = next.MethodList;
+            }
+            if (row.MethodList == 0 || end > listRows + 1 || row.MethodList > end) return 0;
+            for (var slot = row.MethodList; slot < end; slot++) {
+                uint actual = slot;
+                if (hasPointers) {
+                    if (!source.TablesStream.TryReadMethodPtrRow(slot, out var pointer)) return 0;
+                    actual = pointer.Method;
+                }
+                if (actual != methodRid) continue;
+                if (found != 0) return 0; // ambiguous or malformed list
+                found = typeRid;
+            }
+        }
+        return found;
+    }
 
 	static bool SameMethodRow(IMethodDefOrRef left, IMethodDefOrRef right) => left switch {
 		MethodDef a when right is MethodDef b => ReferenceEquals(a, b) || (a.Rid != 0 && b.Rid != 0 && a.MDToken.Raw == b.MDToken.Raw),
@@ -313,7 +367,9 @@ internal static partial class EditOperationRegistry {
 		return new() { ["interface_remove_state"] = new Dictionary<string, object?> {
 			["owner"] = InverseReference(before, owner, objects),
 			["index"] = owner.Interfaces.Count,
-			["interface"] = JsonSerializer.Deserialize<Dictionary<string, object?>>(SignatureText(interfaceSig), EditWire.JsonOptions) ?? new(),
+			["interface"] = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+				JsonSerializer.Serialize(EditStructuredSignatureCodec.Capture(interfaceSig, InverseBinder(before, objects)), EditWire.JsonOptions),
+				EditWire.JsonOptions) ?? new(),
 		} };
 	}
 

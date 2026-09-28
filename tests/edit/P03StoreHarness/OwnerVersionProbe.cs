@@ -726,14 +726,14 @@ internal static class OwnerVersionProbe {
 		}
 
 		// ---- unknown version hard reject, including internal digest entry points
-		var unknown = RewriteFormat(v1Package, "dnspy.edit.checkpoints.v3");
+		var unknown = RewriteFormat(v1Package, "dnspy.edit.checkpoints.v4");
 		var unknownRejected = false;
 		try { history.ValidatePackageForTesting(unknown); }
 		catch (EditDomainException ex) when (ex.Code == "EDIT_OPERATION_VERSION_UNSUPPORTED") { unknownRejected = true; }
 		Check(unknownRejected, "unknown package format is rejected with EDIT_OPERATION_VERSION_UNSUPPORTED");
 		var digestRejected = false;
 		using (var module = TwoValueMethods(1, 2, null, null)) {
-			try { EditHistoryModule.SemanticDigest("dnspy.edit.checkpoints.v3", module); }
+			try { EditHistoryModule.SemanticDigest("dnspy.edit.checkpoints.v4", module); }
 			catch (EditDomainException ex) when (ex.Code == "EDIT_OPERATION_VERSION_UNSUPPORTED") { digestRejected = true; }
 		}
 		Check(digestRejected, "SemanticDigest hard-rejects an unknown format instead of treating it as v1");
