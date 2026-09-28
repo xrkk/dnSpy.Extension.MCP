@@ -41,7 +41,7 @@ PLUGIN = ROOT / "dist/dnSpy.Extension.MCP-net48.x.dll"
 # (4.5.0-r15.private.1, same official strong-name identity), so the host's
 # dnlib.dll must be replaced by the exact package binary at the same time.
 PRIVATE_DNLIB_NUPKG = ROOT / "deps/dnlib/packages/dnlib.4.5.0-r15.private.1.nupkg"
-RUN_ID_PREFIX = "p09-final-20260912-r1"
+RUN_ID_PREFIX = "p09-final-" + time.strftime("%Y%m%d-%H%M%S")
 
 
 def private_dnlib_net48_path(tmpdir: str) -> Path:
@@ -303,6 +303,14 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
     """
     iso = "E:\\p09-iso-" + run_id + "-" + arch
     port = ISO_PORT[arch]
+    # A reused root would leak stale lineages/evidence into this run;
+    # every invocation starts from a freshly wiped tree.
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        'if(Test-Path -LiteralPath "' + iso + '"){ '
+        '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; '
+        'Remove-Item -LiteralPath "' + iso + '" -Recurse -Force }; "prior root wiped"'
+    ), timeout=120)
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
         'New-Item -ItemType Directory -Force -Path "' + iso + '\\fixtures","' + iso + '\\artifact","'
