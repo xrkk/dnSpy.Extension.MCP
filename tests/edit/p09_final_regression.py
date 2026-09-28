@@ -292,6 +292,28 @@ if (-not (Test-Path "$strong\StrongHost.exe")) { throw 'StrongHost build failed'
 '''
 
 
+def warm_instance(client: UiMcpClient, iso: dict) -> None:
+    """JIT the document-load path so a case's first immediate list query
+    does not race a cold process (x86 especially). Loads the tiny TestIL
+    fixture once and confirms visibility; per-case lineage cleaning keeps
+    this from interfering with TestIL-based cases."""
+    port = iso["port"]
+    warm_fixture = iso["iso"] + "\\fixtures\\TestIL.dll"
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        '$body = @{jsonrpc="2.0";id=1;method="initialize";params=@{protocolVersion="2025-03-26";capabilities=@{};clientInfo=@{name="p09-warm";version="0"}}} | ConvertTo-Json -Depth 5 -Compress; '
+        '$hdr = @{ "Content-Type"="application/json"; "Accept"="application/json, text/event-stream" }; '
+        '$null = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $body -Headers $hdr -SessionVariable s -TimeoutSec 10; '
+        '$openBody = @{jsonrpc="2.0";id=2;method="tools/call";params=@{name="open_files";arguments=@{paths=@("' + warm_fixture + '")}}} | ConvertTo-Json -Depth 8 -Compress; '
+        '$null = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $openBody -Headers $hdr -WebSession $s -TimeoutSec 30; '
+        '$ready = $false; for($i=0;$i -lt 60;$i++){ '
+        '$q = @{jsonrpc="2.0";id=997;method="tools/call";params=@{name="list_assemblies";arguments=@{}}} | ConvertTo-Json -Depth 8 -Compress; '
+        'try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $q -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
+        'if (($r.result.content | ConvertFrom-Json).result.items.name -contains "TestIL") { $ready = $true; break }; Start-Sleep -Milliseconds 500 }; '
+        'if(-not $ready){ throw "warmup did not observe TestIL" }; "warmed"'
+    ), timeout=120)
+
+
 ISO_PORT = {"x64": 16990, "x86": 16991}
 
 
@@ -390,6 +412,7 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
         'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
         'if($LASTEXITCODE -ne 0){ throw "dedicated instance health failed" }; "instance up"'
     ), timeout=180)
+    warm_instance(client, {"iso": iso, "port": port})
     return {"iso": iso, "port": port, "mcp_url": "http://127.0.0.1:" + str(port) + "/mcp"}
 
 
@@ -484,6 +507,7 @@ def relaunch_dedicated(client: UiMcpClient, arch: str, iso: dict) -> None:
         'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
         'if($LASTEXITCODE -ne 0){ throw "dedicated relaunch health failed" }; "relaunched"'
     ), timeout=180)
+    warm_instance(client, iso)
 
 
 def run_case(client: UiMcpClient, case: str, arch: str, run_id: str) -> dict:

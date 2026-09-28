@@ -26,7 +26,7 @@ def configure_isolation(context):
  os.environ['DNMCP_UI_MCP_URL']=context.mcp_url
  os.environ['DNMCP_UI_FIXTURE']=context.fixture('TestIL.dll')
  os.environ['DNMCP_UI_OUTPUT_ROOT']=str(Path(context.artifact_root)/'ui-evidence')
- os.environ['DNMCP_UI_PACKAGE_ROOT']=context.artifact_root
+ os.environ['DNMCP_UI_PACKAGE_ROOT']=context.checkpoint_store
 def check(n,v,d=None):
  checks.append(dict(name=n,passed=bool(v),detail=d));print(('PASS ' if v else 'FAIL ')+n,flush=True)
 def call(c,n,a):
