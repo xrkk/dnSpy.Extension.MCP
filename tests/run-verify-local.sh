@@ -47,9 +47,19 @@ cd "$WORK"
 # dnSpy v6.6.0's DnSpyCommon.props declares net48 only.  Override the inherited
 # TargetFrameworks global property for each verification leg so this script's
 # advertised dual-TFM build is real even against that exact upstream checkout.
+# The private dnlib pin (deps/dnlib) is a 4.5.0 prerelease, so NuGet would
+# otherwise unify back to the official 4.5.0 release that dnSpyEx pins.
+# Pass it as a global property so every project in the graph resolves it,
+# and expose the committed local package as an additional restore source.
+PRIVATE_DNLIB_VERSION="4.5.0-r15.private.1"
+PRIVATE_DNLIB_SOURCE="$WORK/deps/dnlib/packages"
 dotnet build -m:1 -c "$BUILD_CFG" -f net10.0-windows \
-    -p:TargetFrameworks=net10.0-windows -p:EnableWindowsTargeting=true
-dotnet build -m:1 -c "$BUILD_CFG" -f net48 -p:TargetFrameworks=net48
+    -p:TargetFrameworks=net10.0-windows -p:EnableWindowsTargeting=true \
+    -p:DnlibVersion="$PRIVATE_DNLIB_VERSION" \
+    -p:RestoreAdditionalSources="$PRIVATE_DNLIB_SOURCE"
+dotnet build -m:1 -c "$BUILD_CFG" -f net48 -p:TargetFrameworks=net48 \
+    -p:DnlibVersion="$PRIVATE_DNLIB_VERSION" \
+    -p:RestoreAdditionalSources="$PRIVATE_DNLIB_SOURCE"
 mkdir -p "$EXT_DIR/dist"
 cp "bin/$BUILD_CFG/net10.0-windows/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net10.0-windows.x.dll"
 cp "bin/$BUILD_CFG/net48/dnSpy.Extension.MCP.x.dll" "$EXT_DIR/dist/dnSpy.Extension.MCP-net48.x.dll"

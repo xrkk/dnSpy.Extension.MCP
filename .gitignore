@@ -76,3 +76,8 @@ build/
 /PLAN/2026.08.26/独立核验
 /.tmp
 *.log
+
+# Pinned private dnlib dependency (deps/dnlib) - the committed package is the
+# verified artifact of record; see deps/dnlib/README.md.
+!deps/dnlib/packages/
+!deps/dnlib/packages/*.nupkg

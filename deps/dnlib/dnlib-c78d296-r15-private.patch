@@ -1,0 +1,298 @@
+--- a/src/dnlib.csproj
++++ b/src/dnlib.csproj
+@@ -5,7 +5,7 @@
+   <PropertyGroup>
+     <DefineConstants>$(DefineConstants);$(MoreDefineConstants)</DefineConstants>
+     <DefineConstants Condition=" '$(DnlibThreadSafe)' != 'false' ">$(DefineConstants);THREAD_SAFE</DefineConstants>
+-    <TargetFrameworks>netstandard2.0;net45;net6.0</TargetFrameworks>
++    <TargetFrameworks>net48;net10.0</TargetFrameworks>
+     <!-- It's not possible to target .NET Framework 3.5 when using dotnet build
+          https://github.com/Microsoft/msbuild/issues/1333 -->
+     <NoTargetFrameworkNet35 Condition=" '$(NoTargetFrameworkNet35)' == '' AND '$(MSBuildRuntimeType)' == 'Core' ">true</NoTargetFrameworkNet35>
+@@ -24,7 +24,7 @@
+     <Authors>0xd4d</Authors>
+     <PackageProjectUrl>https://github.com/0xd4d/dnlib</PackageProjectUrl>
+     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+-    <PackageVersion>$(InformationalVersion)</PackageVersion>
++    <PackageVersion>4.5.0-r15.private.1</PackageVersion>
+     <PackageTags>dotnet;assembly;module;reader;writer;PDB;PortablePdb;WindowsPdb;IL;CIL;MSIL;metadata</PackageTags>
+     <AnalysisLevel>latest</AnalysisLevel>
+     <Features>strict;nullablePublicOnly</Features>
+@@ -47,6 +47,7 @@
+ 
+     <LangVersion>latest</LangVersion>
+     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
++    <NoWarn>$(NoWarn);SYSLIB0011</NoWarn>
+   </PropertyGroup>
+ 
+   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+@@ -59,8 +60,7 @@
+   </ItemGroup>
+ 
+   <ItemGroup>
+-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
++    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="All" Condition="'$(TargetFramework)' == 'net48'" />
+   </ItemGroup>
+ 
+   <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+--- a/src/DotNet/Writer/Metadata.cs
++++ b/src/DotNet/Writer/Metadata.cs
+@@ -224,6 +224,19 @@
+ 	/// <summary>
+ 	/// <see cref="Metadata"/> options
+ 	/// </summary>
++	/// <summary>Authenticated source prefix for preserved reference rows in a single writer.</summary>
++	public sealed class ReferenceSourceRows {
++		public uint TypeRef { get; }
++		public uint MemberRef { get; }
++		public uint StandAloneSig { get; }
++		public uint TypeSpec { get; }
++		public uint MethodSpec { get; }
++		public ReferenceSourceRows(uint typeRef, uint memberRef, uint standAloneSig, uint typeSpec, uint methodSpec) {
++			TypeRef = typeRef; MemberRef = memberRef; StandAloneSig = standAloneSig;
++			TypeSpec = typeSpec; MethodSpec = methodSpec;
++		}
++	}
++
+ 	public sealed class MetadataOptions {
+ 		MetadataHeaderOptions metadataHeaderOptions;
+ 		MetadataHeaderOptions debugMetadataHeaderOptions;
+@@ -266,6 +279,12 @@
+ 		/// Various options
+ 		/// </summary>
+ 		public MetadataFlags Flags;
++
++		/// <summary>Writer-local source row prefix; null retains upstream behavior.</summary>
++		public ReferenceSourceRows ReferenceSourceRows { get; set; }
++
++		/// <summary>Writer-local, complete physical MethodDef RID assignment.</summary>
++		public IReadOnlyDictionary<MethodDef, uint> MethodDefRidMap { get; set; }
+ 
+ 		/// <summary>
+ 		/// Extra heaps to add to the metadata. Also see <see cref="MetadataHeapsAdded"/> and <see cref="PreserveHeapOrder(ModuleDef, bool)"/>
+--- a/src/DotNet/Writer/PreserveTokensMetadata.cs
++++ b/src/DotNet/Writer/PreserveTokensMetadata.cs
+@@ -12,6 +12,12 @@
+ 	/// </summary>
+ 	sealed class PreserveTokensMetadata : Metadata {
+ 		readonly ModuleDefMD mod;
++		readonly MetadataOptions writerOptions;
++		uint SourceRows(uint original, uint? projection) {
++			if (projection.HasValue && projection.Value > original)
++				throw new ModuleWriterException("Reference source row prefix exceeds source table");
++			return projection ?? original;
++		}
+ 		readonly Rows<TypeRef> typeRefInfos = new Rows<TypeRef>();
+ 		readonly Dictionary<TypeDef, uint> typeToRid = new Dictionary<TypeDef, uint>();
+ 		MemberDefDict<FieldDef> fieldDefInfos;
+@@ -50,6 +56,7 @@
+ 		[DebuggerDisplay("Count = {Count}")]
+ 		sealed class MemberDefDict<T> where T : IMDTokenProvider {
+ 			readonly Type defMDType;
++			readonly IReadOnlyDictionary<T, uint> ridMap;
+ 			uint userRid = 0x01000000;
+ 			uint newRid = 1;
+ 			int numDefMDs;
+@@ -84,10 +91,13 @@
+ 				: this(defMDType, preserveRids, false) {
+ 			}
+ 
+-			public MemberDefDict(Type defMDType, bool preserveRids, bool enableRidToInfo) {
++			public MemberDefDict(Type defMDType, bool preserveRids, bool enableRidToInfo, IReadOnlyDictionary<T, uint> ridMap = null) {
+ 				this.defMDType = defMDType;
+ 				this.preserveRids = preserveRids;
+ 				this.enableRidToInfo = enableRidToInfo;
++				this.ridMap = ridMap;
++				if (ridMap != null && !preserveRids)
++					throw new ModuleWriterException("MethodDef RID map requires preserved RIDs");
+ 			}
+ 
+ 			public uint Rid(T def) => defToInfo[def].Rid;
+@@ -139,7 +149,12 @@
+ 			/// <param name="collPos">Collection position</param>
+ 			public void Add(T def, int collPos) {
+ 				uint rid;
+-				if (def.GetType() == defMDType) {
++				if (ridMap != null) {
++					if (!ridMap.TryGetValue(def, out rid))
++						throw new ModuleWriterException("MethodDef RID map omits a live method");
++					numDefMDs++;
++				}
++				else if (def.GetType() == defMDType) {
+ 					numDefMDs++;
+ 					rid = preserveRids ? def.Rid : newRid++;
+ 				}
+@@ -160,6 +175,14 @@
+ 			public void SortDefs() {
+ 				// It's already sorted if we don't preserve rids
+ 				if (preserveRids) {
++					if (ridMap != null) {
++						if (ridMap.Count != defs.Count) throw new ModuleWriterException("MethodDef RID map contains stale methods");
++						defs.Sort((a, b) => a.Rid.CompareTo(b.Rid));
++						for (int i = 0; i < defs.Count; i++)
++							if (defs[i].Rid != (uint)i + 1) throw new ModuleWriterException("MethodDef RID map is not contiguous and unique");
++						tableSize = defs.Count;
++					}
++					else {
+ 					// Sort all def MDs before user defs
+ 					defs.Sort((a, b) => a.Rid.CompareTo(b.Rid));
+ 
+@@ -170,6 +193,7 @@
+ 
+ 					// Now we know total table size
+ 					tableSize = (int)newRid - 1;
++					}
+ 				}
+ 				else
+ 					tableSize = defs.Count;
+@@ -194,6 +218,7 @@
+ 			mod = module as ModuleDefMD;
+ 			if (mod is null)
+ 				throw new ModuleWriterException("Not a ModuleDefMD");
++			writerOptions = options;
+ 		}
+ 
+ 		/// <inheritdoc/>
+@@ -296,7 +321,7 @@
+ 		/// <inheritdoc/>
+ 		protected override void Initialize() {
+ 			fieldDefInfos = new MemberDefDict<FieldDef>(typeof(FieldDefMD), PreserveFieldRids);
+-			methodDefInfos = new MemberDefDict<MethodDef>(typeof(MethodDefMD), PreserveMethodRids, true);
++			methodDefInfos = new MemberDefDict<MethodDef>(typeof(MethodDefMD), PreserveMethodRids, true, writerOptions.MethodDefRidMap);
+ 			paramDefInfos = new MemberDefDict<ParamDef>(typeof(ParamDefMD), PreserveParamRids);
+ 			eventDefInfos = new MemberDefDict<EventDef>(typeof(EventDefMD), PreserveEventRids);
+ 			propertyDefInfos = new MemberDefDict<PropertyDef>(typeof(PropertyDefMD), PreservePropertyRids);
+@@ -417,31 +442,31 @@
+ 			uint rows;
+ 
+ 			if (PreserveTypeRefRids) {
+-				rows = mod.TablesStream.TypeRefTable.Rows;
++				rows = SourceRows(mod.TablesStream.TypeRefTable.Rows, writerOptions.ReferenceSourceRows?.TypeRef);
+ 				for (uint i = 0; i < rows; i++)
+ 					tablesHeap.TypeRefTable.Create(new RawTypeRefRow());
+ 			}
+ 
+ 			if (PreserveMemberRefRids) {
+-				rows = mod.TablesStream.MemberRefTable.Rows;
++				rows = SourceRows(mod.TablesStream.MemberRefTable.Rows, writerOptions.ReferenceSourceRows?.MemberRef);
+ 				for (uint i = 0; i < rows; i++)
+ 					tablesHeap.MemberRefTable.Create(new RawMemberRefRow());
+ 			}
+ 
+ 			if (PreserveStandAloneSigRids) {
+-				rows = mod.TablesStream.StandAloneSigTable.Rows;
++				rows = SourceRows(mod.TablesStream.StandAloneSigTable.Rows, writerOptions.ReferenceSourceRows?.StandAloneSig);
+ 				for (uint i = 0; i < rows; i++)
+ 					tablesHeap.StandAloneSigTable.Create(new RawStandAloneSigRow());
+ 			}
+ 
+ 			if (PreserveTypeSpecRids) {
+-				rows = mod.TablesStream.TypeSpecTable.Rows;
++				rows = SourceRows(mod.TablesStream.TypeSpecTable.Rows, writerOptions.ReferenceSourceRows?.TypeSpec);
+ 				for (uint i = 0; i < rows; i++)
+ 					tablesHeap.TypeSpecTable.Create(new RawTypeSpecRow());
+ 			}
+ 
+ 			if (PreserveMethodSpecRids) {
+-				rows = mod.TablesStream.MethodSpecTable.Rows;
++				rows = SourceRows(mod.TablesStream.MethodSpecTable.Rows, writerOptions.ReferenceSourceRows?.MethodSpec);
+ 				for (uint i = 0; i < rows; i++)
+ 					tablesHeap.MethodSpecTable.Create(new RawMethodSpecRow());
+ 			}
+@@ -467,7 +492,7 @@
+ 				return;
+ 			initdTypeRef = true;
+ 
+-			uint rows = mod.TablesStream.TypeRefTable.Rows;
++			uint rows = SourceRows(mod.TablesStream.TypeRefTable.Rows, writerOptions.ReferenceSourceRows?.TypeRef);
+ 			for (uint rid = 1; rid <= rows; rid++)
+ 				AddTypeRef(mod.ResolveTypeRef(rid));
+ 			tablesHeap.TypeRefTable.ReAddRows();
+@@ -479,7 +504,7 @@
+ 				return;
+ 			initdMemberRef = true;
+ 
+-			uint rows = mod.TablesStream.MemberRefTable.Rows;
++			uint rows = SourceRows(mod.TablesStream.MemberRefTable.Rows, writerOptions.ReferenceSourceRows?.MemberRef);
+ 			for (uint rid = 1; rid <= rows; rid++) {
+ 				if (tablesHeap.MemberRefTable[rid].Class != 0)
+ 					continue;
+@@ -494,7 +519,7 @@
+ 				return;
+ 			initdStandAloneSig = true;
+ 
+-			uint rows = mod.TablesStream.StandAloneSigTable.Rows;
++			uint rows = SourceRows(mod.TablesStream.StandAloneSigTable.Rows, writerOptions.ReferenceSourceRows?.StandAloneSig);
+ 			for (uint rid = 1; rid <= rows; rid++) {
+ 				if (tablesHeap.StandAloneSigTable[rid].Signature != 0)
+ 					continue;
+@@ -509,7 +534,7 @@
+ 				return;
+ 			initdTypeSpec = true;
+ 
+-			uint rows = mod.TablesStream.TypeSpecTable.Rows;
++			uint rows = SourceRows(mod.TablesStream.TypeSpecTable.Rows, writerOptions.ReferenceSourceRows?.TypeSpec);
+ 			for (uint rid = 1; rid <= rows; rid++) {
+ 				if (tablesHeap.TypeSpecTable[rid].Signature != 0)
+ 					continue;
+@@ -524,7 +549,7 @@
+ 				return;
+ 			initdMethodSpec = true;
+ 
+-			uint rows = mod.TablesStream.MethodSpecTable.Rows;
++			uint rows = SourceRows(mod.TablesStream.MethodSpecTable.Rows, writerOptions.ReferenceSourceRows?.MethodSpec);
+ 			for (uint rid = 1; rid <= rows; rid++) {
+ 				if (tablesHeap.MethodSpecTable[rid].Method != 0)
+ 					continue;
+@@ -1038,7 +1063,7 @@
+ 			}
+ 			typeRefInfos.Add(tr, 0);	// Prevent inf recursion
+ 
+-			bool isOld = PreserveTypeRefRids && mod.ResolveTypeRef(tr.Rid) == tr;
++			bool isOld = PreserveTypeRefRids && tr.Rid <= SourceRows(mod.TablesStream.TypeRefTable.Rows, writerOptions.ReferenceSourceRows?.TypeRef) && mod.ResolveTypeRef(tr.Rid) == tr;
+ 			var row = new RawTypeRefRow(AddResolutionScope(tr.ResolutionScope), stringsHeap.Add(tr.Name), stringsHeap.Add(tr.Namespace));
+ 			if (isOld) {
+ 				rid = tr.Rid;
+@@ -1067,7 +1092,7 @@
+ 			}
+ 			typeSpecInfos.Add(ts, 0);	// Prevent inf recursion
+ 
+-			bool isOld = forceIsOld || (PreserveTypeSpecRids && mod.ResolveTypeSpec(ts.Rid) == ts);
++			bool isOld = forceIsOld || (PreserveTypeSpecRids && ts.Rid <= SourceRows(mod.TablesStream.TypeSpecTable.Rows, writerOptions.ReferenceSourceRows?.TypeSpec) && mod.ResolveTypeSpec(ts.Rid) == ts);
+ 			var row = new RawTypeSpecRow(GetSignature(ts.TypeSig, ts.ExtraData));
+ 			if (isOld) {
+ 				rid = ts.Rid;
+@@ -1092,7 +1117,7 @@
+ 			if (memberRefInfos.TryGetRid(mr, out uint rid))
+ 				return rid;
+ 
+-			bool isOld = forceIsOld || (PreserveMemberRefRids && mod.ResolveMemberRef(mr.Rid) == mr);
++			bool isOld = forceIsOld || (PreserveMemberRefRids && mr.Rid <= SourceRows(mod.TablesStream.MemberRefTable.Rows, writerOptions.ReferenceSourceRows?.MemberRef) && mod.ResolveMemberRef(mr.Rid) == mr);
+ 			var row = new RawMemberRefRow(AddMemberRefParent(mr.Class), stringsHeap.Add(mr.Name), GetSignature(mr.Signature));
+ 			if (isOld) {
+ 				rid = mr.Rid;
+@@ -1117,7 +1142,7 @@
+ 			if (standAloneSigInfos.TryGetRid(sas, out uint rid))
+ 				return rid;
+ 
+-			bool isOld = forceIsOld || (PreserveStandAloneSigRids && mod.ResolveStandAloneSig(sas.Rid) == sas);
++			bool isOld = forceIsOld || (PreserveStandAloneSigRids && sas.Rid <= SourceRows(mod.TablesStream.StandAloneSigTable.Rows, writerOptions.ReferenceSourceRows?.StandAloneSig) && mod.ResolveStandAloneSig(sas.Rid) == sas);
+ 			var row = new RawStandAloneSigRow(GetSignature(sas.Signature));
+ 			if (isOld) {
+ 				rid = sas.Rid;
+@@ -1212,7 +1237,7 @@
+ 			if (methodSpecInfos.TryGetRid(ms, out uint rid))
+ 				return rid;
+ 
+-			bool isOld = forceIsOld || (PreserveMethodSpecRids && mod.ResolveMethodSpec(ms.Rid) == ms);
++			bool isOld = forceIsOld || (PreserveMethodSpecRids && ms.Rid <= SourceRows(mod.TablesStream.MethodSpecTable.Rows, writerOptions.ReferenceSourceRows?.MethodSpec) && mod.ResolveMethodSpec(ms.Rid) == ms);
+ 			var row = new RawMethodSpecRow(AddMethodDefOrRef(ms.Method), GetSignature(ms.Instantiation));
+ 			if (isOld) {
+ 				rid = ms.Rid;
+--- /dev/null
++++ b/src/Net10Compat.cs
+@@ -0,0 +1,3 @@
++#if NET10_0_OR_GREATER
++global using Lock = dnlib.Threading.Lock;
++#endif
