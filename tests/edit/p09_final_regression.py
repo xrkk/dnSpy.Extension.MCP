@@ -315,7 +315,12 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
         '$q = @{jsonrpc="2.0";id=997;method="tools/call";params=@{name="list_assemblies";arguments=@{}}} | ConvertTo-Json -Depth 8 -Compress; '
         'try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $q -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
         'if ($r.result.structuredContent.assemblies.Name -contains "ImportHost") { $ready = $true; break }; Start-Sleep -Milliseconds 500 }; '
-        'if(-not $ready){ throw "warmup did not observe ImportHost" }; "warmed"'
+        '$mBody = @{jsonrpc="2.0";id=998;method="tools/call";params=@{name="list_methods";arguments=@{assembly_name="ImportHost";type_full_name="ImportHost.Program"}}} | ConvertTo-Json -Depth 8 -Compress; '
+        '$treeReady = $false; for($i=0;$i -lt 60;$i++){ '
+        'try { $m = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $mBody -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
+        '$rows = @($m.result.structuredContent.items); if ($rows.Count -ge 1) { $treeReady = $true; break }; Start-Sleep -Milliseconds 500 }; '
+        'if(-not $ready){ throw "warmup did not observe ImportHost" }; '
+        'if(-not $treeReady){ throw "warmup did not observe the document tree" }; "warmed"'
     ), timeout=120)
 
 
