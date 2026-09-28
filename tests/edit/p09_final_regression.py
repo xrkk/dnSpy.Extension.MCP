@@ -30,13 +30,27 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests" / "edit"))
 
 from run_p01_vm_tests import UiMcpClient, powershell, start_dnspy, VM_URL  # noqa: E402
-from ui_apply_settings import apply_settings  # noqa: E402
+from ui_apply_settings import apply_settings, find_target  # noqa: E402
 
 DEST = r"C:\Tools\dnspy-mcp-edit-tests\p03-integration-r1"
 HARNESS_DEST = r"C:\Tools\dnspy-mcp-edit-tests\p03-harness-20260912-r1"
 VM_EXTENSION = r"C:\Tools\dnSpy\bin\Extensions\dnSpy.Extension.MCP\dnSpy.Extension.MCP.x.dll"
+VM_DNLIB = r"C:\Tools\dnSpy\bin\dnlib.dll"
 PLUGIN = ROOT / "dist/dnSpy.Extension.MCP-net48.x.dll"
+# T095-C formal pair: the extension is built against the private dnlib
+# (4.5.0-r15.private.1, same official strong-name identity), so the host's
+# dnlib.dll must be replaced by the exact package binary at the same time.
+PRIVATE_DNLIB_NUPKG = ROOT / "deps/dnlib/packages/dnlib.4.5.0-r15.private.1.nupkg"
 RUN_ID_PREFIX = "p09-final-20260912-r1"
+
+
+def private_dnlib_net48_path(tmpdir: str) -> Path:
+    import zipfile
+    with zipfile.ZipFile(PRIVATE_DNLIB_NUPKG) as package:
+        payload = package.read("lib/net48/dnlib.dll")
+    target = Path(tmpdir) / "dnlib-4.5.0-r15.private.1-net48.dll"
+    target.write_bytes(payload)
+    return target
 
 # the frozen per-phase regression matrix (driver cases through the evidence
 # runner); every entry must pass on BOTH architectures
@@ -86,6 +100,11 @@ def upload_tree(client: UiMcpClient, entries: list, destination_root: str) -> No
 
 
 def deploy_plugin(client: UiMcpClient) -> None:
+    deploy_formal_pair(client)
+
+
+def deploy_formal_pair(client: UiMcpClient) -> None:
+    import tempfile
     expected = hashlib.sha256(PLUGIN.read_bytes()).hexdigest().upper()
     staged = VM_EXTENSION + ".p09.new"
     upload(client, PLUGIN, staged)
@@ -96,13 +115,27 @@ def deploy_plugin(client: UiMcpClient) -> None:
         f'Move-Item -LiteralPath "{staged}" -Destination "{VM_EXTENSION}" -Force; '
         '$cacheRoots=@(($env:LOCALAPPDATA+"\\dnSpy\\Startup32"),($env:LOCALAPPDATA+"\\dnSpy\\Startup64")); '
         'foreach($cacheRoot in $cacheRoots){ if(Test-Path -LiteralPath $cacheRoot){ '
-        'Get-ChildItem -LiteralPath $cacheRoot -Filter dnSpy-mef-info.bin -Recurse -File | Remove-Item -Force } }; "deployed"'
+        'Get-ChildItem -LiteralPath $cacheRoot -Filter dnSpy-mef-info.bin -Recurse -File | Remove-Item -Force } }; "plugin deployed"'
     ), timeout=60)
+    with tempfile.TemporaryDirectory(prefix="p09-lib-") as tmpdir:
+        lib = private_dnlib_net48_path(tmpdir)
+        expected_lib = hashlib.sha256(lib.read_bytes()).hexdigest().upper()
+        staged_lib = VM_DNLIB + ".p09.new"
+        upload(client, lib, staged_lib)
+        powershell(client, (
+            '$ErrorActionPreference="Stop"; '
+            f'$expected="{expected_lib}"; $staged=(Get-FileHash -Algorithm SHA256 "{staged_lib}").Hash; '
+            'if($staged -ne $expected){ throw "staged dnlib hash mismatch" }; '
+            f'Move-Item -LiteralPath "{staged_lib}" -Destination "{VM_DNLIB}" -Force; '
+            '"dnlib deployed"'
+        ), timeout=60)
 
 
 def deploy_drivers(client: UiMcpClient) -> None:
     entries = []
     for source in (ROOT / "tests/edit").glob("p03_vm_*.py"):
+        entries.append((source, source.name))
+    for source in (ROOT / "tests/edit").glob("t083_vm_*.py"):
         entries.append((source, source.name))
     for source in (ROOT / "tests/edit/cases").glob("EDIT-ACC-*.json"):
         entries.append((source, "cases/" + source.name))
@@ -162,7 +195,11 @@ def fresh_dnspy(client: UiMcpClient, arch: str) -> bool:
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
     start_dnspy(client, arch)
-    apply_settings(client, True, "localhost")
+    # The hardened settings helper requires an explicit UI target and no
+    # longer toggles the server checkbox (the VM's persisted settings keep
+    # EnableServer on; only host/port are re-applied to restart the listener).
+    exe = r"C:\Tools\dnSpy\dnSpy.exe" if arch == "x64" else r"C:\Tools\dnSpy\dnSpy-x86.exe"
+    apply_settings(client, None, "localhost", 15378, target=find_target(client, exe))
     deadline = time.time() + 60
     while time.time() < deadline:
         probe = powershell(client, (
@@ -172,6 +209,169 @@ def fresh_dnspy(client: UiMcpClient, arch: str) -> bool:
             return True
         time.sleep(1.5)
     return False
+
+
+ISO_PORT = {"x64": 16990, "x86": 16991}
+
+
+def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
+    """Build the per-arch isolation topology the hardened drivers require:
+    a private root with rebuilt fixtures, an evidence/checkpoint/work layout,
+    and a DEDICATED dnSpy instance (formal pair) on a non-shared port whose
+    pid is recorded for the UI case. The shared 15378 instance is untouched.
+    """
+    iso = "E:\\p09-iso-" + run_id + "-" + arch
+    port = ISO_PORT[arch]
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        'New-Item -ItemType Directory -Force -Path "' + iso + '\\fixtures","' + iso + '\\artifact","'
+        + iso + '\\checkpoints","' + iso + '\\work","' + iso + '\\src","' + iso + '\\ui-deploy\\'
+        + arch + '\\app","' + iso + '\\ui-deploy\\' + arch + '\\fixtures" | Out-Null; "dirs"'
+    ), timeout=60)
+    entries = [(ROOT / ("tests/fixtures/" + name), name)
+               for name in ("ImportHost.cs", "InboundRef.cs", "ResourceHost.cs", "StrongHost.cs", "InboundStrong.cs")]
+    entries.append((ROOT / "dist/TestIL.dll", "TestIL.dll"))
+    upload_tree(client, entries, iso + "\\src")
+    csc64 = "$env:WINDIR\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe"
+    csc86 = "$env:WINDIR\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe"
+    fx = iso + "\\fixtures"
+    src = iso + "\\src"
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\ImportHost.exe" "' + src + '\\ImportHost.cs"; '
+        'if($LASTEXITCODE){ throw "ImportHost x64" }; '
+        '& ' + csc86 + ' /nologo /target:exe /platform:x86 /out:"' + fx + '\\ImportHost-x86\\ImportHost.exe" "' + src + '\\ImportHost.cs"; '
+        'if($LASTEXITCODE){ throw "ImportHost x86" }; '
+        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\InboundRef.exe" /r:"' + fx + '\\ImportHost\\ImportHost.exe" "' + src + '\\InboundRef.cs"; '
+        'if($LASTEXITCODE){ throw "InboundRef" }; '
+        '& ' + csc64 + ' /nologo /target:library /out:"' + fx + '\\ResourceHost\\ResourceHost.dll" "' + src + '\\ResourceHost.cs"; '
+        'if($LASTEXITCODE){ throw "ResourceHost" }; '
+        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\StrongHost\\StrongHost.exe" "' + src + '\\StrongHost.cs"; '
+        'if($LASTEXITCODE){ throw "StrongHost x64" }; '
+        '& ' + csc86 + ' /nologo /target:exe /platform:x86 /out:"' + fx + '\\StrongHost-x86\\StrongHost.exe" "' + src + '\\StrongHost.cs"; '
+        'if($LASTEXITCODE){ throw "StrongHost x86" }; '
+        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\StrongHost\\InboundStrong.exe" /r:"' + fx + '\\StrongHost\\StrongHost.exe" "' + src + '\\InboundStrong.cs"; '
+        'if($LASTEXITCODE){ throw "InboundStrong" }; '
+        'Copy-Item "' + src + '\\TestIL.dll" "' + fx + '\\TestIL.dll" -Force; "fixtures built"'
+    ), timeout=180)
+    app = iso + "\\ui-deploy\\" + arch + "\\app"
+    powershell(client, (
+        'robocopy "C:\\Tools\\dnSpy" "' + app + '" /E /NFL /NDL /NJH /NJS | Out-Null; '
+        'if($LASTEXITCODE -ge 8){ throw "robocopy failed" }; "app copied"'
+    ), timeout=300)
+    settings = iso + "\\ui-deploy\\" + arch + "\\settings.xml"
+    cfg_json = ('{"AllowedSampleRoot":"' + fx.replace('\\', '\\\\')
+                + '","ArtifactRoot":"' + iso.replace('\\', '\\\\') + '\\\\checkpoints'
+                + '","DebugToolsEnabled":true,"DedicatedDebugInstanceAcknowledged":true,'
+                + '"EnableServer":true,"Host":"localhost","Port":' + str(port)
+                + ',"RemoteAllowedCidrs":[],"RemoteHostOnlyAcknowledged":false,'
+                + '"RemoteTokenVerifier":null,"SchemaVersion":"dnspy.mcp.settings.v1"}')
+    xml_text = ('<?xml version="1.0" encoding="utf-8"?><settings><section '
+                '_="352907a0-9df5-4b2b-b47b-95e504cac301" SettingsSnapshotJson="'
+                + cfg_json.replace('"', '&quot;') + '" /></settings>')
+    upload_inline(client, xml_text, settings)
+    exe = app + ("\\dnSpy.exe" if arch == "x64" else "\\dnSpy-x86.exe")
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; '
+        "$env:DNMCP_TEST='1'; "
+        '$p=Start-Process -FilePath "' + exe + '" -ArgumentList @(\'--multiple\',\'--dont-load-files\',\'--settings-file\',\'' + settings + '\') '
+        '-WorkingDirectory "' + app + '" -PassThru; '
+        'Start-Sleep -Milliseconds 300; $p.Id | Set-Content "' + iso + '\\ui-deploy\\' + arch + '\\pid.txt"; '
+        'for($i=0;$i -lt 120;$i++){ '
+        '& curl.exe -fsS --max-time 2 http://127.0.0.1:' + str(port) + '/health 2>$null | Out-Null; '
+        'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
+        'if($LASTEXITCODE -ne 0){ throw "dedicated instance health failed" }; "instance up"'
+    ), timeout=180)
+    return {"iso": iso, "port": port, "mcp_url": "http://127.0.0.1:" + str(port) + "/mcp"}
+
+
+def upload_inline(client: UiMcpClient, text: str, destination: str) -> None:
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    powershell(client, (
+        '$parent=Split-Path -Parent "' + destination + '"; New-Item -ItemType Directory -Force -Path $parent | Out-Null; '
+        '[IO.File]::WriteAllText("' + destination + '",[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + encoded + '"))); "written"'
+    ))
+
+
+def open_explorer(client: UiMcpClient, arch: str, iso: str) -> None:
+    """Open the MCP Edit Explorer window on the dedicated instance (View menu)."""
+    pid_text = powershell(client, 'Get-Content "' + iso + '\\ui-deploy\\' + arch + '\\pid.txt" -Raw', allow_failure=True)
+    pid = int(pid_text.strip())
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes; '
+        '$ws=New-Object -ComObject WScript.Shell; $null=$ws.AppActivate(' + str(pid) + '); Start-Sleep -Milliseconds 600; '
+        '$root=[System.Windows.Automation.AutomationElement]::RootElement; '
+        '$win=$root.FindFirst([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty,' + str(pid) + ')); '
+        'if(-not $win){ throw "dedicated window missing" }; '
+        '$ws.SendKeys("%v"); Start-Sleep -Milliseconds 700; '
+        '$menu=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::MenuItem)); '
+        '$item=$menu | Where-Object { $_.Current.Name -eq "MCP Edit Explorer" } | Select-Object -First 1; '
+        'if(-not $item){ throw "menu entry missing" }; '
+        '$item.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 900; '
+        '$exp=$root.FindFirst([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,"McpEditExplorer")); '
+        'if(-not $exp){ throw "explorer window not open" }; "explorer open"'
+    ), timeout=90)
+
+
+def run_case_isolated(client: UiMcpClient, case: str, arch: str, run_id: str, iso: dict) -> dict:
+    log = "evidence-" + case + "-" + arch + ".log"
+    err = "evidence-" + case + "-" + arch + ".err"
+    dotnet = "C:\\Tools\\dotnet10-x64\\dotnet.exe" if arch == "x64" else "C:\\Tools\\dotnet10-x86\\dotnet.exe"
+    runner_args = (
+        "p03_vm_edit_acc_evidence.py --case " + case + " --arch " + arch + " --run-id " + run_id
+        + " --artifact-root " + iso["iso"] + "\\artifact"
+        + " --isolation-root " + iso["iso"]
+        + " --mcp-url " + iso["mcp_url"]
+        + " --fixture-root " + iso["iso"] + "\\fixtures"
+        + " --checkpoint-store " + iso["iso"] + "\\checkpoints"
+        + " --work-root " + iso["iso"] + "\\work"
+        + " --harness-dir " + HARNESS_DEST
+        + " --dotnet-host " + dotnet
+        + " --ui-deployment-root " + iso["iso"] + "\\ui-deploy"
+    )
+    powershell(client, (
+        'Remove-Item "' + DEST + '\\' + log + '","' + DEST + '\\' + err + '" -Force -ErrorAction SilentlyContinue; '
+        "$env:EDIT_ACC005_ARCH='" + arch + "'; "
+        "$p = Start-Process -FilePath 'C:\\Python313\\python.exe' -ArgumentList '" + runner_args + "' "
+        '-WorkingDirectory "' + DEST + '" -RedirectStandardOutput "' + DEST + '\\' + log + '" -RedirectStandardError "' + DEST + '\\' + err + '" -PassThru -WindowStyle Hidden; "launched"'
+    ))
+    deadline = time.time() + 600
+    while time.time() < deadline:
+        probe = powershell(client, (
+            '$drv = Get-CimInstance Win32_Process -Filter "Name=\'python.exe\'" | '
+            'Where-Object { $_.CommandLine -like "*edit_acc_evidence*" }; '
+            'if($drv){"alive"}else{"done"}'), allow_failure=True)
+        if "done" in probe:
+            break
+        time.sleep(3)
+    time.sleep(1.0)
+    summary_path = iso["iso"] + "\\artifact\\edit-tests\\" + run_id + "\\" + case + "\\summary.json"
+    read = powershell(client, 'if (Test-Path "' + summary_path + '") { Get-Content "' + summary_path + '" -Raw } else { "missing" }', allow_failure=True)
+    if "missing" in read:
+        tail = powershell(client, 'Get-Content "' + DEST + '\\' + log + '" -Tail 10 -ErrorAction SilentlyContinue', allow_failure=True)
+        return {"case": case, "arch": arch, "status": "missing-summary", "log_tail": tail[:600]}
+    return json.loads(read.split("Response:", 1)[-1].split("Status Code", 1)[0].strip()) if isinstance(read, str) else None
+
+
+def relaunch_dedicated(client: UiMcpClient, arch: str, iso: dict) -> None:
+    """Restart the dedicated instance between cases to reset loaded-module
+    state, mirroring the shared-instance restart the legacy flow performed."""
+    app = iso["iso"] + "\\ui-deploy\\" + arch + "\\app"
+    settings = iso["iso"] + "\\ui-deploy\\" + arch + "\\settings.xml"
+    exe = app + ("\\dnSpy.exe" if arch == "x64" else "\\dnSpy-x86.exe")
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; '
+        "$env:DNMCP_TEST='1'; "
+        '$p=Start-Process -FilePath "' + exe + '" -ArgumentList @(\'--multiple\',\'--dont-load-files\',\'--settings-file\',\'' + settings + '\') '
+        '-WorkingDirectory "' + app + '" -PassThru; '
+        'Start-Sleep -Milliseconds 300; $p.Id | Set-Content "' + iso["iso"] + '\\ui-deploy\\' + arch + '\\pid.txt"; '
+        'for($i=0;$i -lt 120;$i++){ '
+        '& curl.exe -fsS --max-time 2 http://127.0.0.1:' + str(iso["port"]) + '/health 2>$null | Out-Null; '
+        'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
+        'if($LASTEXITCODE -ne 0){ throw "dedicated relaunch health failed" }; "relaunched"'
+    ), timeout=180)
 
 
 def run_case(client: UiMcpClient, case: str, arch: str, run_id: str) -> dict:
@@ -199,6 +399,14 @@ def run_case(client: UiMcpClient, case: str, arch: str, run_id: str) -> dict:
         tail = powershell(client, f'Get-Content "{DEST}\\{log}" -Tail 10 -ErrorAction SilentlyContinue', allow_failure=True)
         return {"case": case, "arch": arch, "status": "missing-summary", "log_tail": tail[:600]}
     return json.loads(read.split("Response:", 1)[-1].split("Status Code", 1)[0].strip()) if isinstance(read, str) else None
+
+
+def export_registry_isolated(client: UiMcpClient, iso: dict) -> dict:
+    result = powershell(client, (
+        "C:\\Python313\\python.exe " + DEST + "\\export_tool_registry.py "
+        "--url " + iso["mcp_url"] + " "
+        "--output " + DEST + "\\p09-tool-registry-snapshot.json"), timeout=180, allow_failure=True)
+    return {"tail": result.strip()[-300:]}
 
 
 def export_registry(client: UiMcpClient) -> dict:
@@ -231,21 +439,36 @@ def main() -> int:
     results: list[dict] = []
     for arch in ("x64", "x86"):
         run_id = f"{RUN_ID_PREFIX}-{arch}"
-        if not fresh_dnspy(client, arch):
+        print(f"[iso] provisioning isolation topology for {arch}", flush=True)
+        try:
+            iso = provision_isolation(client, arch, run_id)
+        except Exception as ex:  # noqa: BLE001
             for case in REGRESSION_CASES:
-                results.append({"case": case, "arch": arch, "status": "dnspy-start-failed"})
+                results.append({"case": case, "arch": arch, "status": "iso-provision-failed",
+                                "detail": str(ex)[:400]})
             continue
+        print(f"[iso] {arch} ready: {iso['iso']} port={iso['port']}", flush=True)
         if arch == "x64":
             print("[3] registry export (x64)", flush=True)
-            overall["registry_export"] = export_registry(client)
+            overall["registry_export"] = export_registry_isolated(client, iso)
             print("    " + overall["registry_export"]["tail"][:200], flush=True)
         for case in REGRESSION_CASES:
-            summary = run_case(client, case, arch, run_id)
+            if case == "EDIT-ACC-018":
+                try:
+                    open_explorer(client, arch, iso["iso"])
+                except Exception as ex:  # noqa: BLE001
+                    results.append({"case": case, "arch": arch, "status": "explorer-open-failed",
+                                    "detail": str(ex)[:400]})
+                    continue
+            summary = run_case_isolated(client, case, arch, run_id, iso)
             results.append(summary or {"case": case, "arch": arch, "status": "no-summary"})
             print(f"[{arch}] {case}: {(summary or {}).get('status')}", flush=True)
             if case not in ("EDIT-ACC-021", "EDIT-ACC-023") or arch == "x86":
-                if not fresh_dnspy(client, arch):
-                    results.append({"case": "dnspy-restart", "arch": arch, "status": "failed"})
+                try:
+                    relaunch_dedicated(client, arch, iso)
+                except Exception as ex:  # noqa: BLE001
+                    results.append({"case": "instance-restart", "arch": arch, "status": "failed",
+                                    "detail": str(ex)[:400]})
                     break
     print("[4] cleanup + no-residue", flush=True)
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force}; "stopped"')

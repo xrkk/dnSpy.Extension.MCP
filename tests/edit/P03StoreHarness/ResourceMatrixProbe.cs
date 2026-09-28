@@ -49,6 +49,17 @@ internal static class ResourceMatrixProbe {
 			if (!EditWorkspace.WriteCanonical(module).SequenceEqual(before))
 				throw new InvalidOperationException("a rejected resource payload changed the module: " + json.Substring(0, Math.Min(160, json.Length)));
 		}
+		void RejectDeferred(string json) {
+			var before = EditWorkspace.WriteCanonical(module);
+			try {
+				using var document = JsonDocument.Parse(json);
+				EditOperationRegistry.Apply(module, document.RootElement, objects, index++);
+				throw new InvalidOperationException("deferred strong_name_remove was accepted: " + json.Substring(0, Math.Min(160, json.Length)));
+			}
+			catch (EditDomainException ex) when (ex.Code == "EDIT_CAPABILITY_UNAVAILABLE") { }
+			if (!EditWorkspace.WriteCanonical(module).SequenceEqual(before))
+				throw new InvalidOperationException("a deferred strong_name_remove changed the module: " + json.Substring(0, Math.Min(160, json.Length)));
+		}
 		void RoundTrip(string json, Action<ModuleDefMD> assertReloaded) {
 			var before = EditWorkspace.WriteCanonical(module);
 			using var forward = JsonDocument.Parse(json);
@@ -155,15 +166,15 @@ internal static class ResourceMatrixProbe {
 		Apply("{\"kind\":\"win32_resource_remove\",\"type_id\":3,\"name_id\":1,\"remove_mode\":\"reject_if_referenced\"}");
 		Require(NativeCount(module, 3) == 1, "the icon row was not removed");
 
-		// ---- 5) strong-name: registry-level field validation (the one-time
-		// evidence gate lives in the coordinator and is covered by EDIT-ACC-016)
-		Reject("{\"kind\":\"strong_name_remove\"}");
-		Reject("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"s\",\"event_cursor\":0,\"event_kind\":\"start_failed\"}}");
+		// ---- 5) strong-name: on an unstamped assembly every strong_name_remove
+		// payload is rejected with EDIT_CAPABILITY_UNAVAILABLE (no applicable
+		// key). On a stamped key the registry level accepts the loader-provenance
+		// sentinel evidence and must round-trip the key exactly; the PUBLIC
+		// authorization gate is deferred under S02-STRONGNAME-DEFER-01 and is
+		// covered by EDIT-ACC-016 (t083 driver).
+		RejectDeferred("{\"kind\":\"strong_name_remove\"}");
+		RejectDeferred("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"s\",\"event_cursor\":0,\"event_kind\":\"start_failed\"}}");
 		{
-			// An unsigned assembly is inapplicable rather than a successful no-op.
-			Reject("{\"kind\":\"strong_name_remove\",\"dynamic_failure\":{\"session_id\":\"none\",\"event_cursor\":1,\"event_kind\":\"exception\"}}");
-			// Prove inverse fidelity on a registry-level stamped key. The coordinator
-			// owns the real dynamic-evidence gate exercised by EDIT-ACC-016-CAUSAL.
 			var key = new byte[] { 0x52, 0x53, 0x41, 0x32, 0x01, 0x02, 0x03 };
 			module.Assembly!.PublicKey = new dnlib.DotNet.PublicKey(key);
 			module.Assembly.Attributes |= dnlib.DotNet.AssemblyAttributes.PublicKey;
