@@ -917,6 +917,11 @@ static class Program {
 	// regular suite: host naming, malformed-tombstone rejection, and repeat
 	// delete/reload/restore cycles returning to the byte-identical baseline.
 	static void TestTombstoneGate(string fixture) {
+		// This probe drives and asserts the historical v2 tombstone shape
+		// (Object-marker owner, void() host). The formal v3 encoding recognizes
+		// tombstones only through the verified-module binding, so the whole
+		// cycle must run inside the legacy representation scope.
+		using var legacyScope = EditDeletedRowsTombstone.UseLegacy(true);
 		EditOperationOutcome CycleOnce(byte[] baseline, out byte[] restoredBytes) {
 			using var module = ModuleDefMD.Load(Path.GetFullPath(fixture));
 			var method = module.GetTypes().Single(t => t.FullName == "TestIL.UnityComponent").Methods.Single(m => m.Name == "OnTriggerEnter");

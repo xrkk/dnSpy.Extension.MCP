@@ -81,6 +81,11 @@ internal static class T076InverseBoundaryProbe {
 	}
 
 	public static void Run(string fixture) {
+		// The probe asserts the historical v2 tombstone representation
+		// (Object-marker re-owning); the formal v3 encoding only recognizes
+		// tombstones through the verified-module binding, so run the whole
+		// boundary cycle inside the legacy representation scope.
+		using var legacyScope = EditDeletedRowsTombstone.UseLegacy(true);
 		using var seed = ModuleDefMD.Load(System.IO.Path.GetFullPath(fixture));
 		var owners = seed.GetTypes().Where(type => type.MDToken.Rid != 0 && !EditDeletedRowsTombstone.IsTombstone(type)).ToArray();
 		var earlier = owners.Single(type => type.FullName == "TestIL.Members");

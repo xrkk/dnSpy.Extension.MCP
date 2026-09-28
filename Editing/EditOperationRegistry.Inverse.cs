@@ -584,7 +584,12 @@ internal static partial class EditOperationRegistry {
 			var typeTail = target as TypeDef;
 			var finalTypeRid = typeTail == null ? 0 : module.GetTypes()
 				.Select(type => type.MDToken.Rid).DefaultIfEmpty().Max();
-			applied = kind == "method_add" && methodTail != null
+			// Direct row removal is only writer-safe while the module carries no
+			// embedded PDB state: an orphaned physical method row drives the
+			// MethodDebugInformation writer past the method table (rid-indexed
+			// set_Item crash). PDB modules keep the tombstone re-owning path,
+			// which holds the removed row graph-reachable under a valid rid.
+			applied = kind == "method_add" && methodTail != null && module.PdbState == null
 					? MethodRemove(module, removal.RootElement, temporary, preserveDeletedRow: false)
 					: kind == "field_add" && !EditDeletedRowsTombstone.LegacyMode && fieldTail != null
 					&& (fieldTail.MDToken.Rid == 0 || fieldTail.MDToken.Rid == finalFieldRid)
