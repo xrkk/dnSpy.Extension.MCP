@@ -226,7 +226,10 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
         '$ErrorActionPreference="Stop"; '
         'New-Item -ItemType Directory -Force -Path "' + iso + '\\fixtures","' + iso + '\\artifact","'
         + iso + '\\checkpoints","' + iso + '\\work","' + iso + '\\src","' + iso + '\\ui-deploy\\'
-        + arch + '\\app","' + iso + '\\ui-deploy\\' + arch + '\\fixtures" | Out-Null; "dirs"'
+        + arch + '\\app","' + iso + '\\ui-deploy\\' + arch + '\\fixtures","'
+        + iso + '\\fixtures\\ImportHost","' + iso + '\\fixtures\\ImportHost-x86","'
+        + iso + '\\fixtures\\ResourceHost","' + iso + '\\fixtures\\StrongHost","'
+        + iso + '\\fixtures\\StrongHost-x86" | Out-Null; "dirs"'
     ), timeout=60)
     entries = [(ROOT / ("tests/fixtures/" + name), name)
                for name in ("ImportHost.cs", "InboundRef.cs", "ResourceHost.cs", "StrongHost.cs", "InboundStrong.cs")]
