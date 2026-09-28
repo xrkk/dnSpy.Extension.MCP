@@ -32,6 +32,8 @@ dotnet build src/dnlib.csproj -c Release -f net48    --no-restore ...
 dotnet build src/dnlib.csproj -c Release -f net10.0  --no-restore ...
 ```
 
+复现外部前提：还原还需 `Microsoft.NETFramework.ReferenceAssemblies`（SDK 自动注入的元包）与 `microsoft.netframework.referenceassemblies.net48`（约 21 MB 引用程序集包），两者来自 nuget.org 或本机全局 NuGet 缓存，**未入仓**；正式产品管线的还原只依赖本目录 nupkg。
+
 完整可复现交接（固定输入、命令、派生样本与已知坑——含"带 PDB 比较 IL 会得假差异"）见
 `.tmp/dnspy-sol-remaining-20260922-01/T095-R15-work/manifest/REBUILD.md`（协作证据目录）。
 对照证据：主验收记录 `PLAN/2026.09.28/2026.09.28-02-*`（独立源码重建 IL 全等）与
