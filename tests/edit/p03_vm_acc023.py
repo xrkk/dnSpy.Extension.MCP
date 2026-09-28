@@ -109,9 +109,16 @@ def main() -> int:
     client = DnSpyClient(URL, client_name="p09-acc023", timeout=120)
     client.initialize()
     call(client, "open_files", {"paths": [FIXTURE]})
+    # Bounded settle: the x86 document load can finish after open_files
+    # returns; poll until the assembly is visible instead of racing it.
+    types = {"error": "not-probed"}
+    for _attempt in range(20):
+        types = call(client, "list_types", {"assembly_name": "ResourceHost"})
+        if "error" not in types:
+            break
+        time.sleep(0.5)
 
     # S1: static viewing of the fixture holding a serialized activator object
-    types = call(client, "list_types", {"assembly_name": "ResourceHost"})
     check("S1 static type listing never executes", bool(types.get("items") or types.get("Items") or "error" not in types),
           json.dumps(types)[:200])
     check("S1 sentinel absent after static view", sentinel_absent(), SENTINEL)

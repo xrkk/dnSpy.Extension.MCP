@@ -75,6 +75,7 @@ def main() -> int:
     import random as _random
     rng = _random.Random(42)
     big_bytes = bytes(rng.randrange(256) for _ in range(512)) * (2 * 1024 * 1024 // 512)
+    Path(BIG_PATH).parent.mkdir(parents=True, exist_ok=True)
     Path(BIG_PATH).write_bytes(big_bytes)
     big_sha = hashlib.sha256(big_bytes).hexdigest()
     check("G1 big payload generated", len(big_sha) == 64, big_sha)

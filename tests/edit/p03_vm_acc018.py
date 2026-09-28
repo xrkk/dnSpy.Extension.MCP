@@ -166,6 +166,16 @@ def main():
      packages[node['checkpoint_id']]=node
   check('UI lineage IDs and heads match MCP',all(any(l['lineage_id'] in row and l['head_checkpoint_id'] in row for row in v['items']) for l in payload(h).get('lineages',[])),v)
   check('history contains a real family',bool(payload(h).get('lineages')),h)
+  # CHK-HANDOFF-001: the explorer rebuilds its tree every second, so a snapshot
+  # that satisfies the item predicate can still carry a mid-rebuild (flat)
+  # path hierarchy. Re-acquire the tree with bounded retries until every
+  # lineage row is actually parented under its family node.
+  def hierarchy_ready(snapshot):
+   for lineage in payload(h).get('lineages',[]):
+    if not any(p['name'].startswith(lineage['lineage_id']+' ') and 'family '+lineage['family_id'] in p['ancestors'][:-1] for p in snapshot['paths']):
+     return False
+   return True
+  v=v if hierarchy_ready(v) else waitui('history-hierarchy',hierarchy_ready)
   for lineage in payload(h).get('lineages',[]):
    check('family lineage UIA hierarchy '+lineage['lineage_id'],any(p['name'].startswith(lineage['lineage_id']+' ') and 'family '+lineage['family_id'] in p['ancestors'][:-1] for p in v['paths']),v['paths'])
   for row in rows:
