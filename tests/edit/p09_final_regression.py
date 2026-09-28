@@ -366,6 +366,7 @@ def relaunch_dedicated(client: UiMcpClient, arch: str, iso: dict) -> None:
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
         '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force; Start-Sleep -Seconds 2}; '
+        'Remove-Item "' + iso["iso"] + '\\checkpoints\\edit-checkpoints\\*","' + iso["iso"] + '\\checkpoints\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; '
         "$env:DNMCP_TEST='1'; "
         '$p=Start-Process -FilePath "' + exe + '" -ArgumentList @(\'--multiple\',\'--dont-load-files\',\'--settings-file\',\'' + settings + '\') '
         '-WorkingDirectory "' + app + '" -PassThru; '

@@ -117,7 +117,7 @@ def main() -> int:
         check(rolled.get("ok") is True, "rollback", rolled)
     check(hashlib.sha256(Path(FIXTURE).read_bytes()).hexdigest() == before_file,
           "source disk unchanged")
-    print("T083 DEFERRED NEGATIVE PASS; ACC-016 POSITIVE UNFINISHED", flush=True)
+    print("PASS T083 deferred negative boundary; ACC-016 positive branch unfinished (S02 user-approved deferral)", flush=True)
     return 0
 
 
