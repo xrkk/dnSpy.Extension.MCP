@@ -401,7 +401,11 @@ def upload_inline(client: UiMcpClient, text: str, destination: str) -> None:
 def open_explorer(client: UiMcpClient, arch: str, iso: str) -> None:
     """Open the MCP Edit Explorer window on the dedicated instance (View menu)."""
     pid_text = powershell(client, 'Get-Content "' + iso + '\\ui-deploy\\' + arch + '\\pid.txt" -Raw', allow_failure=True)
-    pid = int(pid_text.strip())
+    import re as _re
+    pid_match = _re.search(r"\b(\d{3,8})\b", pid_text)
+    if not pid_match:
+        raise RuntimeError("pid file unreadable: " + pid_text[:120])
+    pid = int(pid_match.group(1))
     powershell(client, (
         '$ErrorActionPreference="Stop"; Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes; '
         '$ws=New-Object -ComObject WScript.Shell; $null=$ws.AppActivate(' + str(pid) + '); Start-Sleep -Milliseconds 600; '
