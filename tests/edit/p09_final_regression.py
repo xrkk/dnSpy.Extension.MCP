@@ -572,13 +572,16 @@ def main() -> int:
             summary = run_case_isolated(client, case, arch, run_id, iso)
             results.append(summary or {"case": case, "arch": arch, "status": "no-summary"})
             print(f"[{arch}] {case}: {(summary or {}).get('status')}", flush=True)
-            if case not in ("EDIT-ACC-021", "EDIT-ACC-023") or arch == "x86":
-                try:
-                    relaunch_dedicated(client, arch, iso)
-                except Exception as ex:  # noqa: BLE001
-                    results.append({"case": "instance-restart", "arch": arch, "status": "failed",
-                                    "detail": str(ex)[:400]})
-                    break
+            # Always restart between cases on BOTH architectures: the legacy
+            # skip-after-021-on-x64 left EDIT-ACC-023 running on 021's instance,
+            # where the schema panorama had already filled the 8-slot compile
+            # artifact registry and the S3 compile hit EDIT_CAPACITY_EXCEEDED.
+            try:
+                relaunch_dedicated(client, arch, iso)
+            except Exception as ex:  # noqa: BLE001
+                results.append({"case": "instance-restart", "arch": arch, "status": "failed",
+                                "detail": str(ex)[:400]})
+                break
     print("[4] cleanup + no-residue", flush=True)
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')

@@ -29,7 +29,9 @@ def configure_isolation(context) -> None:
     global URL, FIXTURE, BIG_PATH
     URL = context.mcp_url
     FIXTURE = context.fixture("ImportHost/ImportHost.exe")
-    BIG_PATH = context.work_file("p08-big-payload.bin")
+    # vm_path must land inside AllowedSampleRoot (the isolation fixture
+    # root); the work directory is not on the resource path allowlist.
+    BIG_PATH = context.fixture_output(".acc008-work/p08-big-payload.bin")
 
 
 def rid() -> str:
