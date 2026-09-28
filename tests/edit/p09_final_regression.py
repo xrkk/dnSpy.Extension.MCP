@@ -211,6 +211,87 @@ def fresh_dnspy(client: UiMcpClient, arch: str) -> bool:
     return False
 
 
+P08_FIXTURE_BUILDER = r'''
+
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Resources;
+using System.Runtime.Serialization;
+
+namespace P08Fx
+{
+    [Serializable]
+    public class Ghost
+    {
+        public string Value = "payload";
+        [OnDeserialized]
+        private void OnDeserialized(StreamingContext context)
+        {
+            File.WriteAllText(@"SENTINEL_PATH", "instantiated");
+        }
+    }
+}
+'@
+$out = 'FIXTURES\bin\ResourceHost'
+New-Item -ItemType Directory -Force -Path $out | Out-Null
+$strings = Join-Path $out 'Strings.resources'
+$writer = New-Object System.Resources.ResourceWriter($strings)
+$writer.AddResource('greeting', 'hello')
+$writer.AddResource('number', 42)
+$writer.AddResource('ratio', 2.5)
+$writer.AddResource('enabled', $true)
+$writer.AddResource('payload', [byte[]](1,2,3))
+$ghost = New-Object P08Fx.Ghost
+$ms = New-Object System.IO.MemoryStream
+$bf = New-Object System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+$bf.Serialize($ms, $ghost)
+$writer.AddResource('ghost', $ms.ToArray())
+$writer.Generate()
+$writer.Close()
+# icon resources: build a minimal .ico (one 1x1 icon) via System.Drawing
+Add-Type -AssemblyName System.Drawing
+$bmp = New-Object System.Drawing.Bitmap(16,16)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.Clear([System.Drawing.Color]::SteelBlue)
+$g.Dispose()
+$iconMs = New-Object System.IO.MemoryStream
+$bmp.Save($iconMs, [System.Drawing.Imaging.ImageFormat]::Png)
+$png = $iconMs.ToArray()
+# ICO container: header + one directory entry + png payload
+$ico = New-Object System.IO.MemoryStream
+$bw = New-Object System.IO.BinaryWriter($ico)
+$bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
+$bw.Write([byte]16); $bw.Write([byte]16); $bw.Write([byte]0); $bw.Write([byte]0)
+$bw.Write([uint16]1); $bw.Write([uint16]32)
+$bw.Write([uint32]$png.Length); $bw.Write([uint32](6 + 16))
+$bw.Write($png)
+$bw.Close()
+[IO.File]::WriteAllBytes((Join-Path $out 'app.ico'), $ico.ToArray())
+$csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$dll = Join-Path $out 'ResourceHost.dll'
+$src = Join-Path 'FIXTURES' 'ResourceHost.cs'
+& $csc @('/nologo','/target:library','/platform:anycpu','/optimize-',"`/resource:$strings,ResourceHost.Strings.resources","`/win32icon:$(Join-Path $out 'app.ico')","`/out:$dll",$src) | Out-Null
+if (-not (Test-Path $dll)) { throw 'ResourceHost build failed' }
+# strong-name fixture: generate an snk via RSACryptoServiceProvider, sign StrongHost, reference from InboundStrong
+$sn = '${env:ProgramFiles(x86)}\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\x64\sn.exe'
+& $sn -k 'FIXTURES\bin\p08.snk' | Out-Null
+$csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$strong = 'FIXTURES\bin\StrongHost'
+New-Item -ItemType Directory -Force -Path $strong | Out-Null
+$src = 'FIXTURES\StrongHost.cs'
+& $csc /nologo /target:exe /platform:anycpu /optimize- /keyfile:'FIXTURES\bin\p08.snk' /out:"$strong\StrongHost.exe" $src | Out-Null
+$strong86 = 'FIXTURES\bin\StrongHost-x86'
+New-Item -ItemType Directory -Force -Path $strong86 | Out-Null
+& $csc /nologo /target:exe /platform:x86 /optimize- /keyfile:'FIXTURES\bin\p08.snk' /out:"$strong86\StrongHost.exe" $src | Out-Null
+$inbSrc = Join-Path 'FIXTURES' 'InboundStrong.cs'
+& $csc /nologo /target:exe /platform:anycpu /optimize- /r:"$strong\StrongHost.exe" /out:"$strong\InboundStrong.exe" $inbSrc | Out-Null
+if (-not (Test-Path "$strong\StrongHost.exe")) { throw 'StrongHost build failed' }
+'ready'
+'''
+
+
 ISO_PORT = {"x64": 16990, "x86": 16991}
 
 
@@ -235,27 +316,39 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
                for name in ("ImportHost.cs", "InboundRef.cs", "ResourceHost.cs", "StrongHost.cs", "InboundStrong.cs")]
     entries.append((ROOT / "dist/TestIL.dll", "TestIL.dll"))
     upload_tree(client, entries, iso + "\\src")
-    csc64 = "$env:WINDIR\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe"
-    csc86 = "$env:WINDIR\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe"
-    fx = iso + "\\fixtures"
-    src = iso + "\\src"
+    # Full P08 fixture recipe: sentinel-carrying Strings.resources + icon,
+    # signed StrongHost pair, ImportHost variants, InboundRef. The builder
+    # works on a FIXTURES\ tree; run it in a scratch cwd and relocate.
+    scratch = iso + "\\fxbuild"
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
-        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\ImportHost.exe" "' + src + '\\ImportHost.cs"; '
-        'if($LASTEXITCODE){ throw "ImportHost x64" }; '
-        '& ' + csc86 + ' /nologo /target:exe /platform:x86 /out:"' + fx + '\\ImportHost-x86\\ImportHost.exe" "' + src + '\\ImportHost.cs"; '
-        'if($LASTEXITCODE){ throw "ImportHost x86" }; '
-        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\InboundRef.exe" /r:"' + fx + '\\ImportHost\\ImportHost.exe" "' + src + '\\InboundRef.cs"; '
-        'if($LASTEXITCODE){ throw "InboundRef" }; '
-        '& ' + csc64 + ' /nologo /target:library /out:"' + fx + '\\ResourceHost\\ResourceHost.dll" "' + src + '\\ResourceHost.cs"; '
-        'if($LASTEXITCODE){ throw "ResourceHost" }; '
-        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\StrongHost\\StrongHost.exe" "' + src + '\\StrongHost.cs"; '
-        'if($LASTEXITCODE){ throw "StrongHost x64" }; '
-        '& ' + csc86 + ' /nologo /target:exe /platform:x86 /out:"' + fx + '\\StrongHost-x86\\StrongHost.exe" "' + src + '\\StrongHost.cs"; '
-        'if($LASTEXITCODE){ throw "StrongHost x86" }; '
-        '& ' + csc64 + ' /nologo /target:exe /platform:x64 /out:"' + fx + '\\StrongHost\\InboundStrong.exe" /r:"' + fx + '\\StrongHost\\StrongHost.exe" "' + src + '\\InboundStrong.cs"; '
-        'if($LASTEXITCODE){ throw "InboundStrong" }; '
-        'Copy-Item "' + src + '\\TestIL.dll" "' + fx + '\\TestIL.dll" -Force; "fixtures built"'
+        'New-Item -ItemType Directory -Force -Path "' + scratch + '\\FIXTURES" | Out-Null; '
+        'Copy-Item "' + iso + '\\src\\*.cs" "' + scratch + '\\FIXTURES\\" -Force; '
+        '"prepared"'
+    ), timeout=60)
+    sentinel = iso + "\\work\\p08-sentinel.flag"
+    builder = P08_FIXTURE_BUILDER.replace("SENTINEL_PATH", sentinel.replace(chr(92), chr(92)+chr(92)))
+    upload_inline(client, builder, scratch + "\\build-fixtures.ps1")
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        'Set-Location -LiteralPath "' + scratch + '"; '
+        '& "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' + scratch + '\\build-fixtures.ps1"'
+    ), timeout=300)
+    fx = iso + "\\fixtures"
+    powershell(client, (
+        '$ErrorActionPreference="Stop"; '
+        '$b="' + scratch + '\\FIXTURES\\bin"; '
+        'New-Item -ItemType Directory -Force -Path "' + fx + '\\ResourceHost","' + fx + '\\StrongHost","' + fx + '\\StrongHost-x86" | Out-Null; '
+        'Copy-Item "$b\\ResourceHost\\ResourceHost.dll" "' + fx + '\\ResourceHost\\" -Force; '
+        'Copy-Item "$b\\StrongHost\\StrongHost.exe","$b\\StrongHost\\InboundStrong.exe" "' + fx + '\\StrongHost\\" -Force; '
+        'Copy-Item "$b\\StrongHost-x86\\StrongHost.exe" "' + fx + '\\StrongHost-x86\\" -Force; '
+        '$csc64="$env:WINDIR\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe"; '
+        '$csc86="$env:WINDIR\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe"; '
+        '& $csc64 /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\ImportHost.exe" "' + iso + '\\src\\ImportHost.cs"; if($LASTEXITCODE){ throw "ImportHost x64" }; '
+        '& $csc86 /nologo /target:exe /platform:x86 /out:"' + fx + '\\ImportHost-x86\\ImportHost.exe" "' + iso + '\\src\\ImportHost.cs"; if($LASTEXITCODE){ throw "ImportHost x86" }; '
+        '& $csc64 /nologo /target:exe /platform:x64 /out:"' + fx + '\\ImportHost\\InboundRef.exe" /r:"' + fx + '\\ImportHost\\ImportHost.exe" "' + iso + '\\src\\InboundRef.cs"; if($LASTEXITCODE){ throw "InboundRef" }; '
+        'Copy-Item "' + iso + '\\src\\TestIL.dll" "' + fx + '\\TestIL.dll" -Force; '
+        'if(-not (Test-Path "' + fx + '\\ResourceHost\\ResourceHost.dll")){ throw "ResourceHost missing" }; "fixtures built"'
     ), timeout=180)
     app = iso + "\\ui-deploy\\" + arch + "\\app"
     powershell(client, (
