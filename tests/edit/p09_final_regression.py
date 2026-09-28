@@ -298,7 +298,12 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
     fixture once and confirms visibility; per-case lineage cleaning keeps
     this from interfering with TestIL-based cases."""
     port = iso["port"]
-    warm_fixture = iso["iso"] + "\\fixtures\\TestIL.dll"
+    # Warm with ImportHost, not TestIL: ACC-015 asserts the exact loaded-module
+    # set (its own target plus InboundRef plus mscorlib) and ACC-006 needs the
+    # ImportHost entry visible by its first immediate list query. ImportHost is
+    # already the target of the cases that care, so a warm-loaded copy keeps
+    # every module-list expectation intact.
+    warm_fixture = iso["iso"] + "\\fixtures\\ImportHost\\ImportHost.exe"
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
         '$body = @{jsonrpc="2.0";id=1;method="initialize";params=@{protocolVersion="2025-03-26";capabilities=@{};clientInfo=@{name="p09-warm";version="0"}}} | ConvertTo-Json -Depth 5 -Compress; '
@@ -309,8 +314,8 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
         '$ready = $false; for($i=0;$i -lt 60;$i++){ '
         '$q = @{jsonrpc="2.0";id=997;method="tools/call";params=@{name="list_assemblies";arguments=@{}}} | ConvertTo-Json -Depth 8 -Compress; '
         'try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $q -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
-        'if ($r.result.structuredContent.assemblies.Name -contains "TestIL") { $ready = $true; break }; Start-Sleep -Milliseconds 500 }; '
-        'if(-not $ready){ throw "warmup did not observe TestIL" }; "warmed"'
+        'if ($r.result.structuredContent.assemblies.Name -contains "ImportHost") { $ready = $true; break }; Start-Sleep -Milliseconds 500 }; '
+        'if(-not $ready){ throw "warmup did not observe ImportHost" }; "warmed"'
     ), timeout=120)
 
 
