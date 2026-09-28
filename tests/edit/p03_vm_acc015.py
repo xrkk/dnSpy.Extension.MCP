@@ -33,7 +33,11 @@ def configure_isolation(context) -> None:
     global URL, FIXTURE, INBOUND, STORE
     context.validate()
     URL = context.mcp_url
-    FIXTURE = context.fixture("ImportHost/ImportHost.exe")
+        # Arch-native ImportHost: ACC-006 launches an exported copy of this
+    # document and the debuggee bitness must match the declared
+    # architecture; all ImportHost cases and the warmup use the same
+    # variant so the loaded-module name stays unique.
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe" if context.architecture == "x64" else "ImportHost-x86/ImportHost.exe")
     INBOUND = context.fixture("ImportHost/InboundRef.exe")
     STORE = Path(context.checkpoint_store)
 

@@ -28,7 +28,11 @@ PASSES: list[str] = []
 def configure_isolation(context) -> None:
     global URL, FIXTURE, BIG_PATH
     URL = context.mcp_url
-    FIXTURE = context.fixture("ImportHost/ImportHost.exe")
+        # Arch-native ImportHost: ACC-006 launches an exported copy of this
+    # document and the debuggee bitness must match the declared
+    # architecture; all ImportHost cases and the warmup use the same
+    # variant so the loaded-module name stays unique.
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe" if context.architecture == "x64" else "ImportHost-x86/ImportHost.exe")
     # vm_path must land inside AllowedSampleRoot (the isolation fixture
     # root); the work directory is not on the resource path allowlist.
     BIG_PATH = context.fixture_output(".acc008-work/p08-big-payload.bin")

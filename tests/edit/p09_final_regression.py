@@ -298,11 +298,13 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
     fixture once and confirms visibility; per-case lineage cleaning keeps
     this from interfering with TestIL-based cases."""
     port = iso["port"]
-    # Warm with the SAME ImportHost document every case driver opens (the
-    # fixed ImportHost/ build). Loading a different variant here would add a
-    # second document also named ImportHost and edit_begin would correctly
-    # refuse with target_ambiguous_or_not_found.
-    warm_fixture = iso["iso"] + "\\fixtures\\ImportHost\\ImportHost.exe"
+    # Warm with the SAME ImportHost variant every driver opens for this
+    # architecture: all ImportHost cases (005/006/008/015) select the
+    # arch-native build so ACC-006's entry launch is a matching-bitness
+    # process; loading any other variant here would add a second same-named
+    # document and edit_begin would refuse with target_ambiguous_or_not_found.
+    variant = "ImportHost-x86" if iso.get("arch") == "x86" else "ImportHost"
+    warm_fixture = iso["iso"] + "\\fixtures\\" + variant + "\\ImportHost.exe"
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
         '$body = @{jsonrpc="2.0";id=1;method="initialize";params=@{protocolVersion="2025-03-26";capabilities=@{};clientInfo=@{name="p09-warm";version="0"}}} | ConvertTo-Json -Depth 5 -Compress; '

@@ -44,10 +44,10 @@ def configure_isolation(context) -> None:
     context.validate()
     URL = context.mcp_url
     ARCH = context.architecture
-    # One ImportHost document across architectures: the x86 instance loads
-    # the same assembly as metadata (dnSpy never executes it), keeping the
-    # loaded-module name unique for edit_begin.
-    FIXTURE = context.fixture("ImportHost/ImportHost.exe")
+    # Arch-native ImportHost so the exported launch copy matches the
+    # declared debuggee architecture; every ImportHost case and the
+    # warmup uses the same variant per architecture.
+    FIXTURE = context.fixture("ImportHost/ImportHost.exe" if ARCH == "x64" else "ImportHost-x86/ImportHost.exe")
     LAUNCH_ROOT = context.fixture_output(f".acc005-launch/{context.run_id}/{ARCH}")
 
 # EditClass compilation of the same ImportHost.Machines class: edited bodies for
