@@ -3,7 +3,7 @@
 - 重建时间：2026-09-13（第二轮：CHK-011—017 整改）
 - 背景：独立核验（`PLAN/2026.09.14/2026.09.12-01-独立核验-dnSpy-MCP结构化程序集编辑.md`，CHK-001—010）整改后的诚实重建；不宣称未经本轮证据支持的项。整改处置见 `PLAN/2026.09.14/2026.09.14-29-独立核验整改-CHK-001至010.md`。
 - 插件构建：net48 + net10.0-windows Release 0 error（独立临时检出构建，外部检出未覆写）
-- 工具计数事实来源：`tools/list` 实测（`tools/export_tool_registry.py` 双源对照，78 通告 + 8 个 `edit_test_*` 不通告）
+- 工具计数事实来源：`tools/list` 实测（`tools/export_tool_registry.py` 双源对照，78 通告 + 9 个 `edit_test_*` 不通告（`edit_test_strong_name` 自 `ed6cacc` 起加入））
 - dnSpyEx Release 复核：官方 latest v6.6.0（2026-06-20）== VM 安装 v6.6.0 ✓
 
 ## 1. 定向整改证据（CHK 反例的正例闭合）

@@ -1287,7 +1287,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 定义目标可以是 token 或事务 object_id 等 schema 指定地址；不能把跨修订 token/name 当稳定身份。检查点 replay 的定义地址形式为 `t/<index>[/t/<nested-index>][/m|f|p|e/<index>][/a|g/<index>]`，绑定预期图指纹，不是永久对象 ID。`reference_add.reference.form` 闭集是 `assembly_ref,type_ref,type_spec,member_ref,method_spec`；`type_ref` 必须显式 scope，`assembly_ref` 的 public key/token 必须显式 kind，不从字节长度猜，具体字段见附录 C。IL body 指令、operand、局部变量、异常处理、CDI/资源 base64 的全量约束均在对应 operation 子对象里。
 
-`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows 公开验收待执行。
+`managed_resource_update.entry` 支持 17 个精确 `value_kind`（`bytes` 保留 ByteArray/Stream，合计 18 个存储码）：原 13 类及 `char` 的 `{code_unit:0..65535}`、`decimal` 的 `{lo,mid,hi,negative,scale}`、`timespan` 的 `{ticks:"规范有符号 int64"}`、`datetime` 的 `{binary:"规范有符号 int64 DateTime.ToBinary"}`。编辑保留原存储码及全部未改条目 raw；自定义类型绝不反序列化。新增四类持久操作要求 `kind_version=2`，原 13 类与整体 blob 保持 v1；Windows x64/x86 公开验收已完成（2026-09-28：`t091_vm_resource_history` 与 `t094_vm_resource_matrix` 驱动对真实部署各 50/142 项检查全过，含 13 类编辑/undo/redo/restore、边界向量矩阵、混合 v1/v2 历史与独立 BCL 读回；证据见 `.tmp` 协作目录 T091-T094-resource-public/evidence）。
 
 持久操作版本：`interface_add`、`reference_add` 从 v1 起；部分原有种类使用结构化 TypeSig、overrides 或 CDI `enc_state_map` 时自动要求 v2，其余保持 v1。未知 `(kind,kind_version)` 以 `EDIT_OPERATION_VERSION_UNSUPPORTED` 拒绝；旧写兼容 `legacy_symbol_rename` 仅存在历史回放表，不是公开 `edit_apply` kind。`strong_name_remove` 保留输入/持久种类，但新公开授权暂缓并返回 `EDIT_CAPABILITY_UNAVAILABLE`；历史回放保留，ACC016 正向分支未完成。
 
