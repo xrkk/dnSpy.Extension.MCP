@@ -264,7 +264,7 @@ def main() -> int:
     tx = str(tx_row.get("transaction_id", ""))
     revision = int(tx_row.get("work_revision", 0))
     baseline_private = str(payload(begin).get("fingerprints", {}).get("private", ""))
-    check("T1 transaction began", bool(tx) and revision == 0, json.dumps(begin)[:200])
+    check("T1 transaction began", bool(tx) and revision == 0, json.dumps(begin)[:900])
 
     def compile_call(source: str) -> str:
         envelope = call(client, "edit_compile", {

@@ -298,12 +298,12 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
     fixture once and confirms visibility; per-case lineage cleaning keeps
     this from interfering with TestIL-based cases."""
     port = iso["port"]
-    # Warm with ImportHost, not TestIL: ACC-015 asserts the exact loaded-module
-    # set (its own target plus InboundRef plus mscorlib) and ACC-006 needs the
-    # ImportHost entry visible by its first immediate list query. ImportHost is
-    # already the target of the cases that care, so a warm-loaded copy keeps
-    # every module-list expectation intact.
-    warm_fixture = iso["iso"] + "\\fixtures\\ImportHost\\ImportHost.exe"
+    # Warm with the SAME ImportHost variant the case drivers open for this
+    # architecture. Loading the other variant would leave two distinct
+    # documents both named ImportHost, and edit_begin would correctly refuse
+    # with target_ambiguous_or_not_found.
+    variant = "ImportHost-x86" if iso.get("arch") == "x86" else "ImportHost"
+    warm_fixture = iso["iso"] + "\\fixtures\\" + variant + "\\ImportHost.exe"
     powershell(client, (
         '$ErrorActionPreference="Stop"; '
         '$body = @{jsonrpc="2.0";id=1;method="initialize";params=@{protocolVersion="2025-03-26";capabilities=@{};clientInfo=@{name="p09-warm";version="0"}}} | ConvertTo-Json -Depth 5 -Compress; '
@@ -422,8 +422,8 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
         'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
         'if($LASTEXITCODE -ne 0){ throw "dedicated instance health failed" }; "instance up"'
     ), timeout=180)
-    warm_instance(client, {"iso": iso, "port": port})
-    return {"iso": iso, "port": port, "mcp_url": "http://127.0.0.1:" + str(port) + "/mcp"}
+    warm_instance(client, {"iso": iso, "port": port, "arch": arch})
+    return {"iso": iso, "port": port, "arch": arch, "mcp_url": "http://127.0.0.1:" + str(port) + "/mcp"}
 
 
 def upload_inline(client: UiMcpClient, text: str, destination: str) -> None:
