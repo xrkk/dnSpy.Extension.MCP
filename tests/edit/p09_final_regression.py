@@ -310,12 +310,12 @@ def warm_instance(client: UiMcpClient, iso: dict) -> None:
         '$null = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $body -Headers $hdr -SessionVariable s -TimeoutSec 10; '
         '$openBody = @{jsonrpc="2.0";id=2;method="tools/call";params=@{name="open_files";arguments=@{paths=@("' + warm_fixture + '")}}} | ConvertTo-Json -Depth 8 -Compress; '
         '$null = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $openBody -Headers $hdr -WebSession $s -TimeoutSec 30; '
-        '$ready = $false; for($i=0;$i -lt 60;$i++){ '
+        '$ready = $false; for($i=0;$i -lt 24;$i++){ '
         '$q = @{jsonrpc="2.0";id=997;method="tools/call";params=@{name="list_assemblies";arguments=@{}}} | ConvertTo-Json -Depth 8 -Compress; '
         'try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $q -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
         'if ($r.result.structuredContent.assemblies.Name -contains "ImportHost") { $ready = $true; break }; Start-Sleep -Milliseconds 500 }; '
         '$mBody = @{jsonrpc="2.0";id=998;method="tools/call";params=@{name="list_methods";arguments=@{assembly_name="ImportHost";type_full_name="ImportHost.Program"}}} | ConvertTo-Json -Depth 8 -Compress; '
-        '$treeReady = $false; for($i=0;$i -lt 60;$i++){ '
+        '$treeReady = $false; for($i=0;$i -lt 24;$i++){ '
         'try { $m = Invoke-RestMethod -Uri "http://127.0.0.1:' + str(port) + '/mcp" -Method Post -Body $mBody -Headers $hdr -WebSession $s -TimeoutSec 10 } catch { Start-Sleep -Milliseconds 500; continue }; '
         '$rows = @($m.result.structuredContent.items); if ($rows.Count -ge 1) { $treeReady = $true; break }; Start-Sleep -Milliseconds 500 }; '
         'if(-not $ready){ throw "warmup did not observe ImportHost" }; '
@@ -612,12 +612,17 @@ def main() -> int:
             # skip-after-021-on-x64 left EDIT-ACC-023 running on 021's instance,
             # where the schema panorama had already filled the 8-slot compile
             # artifact registry and the S3 compile hit EDIT_CAPACITY_EXCEEDED.
+            # One bounded retry absorbs transient management-connector timeouts.
             try:
                 relaunch_dedicated(client, arch, iso)
-            except Exception as ex:  # noqa: BLE001
-                results.append({"case": "instance-restart", "arch": arch, "status": "failed",
-                                "detail": str(ex)[:400]})
-                break
+            except Exception:  # noqa: BLE001
+                time.sleep(5)
+                try:
+                    relaunch_dedicated(client, arch, iso)
+                except Exception as ex:  # noqa: BLE001
+                    results.append({"case": "instance-restart", "arch": arch, "status": "failed",
+                                    "detail": str(ex)[:400]})
+                    break
     print("[4] cleanup + no-residue", flush=True)
     powershell(client, '$t=@(Get-Process dnSpy,dnSpy-x86 -ErrorAction SilentlyContinue); if($t.Count){$t|Stop-Process -Force}; "stopped"')
     powershell(client, '$root="$env:USERPROFILE\\Desktop\\dnspy-mcp-artifacts"; Remove-Item "$root\\edit-checkpoints\\*","$root\\edit-output\\*" -Recurse -Force -ErrorAction SilentlyContinue; "cleaned"')
