@@ -363,6 +363,9 @@ def provision_isolation(client: UiMcpClient, arch: str, run_id: str) -> dict:
         'robocopy "C:\\Tools\\dnSpy" "' + app + '" /E /NFL /NDL /NJH /NJS | Out-Null; '
         'if($LASTEXITCODE -ge 8){ throw "robocopy failed" }; "app copied"'
     ), timeout=300)
+    # acc018 reads the deployment identity at the ui-deploy root.
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    upload_inline(client, json.dumps({"head": head}), iso + "\\ui-deploy\\deployed-identity.json")
     settings = iso + "\\ui-deploy\\" + arch + "\\settings.xml"
     cfg_json = ('{"AllowedSampleRoot":"' + fx.replace('\\', '\\\\')
                 + '","ArtifactRoot":"' + iso.replace('\\', '\\\\') + '\\\\checkpoints'
