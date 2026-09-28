@@ -511,7 +511,7 @@ def relaunch_dedicated(client: UiMcpClient, arch: str, iso: dict) -> None:
         '$p=Start-Process -FilePath "' + exe + '" -ArgumentList @(\'--multiple\',\'--dont-load-files\',\'--settings-file\',\'' + settings + '\') '
         '-WorkingDirectory "' + app + '" -PassThru; '
         'Start-Sleep -Milliseconds 300; $p.Id | Set-Content "' + iso["iso"] + '\\ui-deploy\\' + arch + '\\pid.txt"; '
-        'for($i=0;$i -lt 120;$i++){ '
+        'for($i=0;$i -lt 40;$i++){ '
         '& curl.exe -fsS --max-time 2 http://127.0.0.1:' + str(iso["port"]) + '/health 2>$null | Out-Null; '
         'if($LASTEXITCODE -eq 0){ break }; Start-Sleep -Milliseconds 500 }; '
         'if($LASTEXITCODE -ne 0){ throw "dedicated relaunch health failed" }; "relaunched"'
