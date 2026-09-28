@@ -27,7 +27,7 @@ class EditResponseContractTests(unittest.TestCase):
 
     def test_impact_response_without_apply_fields(self):
         payload = dict(transaction=TRANSACTION, impact=dict(scope='loaded_modules', modules=[],
-            inbound_references=[], risk_ids=[], identity_operations=[]))
+            inbound_references=[], risk_ids=[], identity_operations=[], scan_revision=1, stale=False))
         jsonschema.Draft202012Validator(result_schema('edit_impact_scan')).validate(payload)
 
     def test_import_response_declares_batch_fields(self):
