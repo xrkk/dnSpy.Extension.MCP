@@ -82,17 +82,36 @@ P09: dnSpy UI、文档、测试提示词和最终全量验收
 总纲核验
 
 
+> 2026.09.24:
+
+写入剩余任务清单: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.24/2026.09.24-01-剩余任务实施步骤与验收清单.md`
+
+> 2026.09.26:
+
+继续执行
+
+> 2026.09.28:
+
+写入剩余任务清单: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.28/2026.09.28-01-任务清单-剩余实施与验收.md`
+
+GLM 执行此清单.
+
+> 2026.09.29:
+
 总纲方案: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.08.31/2026.08.31-02-总纲-dnSpy-MCP结构化程序集编辑.md`
 需求文档: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.08.31/2026.08.31-01-需求提炼-dnSpy-MCP结构化程序集编辑.md`
-
-
-
 
 评估方案: 为 dnSpy-MCP 设计 "情景压力测试"
 - 设计 100 个 "情景"
 - 每个 "情景" 最少连续测试 10 个 mcp 接口
 - 每个接口最少要包含在 5 个 "情景" 中
-需求不清晰可以用 grill-me 提问 (每次只问一个问题, 给出选项 ABC (最少 2 个), 推荐选项放 A, 且要说明理由)
+需求不清晰可以用 grill-with-docs 提问 (每次只问一个问题, 给出选项 ABC (最少 2 个), 推荐选项放 A, 且要说明理由)
+
+
+总纲方案: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.29/2026.09.29-02-总纲-dnSpy-MCP情景链路测试.md`
+需求文档: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.29/2026.09.29-01-需求提炼-dnSpy-MCP情景链路测试.md`
+
+
 
 
 
