@@ -1,5 +1,51 @@
 {
  "schema_version": "dnspy.scenario.inventory.v1",
- "source": "P01 E:\\dnspy-scenario\\evidence\\artifacts-initial.json (空, 同步于 2026-09-29)",
- "files": []
+ "source": "P04 预检清理(2026-09-29): 开发期探查产物与血统检查点清除后重置为空清单",
+ "files": [
+  {
+   "path": "edit-checkpoints/lineage-d08b63853e6a4c0b90c5a9c4ea659156.dnspy-mcp-checkpoints",
+   "sha256": "62a8b7fa2284006a8537106a3c345329a00ab1c9f05e1518cc5a101c5bf43f93",
+   "first_seen_scenario": "S-F02-06"
+  },
+  {
+   "path": "edit-checkpoints/lineage-ea358b4054c6a3070f16a869f4cd5cc0.dnspy-mcp-checkpoints",
+   "sha256": "972ce18c43dcb164df1be3c81f789b21dfc7931abd3a51e95f92326454d627d6",
+   "first_seen_scenario": "S-F06-01"
+  },
+  {
+   "path": "f06-strings-01.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-01"
+  },
+  {
+   "path": "edit-checkpoints/lineage-9da72bd06a1a67dc6538c06de272c9f9.dnspy-mcp-checkpoints",
+   "sha256": "4b7667ccea30c945309126c3eb38e7cc65c3dbced654095c940ba9e806e4b800",
+   "first_seen_scenario": "S-F07-01"
+  },
+  {
+   "path": "edit-checkpoints/lineage-14b6440b531b5ac32ce5e44201d9ff2d.dnspy-mcp-checkpoints",
+   "sha256": "b17e8952ff22a0fe39bf8496fd8bccdb824969022ff12442381b3ac4eae32484",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": "edit-checkpoints/lineage-d3922ea73f3f1005d58044fef6178977.dnspy-mcp-checkpoints",
+   "sha256": "869ac9372f3fb47410759450e01dcfaaa4086dd87e8f301f9c05cb705e0dac55",
+   "first_seen_scenario": "S-F02-06"
+  },
+  {
+   "path": "edit-checkpoints/lineage-304e567657c4d23d043dfa38633a320f.dnspy-mcp-checkpoints",
+   "sha256": "38d6635d50a228b3c1650e4bdf459b94e9c148bcf5914202b9fd124f5c9ec304",
+   "first_seen_scenario": "S-F06-01"
+  },
+  {
+   "path": "edit-checkpoints/lineage-7490a38d41e0c907154b3cabb0a52ed6.dnspy-mcp-checkpoints",
+   "sha256": "feac0eeadecc4174a6e361e69a1ae9f2db4e5c1ec3e19eabc8dd9a094489e26b",
+   "first_seen_scenario": "S-F07-01"
+  },
+  {
+   "path": "f07-ren-01.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-01"
+  }
+ ]
 }

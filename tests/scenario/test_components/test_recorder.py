@@ -54,7 +54,7 @@ def test_unexpected_error_recorded_and_reraised(tmp_path):
     client, ledger, _ = make_client(tmp_path)
     enqueue_error(client, '{"error": {"code": "E_1"}}')
     with pytest.raises(ToolCallError):
-        client.call_tool("t", {})
+        client.call_tool("t", {})  # no prediction -> raises
     rows = read_ledger(ledger.path)
     call_row = [r for r in rows if r["kind"] == "call"][0]
     assert call_row["outcome"] == "unexpected_error"
@@ -62,12 +62,11 @@ def test_unexpected_error_recorded_and_reraised(tmp_path):
     assert client.unexpected_errors == 1
 
 
-def test_expected_error_strong_assert_written(tmp_path):
+def test_expected_error_strong_assert_written_and_swallowed(tmp_path):
     client, ledger, _ = make_client(tmp_path)
     enqueue_error(client, '{"error": {"code": "E_1"}}')
     with client.expect_error("t", "E_1"):
-        with pytest.raises(ToolCallError):
-            client.call_tool("t", {})
+        client.call_tool("t", {})  # expected hit: swallowed, no raise
     rows = read_ledger(ledger.path)
     assert_row = [r for r in rows if r["kind"] == "assert"][0]
     assert assert_row["grade"] == "strong"
@@ -82,8 +81,7 @@ def test_expected_error_any_code_matches_when_none_given(tmp_path):
     client, ledger, _ = make_client(tmp_path)
     enqueue_error(client, '{"error": {"code": "WHATEVER"}}')
     with client.expect_error("t", None):
-        with pytest.raises(ToolCallError):
-            client.call_tool("t", {})
+        client.call_tool("t", {})  # any code accepted: swallowed
     assert client.expected_errors == 1
 
 

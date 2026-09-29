@@ -103,7 +103,7 @@ class RecordingClient(DnSpyClient):
         )
 
     def _handle_tool_error(self, tool: str, arguments: Mapping[str, Any], exc: ToolCallError,
-                           step: int, duration_ms: int) -> None:
+                           step: int, duration_ms: int) -> bool:
         code, head = extract_error_code(str(exc))
         if tool in self._predictions:
             expected_code = self._predictions.get(tool)
@@ -118,7 +118,7 @@ class RecordingClient(DnSpyClient):
                 self.expected_errors += 1
                 self._record_call(tool, arguments, "expected_error", True, code, head,
                                   duration_ms, step)
-                return
+                return True  # swallowed: the expected error was observed
             # wrong error code: strong assertion failure
             self._asserts.strong_failed += 1
             self._record_call(tool, arguments, "unexpected_error", True, code, head,
@@ -128,7 +128,7 @@ class RecordingClient(DnSpyClient):
         self.unexpected_errors += 1
         self._record_call(tool, arguments, "unexpected_error", True, code, head,
                           duration_ms, step)
-        raise exc
+        return False  # unexpected: caller re-raises
 
     def call_tool(self, name: str, arguments: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
         args = dict(arguments or {})
@@ -139,8 +139,10 @@ class RecordingClient(DnSpyClient):
             result = super().call_tool(name, args)
         except ToolCallError as exc:
             self._in_recorded_call = False
-            self._handle_tool_error(name, args, exc, step, int((time.monotonic() - started) * 1000))
-            raise  # unreachable: _handle_tool_error either returns or raises
+            if not self._handle_tool_error(name, args, exc, step,
+                                           int((time.monotonic() - started) * 1000)):
+                raise  # unexpected error: propagate
+            return None  # expected error swallowed
         except TRANSPORT_ERRORS as exc:
             self._in_recorded_call = False
             self._record_call(name, args, "transport_error", True, None,
@@ -172,9 +174,21 @@ class RecordingClient(DnSpyClient):
         """Delegates to self.call_tool — recording happens exactly once there.
 
         edit_* convenience helpers funnel through here, so every tool call in
-        the scenario layer produces exactly one call row.
+        the scenario layer produces exactly one call row. A swallowed
+        expected-error yields None (the base class cannot handle that).
         """
-        return super().call_tool_json(name, arguments)
+        result = self.call_tool(name, arguments)
+        if result is None:
+            return None
+        if "structuredContent" in result:
+            return result["structuredContent"]
+        text = self._first_text(result)
+        if text is None:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
 
     # Close the bypass through raw request paths: any direct tools/call made
     # OUTSIDE the recorded call paths is funneled through call_tool (guarded

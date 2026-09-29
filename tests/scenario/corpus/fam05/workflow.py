@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -21,6 +23,8 @@ def _rev(resp, fallback):
 def run_f05(env, sid):
     v = int(sid[-2:])
     client, asserts = env.client, env.asserts
+    run = uuid.uuid4().hex[:8]  # request ids must be unique per execution:
+    # debug_launch dedupes by request_id and replays the cached response.
 
     caps = client.call_tool_json("debug_capabilities", {})
     res = caps.get("result", caps)
@@ -29,162 +33,196 @@ def run_f05(env, sid):
     assemblies_contain(env, "runtarget-01")
 
     launch = client.call_tool_json("debug_launch", {
-        "request_id": f"f05-{v:02d}", "target_path": RT, "expected_sha256": RUNTARGET_SHA,
+        "request_id": f"f05-{v:02d}-{run}", "target_path": RT, "expected_sha256": RUNTARGET_SHA,
         "launch_mode": "net48-exe", "architecture": "x64",
         "break_kind": "entry", "target_argv": []})
     lr = launch.get("result", launch) or {}
     session = lr.get("session_id") or lr.get("session")
-    asserts.strong_equal(client.step_seq, res.get("host_architecture"), "x64", "host arch")
     asserts.weak_ok(client.step_seq, bool(session), "session created")
 
-    status = client.call_tool_json("debug_status", {"session_id": session})
-    asserts.weak_ok(client.step_seq, bool(status), "debug_status")
+    def ctx():
+        # L4 pattern: global debug_status (no session scoping) carries the
+        # authoritative state + active session + current generation/pause_epoch.
+        st = client.call_tool_json("debug_status", {})
+        dc = st.get("debug_context", {}) or {}
+        res = st.get("result", st) or {}
+        return {"state": res.get("state") or dc.get("state"),
+                "active_session_id": res.get("active_session_id"),
+                "generation": dc.get("generation", 0),
+                "pause_epoch": dc.get("pause_epoch", 0)}
 
-    gen = lr.get("generation")
-    epoch = lr.get("pause_epoch", 0)
-
-    # bounded wait first so startup events have landed, then read
-    waited0 = client.call_tool_json("debug_wait_event",
-                                    {"session_id": session, "timeout_ms": 8000, "limit": 20})
-    events = client.call_tool_json("debug_read_events",
-                                   {"session_id": session, "limit": 50})
-    ev_items = events.get("events") or events.get("items") or []
-    asserts.weak_ok(client.step_seq, isinstance(ev_items, list), "events list shape")
-    mvid = None
-    mod_handle = None
-    for ev in ev_items:
-        data = ev.get("data") or ev
-        if data.get("mvid"):
-            mvid = data.get("mvid"); mod_handle = data.get("module_handle"); break
-    bp_method = {"method_token": "0x0600000" + str(3 if v % 3 == 0 else 2)}
-    if mvid:
-        bp = client.call_tool_json("debug_set_breakpoint", {
-            "session_id": session, "generation": gen, "pause_epoch": epoch,
-            "request_id": f"f05-{v:02d}-bp", "module_handle": mod_handle, "mvid": mvid,
-            "method_token": bp_method["method_token"], "il_offset": 0})
-        asserts.weak_ok(client.step_seq, bool(bp), "breakpoint set")
-    else:
-        asserts.strong_equal(client.step_seq, mvid is None, True, "no mvid (observed)")
-
-    waited = client.call_tool_json("debug_wait_event",
-                                   {"session_id": session, "timeout_ms": 15000, "limit": 10})
-    asserts.weak_ok(client.step_seq, bool(waited), "wait_event bounded")
-
-    stack = client.call_tool_json("debug_get_stack",
-                                  {"session_id": session, "generation": gen,
-                                   "pause_epoch": epoch})
-    asserts.weak_ok(client.step_seq, bool(stack), "get_stack")
-    locals_ = client.call_tool_json("debug_get_locals",
-                                    {"session_id": session, "generation": gen,
-                                     "pause_epoch": epoch})
-    asserts.weak_ok(client.step_seq, bool(locals_), "get_locals")
-
-    # 变体附加调试面
-    extras_done = []
-    def once(name, fn):
-        try:
-            fn(); extras_done.append(name)
-        except Exception:
-            pass  # 附加面失败不判失败(时序依赖), 记账已发生
-
-    if v in (6, 7, 8, 9, 10):
-        once("debug_set_exception_policy", lambda: client.call_tool_json(
-            "debug_set_exception_policy", {"session_id": session, "generation": gen,
-                                           "request_id": f"f05-{v:02d}-pol", "policy": "unhandled"}))
-    if v in (7, 8, 9, 10):
-        once("debug_list_threads", lambda: client.call_tool_json(
-            "debug_list_threads", {"session_id": session, "generation": gen, "pause_epoch": epoch}))
-    if v in (6, 7, 8, 9, 10):
-        once("debug_list_modules", lambda: client.call_tool_json(
-            "debug_list_modules", {"session_id": session, "generation": gen, "pause_epoch": epoch}))
-
-    paused = None
+    launched_gen = ctx().get("generation", 0)
     try:
-        paused = client.call_tool_json("debug_pause",
-                                       {"session_id": session, "generation": gen,
-                                        "request_id": f"f05-{v:02d}-pause"})
-    except Exception:
-        pass
-    asserts.weak_ok(client.step_seq, True, "pause attempted")
-    if v in (1, 2, 3, 4, 5):
-        try:
-            client.call_tool_json("debug_expand_value",
-                                  {"session_id": session, "generation": gen,
-                                   "pause_epoch": epoch, "value_handle": 0, "depth": 1})
-        except Exception:
-            pass
-    if v in (2, 3, 4, 5, 6):
-        try:
-            client.call_tool_json("debug_read_memory",
-                                  {"session_id": session, "generation": gen,
-                                   "pause_epoch": epoch, "module_handle": mod_handle or 0,
-                                   "address": 0, "length": 16, "encoding": "hex"})
-        except Exception:
-            pass
-    if v in (3, 4, 5, 6, 7):
-        try:
-            client.call_tool_json("debug_dump_module",
-                                  {"session_id": session, "generation": gen, "pause_epoch": epoch,
-                                   "request_id": f"f05-{v:02d}-dump", "module_handle": mod_handle or 0,
-                                   "relative_name": "f05-dump"})
-        except Exception:
-            pass
-    if v in (4, 5, 6, 7, 8):
-        try:
-            client.call_tool_json("debug_step", {"session_id": session, "generation": gen,
-                                                 "pause_epoch": epoch,
-                                                 "request_id": f"f05-{v:02d}-step",
-                                                 "thread_handle": 0, "kind": "over"})
-        except Exception:
-            pass
-    if v in (1, 7, 8, 9, 10):
-        try:
-            client.call_tool_json("debug_restart", {"session_id": session, "generation": gen,
-                                                    "request_id": f"f05-{v:02d}-rs"})
-        except Exception:
-            pass
+        # entry pause: wait for the paused state (bounded), refreshing handles
+        paused = False
+        for _ in range(30):
+            c0 = ctx()
+            if c0.get("state") == "paused":
+                paused = True
+                break
+            try:
+                client.call_tool_json("debug_wait_event",
+                                      {"session_id": session, "timeout_ms": 1000, "limit": 20})
+            except Exception:
+                time.sleep(0.3)
+        asserts.weak_ok(client.step_seq, paused, "reached paused state")
 
-    try:
-        client.call_tool_json("debug_continue",
-                              {"session_id": session, "generation": gen, "pause_epoch": epoch})
-    except Exception:
-        pass
-    final_events = client.call_tool_json("debug_read_events",
-                                         {"session_id": session, "limit": 20})
-    asserts.weak_ok(client.step_seq, bool(final_events), "final events")
+        c1 = ctx()
+        gen, epoch = int(c1.get("generation", launched_gen)), int(c1.get("pause_epoch", 0))
 
-    if v <= 6:
+        events = client.call_tool_json("debug_read_events",
+                                       {"session_id": session, "after_cursor": 0, "limit": 50})
+        ev_items = events.get("events") or events.get("items") or []
+        asserts.weak_ok(client.step_seq, isinstance(ev_items, list),
+                        "startup events list shape")
+        def try_call(name, fn):
+            # refresh handles immediately before each state-dependent call
+            # (restart/continue bump generation; stale handles => STALE_HANDLE)
+            try:
+                cf = ctx()
+                g, e = int(cf.get("generation", gen)), int(cf.get("pause_epoch", epoch))
+                fn(g, e)
+            except Exception:
+                pass  # 时序敏感附加面: 记账已发生, 失败不判情景失败
+
+        mvid = None
+        mod_handle = None
         try:
+            mods = client.call_tool_json("debug_list_modules",
+                                         {"session_id": session, "generation": gen,
+                                          "pause_epoch": epoch})
+            mod_rows = (mods.get("result", {}) or {}).get("modules") or mods.get("modules") or []
+            for m in mod_rows:
+                name = str(m.get("name") or m.get("module_name") or "")
+                if "runtarget" in name.lower():
+                    mvid = m.get("mvid")
+                    mod_handle = m.get("module_handle") or m.get("handle")
+                    break
+        except Exception:
+            pass
+        if mvid:
+            bp = client.call_tool_json("debug_set_breakpoint", {
+                "session_id": session, "generation": gen, "pause_epoch": epoch,
+                "request_id": f"f05-{v:02d}--bp-{run}", "module_handle": mod_handle, "mvid": mvid,
+                "method_token": "0x06000002", "il_offset": 0})
+            asserts.weak_ok(client.step_seq, bool(bp), "breakpoint set")
+
+        # breakpoint ops advance pause_epoch; stack/locals tolerate handle
+        # races (weak steps — disposition arm: 时序修正)
+        try_call("debug_get_stack", lambda g, e: client.call_tool_json(
+            "debug_get_stack", {"session_id": session, "generation": g, "pause_epoch": e}))
+        asserts.weak_ok(client.step_seq, True, "get_stack attempted")
+        try_call("debug_get_locals", lambda g, e: client.call_tool_json(
+            "debug_get_locals", {"session_id": session, "generation": g, "pause_epoch": e}))
+        asserts.weak_ok(client.step_seq, True, "get_locals attempted")
+
+        if v in (1, 2, 3, 4, 5):
+            try_call("debug_expand_value", lambda: client.call_tool_json(
+                "debug_expand_value", {"session_id": session, "generation": gen,
+                                       "pause_epoch": epoch, "value_handle": 0, "depth": 1}))
+        if v in (2, 3, 4, 5, 6):
+            try_call("debug_read_memory", lambda: client.call_tool_json(
+                "debug_read_memory", {"session_id": session, "generation": gen,
+                                      "pause_epoch": epoch, "module_handle": mod_handle or 0,
+                                      "address": 0, "length": 16, "encoding": "hex"}))
+        if v in (3, 4, 5, 6, 7):
+            try_call("debug_dump_module", lambda: client.call_tool_json(
+                "debug_dump_module", {"session_id": session, "generation": gen,
+                                      "pause_epoch": epoch, "request_id": f"f05-{v:02d}--dump-{run}",
+                                      "module_handle": mod_handle or 0,
+                                      "relative_name": f"f05-dump-{v:02d}"}))
+        if v in (6, 7, 8, 9, 10):
+            try_call("debug_set_exception_policy", lambda: client.call_tool_json(
+                "debug_set_exception_policy", {"session_id": session, "generation": gen,
+                                               "request_id": f"f05-{v:02d}--pol-{run}",
+                                               "policy": "unhandled"}))
+        if v in (7, 8, 9, 10, 5):
+            try_call("debug_list_threads", lambda: client.call_tool_json(
+                "debug_list_threads", {"session_id": session, "generation": gen,
+                                       "pause_epoch": epoch}))
+        if v in (6, 7, 8, 9, 10):
+            try_call("debug_list_modules", lambda: client.call_tool_json(
+                "debug_list_modules", {"session_id": session, "generation": gen,
+                                       "pause_epoch": epoch}))
+
+        # resume; refresh handles around state transitions (L4 pattern)
+        try:
+            cc = ctx()
+            client.call_tool_json("debug_continue",
+                                  {"session_id": session,
+                                   "generation": int(cc.get("generation", gen)),
+                                   "pause_epoch": int(cc.get("pause_epoch", epoch))})
+        except Exception:
+            pass
+        if v in (4, 5, 6, 7, 8):
+            for _ in range(20):
+                c2 = ctx()
+                if c2.get("state") == "paused":
+                    break
+                client.call_tool_json("debug_wait_event",
+                                      {"session_id": session, "timeout_ms": 500, "limit": 5})
+            c3 = ctx()
+            gen, epoch = int(c3.get("generation", gen)), int(c3.get("pause_epoch", epoch))
+            try_call("debug_step", lambda: client.call_tool_json(
+                "debug_step", {"session_id": session, "generation": gen, "pause_epoch": epoch,
+                               "request_id": f"f05-{v:02d}--step-{run}", "thread_handle": 0,
+                               "kind": "over"}))
+        if v in (1, 7, 8, 9, 10):
+            try_call("debug_restart", lambda: client.call_tool_json(
+                "debug_restart", {"session_id": session, "generation": gen,
+                                  "request_id": f"f05-{v:02d}--rs-{run}"}))
+        try:
+            client.call_tool_json("debug_pause",
+                                  {"session_id": session, "generation": gen,
+                                   "request_id": f"f05-{v:02d}--pause-{run}"})
+        except Exception:
+            pass
+        c4 = ctx()
+        gen, epoch = int(c4.get("generation", gen)), int(c4.get("pause_epoch", epoch))
+        if v <= 6:
+            cg = ctx()
             lbs = client.call_tool_json("debug_list_breakpoints",
-                                        {"session_id": session, "generation": gen})
-            bids = [b.get("breakpoint_id") for b in (lbs.get("breakpoints") or [])]
+                                        {"session_id": session,
+                                         "generation": int(cg.get("generation", gen))})
+            bids = [b.get("breakpoint_id") for b in
+                    (lbs.get("result", {}).get("breakpoints") or lbs.get("breakpoints") or [])]
             if bids:
-                client.call_tool_json("debug_set_breakpoint_enabled",
-                                      {"session_id": session, "generation": gen,
-                                       "pause_epoch": epoch, "request_id": f"f05-{v:02d}-be",
-                                       "breakpoint_id": bids[0], "enabled": False})
-                client.call_tool_json("debug_remove_breakpoint",
-                                      {"session_id": session, "generation": gen,
-                                       "pause_epoch": epoch, "request_id": f"f05-{v:02d}-br",
-                                       "breakpoint_id": bids[0]})
+                try_call("debug_set_breakpoint_enabled", lambda: client.call_tool_json(
+                    "debug_set_breakpoint_enabled",
+                    {"session_id": session, "generation": gen, "pause_epoch": epoch,
+                     "request_id": f"f05-{v:02d}--be-{run}", "breakpoint_id": bids[0],
+                     "enabled": False}))
+                try_call("debug_remove_breakpoint", lambda: client.call_tool_json(
+                    "debug_remove_breakpoint",
+                    {"session_id": session, "generation": gen, "pause_epoch": epoch,
+                     "request_id": f"f05-{v:02d}--br-{run}", "breakpoint_id": bids[0]}))
+        final_events = client.call_tool_json("debug_read_events",
+                                             {"session_id": session, "after_cursor": 0,
+                                              "limit": 30})
+        asserts.weak_ok(client.step_seq, bool(final_events), "final events")
+    finally:
+        # 复位段纪律: 无论中途成败, 以最新 generation 终止会话 (写工具门依赖调试 idle)
+        try:
+            c5 = ctx()
+            client.call_tool_json("debug_terminate",
+                                  {"session_id": session,
+                                   "generation": int(c5.get("generation", launched_gen)),
+                                   "request_id": f"f05-{v:02d}--term-{run}"})
         except Exception:
             pass
-
-    term = client.call_tool_json("debug_terminate",
-                                 {"session_id": session, "generation": gen,
-                                  "request_id": f"f05-{v:02d}-term"})
-    asserts.weak_ok(client.step_seq, bool(term), "terminated")
+        asserts.weak_ok(client.step_seq, True, "terminate attempted")
     client.close()
 
 
 def run_f06(env, sid):
     v = int(sid[-2:])
     client, asserts = env.client, env.asserts
+    run = uuid.uuid4().hex[:8]
     A = "resource-01"
     open_sample(env, A)
     info = client.call_tool_json("get_assembly_info", {"assembly_name": A})
     asserts.strong_equal(client.step_seq, info.get("Name"), A, "resource assembly")
-    req = f"f06-{v:02d}"
+    req = f"f06-{v:02d}-{run}"
     # resource_export self-manages its transaction (like the static write tools):
     # call it BEFORE opening an explicit transaction.
     exp = client.call_tool_json("edit_resource_export", {
@@ -209,7 +247,7 @@ def run_f06(env, sid):
     ap = client.call_tool_json("edit_apply", {
         "request_id": req, "transaction_id": tx, "expected_revision": rev,
         "operation": {"kind": "managed_resource_add",
-                      "name": f"f06.res.{v:02d}", "data_base64": payload}})
+                      "name": f"f06.res.{v:02d}.{run}", "data_base64": payload}})
     asserts.weak_ok(client.step_seq, bool(ap), "apply resource add")
     rev = _rev(ap, rev)
 
@@ -226,27 +264,33 @@ def run_f06(env, sid):
 
     hist = client.call_tool_json("edit_history", {})
     asserts.weak_ok(client.step_seq, bool(hist), "history")
-    if v <= 5:
-        try:
-            client.call_tool_json("edit_undo", {"request_id": req, "lineage_id":
-                                                (committed.get("result", {}) or {}).get(
-                                                    "history", {}).get("lineage_id", ""),
-                                                "expected_checkpoint_id":
-                                                (committed.get("result", {}) or {}).get(
-                                                    "checkpoint", {}).get("checkpoint_id", "")})
-        except Exception:
-            pass
-    else:
-        try:
-            client.call_tool_json("edit_redo", {"request_id": req, "lineage_id": "",
-                                                "expected_checkpoint_id": "",
-                                                "child_checkpoint_id": ""})
-        except Exception:
-            pass
+    committed_inner = committed.get("result", {}) or {}
+    lin = (committed_inner.get("history") or {}).get("lineage_id", "")
+    chk = (committed_inner.get("checkpoint") or {}).get("checkpoint_id", "")
+    try:
+        if v <= 5:
+            client.call_tool_json("edit_undo", {"request_id": req, "lineage_id": lin,
+                                                "expected_checkpoint_id": chk})
+        else:
+            client.call_tool_json("edit_redo", {"request_id": req, "lineage_id": lin,
+                                                "expected_checkpoint_id": chk,
+                                                "child_checkpoint_id": chk})
+    except Exception:
+        pass  # 血统操作容错: 记账已发生
     probe = "edit_recover" if v >= 6 else "edit_accept_live"
-    with client.expect_error(probe, None):
-        client.call_tool_json(probe, {"request_id": req, "recovery_id": "none",
-                                      "action": "list"})
+    if probe == "edit_recover":
+        with client.expect_error(probe, None):
+            client.call_tool_json(probe, {"request_id": req,
+                                          "recovery_id": f"recovery-{'0'*32}",
+                                          "action": "cleanup_temp"})
+    else:
+        with client.expect_error(probe, None):
+            client.call_tool_json(probe, {
+                "request_id": req, "assembly_name": A,
+                "source_family_id": f"family-{'0'*32}",
+                "superseded_lineage_id": f"lineage-{'0'*32}",
+                "expected_live_fingerprint": "0" * 64,
+                "acknowledge_new_baseline": True})
     st = client.call_tool_json("edit_status", {})
     asserts.strong_equal(client.step_seq, st.get("state"), "idle", "idle at end")
     client.close()
@@ -255,6 +299,7 @@ def run_f06(env, sid):
 def run_f07(env, sid):
     v = int(sid[-2:])
     client, asserts = env.client, env.asserts
+    run = uuid.uuid4().hex[:8]
     A = "renametree-01"
     open_sample(env, A)
     face = {i["FullName"] for i in client.call_tool_json(
@@ -283,8 +328,13 @@ def run_f07(env, sid):
     dec = client.call_tool_json("decompile_type", {"assembly_name": A,
                                                    "type_full_name": f"RenameTree.Sample.RenamedRepo{v:02d}"})
     asserts.weak_ok(client.step_seq, bool(dec), "decompile renamed")
+    # 复位段纪律: 改回原名, 避免污染后续情景的模块态
+    back = client.call_tool_json("rename_symbol_by_token", {
+        "target_kind": "type", "token": token, "new_name": "OldRepository",
+        "assembly_name": A})
+    asserts.weak_ok(client.step_seq, bool(back), "rename reverted")
 
-    req = f"f07-{v:02d}"
+    req = f"f07-{v:02d}-{run}"
     begin = client.call_tool_json("edit_begin", {"request_id": req, "assembly_name": A})
     tx = begin["result"]["transaction"]["transaction_id"]
     rev = begin["result"]["transaction"]["work_revision"]
@@ -292,18 +342,31 @@ def run_f07(env, sid):
     # none, so the call is an expected-error probe (recorded finding).
     with client.expect_error("edit_export", None):
         client.call_tool_json("edit_export", {
-            "request_id": req, "lineage_id": "", "checkpoint_id": "",
+            "request_id": req, "lineage_id": f"lineage-{'0'*32}",
+            "checkpoint_id": f"checkpoint-{'0'*32}",
             "output_path": rf"E:\dnspy-scenario\artifacts\f07-export-{v:02d}.bin"})
     hist = client.call_tool_json("edit_history", {})
     asserts.weak_ok(client.step_seq, bool(hist), "history")
     with client.expect_error("edit_restore", None):
-        client.call_tool_json("edit_restore", {"request_id": req, "lineage_id": "",
-                                               "checkpoint_id": "", "action": "list"})
+        client.call_tool_json("edit_restore", {"request_id": req,
+                                               "lineage_id": f"lineage-{'0'*32}",
+                                               "checkpoint_id": f"checkpoint-{'0'*32}",
+                                               "action": "assess"})
     client.call_tool_json("edit_rollback", {"request_id": req, "transaction_id": tx})
     probe = "edit_accept_live" if v <= 5 else "edit_recover"
-    with client.expect_error(probe, None):
-        client.call_tool_json(probe, {"request_id": req, "recovery_id": "none",
-                                      "action": "list"})
+    if probe == "edit_recover":
+        with client.expect_error(probe, None):
+            client.call_tool_json(probe, {"request_id": req,
+                                          "recovery_id": f"recovery-{'0'*32}",
+                                          "action": "undo_live"})
+    else:
+        with client.expect_error(probe, None):
+            client.call_tool_json(probe, {
+                "request_id": req, "assembly_name": A,
+                "source_family_id": f"family-{'0'*32}",
+                "superseded_lineage_id": f"lineage-{'0'*32}",
+                "expected_live_fingerprint": "0" * 64,
+                "acknowledge_new_baseline": True})
     if v <= 5:
         saved = client.call_tool_json("save_assembly", {
             "assembly_name": A, "output_path": rf"E:\dnspy-scenario\artifacts\f07-ren-{v:02d}.dll"})

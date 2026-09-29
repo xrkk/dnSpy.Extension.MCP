@@ -60,7 +60,8 @@ def run_variant(env, sid: str) -> None:
     asserts.weak_ok(client.step_seq, bool(dec), "decompile hook method")
 
     # edit transaction chain: begin → compile → import → apply → impact → review → commit|rollback
-    req = f"f02-{v:02d}"
+    import uuid
+    req = f"f02-{v:02d}-{uuid.uuid4().hex[:8]}"
     begin = client.call_tool_json("edit_begin", {"request_id": req, "assembly_name": A})
     tx = begin["result"]["transaction"]["transaction_id"]
     rev = begin["result"]["transaction"]["work_revision"]
@@ -68,7 +69,7 @@ def run_variant(env, sid: str) -> None:
     m = DOC_METHOD[v]
     comp = client.call_tool_json("edit_compile", {
         "request_id": req, "assembly_name": A, "compilation_kind": "edit_method",
-        "documents": [{"path": "HookTarget/Combatant.cs",
+        "documents": [{"path": f"HookTarget/Combatant-v{v:02d}.cs",
                        "content": f"namespace HookTarget{{public partial class Combatant"
                                   f"{{public int {m}(){{{BODY[m]}}}}}}}"}]})
     inner = comp.get("result", {}).get("compile", {})
@@ -88,7 +89,7 @@ def run_variant(env, sid: str) -> None:
 
     applied = client.call_tool_json("edit_apply", {
         "request_id": req, "transaction_id": tx, "expected_revision": rev,
-        "operation": {"kind": "type_add", "name": f"Hooked{v:02d}"}})
+        "operation": {"kind": "type_add", "name": f"Hooked{v:02d}{req[-8:]}"}})
     asserts.weak_ok(client.step_seq, bool(applied), "edit_apply type_add")
     rev = cur_rev(applied)
 
