@@ -1,0 +1,183 @@
+{
+  "contract": "契约/完整流程.md",
+  "files": {
+    "业务规则/方案/一般功能/共享规则/作者引入和审核收敛.md": "a93b84bace0613144df7d17214bfd7288e1e45918ded016652c29e9ec01582f5",
+    "业务规则/方案/一般功能/共享规则/作者自评.md": "90cb3c4f9c1b7cce5fcf876a0bfe467b1c2364d03304898f4dadd2cc4796d821",
+    "业务规则/方案/一般功能/完整流程/普通/写入方案.md": "5f78df044de4d870272267c65f6a0592ad7ba2090d36bcad3f2b163e09600b98",
+    "业务规则/方案/一般功能/完整流程/普通/前导.md": "ce7a9fa3e6ab57db198146c9fd94a36bfd4c065d3e50b747c550f57dc957b645",
+    "业务规则/方案/一般功能/完整流程/普通/完成输出.md": "7b28f81d6cfc113db53d4f8cbd15a01db9fb89042971b654689fe0b5ae7ccc8e",
+    "业务规则/方案/一般功能/完整流程/普通/实施和逐条验收.md": "69b9eeed27d24ca49ac56d05106ce4a56772bd49fa4c981bcab81947173ef431",
+    "业务规则/方案/一般功能/完整流程/普通/目标-角色和授权-完整段落.md": "322bf6bd273b04372d4b13501ba006818a772e9cf0ba928017d630b64b10dadc",
+    "业务规则/方案/一般功能/完整流程/普通/第三方审核.md": "396c43c984190244929e6da7b29e9560eb0e2abf2ce3a6cb681305b5d993a17e",
+    "业务规则/方案/一般功能/完整流程/普通/运行参数.md": "6519df35fea57e5c70e6a69b3ad21915415562c00ee0544651811540342117ad",
+    "契约/完整流程.md": "2a5cbfebb997316f698d35719cc107f67871707120c46d88237294eefe4cabbf",
+    "平台协议/GLM/单方案审核与执行.md": "ba4e39c9592a70f8cfb27a5345721e86e9bcbebd7619f2c41a30cbdc02ffc864"
+  },
+  "schema_version": 1,
+  "workflow": {
+    "bootstrap": [
+      "业务规则/方案/一般功能/完整流程/普通/前导.md",
+      "业务规则/方案/一般功能/完整流程/普通/运行参数.md",
+      "业务规则/方案/一般功能/完整流程/普通/目标-角色和授权-完整段落.md",
+      "平台协议/GLM/单方案审核与执行.md"
+    ],
+    "entry": "方案工作流/11-一般功能方案/00-完整流程-GLM.md",
+    "finish": [
+      "业务规则/方案/一般功能/完整流程/普通/完成输出.md"
+    ],
+    "kind": "single",
+    "parameters": {
+      "GLM 实施子智能体名称": {
+        "default": null,
+        "hint": "general-plan-implementer",
+        "placeholder": "general-plan-implementer",
+        "required": false,
+        "type": "text"
+      },
+      "GLM 实施执行方": {
+        "default": "主会话",
+        "enum": [
+          "主会话",
+          "子智能体"
+        ],
+        "hint": "主会话或子智能体; 选择子智能体时填写实施者名称",
+        "placeholder": "主会话",
+        "required": true,
+        "type": "text"
+      },
+      "GLM 审核子智能体名称": {
+        "default": "general-plan-reviewer",
+        "hint": "general-plan-reviewer",
+        "placeholder": "general-plan-reviewer",
+        "required": true,
+        "type": "text"
+      },
+      "付费外发授权": {
+        "default": "待检查",
+        "hint": "待检查",
+        "placeholder": "待检查",
+        "required": true,
+        "type": "text"
+      },
+      "允许外发的数据范围": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "已授权服务": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "授权用途": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "文档写入目录": {
+        "default": null,
+        "hint": "[方案文档写入目录的绝对路径]",
+        "placeholder": "[方案文档写入目录的绝对路径]",
+        "required": true,
+        "type": "path"
+      },
+      "流程状态文件路径": {
+        "default": null,
+        "hint": "[可留空; 留空时由主会话在方案同目录确定]",
+        "placeholder": "[可留空; 留空时由主会话在方案同目录确定]",
+        "required": false,
+        "type": "text"
+      }
+    },
+    "sequence": [
+      "业务规则/方案/一般功能/完整流程/普通/前导.md",
+      "业务规则/方案/一般功能/完整流程/普通/运行参数.md",
+      "业务规则/方案/一般功能/完整流程/普通/目标-角色和授权-完整段落.md",
+      "业务规则/方案/一般功能/完整流程/普通/写入方案.md",
+      "业务规则/方案/一般功能/共享规则/作者自评.md",
+      "业务规则/方案/一般功能/完整流程/普通/第三方审核.md",
+      "平台协议/GLM/单方案审核与执行.md",
+      "业务规则/方案/一般功能/共享规则/作者引入和审核收敛.md",
+      "业务规则/方案/一般功能/完整流程/普通/实施和逐条验收.md",
+      "业务规则/方案/一般功能/完整流程/普通/完成输出.md"
+    ],
+    "stages": [
+      {
+        "id": "WRITE",
+        "next": [
+          "SELF_REVIEW"
+        ],
+        "parts": [
+          "业务规则/方案/一般功能/完整流程/普通/写入方案.md"
+        ],
+        "requires": [],
+        "title": "阶段 1: 写入方案"
+      },
+      {
+        "id": "SELF_REVIEW",
+        "next": [
+          "WRITE",
+          "AUDIT",
+          "IMPLEMENT"
+        ],
+        "parts": [
+          "业务规则/方案/一般功能/共享规则/作者自评.md"
+        ],
+        "requires": [
+          "业务规则/方案/一般功能/共享规则/作者引入和审核收敛.md"
+        ],
+        "title": "阶段 2: 作者自评"
+      },
+      {
+        "id": "AUDIT",
+        "next": [
+          "IMPORT"
+        ],
+        "parts": [
+          "业务规则/方案/一般功能/完整流程/普通/第三方审核.md",
+          "平台协议/GLM/单方案审核与执行.md"
+        ],
+        "requires": [],
+        "title": "阶段 3: 第三方审核"
+      },
+      {
+        "id": "IMPORT",
+        "next": [
+          "SELF_REVIEW",
+          "AUDIT",
+          "IMPLEMENT"
+        ],
+        "parts": [
+          "业务规则/方案/一般功能/共享规则/作者引入和审核收敛.md"
+        ],
+        "requires": [
+          "业务规则/方案/一般功能/共享规则/作者自评.md"
+        ],
+        "title": "阶段 4: 作者引入和审核收敛"
+      },
+      {
+        "id": "IMPLEMENT",
+        "next": [
+          "SELF_REVIEW",
+          "WRITE"
+        ],
+        "parts": [
+          "业务规则/方案/一般功能/完整流程/普通/实施和逐条验收.md"
+        ],
+        "requires": [
+          "业务规则/方案/一般功能/共享规则/作者自评.md",
+          "业务规则/方案/一般功能/共享规则/作者引入和审核收敛.md"
+        ],
+        "title": "阶段 5: 实施和逐条验收"
+      }
+    ],
+    "title": "一般功能方案-GLM专版"
+  },
+  "workflow_id": "11-glm-native"
+}
