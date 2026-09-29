@@ -138,8 +138,17 @@ def run_standard_reset(ctx: ResetContext, drain=None) -> None:
             ctx.failures[-1]["env"] = True
         else:
             actual = ctx.bridge.hash_tree(ARTIFACTS_ROOT)
+            # edit-checkpoints/ is product-managed state (commit persists and
+            # may REWRITE checkpoint files there); only files directly under
+            # ArtifactRoot are test products and must not mutate once recorded.
+            def product_managed(p):
+                return p.replace("\\", "/").startswith("edit-checkpoints/")
             mutated = sorted(p for p, row in recorded.items()
-                             if p not in actual or actual[p] != row["sha256"])
+                             if (p not in actual or actual[p] != row["sha256"])
+                             and not product_managed(p))
+            churned = sorted(p for p, row in recorded.items()
+                             if (p not in actual or actual[p] != row["sha256"])
+                             and product_managed(p))
             if mutated:
                 ctx.fail("artifacts_inventory", f"recorded files changed/removed: {mutated[:3]}")
             else:
@@ -152,7 +161,8 @@ def run_standard_reset(ctx: ResetContext, drain=None) -> None:
                 inv_path.write_text(json.dumps(inventory, ensure_ascii=False, indent=1),
                                     encoding="utf-8")
                 ctx.pass_("artifacts_inventory",
-                          f"{len(recorded)} recorded, +{len(new_paths)} new appended")
+                          f"{len(recorded)} recorded, +{len(new_paths)} new, "
+                          f"{len(churned)} product-managed churned")
     except (OSError, ValueError, KeyError) as exc:
         ctx.fail("artifacts_inventory", f"inventory error: {type(exc).__name__}: {exc}")
         ctx.failures[-1]["env"] = True

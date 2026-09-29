@@ -51,7 +51,23 @@
     },
     "P03": {
       "阶段": "IMPLEMENT",
-      "子方案路径": "PLAN/2026.09.29/2026.09.29-16-子方案-P03-情景语料.md"
+      "子方案路径": "PLAN/2026.09.29/2026.09.29-16-子方案-P03-情景语料.md",
+      "进度": {
+        "已完成": [
+          "IMP-301 探查(3份manifest+关键发现)",
+          "IMP-302 样本11件+基线16件同步+语义等价核验",
+          "IMP-303 族规格×10(SPEC-famNN.md)",
+          "IMP-304a 100变体模块(生成器 generate_corpus.py)",
+          "IMP-305 collect 100/100 + static_check 0问题",
+          "IMP-306 设计矩阵 72/72 缺口0(design-matrix.json)"
+        ],
+        "待完成": [
+          "IMP-304b: 10个 famNN/workflow.py 族工作流实现(变体test.py调用 workflow.run_variant(env, sid))",
+          "IMP-304c: 逐族抽样自测(每族1变体 live, SCENARIO_BATCH=net48-famNN)",
+          "IMP-307: 证据归档+核验记录(16号)+提交"
+        ],
+        "workflow实现要点": "F01写工具直调(初始化会话, DEC-211)+revert; F02 edit链 begin→compile(documents)→import(compile_id)→apply(type_add)→impact_scan→review→commit/rollback; F05 debug_launch(net48-exe/x64/break_kind=entry, expected_sha256=8aac5952...)→bp(Worker.Step token自events)→wait→stack→locals→变体附加→terminate; F06 resource export/import+apply(managed_resource_add data_base64)+探针; F07 rename+edit_export/restore探针; F03/F04/F08/F09/F10 只读链(期望值见 manifests/targeted-probes.json)"
+      }
     },
     "P04": {
       "阶段": "NOT_STARTED"
@@ -102,6 +118,11 @@
       "时间": "2026-09-29T16:20:00+08:00",
       "事件": "P03_AUDIT_IMPORT_DONE",
       "内容": "v1 已审核可以实施(架构改每变体一模块×100); 进入实施 IMP-301..307"
+    },
+    {
+      "时间": "2026-09-29T17:30:00+08:00",
+      "事件": "P03_IMP304_PARTIAL",
+      "内容": "语料结构完成提交2a87dd4; workflow与自测续作"
     }
   ],
   "在途调用": null,

@@ -198,6 +198,11 @@ class RecordingClient(DnSpyClient):
     # session lifecycle -------------------------------------------------------
 
     def close(self):  # type: ignore[override]
-        response = super().close()
+        try:
+            response = super().close()
+        except Exception:
+            # A transport-level hiccup on the DELETE (observed post-commit:
+            # empty 202 body) must not leave the session lifecycle unrecorded.
+            response = None
         self.closed_recorded = True
         return response
