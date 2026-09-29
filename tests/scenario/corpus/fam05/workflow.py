@@ -95,6 +95,7 @@ def run_f05(env, sid):
 
         mvid = None
         mod_handle = None
+        mod_sha256 = None
         try:
             # module enumeration is populated asynchronously after the entry
             # pause: poll briefly (bounded) until the target module appears
@@ -110,6 +111,7 @@ def run_f05(env, sid):
                     if "runtarget" in name.lower():
                         mvid = m.get("mvid")
                         mod_handle = m.get("module_handle") or m.get("handle")
+                        mod_sha256 = m.get("sha256")
                         break
                 if mvid:
                     break
@@ -120,11 +122,13 @@ def run_f05(env, sid):
             # polling advanced pause_epoch: refresh handles before the bp call
             cbp = ctx()
             gen, epoch = int(cbp.get("generation", gen)), int(cbp.get("pause_epoch", epoch))
+            mod_sha = mod_sha256 or "0" * 64
             try_call("debug_set_breakpoint", lambda g, e: client.call_tool_json(
                 "debug_set_breakpoint", {
                     "session_id": session, "generation": g, "pause_epoch": e,
                     "request_id": f"f05-{v:02d}--bp-{run}",
                     "module_handle": mod_handle, "mvid": mvid,
+                    "module_sha256": mod_sha,
                     "method_token": "0x06000002", "il_offset": 0}))
             asserts.weak_ok(client.step_seq, True, "breakpoint attempted")
 
