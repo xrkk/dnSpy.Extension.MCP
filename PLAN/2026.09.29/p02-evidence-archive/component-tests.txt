@@ -1,0 +1,42 @@
+rootdir: /home/adminn/projects/dnSpy.Extension.MCP
+configfile: pyproject.toml
+collecting ... collected 34 items
+
+tests/scenario/test_components/test_assert_aggregator.py::test_strong_equal_pass_fail PASSED [  2%]
+tests/scenario/test_components/test_assert_aggregator.py::test_strong_set_ignores_order PASSED [  5%]
+tests/scenario/test_components/test_assert_aggregator.py::test_strong_set_detects_missing PASSED [  8%]
+tests/scenario/test_components/test_assert_aggregator.py::test_weak_fields PASSED [ 11%]
+tests/scenario/test_components/test_assert_aggregator.py::test_matrix_dedup_by_scenario PASSED [ 14%]
+tests/scenario/test_components/test_assert_aggregator.py::test_rerun_batches_excluded_from_matrix PASSED [ 17%]
+tests/scenario/test_components/test_assert_aggregator.py::test_baseline_gap_detection PASSED [ 20%]
+tests/scenario/test_components/test_assert_aggregator.py::test_schema_error_reported PASSED [ 23%]
+tests/scenario/test_components/test_ledger.py::test_meta_call_result_roundtrip PASSED [ 26%]
+tests/scenario/test_components/test_ledger.py::test_missing_field_rejected PASSED [ 29%]
+tests/scenario/test_components/test_ledger.py::test_is_error_with_ok_outcome_rejected PASSED [ 32%]
+tests/scenario/test_components/test_ledger.py::test_result_fail_requires_failure_class PASSED [ 35%]
+tests/scenario/test_components/test_ledger.py::test_result_fail_with_class_accepted PASSED [ 38%]
+tests/scenario/test_components/test_ledger.py::test_bad_line_in_file_rejected PASSED [ 41%]
+tests/scenario/test_components/test_recorder.py::test_error_code_extraction PASSED [ 44%]
+tests/scenario/test_components/test_recorder.py::test_unexpected_error_recorded_and_reraised PASSED [ 47%]
+tests/scenario/test_components/test_recorder.py::test_expected_error_strong_assert_written PASSED [ 50%]
+tests/scenario/test_components/test_recorder.py::test_expected_error_any_code_matches_when_none_given PASSED [ 52%]
+tests/scenario/test_components/test_recorder.py::test_expected_error_wrong_code_fails_strong PASSED [ 55%]
+tests/scenario/test_components/test_recorder.py::test_prediction_must_precede_call PASSED [ 58%]
+tests/scenario/test_components/test_recorder.py::test_ok_call_and_json_call_recorded PASSED [ 61%]
+tests/scenario/test_components/test_recorder.py::test_raw_tools_call_via_request_object_also_recorded PASSED [ 64%]
+tests/scenario/test_components/test_reset.py::test_clean_state_passes PASSED [ 67%]
+tests/scenario/test_components/test_reset.py::test_dirty_edit_transaction_blocked PASSED [ 70%]
+tests/scenario/test_components/test_reset.py::test_dirty_open_session_blocked PASSED [ 73%]
+tests/scenario/test_components/test_reset.py::test_dirty_sample_file_blocked PASSED [ 76%]
+tests/scenario/test_components/test_reset.py::test_sample_modified_blocked PASSED [ 79%]
+tests/scenario/test_components/test_reset.py::test_artifact_new_file_appended_not_blocked PASSED [ 82%]
+tests/scenario/test_components/test_reset.py::test_artifact_recorded_file_mutated_blocked PASSED [ 85%]
+tests/scenario/test_components/test_reset.py::test_missing_bridge_env_blocked PASSED [ 88%]
+tests/scenario/test_components/test_static_check.py::test_good_file_passes PASSED [ 91%]
+tests/scenario/test_components/test_static_check.py::test_missing_docstring_flagged PASSED [ 94%]
+tests/scenario/test_components/test_static_check.py::test_too_few_tools_flagged PASSED [ 97%]
+tests/scenario/test_components/test_static_check.py::test_missing_constants_flagged PASSED [100%]
+
+============================== 34 passed in 0.15s ==============================
+summary: 34 passed
+34 passed in 0.14s

@@ -1,0 +1,42 @@
+{
+ "ledgers": [
+  ".tmp/scenario-ledgers/net48-smoke/S-SMOKE-01.jsonl"
+ ],
+ "totals": {
+  "calls": 4,
+  "asserts_strong": 6,
+  "asserts_weak": 2,
+  "unexpected_errors": 0
+ },
+ "matrix": {
+  "edit_status": [
+   "S-SMOKE-01"
+  ],
+  "list_assemblies": [
+   "S-SMOKE-01"
+  ],
+  "open_files": [
+   "S-SMOKE-01"
+  ],
+  "search_types": [
+   "S-SMOKE-01"
+  ]
+ },
+ "matrix_counts": {
+  "edit_status": 1,
+  "list_assemblies": 1,
+  "open_files": 1,
+  "search_types": 1
+ },
+ "excluded_rerun_cells": {},
+ "scenarios": [
+  {
+   "scenario_id": "S-SMOKE-01",
+   "batch": "net48-smoke",
+   "outcome": "pass",
+   "failure_class": null
+  }
+ ],
+ "schema_errors": [],
+ "coverage_gaps": []
+}

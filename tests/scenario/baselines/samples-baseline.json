@@ -1,0 +1,11 @@
+{
+  "source": "P01 E:\\dnspy-scenario\\evidence\\samples-baseline.json (sha256 332fbaeaccb09904899169cfd520c0dbcd5895d0bba87498aa55d0ed2165a508, 同步于 2026-09-29)",
+  "root": "E:\\dnspy-scenario\\samples",
+  "recursive": true,
+  "files": [
+    {"path": "TestIL.dll", "size": 10752, "sha256": "5c916bac953c2f623eb1ccbf5a7ca04eac471c0fc60af6ca088067e714ad2b09"},
+    {"path": "p01-fixtures/TestIL.deps.json", "size": 429, "sha256": "c657409fee16b80d675329d447497cbb289fd04de45f50df9fcff2c47edcbddc"},
+    {"path": "p01-fixtures/TestIL.dll", "size": 10752, "sha256": "926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8"},
+    {"path": "p01-fixtures/TestIL.pdb", "size": 10056, "sha256": "010834301f07a8a58ac5c8ef363794e01bf0894da2e8991ed922f832721ae1c4"}
+  ]
+}
