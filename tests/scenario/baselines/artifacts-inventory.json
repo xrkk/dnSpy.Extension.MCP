@@ -1,6 +1,6 @@
 {
  "schema_version": "dnspy.scenario.inventory.v1",
- "source": "P04 预检规程: 批间清理血统存储(共享 ArtifactRoot 跨 TFM 互扰处置) + 清单重置",
+ "source": "PD-001 修复部署后复验: 轮前清空+重置",
  "files": [
   {
    "path": ".dnspy-mcp-debug/0ed8196bc3e8980336f43fb9/.dnspy-mcp-session.json",
@@ -63,6 +63,36 @@
    "first_seen_scenario": "S-F01-01"
   },
   {
+   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/.dnspy-mcp-session.json",
+   "sha256": "dc6bf2127f3a23ed0d7e017c932bd1cb92457294cbf4114c49c8f480c5ea3aa4",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/f05-dump-03.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/f05-dump-03.bin.manifest.json",
+   "sha256": "d8f8c746e1beb509ff3b5935e6e7fa4087c3d6a25416e6048202191950ceaacb",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/.dnspy-mcp-session.json",
+   "sha256": "8e005402f5d97b1a0d11464a1bce83a26f3413610225aef99afb5274097b9be2",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/f05-dump-03.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/f05-dump-03.bin.manifest.json",
+   "sha256": "feb7e23ad41dbfe5808037a3259a6106d2f2814a6b866692596e4b90b8d43fcb",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
    "path": ".dnspy-mcp-debug/7baf43f64ef22ea9b2bebca2/.dnspy-mcp-session.json",
    "sha256": "d89f8357b9831ca08a8231cce53cdc037ac104c54d0143b7620e5b2a1dcaa119",
    "first_seen_scenario": "S-F01-01"
@@ -90,6 +120,21 @@
   {
    "path": ".dnspy-mcp-debug/9cfcf94cd0f03449fefc730b/f05-dump-04.bin.manifest.json",
    "sha256": "ded53aa11326d51d127d0a42a69b232d21589bb448b2caaaff734e6aaf674c34",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/.dnspy-mcp-session.json",
+   "sha256": "4e52084c7b4375dfd87722d80e964c61b91fed713733cf2d45a45117dd9e0c5d",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/f05-dump-06.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/f05-dump-06.bin.manifest.json",
+   "sha256": "5b282f7b6dea6f4464c94d836dadf32c67521c9b9419b3e5f1091aa390166781",
    "first_seen_scenario": "S-F01-01"
   },
   {
@@ -138,8 +183,8 @@
    "first_seen_scenario": "S-F01-01"
   },
   {
-   "path": "edit-checkpoints/lineage-779700d662afdf2d97c50ba57873cc64.dnspy-mcp-checkpoints",
-   "sha256": "f1db3c424cd57bf3e853f47afd007d59cbd3dc36a494ef306b678e8d8d677abd",
+   "path": "edit-checkpoints/lineage-0ebf5382ecce0421c4270a844c264e5a.dnspy-mcp-checkpoints",
+   "sha256": "7ed629082797759543a47b3266e92c143cd2af3118001cb2e9bf71e0f56592fe",
    "first_seen_scenario": "S-F01-01"
   },
   {
@@ -169,6 +214,11 @@
   },
   {
    "path": "f06-strings-01-bc69bb2c.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
+   "path": "f06-strings-02-af40921f.resources",
    "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
    "first_seen_scenario": "S-F01-01"
   },
@@ -238,74 +288,204 @@
    "first_seen_scenario": "S-F01-01"
   },
   {
+   "path": "f07-ren-04-a18e479f.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F01-01"
+  },
+  {
    "path": "f07-ren-05-4bddb9ef.dll",
    "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
    "first_seen_scenario": "S-F01-01"
   },
   {
-   "path": "edit-checkpoints/lineage-5e45cf35af8868f3fb426024702f987f.dnspy-mcp-checkpoints",
-   "sha256": "0027d6cccdc6f0e8f93cdd7c6c4fbd0465e5b9f7bf5c039b2ca117d4e83d869d",
-   "first_seen_scenario": "S-F06-02"
+   "path": "edit-checkpoints/lineage-e840d01ffd38c80379dfd908479de06f.dnspy-mcp-checkpoints",
+   "sha256": "7cbcccb5a9b89814c7a4e33ce5c34158a984c7f30c513fb056e0610a65addb67",
+   "first_seen_scenario": "S-F02-06"
   },
   {
-   "path": "f06-strings-02-af40921f.resources",
+   "path": ".dnspy-mcp-debug/87fcd993f867d7029f41fd9b/.dnspy-mcp-session.json",
+   "sha256": "abf9fafff7ab3e4cc02bfc10160036b78f34ba81f37c8b6292088b24b8f29f75",
+   "first_seen_scenario": "S-F05-03"
+  },
+  {
+   "path": ".dnspy-mcp-debug/87fcd993f867d7029f41fd9b/f05-dump-03.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F05-03"
+  },
+  {
+   "path": ".dnspy-mcp-debug/87fcd993f867d7029f41fd9b/f05-dump-03.bin.manifest.json",
+   "sha256": "d0c1cbaab17fb102a0bf411c9e270b9ede042492e939d57a9913882431e3af40",
+   "first_seen_scenario": "S-F05-03"
+  },
+  {
+   "path": ".dnspy-mcp-debug/7585d81e5f0fd29912955f38/.dnspy-mcp-session.json",
+   "sha256": "f63ce2f617af87833753fadd105328995e6805d5fde44b21a32e7a515ff089c4",
+   "first_seen_scenario": "S-F05-04"
+  },
+  {
+   "path": ".dnspy-mcp-debug/7585d81e5f0fd29912955f38/f05-dump-04.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F05-04"
+  },
+  {
+   "path": ".dnspy-mcp-debug/7585d81e5f0fd29912955f38/f05-dump-04.bin.manifest.json",
+   "sha256": "3c1f9752d5212a2ef13b055a3dbedeb6661ed4e0c53c184ffcb547948dac8b97",
+   "first_seen_scenario": "S-F05-04"
+  },
+  {
+   "path": ".dnspy-mcp-debug/9f646c0844118cb0f3350894/.dnspy-mcp-session.json",
+   "sha256": "dcff3f257dea0ec18e721ca37edec1a3a9b40a2ce638d67efd48e3621fc37677",
+   "first_seen_scenario": "S-F05-05"
+  },
+  {
+   "path": ".dnspy-mcp-debug/9f646c0844118cb0f3350894/f05-dump-05.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F05-05"
+  },
+  {
+   "path": ".dnspy-mcp-debug/9f646c0844118cb0f3350894/f05-dump-05.bin.manifest.json",
+   "sha256": "c7ec9d6fd07d274d9fc7e8c4cd082406594a850cc3ce086af4996ec5365e54e5",
+   "first_seen_scenario": "S-F05-05"
+  },
+  {
+   "path": ".dnspy-mcp-debug/0a21315f1fb2c03bbe16b95b/.dnspy-mcp-session.json",
+   "sha256": "b8d21e711e1b4c3b3f3536ed6c413c336036e96e74480ea35cc217936fdf0672",
+   "first_seen_scenario": "S-F05-06"
+  },
+  {
+   "path": ".dnspy-mcp-debug/0a21315f1fb2c03bbe16b95b/f05-dump-06.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F05-06"
+  },
+  {
+   "path": ".dnspy-mcp-debug/0a21315f1fb2c03bbe16b95b/f05-dump-06.bin.manifest.json",
+   "sha256": "251ac0e763c6608f27b5d80dbe6d1f4ba62bbeec4878b1dd975ca6aaf7e884ea",
+   "first_seen_scenario": "S-F05-06"
+  },
+  {
+   "path": ".dnspy-mcp-debug/fbe4bf2f9978e2afd46c7f56/.dnspy-mcp-session.json",
+   "sha256": "e26f76f668ee205cd51efaead960fd52f3e7223639f8afe1f7c2abea44f15483",
+   "first_seen_scenario": "S-F05-07"
+  },
+  {
+   "path": ".dnspy-mcp-debug/fbe4bf2f9978e2afd46c7f56/f05-dump-07.bin",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+   "first_seen_scenario": "S-F05-07"
+  },
+  {
+   "path": ".dnspy-mcp-debug/fbe4bf2f9978e2afd46c7f56/f05-dump-07.bin.manifest.json",
+   "sha256": "2219092b8995e276ed32df8c0dfe8878a6a60b2f016abf93d0658f841669256f",
+   "first_seen_scenario": "S-F05-07"
+  },
+  {
+   "path": "edit-checkpoints/lineage-bf1c144f1eb79038e7367ac6a81b0131.dnspy-mcp-checkpoints",
+   "sha256": "450f51fca16a60d783be2dc8e1cab9753f834d42275832001513c9ff6b4775ab",
+   "first_seen_scenario": "S-F06-01"
+  },
+  {
+   "path": "f06-strings-01-1c9c2d94.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-01"
+  },
+  {
+   "path": "f06-strings-02-0ea27f65.resources",
    "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
    "first_seen_scenario": "S-F06-02"
   },
   {
-   "path": "edit-checkpoints/lineage-d7fb61d85014422a45b56282735623aa.dnspy-mcp-checkpoints",
-   "sha256": "91a10ac859f4ef3d52894abcd22e218d49e55ea7224f0e6e34ef10407b331728",
-   "first_seen_scenario": "S-F07-04"
+   "path": "f06-strings-03-f13a347c.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-03"
   },
   {
-   "path": "f07-ren-04-a18e479f.dll",
+   "path": "f06-strings-04-c4f367a2.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-04"
+  },
+  {
+   "path": "f06-strings-05-8181d45c.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-05"
+  },
+  {
+   "path": "f06-strings-06-73391291.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-06"
+  },
+  {
+   "path": "f06-strings-07-4209d754.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-07"
+  },
+  {
+   "path": "f06-strings-08-4959e50b.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-08"
+  },
+  {
+   "path": "f06-strings-09-89ecdf9c.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-09"
+  },
+  {
+   "path": "f06-strings-10-32567477.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-10"
+  },
+  {
+   "path": "edit-checkpoints/lineage-b5b4c7f8b349e53db093381b9f60a939.dnspy-mcp-checkpoints",
+   "sha256": "44d90de6f57350fc3a9cc182f92706774a654fddd5386f9948d038b6abf9fa33",
+   "first_seen_scenario": "S-F07-01"
+  },
+  {
+   "path": "f07-ren-01-38a3a079.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-01"
+  },
+  {
+   "path": "f07-ren-02-02170ffa.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-02"
+  },
+  {
+   "path": "f07-ren-03-eeefaddd.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-03"
+  },
+  {
+   "path": "f07-ren-04-c21f1694.dll",
    "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
    "first_seen_scenario": "S-F07-04"
   },
   {
-   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/.dnspy-mcp-session.json",
-   "sha256": "8e005402f5d97b1a0d11464a1bce83a26f3413610225aef99afb5274097b9be2",
-   "first_seen_scenario": "S-F05-03"
+   "path": "f07-ren-05-929c7691.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-05"
   },
   {
-   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/f05-dump-03.bin",
-   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
-   "first_seen_scenario": "S-F05-03"
+   "path": "edit-checkpoints/lineage-dcb7b6bdbb43d64abcdb155a53747f55.dnspy-mcp-checkpoints",
+   "sha256": "6cb7ec80944f0013aa3937571e08dcbbdd1d0c6b7aafb5ede38db3c51454526a",
+   "first_seen_scenario": "S-F01-01"
   },
   {
-   "path": ".dnspy-mcp-debug/705c92e48ef05051ced0a029/f05-dump-03.bin.manifest.json",
-   "sha256": "feb7e23ad41dbfe5808037a3259a6106d2f2814a6b866692596e4b90b8d43fcb",
-   "first_seen_scenario": "S-F05-03"
+   "path": "edit-checkpoints/lineage-4b6ec1533f4e03ee883c5de5afe6069f.dnspy-mcp-checkpoints",
+   "sha256": "ad00b74fc4afb4ade1dad2ef9e3c4ab5047a37ae948246708e06e407beca925f",
+   "first_seen_scenario": "S-F06-02"
   },
   {
-   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/.dnspy-mcp-session.json",
-   "sha256": "dc6bf2127f3a23ed0d7e017c932bd1cb92457294cbf4114c49c8f480c5ea3aa4",
-   "first_seen_scenario": "S-F05-03"
+   "path": "f06-strings-02-c844a9db.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48",
+   "first_seen_scenario": "S-F06-02"
   },
   {
-   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/f05-dump-03.bin",
-   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
-   "first_seen_scenario": "S-F05-03"
+   "path": "edit-checkpoints/lineage-68be0fe69cab0589ce2e6fcebaecc42a.dnspy-mcp-checkpoints",
+   "sha256": "e6a441b875bd2475549479d8404416cab9d927ba63cfe328b898ba706202c09e",
+   "first_seen_scenario": "S-F07-04"
   },
   {
-   "path": ".dnspy-mcp-debug/6553156a217537f5f43fc718/f05-dump-03.bin.manifest.json",
-   "sha256": "d8f8c746e1beb509ff3b5935e6e7fa4087c3d6a25416e6048202191950ceaacb",
-   "first_seen_scenario": "S-F05-03"
-  },
-  {
-   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/.dnspy-mcp-session.json",
-   "sha256": "4e52084c7b4375dfd87722d80e964c61b91fed713733cf2d45a45117dd9e0c5d",
-   "first_seen_scenario": "S-F05-06"
-  },
-  {
-   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/f05-dump-06.bin",
-   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
-   "first_seen_scenario": "S-F05-06"
-  },
-  {
-   "path": ".dnspy-mcp-debug/b1c8f0c8e85f0491707972d4/f05-dump-06.bin.manifest.json",
-   "sha256": "5b282f7b6dea6f4464c94d836dadf32c67521c9b9419b3e5f1091aa390166781",
-   "first_seen_scenario": "S-F05-06"
+   "path": "f07-ren-04-c3069aaa.dll",
+   "sha256": "1da1d2ac648b0f6c477b1cb8c20ee4c31d7dbdda03764a7ace99cf374db8a768",
+   "first_seen_scenario": "S-F07-04"
   }
  ]
 }
