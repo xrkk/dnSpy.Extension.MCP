@@ -18,8 +18,8 @@
     "P03 情景语料",
     "P04 执行与验收"
   ],
-  "当前Pxx": "P03",
-  "当前阶段": "P03_IMPLEMENT",
+  "当前Pxx": "P04",
+  "当前阶段": "PAUSED_WAITING_USER(用户指令2026-09-29: 复审完毕后停止)",
   "Pxx状态": {
     "P01": {
       "阶段": "CHILD_DONE",
@@ -50,27 +50,28 @@
       "组件测试": "34/34"
     },
     "P03": {
-      "阶段": "IMPLEMENT",
-      "子方案路径": "PLAN/2026.09.29/2026.09.29-16-子方案-P03-情景语料.md",
-      "进度": {
-        "已完成": [
-          "IMP-301 探查(3份manifest+关键发现)",
-          "IMP-302 样本11件+基线16件同步+语义等价核验",
-          "IMP-303 族规格×10(SPEC-famNN.md)",
-          "IMP-304a 100变体模块(生成器 generate_corpus.py)",
-          "IMP-305 collect 100/100 + static_check 0问题",
-          "IMP-306 设计矩阵 72/72 缺口0(design-matrix.json)"
-        ],
-        "待完成": [
-          "IMP-304b: 10个 famNN/workflow.py 族工作流实现(变体test.py调用 workflow.run_variant(env, sid))",
-          "IMP-304c: 逐族抽样自测(每族1变体 live, SCENARIO_BATCH=net48-famNN)",
-          "IMP-307: 证据归档+核验记录(16号)+提交"
-        ],
-        "workflow实现要点": "F01写工具直调(初始化会话, DEC-211)+revert; F02 edit链 begin→compile(documents)→import(compile_id)→apply(type_add)→impact_scan→review→commit/rollback; F05 debug_launch(net48-exe/x64/break_kind=entry, expected_sha256=8aac5952...)→bp(Worker.Step token自events)→wait→stack→locals→变体附加→terminate; F06 resource export/import+apply(managed_resource_add data_base64)+探针; F07 rename+edit_export/restore探针; F03/F04/F08/F09/F10 只读链(期望值见 manifests/targeted-probes.json)"
-      }
+      "阶段": "CHILD_DONE",
+      "子方案": "16 v1",
+      "自评": "17",
+      "审核": "18 (AUD-401..406)",
+      "处理": "19",
+      "核验记录": "20",
+      "提交": [
+        "2416da9",
+        "2a87dd4",
+        "eae1a1c"
+      ],
+      "ACC": "ACC-044..047 通过",
+      "抽样": "7/10 族绿; F05/06/07 执行期发现移交 P04"
     },
     "P04": {
-      "阶段": "NOT_STARTED"
+      "阶段": "AUDIT_IMPORT_DONE(用户暂停, 待通知续跑 IMPLEMENT)",
+      "子方案": "21 v1 已审核可以实施(复审25通过)",
+      "自评": "22",
+      "审核": "23 (AUD-501..511)",
+      "处理": "24",
+      "复审": "25 (通过; 残留 AUD-512..514 实施期闭合)",
+      "待实施": "IMP-401..406(批驱动器/语料预修含SPEC v1.1收口/net48首轮10批/net10抽样/矩阵与对账/归档判定)"
     }
   },
   "核验检查点": [
@@ -123,6 +124,16 @@
       "时间": "2026-09-29T17:30:00+08:00",
       "事件": "P03_IMP304_PARTIAL",
       "内容": "语料结构完成提交2a87dd4; workflow与自测续作"
+    },
+    {
+      "时间": "2026-09-29T19:05:00+08:00",
+      "事件": "P03_CHILD_DONE",
+      "内容": "提交 eae1a1c; 进入 P04 执行与验收"
+    },
+    {
+      "时间": "2026-09-29T20:06:00+08:00",
+      "事件": "USER_PAUSE",
+      "内容": "P04 复审完毕; 用户要求停止等待通知; 续跑入口=IMP-401"
     }
   ],
   "在途调用": null,
