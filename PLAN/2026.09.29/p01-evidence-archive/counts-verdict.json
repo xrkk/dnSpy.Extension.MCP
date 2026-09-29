@@ -1,0 +1,50 @@
+{
+ "generated": "2026-09-29T12:06:44",
+ "expected_from_master": {
+  "static": 32,
+  "debug_family": 22,
+  "edit_family": 17
+ },
+ "two_tier_verdict": {
+  "tier1_hard_failure_checks": {
+   "advertised_empty": false,
+   "contains_test_tools": false,
+   "debug_production_face_missing_entirely": {
+    "net48": false,
+    "net10": false
+   }
+  },
+  "result": "PASS (无硬失败条件命中; net10 首测曾缺整个调试会话面, 经 D-01 恢复路径(补建 dnSpy.Debugger.* 组件)修复后复测通过)"
+ },
+ "deviation_annotation": {
+  "family": "edit",
+  "observed": 18,
+  "expected": 17,
+  "cause": "edit_compile 由独立提供者 Editing/EditCompileFrontend.cs:37 通告(ProductTools={\"edit_compile\"}), 总纲 §8 \"编辑 17\"仅计 EditToolProvider.cs:11",
+  "disposition": "标注触发 F-02 重裁决评估: 覆盖全集以实测为准 = 72 (32+22+18); 与需求 Q-002 重裁决条件所举 'edit_compile 是否通告有变化' 一致, 口径原则不变; P03 设计矩阵按 72 工具计算"
+ },
+ "counts": {
+  "net48": {
+   "total": 72,
+   "static": 32,
+   "debug_family": 22,
+   "debug_session": 21,
+   "debug_capabilities": 1,
+   "edit_family": 18,
+   "edit_17_plus_edit_compile": [
+    "edit_compile"
+   ]
+  },
+  "net10": {
+   "total": 72,
+   "static": 32,
+   "debug_family": 22,
+   "debug_session": 21,
+   "debug_capabilities": 1,
+   "edit_family": 18,
+   "edit_17_plus_edit_compile": [
+    "edit_compile"
+   ]
+  }
+ }
+}

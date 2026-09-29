@@ -1,0 +1,24 @@
+{
+ "net48": {
+  "total": 72,
+  "static": 32,
+  "debug_family": 22,
+  "debug_session": 21,
+  "debug_capabilities": 1,
+  "edit_family": 18,
+  "edit_17_plus_edit_compile": [
+   "edit_compile"
+  ]
+ },
+ "net10": {
+  "total": 72,
+  "static": 32,
+  "debug_family": 22,
+  "debug_session": 21,
+  "debug_capabilities": 1,
+  "edit_family": 18,
+  "edit_17_plus_edit_compile": [
+   "edit_compile"
+  ]
+ }
+}

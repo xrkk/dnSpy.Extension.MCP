@@ -1,0 +1,26 @@
+[
+ {
+  "instance": "net48",
+  "tool": "debug_test_spy",
+  "isError": true,
+  "content_head": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\","
+ },
+ {
+  "instance": "net48",
+  "tool": "edit_test_clock",
+  "isError": null,
+  "content_head": "{\"jsonrpc\": \"2.0\", \"id\": \"d1\", \"error\": {\"code\": -32602, \"message\": \"edit_test_clock arguments does not match schema: oneOf matched 0 branches\\r\\n\\u53c2\\u6570\\u540d: edit_test_clock arguments\"}}"
+ },
+ {
+  "instance": "net10",
+  "tool": "debug_test_spy",
+  "isError": true,
+  "content_head": "{\"schema_version\":\"dnspy.debug.v1\",\"ok\":false,\"debug_context\":{\"generation\":0,\"pause_epoch\":0,\"event_cursor\":0,\"state\":\"idle\"},\"error\":{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"The requested capability is unavailable.\",\"recovery\":\"choose_supported_workflow\","
+ },
+ {
+  "instance": "net10",
+  "tool": "edit_test_clock",
+  "isError": null,
+  "content_head": "{\"jsonrpc\": \"2.0\", \"id\": \"d1\", \"error\": {\"code\": -32602, \"message\": \"edit_test_clock arguments does not match schema: oneOf matched 0 branches (Parameter 'edit_test_clock arguments')\"}}"
+ }
+]

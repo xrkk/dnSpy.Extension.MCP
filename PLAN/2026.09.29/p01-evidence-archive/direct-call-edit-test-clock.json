@@ -1,0 +1,20 @@
+[
+ {
+  "instance": "net48",
+  "tool": "edit_test_clock",
+  "arguments": {
+   "action": "read"
+  },
+  "isError": true,
+  "content_head": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_CAPABILITY_UNAVAILABLE\",\"message\":\"The requested edit capability is unavailable for this target\",\"current_state\":\"idle\",\"recovery\":\"Correct the request or roll back the transaction\",\"details\":{\"kind\":\"capability\",\"capa"
+ },
+ {
+  "instance": "net10",
+  "tool": "edit_test_clock",
+  "arguments": {
+   "action": "read"
+  },
+  "isError": true,
+  "content_head": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_CAPABILITY_UNAVAILABLE\",\"message\":\"The requested edit capability is unavailable for this target\",\"current_state\":\"idle\",\"recovery\":\"Correct the request or roll back the transaction\",\"details\":{\"kind\":\"capability\",\"capa"
+ }
+]

@@ -1,0 +1,256 @@
+{
+  "contract": "契约/完整流程.md",
+  "files": {
+    "业务规则/长程/GLM直接执行/完整流程/作者引入.md": "31781b7168faf2204b92ecdb674c17a492ff27e35929ba8c955bba12dd878edf",
+    "业务规则/长程/GLM直接执行/完整流程/作者自评及审核路线.md": "8a510a5bb4017bcd5c918c0cdf32438454db1a667be3e26356723747cb5c1eec",
+    "业务规则/长程/GLM直接执行/完整流程/入口准备.md": "dfb75d211745f5973378b7948d8301e34bc74a091e33014da9adc7b31463ae89",
+    "业务规则/长程/GLM直接执行/完整流程/子方案逐个推进至总纲验收-GLM-完整段落.md": "c6aad2fde6e812ccc1a4e563ff1d6a2024db2b5fc12b59b4a81614e2edf2ece1",
+    "业务规则/长程/GLM直接执行/完整流程/定位或编写.md": "fe8b2b0da88cd73423285294126673ad81bf22380f537a750aae8164d884f035",
+    "业务规则/长程/GLM直接执行/完整流程/实施及偏离.md": "0ef037dc54e03da5a482ffeb6cd281cb34300ca154fb52d1a8a3bcdcf8b426d8",
+    "业务规则/长程/GLM直接执行/完整流程/总纲需求验收.md": "bd9c77f38f2017319fdaecc36f721f31517d3d93f399fe90d5f4815ec9f66ce7",
+    "业务规则/长程/GLM直接执行/完整流程/最终输出.md": "b9427e04253a4f2fb3ba3a63db8b898a36e8a4f2078f531414f8c2973e57a675",
+    "业务规则/长程/GLM直接执行/完整流程/第三方审核.md": "8a1beb374090094fe60fcc7a951145f26c8f38d11cf4549ab7415d7814bb5574",
+    "业务规则/长程/GLM直接执行/完整流程/验证-提交-完成Pxx.md": "baba15f7451bd6ce40fd40666f25655a60b1fb4aa3cb6c2de1aa6c8f5922c61d",
+    "契约/完整流程.md": "31988e45a7efbc1ceff0b80e5415a5a4f8d59eb0f7941ddf84ce9cc2deed8da4"
+  },
+  "schema_version": 1,
+  "workflow": {
+    "aliases": [
+      "方案工作流/15-子方案逐个推进至总纲验收-GLM/00-入口.md"
+    ],
+    "bootstrap": [
+      "业务规则/长程/GLM直接执行/完整流程/入口准备.md",
+      "业务规则/长程/GLM直接执行/完整流程/子方案逐个推进至总纲验收-GLM-完整段落.md"
+    ],
+    "entry": "方案工作流/15-子方案逐个推进至总纲验收-GLM/01-主控工作流.md",
+    "finish": [
+      "业务规则/长程/GLM直接执行/完整流程/最终输出.md"
+    ],
+    "kind": "long",
+    "parameters": {
+      "GLM 实施子智能体名称": {
+        "default": "sub-plan-implementer",
+        "hint": "sub-plan-implementer",
+        "placeholder": "sub-plan-implementer",
+        "required": true,
+        "type": "text"
+      },
+      "GLM 实施执行方": {
+        "default": "主会话",
+        "hint": "主会话",
+        "placeholder": "主会话",
+        "required": true,
+        "type": "text"
+      },
+      "GLM 审核子智能体名称": {
+        "default": "sub-plan-reviewer",
+        "hint": "sub-plan-reviewer",
+        "placeholder": "sub-plan-reviewer",
+        "required": true,
+        "type": "text"
+      },
+      "付费外发授权": {
+        "default": "待检查",
+        "hint": "待检查",
+        "placeholder": "待检查",
+        "required": true,
+        "type": "text"
+      },
+      "允许外发的数据范围": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "子方案执行顺序记录路径": {
+        "default": null,
+        "hint": "[可留空; 从总纲及其持久引用定位既有唯一顺序]",
+        "placeholder": "[可留空; 从总纲及其持久引用定位既有唯一顺序]",
+        "required": false,
+        "type": "text"
+      },
+      "实施授权": {
+        "default": null,
+        "hint": "采用当前用户指令或已有持久授权, 不重复请求已授予权限",
+        "placeholder": "[采用当前任务已获授权的范围, 未授权时停止]",
+        "required": true,
+        "type": "text"
+      },
+      "工作流类型": {
+        "const": "GLM直接执行",
+        "default": "GLM直接执行",
+        "hint": "GLM直接执行",
+        "placeholder": "GLM直接执行",
+        "required": true,
+        "type": "text"
+      },
+      "已授权服务": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "总纲方案路径": {
+        "default": null,
+        "hint": "总纲方案路径",
+        "placeholder": "",
+        "required": true,
+        "type": "path"
+      },
+      "授权用途": {
+        "default": null,
+        "hint": "[可留空]",
+        "placeholder": "[可留空]",
+        "required": false,
+        "type": "text"
+      },
+      "自动恢复触发方式": {
+        "default": null,
+        "hint": "[可留空; 启动前检查实际能力, 缺失时停止并列最小配置]",
+        "placeholder": "[可留空; 启动前检查实际能力, 缺失时停止并列最小配置]",
+        "required": false,
+        "type": "text"
+      },
+      "运行平台": {
+        "const": "GLM",
+        "default": "GLM",
+        "hint": "GLM",
+        "placeholder": "GLM",
+        "required": true,
+        "type": "text"
+      },
+      "长程状态文件目录": {
+        "default": null,
+        "hint": "[可留空; 使用总纲同目录的总纲文件名去扩展名-长程执行目录]",
+        "placeholder": "[可留空; 使用总纲同目录的总纲文件名去扩展名-长程执行目录]",
+        "required": false,
+        "type": "text"
+      },
+      "需求文档路径": {
+        "default": null,
+        "hint": "需求文档路径",
+        "placeholder": "",
+        "required": true,
+        "type": "path"
+      }
+    },
+    "sequence": [
+      "业务规则/长程/GLM直接执行/完整流程/入口准备.md",
+      "业务规则/长程/GLM直接执行/完整流程/子方案逐个推进至总纲验收-GLM-完整段落.md",
+      "业务规则/长程/GLM直接执行/完整流程/定位或编写.md",
+      "业务规则/长程/GLM直接执行/完整流程/作者自评及审核路线.md",
+      "业务规则/长程/GLM直接执行/完整流程/第三方审核.md",
+      "业务规则/长程/GLM直接执行/完整流程/作者引入.md",
+      "业务规则/长程/GLM直接执行/完整流程/实施及偏离.md",
+      "业务规则/长程/GLM直接执行/完整流程/验证-提交-完成Pxx.md",
+      "业务规则/长程/GLM直接执行/完整流程/总纲需求验收.md",
+      "业务规则/长程/GLM直接执行/完整流程/最终输出.md"
+    ],
+    "stages": [
+      {
+        "id": "WRITE",
+        "next": [
+          "SELF_REVIEW"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/定位或编写.md"
+        ],
+        "requires": [],
+        "title": "阶段1: 定位或编写"
+      },
+      {
+        "id": "SELF_REVIEW",
+        "next": [
+          "WRITE",
+          "AUDIT",
+          "IMPLEMENT"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/作者自评及审核路线.md"
+        ],
+        "requires": [
+          "业务规则/长程/GLM直接执行/完整流程/作者引入.md"
+        ],
+        "title": "阶段2: 作者自评及审核路线"
+      },
+      {
+        "id": "AUDIT",
+        "next": [
+          "IMPORT"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/第三方审核.md"
+        ],
+        "requires": [],
+        "title": "阶段3: 第三方审核"
+      },
+      {
+        "id": "IMPORT",
+        "next": [
+          "SELF_REVIEW",
+          "AUDIT",
+          "IMPLEMENT"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/作者引入.md"
+        ],
+        "requires": [
+          "业务规则/长程/GLM直接执行/完整流程/作者自评及审核路线.md"
+        ],
+        "title": "阶段4: 作者引入"
+      },
+      {
+        "id": "IMPLEMENT",
+        "next": [
+          "WRITE",
+          "SELF_REVIEW",
+          "VERIFY"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/实施及偏离.md"
+        ],
+        "requires": [
+          "业务规则/长程/GLM直接执行/完整流程/作者自评及审核路线.md",
+          "业务规则/长程/GLM直接执行/完整流程/作者引入.md"
+        ],
+        "title": "阶段5: 实施及偏离"
+      },
+      {
+        "id": "VERIFY",
+        "next": [
+          "IMPLEMENT",
+          "WRITE",
+          "TOTAL_ACCEPT"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/验证-提交-完成Pxx.md"
+        ],
+        "requires": [
+          "业务规则/长程/GLM直接执行/完整流程/实施及偏离.md"
+        ],
+        "title": "阶段6: 验证、提交、完成Pxx"
+      },
+      {
+        "id": "TOTAL_ACCEPT",
+        "next": [
+          "WRITE",
+          "SELF_REVIEW",
+          "IMPLEMENT"
+        ],
+        "parts": [
+          "业务规则/长程/GLM直接执行/完整流程/总纲需求验收.md"
+        ],
+        "requires": [
+          "业务规则/长程/GLM直接执行/完整流程/定位或编写.md",
+          "业务规则/长程/GLM直接执行/完整流程/实施及偏离.md",
+          "业务规则/长程/GLM直接执行/完整流程/验证-提交-完成Pxx.md"
+        ],
+        "title": "阶段7: 总纲需求验收"
+      }
+    ],
+    "title": "15-glm"
+  },
+  "workflow_id": "15-glm"
+}
