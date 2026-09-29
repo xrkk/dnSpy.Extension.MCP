@@ -1,8 +1,14 @@
 # 情景执行账本规范（SPEC-ledger, 冻结）
 
-- 版本: v1（P02 ACC-041 交付物, 经子方案 v1 审核闭环冻结）
+- 版本: v1.1（P02 ACC-041 交付物, 经子方案 v1 审核闭环冻结; v1.1 增补: §5 ArtifactRoot 清单对产品管理区的例外, 依据 P03 核验记录 20 §4.5 与 reset.py 实现, P04 AUD-501 收口）
 - schema 标识: `dnspy.scenario.ledger.v1`（实现: `tests/scenario/dnspy_scenario/ledger.py`; 机读 schema 语义内嵌于行级校验 `validate_row`, 本文档为其人读权威）
 - 变更约束: 冻结后字段变更需走总纲重裁决记录, 不允许静默扩展
+
+### v1.1 变更记录
+
+| 版本 | 变更 |
+| --- | --- |
+| v1.1 | §5 ArtifactRoot 清单核对: `edit-checkpoints/` 前缀为产品管理区（commit 持久化并可能改写检查点文件）, 复位例程允许该区文件改动/更替并记录计数; 直属 ArtifactRoot 的测试产物仍不可变（改动/删除 → BLOCKED）。与 reset.py 实现对齐, 消除规范-实现漂移（P04 AUD-501）。 |
 
 ## 1. 文件与编码
 
@@ -51,5 +57,5 @@
 ## 5. 基线与清单文件（§4b 机制）
 
 - 样本基线: 权威件 `E:\dnspy-scenario\evidence\samples-baseline.json`（P01 产出）; 仓库副本 `tests/scenario/baselines/samples-baseline.json`（P02 同步建立）。P03 按 ACC-047 增补后两处同步更新。复位例程对基线外新样本判 BLOCKED（解除责任在 P03 补基线）。
-- ArtifactRoot 清单: `tests/scenario/baselines/artifacts-inventory.json`, 追加式（仅允许新增条目: path+sha256+首见情景）; 已记录文件被改动/删除 → BLOCKED。
+- ArtifactRoot 清单: `tests/scenario/baselines/artifacts-inventory.json`, 追加式（仅允许新增条目: path+sha256+首见情景）; **直属 ArtifactRoot 的已记录文件被改动/删除 → BLOCKED; `edit-checkpoints/` 前缀为产品管理区, 允许改写并记录（v1.1）**。
 - 两文件缺失 → `env_blocked`, 不允许无基线运行。
