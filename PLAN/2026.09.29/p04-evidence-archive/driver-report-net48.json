@@ -1,0 +1,74 @@
+{
+ "tfm": "net48",
+ "url": "http://192.168.204.240:15100/mcp",
+ "batches": [
+  {
+   "batch": "net48-fam01",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam02",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam03",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam04",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam05",
+   "scenarios": [
+    {
+     "scenario": "S-F05-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam06",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam07",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam08",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam09",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam10",
+   "scenarios": [],
+   "stopped_at": null,
+   "reconciliation": []
+  }
+ ],
+ "reconciliation": []
+}

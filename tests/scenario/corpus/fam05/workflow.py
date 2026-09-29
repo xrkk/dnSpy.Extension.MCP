@@ -59,9 +59,18 @@ def run_f05(env, sid):
         # Registered as expected-error: a handle race that yields a domain
         # error envelope is anticipated product behavior (F-03 预期错误),
         # so it must not count as an unexpected error in the result row.
+        # Handle-build failures fall back to the last-known handles instead
+        # of silently skipping the call (declared-vs-actual reconciliation).
         try:
             cf = ctx()
-            g, e = int(cf.get("generation", gen)), int(cf.get("pause_epoch", epoch))
+        except Exception:
+            cf = {}
+        try:
+            g = int(cf.get("generation") or gen)
+            e = int(cf.get("pause_epoch") or epoch)
+        except (TypeError, ValueError):
+            g, e = gen, epoch
+        try:
             with client.expect_error(name, None):
                 fn(g, e)
         except Exception:
@@ -168,7 +177,7 @@ def run_f05(env, sid):
                 "debug_set_exception_policy", {"session_id": session, "generation": g,
                                                "request_id": f"f05-{v:02d}--pol-{run}",
                                                "policy": "unhandled"}))
-        if v in (7, 8, 9, 10, 5):
+        if v in (5, 6, 7, 8, 9):
             try_call("debug_list_threads", lambda g, e: client.call_tool_json(
                 "debug_list_threads", {"session_id": session, "generation": g,
                                        "pause_epoch": e}))

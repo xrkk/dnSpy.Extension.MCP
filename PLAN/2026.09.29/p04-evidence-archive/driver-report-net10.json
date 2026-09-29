@@ -1,0 +1,46 @@
+{
+ "tfm": "net10",
+ "url": "http://192.168.204.240:15101/mcp",
+ "batches": [
+  {
+   "batch": "net10-sample",
+   "scenarios": [
+    {
+     "scenario": "S-F05-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": [
+    {
+     "scenario": "S-F02-01",
+     "batch": "net10-sample",
+     "declared_not_called": [
+      "edit_apply",
+      "edit_impact_scan",
+      "edit_import",
+      "edit_rollback",
+      "edit_status"
+     ],
+     "called_not_declared": []
+    }
+   ]
+  }
+ ],
+ "reconciliation": [
+  {
+   "scenario": "S-F02-01",
+   "batch": "net10-sample",
+   "declared_not_called": [
+    "edit_apply",
+    "edit_impact_scan",
+    "edit_import",
+    "edit_rollback",
+    "edit_status"
+   ],
+   "called_not_declared": []
+  }
+ ]
+}

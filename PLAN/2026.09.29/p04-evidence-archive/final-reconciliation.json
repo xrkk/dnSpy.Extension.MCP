@@ -1,0 +1,79 @@
+{
+ "totals": {
+  "scenarios": 110,
+  "pass": 109,
+  "nonpass": [
+   "net10-sample/S-F02-01:blocked"
+  ]
+ },
+ "mismatches": [
+  {
+   "scenario": "S-F02-01",
+   "batch": "net10-sample",
+   "declared_not_called": [
+    "edit_apply",
+    "edit_impact_scan",
+    "edit_import",
+    "edit_rollback",
+    "edit_status"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-01",
+   "batch": "net10-sample",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-01",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-02",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-03",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-06",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_list_threads"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-09",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  },
+  {
+   "scenario": "S-F05-10",
+   "batch": "net48-fam05",
+   "declared_not_called": [
+    "debug_wait_event"
+   ],
+   "called_not_declared": []
+  }
+ ]
+}
