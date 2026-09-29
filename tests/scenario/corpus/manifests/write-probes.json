@@ -1,0 +1,104 @@
+{
+ "il.Damage": {
+  "method": {
+   "name": "Damage",
+   "token": 100663298,
+   "signature": "System.Int32 HookTarget.Combatant::Damage()"
+  },
+  "instructions": [
+   {
+    "index": 0,
+    "offset": 0,
+    "opcode": "ldc.i4.s",
+    "operand": "int8:10"
+   },
+   {
+    "index": 1,
+    "offset": 2,
+    "opcode": "ret",
+    "operand": ""
+   }
+  ],
+  "max_stack": 8,
+  "init_locals": true,
+  "keep_old_max_stack": false,
+  "local_var_sig_tok": 0,
+  "locals": [],
+  "exception_handlers": [],
+  "has_pending_patch": false
+ },
+ "patch.nop": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ },
+ "il.after": {
+  "method": {
+   "name": "Damage",
+   "token": 100663298,
+   "signature": "System.Int32 HookTarget.Combatant::Damage()"
+  },
+  "instructions": [
+   {
+    "index": 0,
+    "offset": 0,
+    "opcode": "ldc.i4.s",
+    "operand": "int8:10"
+   },
+   {
+    "index": 1,
+    "offset": 2,
+    "opcode": "ret",
+    "operand": ""
+   }
+  ],
+  "max_stack": 8,
+  "init_locals": true,
+  "keep_old_max_stack": false,
+  "local_var_sig_tok": 0,
+  "locals": [],
+  "exception_handlers": [],
+  "has_pending_patch": false
+ },
+ "revert": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ },
+ "il.restored": {
+  "method": {
+   "name": "Damage",
+   "token": 100663298,
+   "signature": "System.Int32 HookTarget.Combatant::Damage()"
+  },
+  "instructions": [
+   {
+    "index": 0,
+    "offset": 0,
+    "opcode": "ldc.i4.s",
+    "operand": "int8:10"
+   },
+   {
+    "index": 1,
+    "offset": 2,
+    "opcode": "ret",
+    "operand": ""
+   }
+  ],
+  "max_stack": 8,
+  "init_locals": true,
+  "keep_old_max_stack": false,
+  "local_var_sig_tok": 0,
+  "locals": [],
+  "exception_handlers": [],
+  "has_pending_patch": false
+ },
+ "force_return": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ },
+ "revert2": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ },
+ "save": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ },
+ "rename": {
+  "ERROR": "{\"schema_version\":\"dnspy.edit.v1\",\"ok\":false,\"state\":\"idle\",\"error\":{\"code\":\"EDIT_OWNER_REQUIRED\",\"message\":\"An initialized MCP transport session is required\",\"current_state\":\"idle"
+ }
+}

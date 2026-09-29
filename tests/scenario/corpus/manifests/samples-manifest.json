@@ -1,0 +1,313 @@
+{
+ "TestIL": {
+  "types": [
+   "<Module>",
+   "Microsoft.CodeAnalysis.EmbeddedAttribute",
+   "System.Runtime.CompilerServices.RefSafetyRulesAttribute",
+   "TestIL.BaseEntity",
+   "TestIL.BigEnum",
+   "TestIL.Boss",
+   "TestIL.Collider",
+   "TestIL.Crate",
+   "TestIL.Decorated",
+   "TestIL.Enemy",
+   "TestIL.ExplicitLayout",
+   "TestIL.GenericFieldCaller",
+   "TestIL.GenericFieldOwner`1",
+   "TestIL.GenericMethodCaller",
+   "TestIL.GenericMethodOwner`1",
+   "TestIL.IDamageable",
+   "TestIL.Il2Cpp.DumpedType",
+   "TestIL.Il2Cpp.FieldOffsetAttribute",
+   "TestIL.Il2Cpp.TokenAttribute",
+   "TestIL.Machines",
+   "TestIL.Machines/<DoAsync>d__2",
+   "TestIL.Machines/<DoCoroutine>d__1",
+   "TestIL.MarkAttribute",
+   "TestIL.Members",
+   "TestIL.Numbers",
+   "TestIL.ObfuscatedDelegate`1",
+   "TestIL.ObfuscatedLicenseState",
+   "TestIL.Patchable",
+   "TestIL.Player",
+   "TestIL.Refs",
+   "TestIL.Simple",
+   "TestIL.StringKeys",
+   "TestIL.UnityComponent",
+   "TestIL.Wall"
+  ],
+  "members": [
+   "<Health>k__BackingField",
+   "Attack",
+   "Health",
+   "Update",
+   "get_Health",
+   "health",
+   "set_Health"
+  ],
+  "string_literals": [
+   "PlayerPrefs.Score"
+  ],
+  "constants": [
+   {
+    "value": 100,
+    "name": null,
+    "owner": "TestIL.Player"
+   },
+   {
+    "value": 100,
+    "name": null,
+    "owner": "TestIL.UnityComponent"
+   },
+   {
+    "value": 100,
+    "name": null,
+    "owner": "TestIL.Machines/<DoAsync>d__2"
+   },
+   {
+    "value": 10,
+    "name": null,
+    "owner": "TestIL.UnityComponent"
+   },
+   {
+    "value": 10,
+    "name": null,
+    "owner": "TestIL.Machines/<DoCoroutine>d__1"
+   }
+  ],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [
+   "Decorated",
+   "OldMethod"
+  ],
+  "unity_messages": [
+   "TestIL.UnityComponent:Awake",
+   "TestIL.UnityComponent:OnTriggerEnter",
+   "TestIL.UnityComponent:Update"
+  ]
+ },
+ "license-01": {
+  "types": [
+   "<Module>",
+   "LicenseSample.AppMain",
+   "LicenseSample.LicenseGate",
+   "LicenseSample.LicenseStrings"
+  ],
+  "members": [
+   "Check",
+   "LicenseGateCheckTwice",
+   "Validate"
+  ],
+  "string_literals": [
+   "Trial expired. Purchase a license."
+  ],
+  "constants": [
+   {
+    "value": 365,
+    "name": null,
+    "owner": "LicenseSample.LicenseGate"
+   }
+  ],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "hooktarget-01": {
+  "types": [
+   "<Module>",
+   "HookTarget.Battle",
+   "HookTarget.Combatant",
+   "HookTarget.Scout",
+   "HookTarget.Tank"
+  ],
+  "members": [
+   "Attack",
+   "Heal",
+   "Health"
+  ],
+  "string_literals": [],
+  "constants": [
+   {
+    "value": 100,
+    "name": null,
+    "owner": "HookTarget.Combatant"
+   },
+   {
+    "value": 10,
+    "name": null,
+    "owner": "HookTarget.Combatant"
+   }
+  ],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "malfeat-01": {
+  "types": [
+   "<Module>",
+   "MalFeat.CredGrabber",
+   "MalFeat.Loader",
+   "MalFeat.MarkerAttribute"
+  ],
+  "members": [],
+  "string_literals": [
+   "%APPDATA%\\Mozilla\\Firefox\\Profiles\\logins.json",
+   "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Login Data",
+   "Software\\Microsoft\\Windows\\CurrentVersion\\RunGlobal\\{4A1B2C3D-1111-2222-3333-444455556666}",
+   "http://updates.example-c2.net/payload/beacon?id="
+  ],
+  "constants": [],
+  "marker_attr_targets": [
+   "AllocateStub",
+   "CredGrabber",
+   "Loader"
+  ],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "obfuscated-01": {
+  "types": [
+   "<Module>",
+   "a.b",
+   "a.g",
+   "a.k"
+  ],
+  "members": [],
+  "string_literals": [],
+  "constants": [],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "renametree-01": {
+  "types": [
+   "<Module>",
+   "RenameTree.Sample.IRepository",
+   "RenameTree.Sample.OldRepository",
+   "RenameTree.Sample.OldService",
+   "RenameTree.Sample.UglyName_1",
+   "RenameTree.Sample.UglyName_1/UglyName_2"
+  ],
+  "members": [
+   "Fetch"
+  ],
+  "string_literals": [
+   "row-"
+  ],
+  "constants": [],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "constmatrix-01": {
+  "types": [
+   "<Module>",
+   "ConstMatrix.Consumer",
+   "ConstMatrix.Numbers",
+   "ConstMatrix.Strings"
+  ],
+  "members": [],
+  "string_literals": [
+   "ALPHA-KEY-0001",
+   "C:\\ProgramData\\ConstMatrix\\cache.db"
+  ],
+  "constants": [
+   {
+    "value": 8443,
+    "name": null,
+    "owner": "ConstMatrix.Consumer"
+   }
+  ],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [
+   "Strings"
+  ],
+  "unity_messages": []
+ },
+ "unitymsgs-01": {
+  "types": [
+   "<Module>",
+   "UnityMsgs.Collider",
+   "UnityMsgs.EnemySpawner",
+   "UnityMsgs.MonoBehaviour",
+   "UnityMsgs.PlayerController"
+  ],
+  "members": [
+   "PeekHealth",
+   "Update",
+   "health"
+  ],
+  "string_literals": [],
+  "constants": [
+   {
+    "value": 100,
+    "name": null,
+    "owner": "UnityMsgs.PlayerController"
+   },
+   {
+    "value": 100,
+    "name": null,
+    "owner": "UnityMsgs.PlayerController"
+   },
+   {
+    "value": 10,
+    "name": null,
+    "owner": "UnityMsgs.PlayerController"
+   }
+  ],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": [
+   "UnityMsgs.EnemySpawner:Awake",
+   "UnityMsgs.EnemySpawner:Start",
+   "UnityMsgs.PlayerController:Awake",
+   "UnityMsgs.PlayerController:OnTriggerEnter",
+   "UnityMsgs.PlayerController:Start",
+   "UnityMsgs.PlayerController:Update"
+  ]
+ },
+ "resource-01": {
+  "types": [
+   "<Module>",
+   "ResourceSample.ResHolder"
+  ],
+  "members": [],
+  "string_literals": [],
+  "constants": [],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "xref-a": {
+  "types": [
+   "<Module>",
+   "XRefApp.Client",
+   "XRefApp.Square"
+  ],
+  "members": [
+   "Area",
+   "TotalArea"
+  ],
+  "string_literals": [],
+  "constants": [],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ },
+ "xref-b": {
+  "types": [
+   "<Module>",
+   "XRefLib.Circle",
+   "XRefLib.Geometry",
+   "XRefLib.IShape"
+  ],
+  "members": [
+   "Area"
+  ],
+  "string_literals": [],
+  "constants": [],
+  "marker_attr_targets": [],
+  "obsolete_attr_targets": [],
+  "unity_messages": []
+ }
+}

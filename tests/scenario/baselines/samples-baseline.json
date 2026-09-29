@@ -1,11 +1,78 @@
 {
-  "source": "P01 E:\\dnspy-scenario\\evidence\\samples-baseline.json (sha256 332fbaeaccb09904899169cfd520c0dbcd5895d0bba87498aa55d0ed2165a508, 同步于 2026-09-29)",
-  "root": "E:\\dnspy-scenario\\samples",
-  "recursive": true,
-  "files": [
-    {"path": "TestIL.dll", "size": 10752, "sha256": "5c916bac953c2f623eb1ccbf5a7ca04eac471c0fc60af6ca088067e714ad2b09"},
-    {"path": "p01-fixtures/TestIL.deps.json", "size": 429, "sha256": "c657409fee16b80d675329d447497cbb289fd04de45f50df9fcff2c47edcbddc"},
-    {"path": "p01-fixtures/TestIL.dll", "size": 10752, "sha256": "926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8"},
-    {"path": "p01-fixtures/TestIL.pdb", "size": 10056, "sha256": "010834301f07a8a58ac5c8ef363794e01bf0894da2e8991ed922f832721ae1c4"}
-  ]
+ "source": "P01 E:\\dnspy-scenario\\evidence\\samples-baseline.json (sha256 332fbaeaccb09904899169cfd520c0dbcd5895d0bba87498aa55d0ed2165a508, 同步于 2026-09-29)",
+ "root": "E:\\dnspy-scenario\\samples",
+ "recursive": true,
+ "files": [
+  {
+   "path": "TestIL.dll",
+   "sha256": "5c916bac953c2f623eb1ccbf5a7ca04eac471c0fc60af6ca088067e714ad2b09"
+  },
+  {
+   "path": "p01-fixtures/TestIL.deps.json",
+   "sha256": "c657409fee16b80d675329d447497cbb289fd04de45f50df9fcff2c47edcbddc"
+  },
+  {
+   "path": "p01-fixtures/TestIL.dll",
+   "sha256": "926770dc408edf9c414369d66a6e28827ec2cb7dc7d2902a3331e540ab3cd9e8"
+  },
+  {
+   "path": "p01-fixtures/TestIL.pdb",
+   "sha256": "010834301f07a8a58ac5c8ef363794e01bf0894da2e8991ed922f832721ae1c4"
+  },
+  {
+   "path": "scenario/build-manifest.json",
+   "sha256": "bf298c00270313bfa50e62043c5eb00d6cc0aeba9f757cfea114f8bc60bce735"
+  },
+  {
+   "path": "scenario/constmatrix-01/constmatrix-01.dll",
+   "sha256": "3e96f8a8c2dc349716667deec24d307b5974467e78ed848d6dbbab7e0ae4e0c3"
+  },
+  {
+   "path": "scenario/hooktarget-01/hooktarget-01.dll",
+   "sha256": "072c75bc6e92a54431582ea0a2832dafbddb6dc540a4d626e2bf821c90edb019"
+  },
+  {
+   "path": "scenario/license-01/license-01.dll",
+   "sha256": "6d6a92a406d1daa661f90fa0789ccffdfdaf5512af54500b00ed3dc109dd8868"
+  },
+  {
+   "path": "scenario/malfeat-01/malfeat-01.dll",
+   "sha256": "2c78f6b071fc0d902e21bcce2742c1877ae397403a2b4c9bbc750a858b28d473"
+  },
+  {
+   "path": "scenario/obfuscated-01/obfuscated-01.dll",
+   "sha256": "b2ef9ac9c6a51abe2c87b8fd0f9c7aad072a50ae687d08ccbef2936ebe2ad706"
+  },
+  {
+   "path": "scenario/renametree-01/renametree-01.dll",
+   "sha256": "e7f916b0ddd1e7d1a325095eeed2a90792c31aec4537198aa20eec8e47b4235d"
+  },
+  {
+   "path": "scenario/resource-01/resource-01.dll",
+   "sha256": "4572b0064244a16b28c6abd58ab7bef164c66f2ded0b510a2f530b8e7d8bb4e0"
+  },
+  {
+   "path": "scenario/runtarget-01/runtarget-01.exe",
+   "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced"
+  },
+  {
+   "path": "scenario/unitymsgs-01/unitymsgs-01.dll",
+   "sha256": "faf24c634c88f4c80f24d1b134c6c1c8207baf7a0734239749b4fd1ebfb2eab6"
+  },
+  {
+   "path": "scenario/xref-a/xref-a.dll",
+   "sha256": "658674af85e83cd5d5bcb36e86c5fc5bf327fddb094c097701e03143010f226b"
+  },
+  {
+   "path": "scenario/xref-b/xref-b.dll",
+   "sha256": "1709ddc54ad45737f98c38c6dc2cdf6f6f93c638ff39ee935fb313eb6f8f9bc1"
+  }
+ ],
+ "p03_append": {
+  "时间": "2026-09-29",
+  "来源": "IMP-302: build-all.ps1 @VM csc 生成 11 样本 + build-manifest.json; 经 vmbridge 实测对齐",
+  "条数": 12,
+  "再生成核验": "2026-09-29 重跑 build-all.ps1: 产物 sha 变化(csc 非确定性), 4 样本类型面逐项一致 → ACC-047 语义等价分支"
+ },
+ "runtarget_sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced"
 }

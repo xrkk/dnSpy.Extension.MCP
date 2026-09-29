@@ -1,0 +1,384 @@
+{
+ "lic.str.VALID": {
+  "items": [
+   {
+    "value": "INVALID",
+    "assembly": "license-01",
+    "type": "LicenseSample.LicenseGate",
+    "method": "Validate",
+    "method_token": 100663298,
+    "signature": "System.String LicenseSample.LicenseGate::Validate(System.String)",
+    "il_index": 4,
+    "il_offset": 9
+   },
+   {
+    "value": "VALID",
+    "assembly": "license-01",
+    "type": "LicenseSample.LicenseGate",
+    "method": "Validate",
+    "method_token": 100663298,
+    "signature": "System.String LicenseSample.LicenseGate::Validate(System.String)",
+    "il_index": 6,
+    "il_offset": 15
+   }
+  ],
+  "total_count": 2,
+  "returned_count": 2
+ },
+ "lic.str.Trial": {
+  "items": [
+   {
+    "value": "Trial expired. Purchase a license.",
+    "assembly": "license-01",
+    "type": "LicenseSample.AppMain",
+    "method": "Banner",
+    "method_token": 100663303,
+    "signature": "System.String LicenseSample.AppMain::Banner(System.String)",
+    "il_index": 4,
+    "il_offset": 12
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "lic.const.365": {
+  "items": [
+   {
+    "value": 365,
+    "opcode": "ldc.i4",
+    "assembly": "license-01",
+    "type": "LicenseSample.LicenseGate",
+    "method": "DaysRemaining",
+    "method_token": 100663299,
+    "signature": "System.Int32 LicenseSample.LicenseGate::DaysRemaining(System.String)",
+    "il_index": 6,
+    "il_offset": 11
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "lic.const.29": {
+  "items": [
+   {
+    "value": 29,
+    "opcode": "ldc.i4.s",
+    "assembly": "license-01",
+    "type": "LicenseSample.LicenseGate",
+    "method": "Check",
+    "method_token": 100663297,
+    "signature": "System.Boolean LicenseSample.LicenseGate::Check(System.String)",
+    "il_index": 6,
+    "il_offset": 11
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "mal.str.http": {
+  "items": [
+   {
+    "value": "http://updates.example-c2.net/payload/beacon?id=",
+    "assembly": "malfeat-01",
+    "type": "MalFeat.Loader",
+    "method": "BeaconTemplate",
+    "method_token": 100663303,
+    "signature": "System.String MalFeat.Loader::BeaconTemplate()",
+    "il_index": 0,
+    "il_offset": 0
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "mal.attr.Marker": {
+  "items": [
+   {
+    "assembly": "malfeat-01",
+    "target_kind": "type",
+    "declaring_type": "MalFeat.Loader",
+    "name": "Loader",
+    "signature": "MalFeat.Loader",
+    "token": 33554435,
+    "attribute": "MalFeat.MarkerAttribute"
+   },
+   {
+    "assembly": "malfeat-01",
+    "target_kind": "method",
+    "declaring_type": "MalFeat.Loader",
+    "name": "AllocateStub",
+    "signature": "System.Boolean MalFeat.Loader::AllocateStub(System.UInt32)",
+    "token": 100663301,
+    "attribute": "MalFeat.MarkerAttribute"
+   },
+   {
+    "assembly": "malfeat-01",
+    "target_kind": "type",
+    "declaring_type": "MalFeat.CredGrabber",
+    "name": "CredGrabber",
+    "signature": "MalFeat.CredGrabber",
+    "token": 33554436,
+    "attribute": "MalFeat.MarkerAttribute"
+   }
+  ],
+  "total_count": 3,
+  "returned_count": 3
+ },
+ "cm.str.SELECT": {
+  "items": [],
+  "total_count": 0,
+  "returned_count": 0
+ },
+ "cm.const.8443": {
+  "items": [
+   {
+    "value": 8443,
+    "opcode": "ldc.i4",
+    "assembly": "constmatrix-01",
+    "type": "ConstMatrix.Consumer",
+    "method": "Join",
+    "method_token": 100663297,
+    "signature": "System.String ConstMatrix.Consumer::Join()",
+    "il_index": 1,
+    "il_offset": 5
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "cm.str.ALPHA": {
+  "items": [
+   {
+    "value": "ALPHA-KEY-0001",
+    "assembly": "constmatrix-01",
+    "type": "ConstMatrix.Consumer",
+    "method": "Join",
+    "method_token": 100663297,
+    "signature": "System.String ConstMatrix.Consumer::Join()",
+    "il_index": 0,
+    "il_offset": 0
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "cm.attr.Obsolete": {
+  "items": [
+   {
+    "assembly": "constmatrix-01",
+    "target_kind": "type",
+    "declaring_type": "ConstMatrix.Strings",
+    "name": "Strings",
+    "signature": "ConstMatrix.Strings",
+    "token": 33554434,
+    "attribute": "System.ObsoleteAttribute"
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "xa.callers.Area": {
+  "items": [
+   {
+    "caller_assembly": "xref-b",
+    "caller_type": "XRefLib.Geometry",
+    "caller_method": "Describe",
+    "caller_token": 100663300,
+    "signature": "System.Int32 XRefLib.Geometry::Describe(XRefLib.IShape)",
+    "opcode": "callvirt",
+    "reference": "System.Int32 XRefLib.IShape::Area()",
+    "il_index": 1,
+    "il_offset": 1
+   }
+  ],
+  "total_count": 1,
+  "returned_count": 1
+ },
+ "xa.callees.TotalArea": {
+  "items": [
+   {
+    "ref_kind": "method",
+    "signature": "System.Void XRefLib.Circle::.ctor()",
+    "token": 100663299,
+    "target_assembly": "xref-b",
+    "opcodes": [
+     "newobj"
+    ],
+    "occurrences": 1,
+    "first_il_index": 0
+   },
+   {
+    "ref_kind": "method",
+    "signature": "System.Int32 XRefLib.Geometry::Describe(XRefLib.IShape)",
+    "token": 100663300,
+    "target_assembly": "xref-b",
+    "opcodes": [
+     "call"
+    ],
+    "occurrences": 2,
+    "first_il_index": 1
+   },
+   {
+    "ref_kind": "method",
+    "signature": "System.Void XRefApp.Square::.ctor()",
+    "token": 100663298,
+    "target_assembly": "xref-a",
+    "opcodes": [
+     "newobj"
+    ],
+    "occurrences": 1,
+    "first_il_index": 2
+   }
+  ],
+  "total_count": 3,
+  "returned_count": 3
+ },
+ "xa.refs.Circle": {
+  "items": [],
+  "total_count": 0,
+  "returned_count": 0
+ },
+ "xa.overrides.Area": {
+  "items": [
+   {
+    "type": "XRefApp.Square",
+    "method": "Area",
+    "signature": "System.Int32 XRefApp.Square::Area()",
+    "token": 100663297,
+    "assembly": "xref-a",
+    "is_abstract": false,
+    "is_interface_impl": true
+   },
+   {
+    "type": "XRefLib.Circle",
+    "method": "Area",
+    "signature": "System.Int32 XRefLib.Circle::Area()",
+    "token": 100663298,
+    "assembly": "xref-b",
+    "is_abstract": false,
+    "is_interface_impl": true
+   }
+  ],
+  "total_count": 2,
+  "returned_count": 2
+ },
+ "rt.types": {
+  "items": [
+   {
+    "AssemblyName": "renametree-01",
+    "Token": 33554435,
+    "FullName": "RenameTree.Sample.OldRepository",
+    "Namespace": "RenameTree.Sample",
+    "Name": "OldRepository",
+    "IsPublic": true,
+    "IsNested": false,
+    "IsCompilerGenerated": false,
+    "DeclaringType": null
+   },
+   {
+    "AssemblyName": "renametree-01",
+    "Token": 33554436,
+    "FullName": "RenameTree.Sample.OldService",
+    "Namespace": "RenameTree.Sample",
+    "Name": "OldService",
+    "IsPublic": true,
+    "IsNested": false,
+    "IsCompilerGenerated": false,
+    "DeclaringType": null
+   }
+  ],
+  "total_count": 2,
+  "returned_count": 2
+ },
+ "um.messages": {
+  "items": [
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.PlayerController",
+    "message": "Awake",
+    "signature": "System.Void UnityMsgs.PlayerController::Awake()",
+    "token": 100663299,
+    "parameter_types": [],
+    "is_static": false
+   },
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.PlayerController",
+    "message": "Start",
+    "signature": "System.Void UnityMsgs.PlayerController::Start()",
+    "token": 100663300,
+    "parameter_types": [],
+    "is_static": false
+   },
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.PlayerController",
+    "message": "Update",
+    "signature": "System.Void UnityMsgs.PlayerController::Update()",
+    "token": 100663301,
+    "parameter_types": [],
+    "is_static": false
+   },
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.PlayerController",
+    "message": "OnTriggerEnter",
+    "signature": "System.Void UnityMsgs.PlayerController::OnTriggerEnter(UnityMsgs.Collider)",
+    "token": 100663302,
+    "parameter_types": [
+     "UnityMsgs.Collider"
+    ],
+    "is_static": false
+   },
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.EnemySpawner",
+    "message": "Awake",
+    "signature": "System.Void UnityMsgs.EnemySpawner::Awake()",
+    "token": 100663305,
+    "parameter_types": [],
+    "is_static": false
+   },
+   {
+    "assembly": "unitymsgs-01",
+    "type": "UnityMsgs.EnemySpawner",
+    "message": "Start",
+    "signature": "System.Void UnityMsgs.EnemySpawner::Start()",
+    "token": 100663306,
+    "parameter_types": [],
+    "is_static": false
+   }
+  ],
+  "total_count": 6,
+  "returned_count": 6
+ },
+ "ht.il.Damage": {
+  "method": {
+   "name": "Damage",
+   "token": 100663298,
+   "signature": "System.Int32 HookTarget.Combatant::Damage()"
+  },
+  "instructions": [
+   {
+    "index": 0,
+    "offset": 0,
+    "opcode": "ldc.i4.s",
+    "operand": "int8:10"
+   },
+   {
+    "index": 1,
+    "offset": 2,
+    "opcode": "ret",
+    "operand": ""
+   }
+  ],
+  "max_stack": 8,
+  "init_locals": true,
+  "keep_old_max_stack": false,
+  "local_var_sig_tok": 0,
+  "locals": [],
+  "exception_handlers": [],
+  "has_pending_patch": false
+ },
+ "caps.matrix": null
+}
