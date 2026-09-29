@@ -13,7 +13,7 @@
 - `tools/list` 的工具对象包含 `name`、`description`、`inputSchema`；只有协商 `2025-06-18` 才带可用的 `outputSchema`。`tools/call` 参数为 `{"name":"工具名","arguments":{...}}`。顶层 JSON-RPC 错误 `-32602` 为无效参数、`-32603` 为内部异常；未知工具是 `isError:true` 的文本内容。
 - 工具响应外层为 `result:{content:[{type:"text",text:"..."}],isError?:boolean,structuredContent?:object}`。在 `2025-06-18` 下若首个文本为合法 JSON，`structuredContent` 与之同值；旧协议省略。静态读工具多是直接 JSON 投影而非 `schema_version` 信封；其通用异常仍可能是 `Error executing tool ...` 文本。六旧写工具的编辑域拒绝经适配器返回 `dnspy.edit.v1` 错误信封（code/state/recovery），不能把它们一概按普通静态文本错误解析。调试工具内部是 `dnspy.debug.v1` 成功/失败信封，编辑工具内部是 `dnspy.edit.v1`；`isError` 对应域失败。
 - `resources/list` 另返回 `{resources:[{uri,name,description,mimeType}]}`；`resources/read` 输入 `{uri}` 返回 `{contents:[{uri,mimeType:"text/markdown",text}]}`，未知 URI 是 `-32602`。`resources/templates/list` 当前返回空模板页。资源是文档，不计为 tools/list 工具。
-- 资源 URI 固定为 `dnspy://docs/{index,overview,static-analysis,il-editing,dynamic-debugging,security,python-client,tool-workflows}` 与 `bepinex://docs/{plugin-structure,harmony-patching,configuration,common-scenarios,il2cpp-guide,mono-vs-il2cpp}` 共 14 个；`resources/read` 要传完整具体 URI，不能传上述花括号缩写。初始化返回的 `instructions` 是嵌入说明，不是额外工具；若其阶段性文字与当前实际 provider 能力冲突，以本基线源码和 live `tools/list` 为准。
+- 资源 URI 固定为 `dnspy://docs/{index,overview,static-analysis,il-editing,edit-ops,dynamic-debugging,security,python-client,tool-workflows}` 与 `bepinex://docs/{plugin-structure,harmony-patching,configuration,common-scenarios,il2cpp-guide,mono-vs-il2cpp}` 共 15 个；`resources/read` 要传完整具体 URI，不能传上述花括号缩写。初始化返回的 `instructions` 是嵌入说明，不是额外工具；若其阶段性文字与当前实际 provider 能力冲突，以本基线源码和 live `tools/list` 为准。
 - 静态加载/反编译只解析 .NET 元数据和 IL，不执行目标程序集；`debug_launch` 与调试控制才跨入目标执行门。调试工具受冻结的专用实例确认、启动时调试器空闲采样、设置/执行环境门控制；`debug_capabilities` 常通告，其余会话工具只在门生效且 handler 存在时通告。`debug_attach`/`debug_detach`/`debug_list_attachable_processes` 固定不通告且调用返回 `CAPABILITY_UNAVAILABLE`。编辑工具的事务/编译有各自可用性、所有权和容量约束。
 
 - 传输 raw body 上限 1,048,576 字节；短请求并发门 16、长连接门 8、transport session 最多 16。调试事件缓存默认 8,388,608 字节，ArtifactRoot 账本上限：128 保留会话/根子项、4096 每会话子项及全库子项、单文件 536,870,912 字节、单会话 1,073,741,824 字节、全库 8,589,934,592 字节；UTF-8 字节限制另见附录 D，不能把 JSON Schema 的字符 `maxLength` 误当字节限制。编辑上限见附录 C 中输出 `limits` 与正文事务规则，单次 HTTP body 限制仍先于业务解析。
@@ -44,7 +44,7 @@
 
 ## 2. 全工具索引
 
-基线源码生产工具 72 个：静态 32、调试 22、编辑/编译 18。验收环境 `DNMCP_TEST=1` 另外通告 6 个调试探针；文末另列只可直接测试调用但不通告的缝，均非正常业务入口。
+基线源码生产工具 74 个：静态 33、调试 23、编辑/编译 18（2026-09-29 token 优化版新增 `get_type_overview` 与 `debug_snapshot`）。验收环境 `DNMCP_TEST=1` 另外通告 6 个调试探针；文末另列只可直接测试调用但不通告的缝，均非正常业务入口。
 
 | 精确工具名 | 类别/作用 | 影响与可用条件 | 详情 |
 | --- | --- | --- | --- |
@@ -53,6 +53,7 @@
 | `get_assembly_info` | 静态：Get detailed information about a specific assembly. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_assembly_info](#get_assembly_info) |
 | `list_types` | 静态：List all types in an assembly or namespace. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [list_types](#list_types) |
 | `get_type_info` | 静态：Get detailed information about a specific type including its TypeDef token, generic-parameter tokens, and members. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_type_info](#get_type_info) |
+| `get_type_overview` | 静态：One-call type overview: the compact get_type_info result plus the type's method and field tables in a single response. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [get_type_overview](#get_type_overview) |
 | `decompile_method` | 静态：Decompile a specific method to C# code. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [decompile_method](#decompile_method) |
 | `search_types` | 静态：Search for types by name. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_types](#search_types) |
 | `search_members` | 静态：Search for MEMBERS (methods / fields / properties / events) by name across all loaded assemblies (or one via assembly_name) — the member counterpart of search_types, together covering dnSpy's Ctrl+Shift+K 'Search Assemblies'. | 只读/加载；需 dnSpy 实例；目标类工具需已加载目标 | [search_members](#search_members) |
@@ -97,6 +98,7 @@
 | `debug_get_stack` | 调试：动态调试：get stack | 读/控制目标；需冻结调试门 | [debug_get_stack](#debug_get_stack) |
 | `debug_step` | 调试：动态调试：step | 读/控制目标；需冻结调试门 | [debug_step](#debug_step) |
 | `debug_get_locals` | 调试：动态调试：get locals | 读/控制目标；需冻结调试门 | [debug_get_locals](#debug_get_locals) |
+| `debug_snapshot` | 调试：动态调试：one-call paused-state snapshot（stack 页 + locals 首页） | 读/控制目标；需冻结调试门且已暂停 | [debug_snapshot](#debug_snapshot) |
 | `debug_expand_value` | 调试：动态调试：expand value | 读/控制目标；需冻结调试门 | [debug_expand_value](#debug_expand_value) |
 | `debug_list_modules` | 调试：动态调试：list modules | 读/控制目标；需冻结调试门 | [debug_list_modules](#debug_list_modules) |
 | `debug_read_memory` | 调试：动态调试：read memory | 读/控制目标；需冻结调试门 | [debug_read_memory](#debug_read_memory) |
@@ -201,6 +203,21 @@ Get detailed information about a specific type including its TypeDef token, gene
 
 返回（从执行实现整理，非正式 outputSchema）：JSON `Token,FullName,Namespace,Name,IsPublic,IsClass,IsInterface,IsEnum,IsValueType,IsAbstract,IsSealed,BaseType,Interfaces,GenericParameters,Methods,MethodsTotalCount,MethodsReturnedCount,FieldsCount,PropertiesCount,EventsCount,nextCursor?`；首请求另有 `Fields/Properties/Events`，后续页只给三类计数；`compact` 缩减成员字段。 `2025-06-18` 只在文本可解析为 JSON 时镜像到 `structuredContent`；纯代码/普通文本没有此字段。失败通常是 `isError:true` 的执行错误文本。
 
+### get_type_overview
+
+One-call type overview: the compact get_type_info result plus the type's method and field tables in a single response — the 3-call browse (get_type_info + list_methods + get_type_fields) collapsed into one. members_filter applies to the methods/fields tables (same matcher as get_type_info); max_members (default 50) caps each table, each segment keeps total_count and a cursor for paging with list_methods / get_type_fields.
+
+`{"name":"get_type_overview","arguments":{"assembly_name":"sample_assembly_name","type_full_name":"sample_type_full_name"}}`
+
+| 字段 | 必填 | 类型、枚举与约束 |
+| --- | --- | --- |
+| `assembly_name` | 是 | string |
+| `type_full_name` | 是 | string |
+| `members_filter` | 否 | string |
+| `max_members` | 否 | integer（默认 50，上限 1000） |
+
+返回（从执行实现整理，非正式 outputSchema）：JSON `{type:{...get_type_info(compact) 结果}, methods:{items,total_count,returned_count,nextCursor?,note?}, fields:{Type,Pattern:"*",MatchCount,ReturnedCount,Fields,nextCursor?,note?}}`；`max_members` 分别截断两个表并各附 `total_count` 与续读 cursor。`2025-06-18` 文本可解析为 JSON 时镜像到 `structuredContent`。失败通常是 `isError:true` 的执行错误文本。
+
 ### decompile_method
 
 Decompile a specific method to C# code. For overloaded methods, pass parameter_types (array of fully-qualified type names from list_methods) or method_token (uint MDToken) to disambiguate.
@@ -215,8 +232,10 @@ Decompile a specific method to C# code. For overloaded methods, pass parameter_t
 | `parameter_types` | 否 | array; items=string |
 | `method_token` | 否 | integer/string |
 | `include_state_machine` | 否 | boolean |
+| `max_lines` | 否 | integer（默认 0=不限） |
+| `start_line` | 否 | integer（默认 0，0 基） |
 
-返回（从执行实现整理，非正式 outputSchema）：原样 C# 文本，不是 JSON；可附加状态机 `MoveNext` 救援文本，取决于 `include_state_machine`。 `2025-06-18` 只在文本可解析为 JSON 时镜像到 `structuredContent`；纯代码/普通文本没有此字段。失败通常是 `isError:true` 的执行错误文本。
+返回（从执行实现整理，非正式 outputSchema）：默认（不传 `max_lines`/`start_line`）原样 C# 文本，不是 JSON；可附加状态机 `MoveNext` 救援文本，取决于 `include_state_machine`。传入 `max_lines` 或 `start_line` 时返回 JSON 信封 `{truncated,total_lines,start_line,next_line_offset?,code,note?}`，用 `start_line=next_line_offset` 续读；窗口恰好覆盖全文且起始为 0 时仍返回原样文本。 `2025-06-18` 只在文本可解析为 JSON 时镜像到 `structuredContent`；纯代码/普通文本没有此字段。失败通常是 `isError:true` 的执行错误文本。
 
 ### search_types
 
@@ -908,6 +927,20 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 成功 `result` 字段：`items`、`next_page_cursor`、`truncated`、`total_known`、`evaluation_mode`、`budgets`。完整字段类型、条件分支及所有嵌套结构见附录 B 的 `debug_get_locals_result`、相关 `$defs`；这里的 schema 是冻结调试契约，不是运行成功断言。
 
+### debug_snapshot
+
+`{"name":"debug_snapshot","arguments":{"session_id":"sample_session_id","generation":0,"pause_epoch":0}}`
+
+| 字段 | 必填 | 类型、枚举与约束 |
+| --- | --- | --- |
+| `session_id` | 是 | 定义 `session_id` |
+| `generation` | 是 | 定义 `non_negative_int` |
+| `pause_epoch` | 是 | 定义 `non_negative_int` |
+| `frame_handle` | 否 | 定义 `opaque_handle` |
+| `page_size` | 否 | integer; minimum=1; maximum=100 |
+
+成功 `result` 字段：`stack`（`items`、`next_page_cursor`、`truncated`、`total_known`——`debug_get_stack_result` 形状，取第一个托管线程）与 `locals`（`items`、`next_page_cursor`、`truncated`、`total_known`、`evaluation_mode`、`budgets`——`debug_get_locals_result` 形状，默认栈顶帧）。`page_size` 同时作用于两段（默认 20）；`frame_handle` 可指定任意本暂停纪元内已铸句柄的帧。信封 `debug_context` 携带最新 `generation`/`pause_epoch`/`state`。未暂停返回与 `debug_get_stack` 同语义的域错误。完整字段类型见附录 B 的 `debug_snapshot_args`/`debug_snapshot_result`、相关 `$defs`；这里的 schema 是冻结调试契约，不是运行成功断言。
+
 ### debug_expand_value
 
 `{"name":"debug_expand_value","arguments":{"session_id":"sample_session_id","generation":0,"pause_epoch":0,"value_handle":"sample_value_handle"}}`
@@ -1022,7 +1055,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 | 字段 | 必填 | 类型、枚举与约束 |
 | --- | --- | --- |
 | `expected_revision` | 是 | integer; minimum=0; maximum=4294967295 |
-| `operation` | 是 | oneOf(39 分支) |
+| `operation` | 是 | 结构对象; kind enum(39 项), additionalProperties=true, required=[kind] |
 | `request_id` | 是 | string; minLength=1; maxLength=128 |
 | `transaction_id` | 是 | string; minLength=1; maxLength=128 |
 
@@ -1235,7 +1268,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ### edit_apply：39 种 operation 的可用参数
 
-`edit_apply` 顶层必填 `request_id`、`transaction_id`、`expected_revision`、`operation`。`operation` 是严格 `oneOf`，`kind` 决定分支；下表逐种列**全部直接字段**与必填集，字段的嵌套语法、null/空集合、数值范围、互斥及默认值由附录 C 的 `edit_apply.inputSchema.properties.operation.oneOf` 对应 `kind` 完整给出。不存在开放的任意 kind；未知/无效字段被 schema 拒绝。`kind_version` 是检查点持久化版本判定，非调用方随意选的 edit_apply 参数。
+`edit_apply` 顶层必填 `request_id`、`transaction_id`、`expected_revision`、`operation`。`operation` 是紧凑判别式（`kind` enum 39 项 + `additionalProperties:true`），字段级验证由服务器运行时白名单承接（2026-09-29 token 优化版）；下表逐种列**全部直接字段**与必填集，完整字段目录亦见资源 `dnspy://docs/edit-ops`。未知 kind、越界字段与缺失必填字段返回 `EDIT_VALIDATION_FAILED`（details 含 kind 与字段定位）且不入检查点历史，与旧版 schema 层 `additionalProperties:false` 行为对齐（错误通道由协议层 -32602 迁至域错误包）。`kind_version` 是检查点持久化版本判定，非调用方随意选的 edit_apply 参数。
 
 每种成功时共用 `edit_apply.result`：`kind` 回显本行、`operation_index` 指向本次提交的私有操作、`created_object_ids` 仅对创建类有值，另返回 `transaction`（递增修订）、`fingerprints`、`diffs`、`risks`、`review_cleared:true` 与 `capacity`；失败整体原子回退，不返回部分成功种类。具体各字段类型/风险记录见附录 C 的 outputSchema。
 
@@ -1337,7 +1370,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 编辑测试缝的精确输入/输出位于附录 C 的同名键：`edit_test_clock`（虚拟时钟）、`edit_test_barrier`（同步屏障）、`edit_test_external_mutation`/`edit_test_live_mutation`/`edit_test_lineage_mutation`（冲突注入）、`edit_test_fault`/`edit_test_storage_fault`（故障注入）、`edit_test_apply_and_restore`（逆向/恢复）、`edit_test_strong_name`（隔离强名称探针）。它们从不进入 tools/list；不能用返回数据替代真实样本验收。
 
-## 附录 A：32 个静态工具的原样输入 schema
+## 附录 A：33 个静态工具的原样输入 schema
 
 以下键与 `McpTools.GetAvailableTools()` 一一对应。静态多数无 `outputSchema`；源码推导的返回结构见附录 A2，唯一正式 `list_assemblies.outputSchema` 已在 A2 标明。
 
@@ -1461,6 +1494,31 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "type_full_name"
     ]
   },
+  "get_type_overview": {
+    "type": "object",
+    "properties": {
+      "assembly_name": {
+        "type": "string",
+        "description": "Name of the assembly"
+      },
+      "type_full_name": {
+        "type": "string",
+        "description": "Full name of the type including namespace"
+      },
+      "members_filter": {
+        "type": "string",
+        "description": "Optional. Only include methods/fields whose name matches (case-insensitive substring, or '*' wildcard anchored to the whole name), e.g. '*Save*'."
+      },
+      "max_members": {
+        "type": "integer",
+        "description": "Optional per-table cap (default 50, max 1000). Truncates the methods and fields tables independently; each segment keeps total_count and a nextCursor for paging."
+      }
+    },
+    "required": [
+      "assembly_name",
+      "type_full_name"
+    ]
+  },
   "decompile_method": {
     "type": "object",
     "properties": {
@@ -1493,6 +1551,14 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "include_state_machine": {
         "type": "boolean",
         "description": "Default true. For async / iterator methods, if the decompiler can't inline the state machine back into await/yield (common on Unity/Mono output), append the raw compiler-generated MoveNext body so the real logic isn't lost. Set false to get only the kickoff."
+      },
+      "max_lines": {
+        "type": "integer",
+        "description": "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
       }
     },
     "required": [
@@ -1574,6 +1640,14 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "type_full_name": {
         "type": "string",
         "description": "Full name of the type (namespace + name; nested types may use '.', '+', or '/')."
+      },
+      "max_lines": {
+        "type": "integer",
+        "description": "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
       }
     },
     "required": [
@@ -1598,6 +1672,14 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "include_state_machine": {
         "type": "boolean",
         "description": "Default true. For async/iterator methods, append the raw MoveNext body when the kickoff can't be reconstructed (same behavior as decompile_method)."
+      },
+      "max_lines": {
+        "type": "integer",
+        "description": "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
       }
     },
     "required": [
@@ -2093,6 +2175,10 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
       "type_full_name": {
         "type": "string",
         "description": "Fully qualified type name"
+      },
+      "names_only": {
+        "type": "boolean",
+        "description": "Default false. Return a flat list of method name strings instead of per-method rows — much cheaper in tokens. total_count still counts every method."
       },
       "cursor": {
         "type": "string",
@@ -9258,6 +9344,50 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
         "error",
         "late_completion_policy"
       ]
+    },
+    "debug_snapshot_args": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/session_id"
+        },
+        "generation": {
+          "$ref": "#/$defs/non_negative_int"
+        },
+        "pause_epoch": {
+          "$ref": "#/$defs/non_negative_int"
+        },
+        "frame_handle": {
+          "$ref": "#/$defs/opaque_handle"
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "session_id",
+        "generation",
+        "pause_epoch"
+      ]
+    },
+    "debug_snapshot_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stack": {
+          "$ref": "#/$defs/debug_get_stack_result"
+        },
+        "locals": {
+          "$ref": "#/$defs/debug_get_locals_result"
+        }
+      },
+      "required": [
+        "stack",
+        "locals"
+      ]
     }
   }
 }
@@ -9265,7 +9395,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
 
 ## 附录 C：冻结编辑 JSON Schema（自包含）
 
-顶层每个工具键含 `inputSchema` 与 `outputSchema`，包括全部 39 个 `edit_apply.operation.oneOf` 分支与不通告测试缝；`$defs` 收纳重复结构。所有 `$ref` 都在本 JSON 对象内闭合；递归展开每个工具后与源 `p03-tool-schemas.json` 精确相等，包含 `oneOf`/`anyOf`/`required`/`additionalProperties`/`null`。`edit_compile` 独立于该源文件，接口在正文说明。
+顶层每个工具键含 `inputSchema` 与 `outputSchema`，包括 `edit_apply.operation` 的紧凑判别式（39 项 kind enum，完整字段目录见 `dnspy://docs/edit-ops`）与不通告测试缝；`$defs` 收纳重复结构。所有 `$ref` 都在本 JSON 对象内闭合；递归展开每个工具后与源 `p03-tool-schemas.json` 精确相等，包含 `oneOf`/`anyOf`/`required`/`additionalProperties`/`null`。`edit_compile` 独立于该源文件，接口在正文说明。
 
 ```json
 {
@@ -12476,1697 +12606,58 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
      "type": "integer"
     },
     "operation": {
-     "oneOf": [
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "default": 0,
-         "maximum": 16219583,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 16219583,
-         "x-dnspy-enum": "TypeAttributes"
-        },
-        "base_type": {
-         "$ref": "#/$defs/Shared053"
-        },
-        "kind": {
-         "const": "type_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "namespace": {
-         "maxLength": 512,
-         "type": "string"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "layout": {
-         "$ref": "#/$defs/Shared091"
-        }
-       },
-       "required": [
-        "kind",
-        "name"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 16219583,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 16219583,
-         "x-dnspy-enum": "TypeAttributes"
-        },
-        "base_type": {
-         "$ref": "#/$defs/Shared053"
-        },
-        "kind": {
-         "const": "type_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "namespace": {
-         "maxLength": 512,
-         "type": "string"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "layout": {
-         "$ref": "#/$defs/Shared091"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "type_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "default": 128,
-         "maximum": 65535,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 65535,
-         "x-dnspy-enum": "MethodAttributes"
-        },
-        "body": {
-         "$ref": "#/$defs/Shared001"
-        },
-        "impl_attributes": {
-         "default": 0,
-         "maximum": 6143,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 6143,
-         "x-dnspy-enum": "MethodImplAttributes"
-        },
-        "kind": {
-         "const": "method_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "signature": {
-         "additionalProperties": false,
-         "properties": {
-          "generic_parameters": {
-           "items": {
-            "additionalProperties": false,
-            "properties": {
-             "attributes": {
-              "$ref": "#/$defs/Shared133"
-             },
-             "name": {
-              "maxLength": 512,
-              "minLength": 1,
-              "type": "string"
-             },
-             "constraints": {
-              "oneOf": [
-               {
-                "type": "null"
-               },
-               {
-                "type": "array",
-                "maxItems": 64,
-                "items": {
-                 "oneOf": [
-                  {
-                   "type": "string",
-                   "minLength": 1,
-                   "maxLength": 4096
-                  },
-                  {
-                   "$ref": "#/$defs/Shared063"
-                  }
-                 ]
-                }
-               }
-              ]
-             }
-            },
-            "required": [
-             "name"
-            ],
-            "type": "object"
-           },
-           "maxItems": 64,
-           "type": "array"
-          },
-          "has_this": {
-           "type": "boolean"
-          },
-          "parameters": {
-           "items": {
-            "additionalProperties": false,
-            "properties": {
-             "attributes": {
-              "$ref": "#/$defs/Shared134"
-             },
-             "name": {
-              "oneOf": [
-               {
-                "maxLength": 512,
-                "minLength": 1,
-                "type": "string"
-               },
-               {
-                "type": "null"
-               }
-              ]
-             },
-             "type": {
-              "$ref": "#/$defs/Shared057"
-             }
-            },
-            "required": [
-             "type"
-            ],
-            "type": "object"
-           },
-           "maxItems": 256,
-           "type": "array"
-          },
-          "return_type": {
-           "$ref": "#/$defs/Shared057"
-          }
-         },
-         "required": [
-          "return_type",
-          "parameters",
-          "has_this",
-          "generic_parameters"
-         ],
-         "type": "object"
-        },
-        "overrides": {
-         "$ref": "#/$defs/Shared024"
-        },
-        "pinvoke": {
-         "$ref": "#/$defs/Shared064"
-        },
-        "custom_debug_infos": {
-         "$ref": "#/$defs/Shared007"
-        }
-       },
-       "required": [
-        "kind",
-        "owner_type",
-        "name",
-        "signature"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 65535,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 65535,
-         "x-dnspy-enum": "MethodAttributes"
-        },
-        "has_this": {
-         "type": "boolean"
-        },
-        "impl_attributes": {
-         "maximum": 6143,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 6143,
-         "x-dnspy-enum": "MethodImplAttributes"
-        },
-        "kind": {
-         "const": "method_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "return_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "overrides": {
-         "$ref": "#/$defs/Shared024"
-        },
-        "pinvoke": {
-         "$ref": "#/$defs/Shared064"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "method_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "default": 0,
-         "maximum": 47095,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 47095,
-         "x-dnspy-enum": "FieldAttributes"
-        },
-        "constant": {
-         "$ref": "#/$defs/Shared010"
-        },
-        "field_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "kind": {
-         "const": "field_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "field_offset": {
-         "oneOf": [
-          {
-           "type": "null"
-          },
-          {
-           "type": "integer",
-           "minimum": 0,
-           "maximum": 4294967295
-          }
-         ]
-        },
-        "initial_data": {
-         "$ref": "#/$defs/Shared099"
-        },
-        "marshal": {
-         "$ref": "#/$defs/Shared017"
-        }
-       },
-       "required": [
-        "kind",
-        "owner_type",
-        "name",
-        "field_type"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "allOf": [
-        {
-         "not": {
-          "required": [
-           "constant",
-           "clear_constant"
-          ]
-         }
-        }
-       ],
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 47095,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 47095,
-         "x-dnspy-enum": "FieldAttributes"
-        },
-        "clear_constant": {
-         "const": true
-        },
-        "constant": {
-         "$ref": "#/$defs/Shared010"
-        },
-        "field_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "kind": {
-         "const": "field_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "field_offset": {
-         "oneOf": [
-          {
-           "type": "null"
-          },
-          {
-           "type": "integer",
-           "minimum": 0,
-           "maximum": 4294967295
-          }
-         ]
-        },
-        "initial_data": {
-         "$ref": "#/$defs/Shared099"
-        },
-        "marshal": {
-         "$ref": "#/$defs/Shared017"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "field_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "default": 0,
-         "maximum": 5632,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 5632,
-         "x-dnspy-enum": "PropertyAttributes"
-        },
-        "getter": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "index_parameter_types": {
-         "$ref": "#/$defs/Shared052"
-        },
-        "kind": {
-         "const": "property_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "property_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "setter": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "owner_type",
-        "name",
-        "property_type"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 5632,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 5632,
-         "x-dnspy-enum": "PropertyAttributes"
-        },
-        "getter": {
-         "$ref": "#/$defs/Shared073"
-        },
-        "index_parameter_types": {
-         "$ref": "#/$defs/Shared052"
-        },
-        "kind": {
-         "const": "property_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "property_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "setter": {
-         "$ref": "#/$defs/Shared073"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "property_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "add_method": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "attributes": {
-         "default": 0,
-         "maximum": 1536,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 1536,
-         "x-dnspy-enum": "EventAttributes"
-        },
-        "event_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "kind": {
-         "const": "event_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "raise_method": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "remove_method": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "owner_type",
-        "name",
-        "event_type",
-        "add_method",
-        "remove_method"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "add_method": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "attributes": {
-         "maximum": 1536,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 1536,
-         "x-dnspy-enum": "EventAttributes"
-        },
-        "event_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "kind": {
-         "const": "event_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "raise_method": {
-         "$ref": "#/$defs/Shared073"
-        },
-        "remove_method": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "event_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "$ref": "#/$defs/Shared134"
-        },
-        "kind": {
-         "const": "parameter_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner_method": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "parameter_index": {
-         "maximum": 4294967295,
-         "minimum": 0,
-         "type": "integer"
-        },
-        "parameter_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "marshal": {
-         "$ref": "#/$defs/Shared017"
-        }
-       },
-       "required": [
-        "kind",
-        "owner_method",
-        "parameter_index",
-        "name",
-        "parameter_type"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 12319,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 12319,
-         "x-dnspy-enum": "ParamAttributes"
-        },
-        "kind": {
-         "const": "parameter_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "parameter_target": {
-         "$ref": "#/$defs/Shared037"
-        },
-        "parameter_type": {
-         "$ref": "#/$defs/Shared057"
-        },
-        "marshal": {
-         "$ref": "#/$defs/Shared017"
-        }
-       },
-       "required": [
-        "kind",
-        "parameter_target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "parameter_remove"
-        },
-        "parameter_target": {
-         "$ref": "#/$defs/Shared037"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        }
-       },
-       "required": [
-        "kind",
-        "parameter_target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "attributes": {
-         "$ref": "#/$defs/Shared133"
-        },
-        "generic_index": {
-         "maximum": 4294967295,
-         "minimum": 0,
-         "type": "integer"
-        },
-        "kind": {
-         "const": "generic_parameter_add"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "owner": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "constraints": {
-         "$ref": "#/$defs/Shared138"
-        }
-       },
-       "required": [
-        "kind",
-        "owner",
-        "generic_index",
-        "name"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "minProperties": 3,
-       "properties": {
-        "attributes": {
-         "maximum": 63,
-         "minimum": 0,
-         "type": "integer",
-         "x-dnspy-defined-bit-mask": 63,
-         "x-dnspy-enum": "GenericParamAttributes"
-        },
-        "kind": {
-         "const": "generic_parameter_update"
-        },
-        "name": {
-         "maxLength": 512,
-         "minLength": 1,
-         "type": "string"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "constraints": {
-         "$ref": "#/$defs/Shared138"
-        }
-       },
-       "required": [
-        "kind",
-        "target"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "kind": {
-         "const": "generic_parameter_remove"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "type": "object"
-      },
-      {
-       "additionalProperties": false,
-       "properties": {
-        "body": {
-         "$ref": "#/$defs/Shared001"
-        },
-        "kind": {
-         "const": "method_body_replace"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "custom_debug_infos": {
-         "$ref": "#/$defs/Shared007"
-        }
-       },
-       "required": [
-        "kind",
-        "target",
-        "body"
-       ],
-       "type": "object"
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "target",
-        "constructor"
-       ],
-       "properties": {
-        "kind": {
-         "const": "attribute_add"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared070"
-        },
-        "constructor": {
-         "$ref": "#/$defs/Shared086"
-        },
-        "fixed_arguments": {
-         "type": "array",
-         "items": {
-          "$ref": "#/$defs/Shared034"
-         },
-         "maxItems": 64
-        },
-        "named_arguments": {
-         "type": "array",
-         "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-           "kind",
-           "type",
-           "name",
-           "value"
-          ],
-          "properties": {
-           "kind": {
-            "enum": [
-             "field",
-             "property"
-            ]
-           },
-           "type": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 4096
-           },
-           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
-           },
-           "value": {
-            "$ref": "#/$defs/Shared034"
-           }
-          }
-         },
-         "maxItems": 64
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "target",
-        "match"
-       ],
-       "properties": {
-        "kind": {
-         "const": "attribute_remove"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared070"
-        },
-        "match": {
-         "type": "object",
-         "additionalProperties": false,
-         "required": [
-          "constructor"
-         ],
-         "properties": {
-          "constructor": {
-           "$ref": "#/$defs/Shared086"
-          },
-          "index": {
-           "type": "integer",
-           "minimum": 0,
-           "maximum": 4294967295
-          }
-         }
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "parent",
-        "action",
-        "xml"
-       ],
-       "properties": {
-        "kind": {
-         "const": "security_add"
-        },
-        "parent": {
-         "$ref": "#/$defs/Shared085"
-        },
-        "action": {
-         "enum": [
-          "deny",
-          "permit_only",
-          "request_minimum",
-          "request_optional",
-          "request_refuse",
-          "assert",
-          "link_demand",
-          "inherit_demand",
-          "demand"
-         ]
-        },
-        "xml": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 65536
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "parent",
-        "action"
-       ],
-       "properties": {
-        "kind": {
-         "const": "security_remove"
-        },
-        "parent": {
-         "$ref": "#/$defs/Shared085"
-        },
-        "action": {
-         "enum": [
-          "deny",
-          "permit_only",
-          "request_minimum",
-          "request_optional",
-          "request_refuse",
-          "assert",
-          "link_demand",
-          "inherit_demand",
-          "demand"
-         ]
-        },
-        "index": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 4294967295
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind"
-       ],
-       "properties": {
-        "kind": {
-         "const": "assembly_update"
-        },
-        "name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 512
-        },
-        "version": {
-         "type": "string",
-         "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
-        },
-        "culture": {
-         "type": "string",
-         "maxLength": 64
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "name"
-       ],
-       "properties": {
-        "kind": {
-         "const": "module_update"
-        },
-        "name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 512
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "target"
-       ],
-       "properties": {
-        "kind": {
-         "const": "assembly_ref_update"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared080"
-        },
-        "name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 512
-        },
-        "version": {
-         "type": "string",
-         "pattern": "^\\d{1,9}(\\.\\d{1,9}){0,3}$"
-        },
-        "culture": {
-         "type": "string",
-         "maxLength": 64
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind"
-       ],
-       "properties": {
-        "kind": {
-         "const": "entry_point_set"
-        },
-        "entry_point": {
-         "$ref": "#/$defs/Shared080"
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "name",
-        "data_base64"
-       ],
-       "properties": {
-        "kind": {
-         "const": "managed_resource_add"
-        },
-        "name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 512
-        },
-        "attributes": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 3
-        },
-        "data_base64": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 12582912
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "target"
-       ],
-       "properties": {
-        "kind": {
-         "const": "managed_resource_update"
-        },
-        "target": {
-         "type": "object",
-         "additionalProperties": false,
-         "required": [
-          "name"
-         ],
-         "properties": {
-          "name": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 512
-          }
-         }
-        },
-        "entry": {
-         "type": "object",
-         "additionalProperties": false,
-         "required": [
-          "name",
-          "value_kind",
-          "value"
-         ],
-         "properties": {
-          "name": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 512
-          },
-          "value_kind": {
-           "type": "string",
-           "enum": [
-            "string",
-            "boolean",
-            "i1",
-            "u1",
-            "i2",
-            "u2",
-            "i4",
-            "u4",
-            "i8",
-            "u8",
-            "r4",
-            "r8",
-            "bytes",
-            "char",
-            "decimal",
-            "datetime",
-            "timespan"
-           ]
-          },
-          "value": {}
-         },
-         "oneOf": [
-          {
-           "properties": {
-            "value_kind": {
-             "enum": [
-              "string",
-              "boolean",
-              "i1",
-              "u1",
-              "i2",
-              "u2",
-              "i4",
-              "u4",
-              "i8",
-              "u8",
-              "r4",
-              "r8",
-              "bytes"
-             ]
-            },
-            "value": {}
-           }
-          },
-          {
-           "properties": {
-            "value_kind": {
-             "const": "char"
-            },
-            "value": {
-             "type": "object",
-             "additionalProperties": false,
-             "required": [
-              "code_unit"
-             ],
-             "properties": {
-              "code_unit": {
-               "type": "integer",
-               "minimum": 0,
-               "maximum": 65535
-              }
-             }
-            }
-           }
-          },
-          {
-           "properties": {
-            "value_kind": {
-             "const": "decimal"
-            },
-            "value": {
-             "type": "object",
-             "additionalProperties": false,
-             "required": [
-              "lo",
-              "mid",
-              "hi",
-              "negative",
-              "scale"
-             ],
-             "properties": {
-              "lo": {
-               "type": "integer",
-               "minimum": 0,
-               "maximum": 4294967295
-              },
-              "mid": {
-               "type": "integer",
-               "minimum": 0,
-               "maximum": 4294967295
-              },
-              "hi": {
-               "type": "integer",
-               "minimum": 0,
-               "maximum": 4294967295
-              },
-              "negative": {
-               "type": "boolean"
-              },
-              "scale": {
-               "type": "integer",
-               "minimum": 0,
-               "maximum": 28
-              }
-             }
-            }
-           }
-          },
-          {
-           "properties": {
-            "value_kind": {
-             "const": "datetime"
-            },
-            "value": {
-             "type": "object",
-             "additionalProperties": false,
-             "required": [
-              "binary"
-             ],
-             "properties": {
-              "binary": {
-               "type": "string",
-               "minLength": 1,
-               "maxLength": 20,
-               "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
-              }
-             }
-            }
-           }
-          },
-          {
-           "properties": {
-            "value_kind": {
-             "const": "timespan"
-            },
-            "value": {
-             "type": "object",
-             "additionalProperties": false,
-             "required": [
-              "ticks"
-             ],
-             "properties": {
-              "ticks": {
-               "type": "string",
-               "minLength": 1,
-               "maxLength": 20,
-               "pattern": "^(0|-[1-9][0-9]*|[1-9][0-9]*)$"
-              }
-             }
-            }
-           }
-          }
-         ]
-        },
-        "data_base64": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 12582912
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "target",
-        "remove_mode"
-       ],
-       "properties": {
-        "kind": {
-         "const": "managed_resource_remove"
-        },
-        "target": {
-         "$ref": "#/$defs/Shared130"
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "data_base64"
-       ],
-       "properties": {
-        "kind": {
-         "const": "win32_resource_add"
-        },
-        "type_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "type_name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "name_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "name_string": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "lang_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "data_base64": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 12582912
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "data_base64"
-       ],
-       "properties": {
-        "kind": {
-         "const": "win32_resource_update"
-        },
-        "type_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "type_name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "name_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "name_string": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "lang_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "data_base64": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 12582912
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "remove_mode"
-       ],
-       "properties": {
-        "kind": {
-         "const": "win32_resource_remove"
-        },
-        "type_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "type_name": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "name_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "name_string": {
-         "type": "string",
-         "minLength": 1,
-         "maxLength": 256
-        },
-        "lang_id": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 65535
-        },
-        "remove_mode": {
-         "const": "reject_if_referenced"
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "dynamic_failure"
-       ],
-       "properties": {
-        "kind": {
-         "const": "strong_name_remove"
-        },
-        "dynamic_failure": {
-         "type": "object",
-         "additionalProperties": false,
-         "required": [
-          "session_id",
-          "event_cursor",
-          "event_kind"
-         ],
-         "properties": {
-          "session_id": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 128
-          },
-          "event_cursor": {
-           "type": "integer",
-           "minimum": 1
-          },
-          "event_kind": {
-           "type": "string",
-           "enum": [
-            "start_failed",
-            "process_exited",
-            "exception",
-            "module_load_failed"
-           ]
-          }
-         }
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "owner_type",
-        "interface"
-       ],
-       "properties": {
-        "kind": {
-         "const": "interface_add"
-        },
-        "owner_type": {
-         "$ref": "#/$defs/Shared077"
-        },
-        "interface": {
-         "type": "object",
-         "additionalProperties": false,
-         "properties": {
-          "reference": {
-           "$ref": "#/$defs/Shared077"
-          },
-          "type": {
-           "$ref": "#/$defs/Shared072"
-          }
-         },
-         "oneOf": [
-          {
-           "required": [
-            "reference"
-           ],
-           "not": {
-            "required": [
-             "type"
-            ]
-           }
-          },
-          {
-           "required": [
-            "type"
-           ],
-           "not": {
-            "required": [
-             "reference"
-            ]
-           }
-          }
-         ]
-        }
-       }
-      },
-      {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "kind",
-        "reference"
-       ],
-       "properties": {
-        "kind": {
-         "const": "reference_add"
-        },
-        "reference": {
-         "type": "object",
-         "additionalProperties": false,
-         "required": [
-          "form"
-         ],
-         "properties": {
-          "form": {
-           "type": "string",
-           "enum": [
-            "assembly_ref",
-            "type_ref",
-            "type_spec",
-            "member_ref",
-            "method_spec"
-           ]
-          },
-          "name": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 512
-          },
-          "version": {
-           "type": "string",
-           "minLength": 1,
-           "maxLength": 64
-          },
-          "culture": {
-           "type": "string",
-           "maxLength": 128
-          },
-          "public_key_or_token": {
-           "type": "object",
-           "additionalProperties": false,
-           "required": [
-            "kind"
-           ],
-           "properties": {
-            "kind": {
-             "type": "string",
-             "enum": [
-              "none",
-              "token",
-              "public_key"
-             ]
-            },
-            "base64": {
-             "type": "string"
-            }
-           }
-          },
-          "flags": {
-           "type": "integer",
-           "minimum": 0
-          },
-          "scope": {
-           "$ref": "#/$defs/Shared077"
-          },
-          "namespace": {
-           "type": "string",
-           "maxLength": 1024
-          },
-          "signature": {
-           "type": "object"
-          },
-          "member_kind": {
-           "type": "string",
-           "enum": [
-            "method",
-            "field"
-           ]
-          },
-          "owner": {
-           "$ref": "#/$defs/Shared077"
-          },
-          "method": {
-           "$ref": "#/$defs/Shared077"
-          },
-          "arguments": {
-           "type": "array",
-           "maxItems": 64,
-           "items": {
-            "type": "object"
-           }
-          }
-         }
-        }
-       }
+     "type": "object",
+     "description": "One structured edit operation. 'kind' selects one of the 39 operations; the per-operation field catalog (required/optional fields and semantics) is the dnspy://docs/edit-ops resource. Unknown kinds, fields outside the operation's allowed set and missing required fields are rejected server-side with EDIT_VALIDATION_FAILED before anything is staged.",
+     "required": [
+      "kind"
+     ],
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "type_add",
+        "type_update",
+        "type_remove",
+        "method_add",
+        "method_update",
+        "method_remove",
+        "field_add",
+        "field_update",
+        "field_remove",
+        "property_add",
+        "property_update",
+        "property_remove",
+        "event_add",
+        "event_update",
+        "event_remove",
+        "parameter_add",
+        "parameter_update",
+        "parameter_remove",
+        "generic_parameter_add",
+        "generic_parameter_update",
+        "generic_parameter_remove",
+        "method_body_replace",
+        "attribute_add",
+        "attribute_remove",
+        "security_add",
+        "security_remove",
+        "assembly_update",
+        "module_update",
+        "assembly_ref_update",
+        "entry_point_set",
+        "managed_resource_add",
+        "managed_resource_update",
+        "managed_resource_remove",
+        "win32_resource_add",
+        "win32_resource_update",
+        "win32_resource_remove",
+        "strong_name_remove",
+        "interface_add",
+        "reference_add"
+       ]
       }
-     ]
+     },
+     "additionalProperties": true
     },
     "request_id": {
      "maxLength": 128,
@@ -18244,7 +16735,7 @@ JSON Pointer 指向附录 B 中的定义；`direction` 区分入站、出站与�
 
 ## 来源与边界
 
-- `McpTools.cs` SHA256 `ce680df3f15f30847349cac1d7ed11baffcd5f5f2126b900f2ad21ed88f8841b`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `43ec74d0314f497e82c1e8cf035bda7c7576568f550a83c8c56490c39356cde4`。
+- `McpTools.cs` SHA256 `6db6676eb2d4a5a28272ece86681df349d7624e777aa20802a7a78182ae069a4`；`Tools/McpToolRegistry.cs` SHA256 `88160449fa7d020295fc35712d3f993233e608c46120ffcf73a599f81e63af2e`；`Debugger/DebugToolProvider.cs` SHA256 `fd77b14c2e51c326ab8b2f1968f241e3c27be9ecc061c0a9552ee96ef4bf339a`。
 - `tests/debug/contracts/dnspy.debug.v1.schema.json` SHA256 `673b25f624aa066e70d96e8d512c7f478b91546b8d31c4c121bdd2496e53d02b`；`Editing/Contracts/p03-tool-schemas.json` SHA256 `49773ac1caf72682af2f1c0d46ed98ebc7ec5691b1f8097da110a43c167ca086`；`Editing/EditToolProvider.cs` SHA256 `0fea0d0ed0d1950a762fc00ababe463adcd8ee54842c4843428fd7be704bc5a6`；`Editing/EditCompileFrontend.cs` SHA256 `72100b8b608b4333b96e4249f529f3b97a917e1a827cdb79afbf246a50b3ec75`。
 - `tests/debug/contracts/dnspy.debug.utf8-limits.json` SHA256 `bf8741dd5054cbff6cbf23a429adeec533ab0b6e84689655763062621ee04b7f`；`McpServer.cs` SHA256 `cdde4fcd3408febe53c6d32a60d369a66eb1eb7ca2ac9481589abd5581358261`。
 - 这是源码接口手册，不是 VM 功能验收报告。运行时条件、实例配置、文件身份和目标架构须以 `debug_capabilities`、`tools/list`、调用返回和实际环境核对。

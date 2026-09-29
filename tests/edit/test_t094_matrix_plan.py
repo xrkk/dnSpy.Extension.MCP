@@ -9,9 +9,12 @@ root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / "tests/edit"))
 from t094_vm_resource_matrix import VECTORS, DATE_VECTORS  # noqa: E402
 
-schema = json.loads((root / "Editing/Contracts/p03-tool-schemas.json").read_text())
-branch = next(x for x in schema["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]
-              if x["properties"]["kind"].get("const") == "managed_resource_update")
+# IMP-502: the advertised edit_apply operation schema is now a compact kind
+# discriminator; the frozen v1 managed_resource_update branch (the resource
+# value union this check pins) is preserved verbatim as this fixture, extracted
+# from the pre-2026-09-29 p03-tool-schemas.json oneOf.
+branch = json.loads((root / "tests/edit/t094-managed-resource-branch.json").read_text())
+assert branch["properties"]["kind"]["const"] == "managed_resource_update"
 validator = Draft202012Validator(branch)
 kind = {"char": "char", "decimal": "decimal", "span": "timespan", "date": "datetime"}
 for vector in VECTORS:

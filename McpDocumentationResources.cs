@@ -37,6 +37,7 @@ namespace dnSpy.Extension.MCP {
 			new Definition("dnspy://docs/overview", "dnspy.docs.overview.md", "Server capabilities, transports, tool counts and operating model"),
 			new Definition("dnspy://docs/static-analysis", "dnspy.docs.static-analysis.md", "Static analysis, navigation, decompilation and search tools"),
 			new Definition("dnspy://docs/il-editing", "dnspy.docs.il-editing.md", "IL editing, metadata renaming, persistence and rollback safety"),
+			new Definition("dnspy://docs/edit-ops", "dnspy.docs.edit-ops.md", "Catalog of the 39 edit_apply operations: required/optional fields and one-line semantics"),
 			new Definition("dnspy://docs/dynamic-debugging", "dnspy.docs.dynamic-debugging.md", "Launch-only managed debugging workflow and tool families"),
 			new Definition("dnspy://docs/security", "dnspy.docs.security.md", "Remote access, bearer token, CIDR and untrusted-data rules"),
 			new Definition("dnspy://docs/python-client", "dnspy.docs.python-client.md", "Python client, stdio bridge and AI-agent integration"),

@@ -25,9 +25,9 @@ echo "== [2/4] Static tool snapshot (verify.yml: contracts) =="
 PY - <<'EOF'
 import json, os
 snap = json.load(open(os.path.join(os.environ.get("EXT_DIR", "."), "tests/snapshots/static-tools.baseline.json")))
-assert len(snap) == 32, f"expected 32 static tools, got {len(snap)}"
+assert len(snap) == 33, f"expected 33 static tools, got {len(snap)}"
 assert all(t.get('name') and t.get('description') and t.get('inputSchema') for t in snap)
-print('static tool snapshot: 32 tools, complete entries')
+print('static tool snapshot: 33 tools, complete entries')
 EOF
 
 echo "== [3/4] rsync sources into dnSpyEx checkout =="

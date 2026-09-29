@@ -1,14 +1,20 @@
 # dnSpy MCP overview
 
 dnSpy MCP runs inside dnSpy and exposes loaded .NET modules to MCP clients. With the frozen debug
-gate enabled, its production surface contains 32 static/codegen tools, 22 launch-only debugging
-tools and 18 transactional structured-edit tools, for 72 total. A process started with
-`DNMCP_TEST=1` additionally advertises 6 `debug_test_*` probes, producing the 78-tool acceptance
+gate enabled, its production surface contains 33 static/codegen tools, 23 launch-only debugging
+tools and 18 transactional structured-edit tools, for 74 total. A process started with
+`DNMCP_TEST=1` additionally advertises 6 `debug_test_*` probes, producing the 80-tool acceptance
 snapshot. The 9 callable `edit_test_*` seams and 4 other debug test seams remain unadvertised;
 none of these test seams are production interfaces.
 When the debug gate is closed, only `debug_capabilities` remains advertised from that family:
-51 production tools or 57 with the six acceptance probes. A static-host registration check is not
+52 production tools or 58 with the six acceptance probes. A static-host registration check is not
 evidence that launch debugging works. Read `debug_capabilities` and the live `tools/list` first.
+
+The 2026-09-29 token-optimization release added `get_type_overview` (combined type overview) and
+`debug_snapshot` (one-call paused-state stack + locals), capped `decompile_*` output with
+`max_lines`/`start_line`, and gave `list_assemblies` a `total_count` and `list_methods` a
+`names_only` mode. `edit_apply`'s operation schema is now a compact kind discriminator; the full
+39-operation field catalog lives in `dnspy://docs/edit-ops`.
 
 ## Capability groups
 

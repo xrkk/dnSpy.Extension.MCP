@@ -93,9 +93,17 @@ def main() -> int:
         check(len(branches) == expected_branches and set(branches[0].get("required", [])) == {"schema_version", "ok", "state", "warnings", "untrusted_sample_data", "result"}, f"{name}:success-required", failures)
         check(len(branches) == expected_branches and set(branches[-1].get("required", [])) == {"schema_version", "ok", "state", "warnings", "untrusted_sample_data", "error"}, f"{name}:failure-required", failures)
 
-    operation_branches = schemas["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]
-    actual_operations = [row["properties"]["kind"]["const"] for row in operation_branches]
+    # IMP-502 (D-01): the operation schema is now a compact discriminating union —
+    # exactly the 39 kind names in the frozen order. The per-kind field catalog
+    # moved to the dnspy://docs/edit-ops resource and the runtime whitelist
+    # (Editing/Contracts/operation-whitelist.json); this assertion pins the enum.
+    operation_schema = schemas["edit_apply"]["inputSchema"]["properties"]["operation"]
+    check(operation_schema.get("type") == "object", "edit_apply:operation-object", failures)
+    check(operation_schema.get("required") == ["kind"], "edit_apply:operation-required-kind", failures)
+    check(operation_schema.get("additionalProperties") is True, "edit_apply:operation-open", failures)
+    actual_operations = operation_schema["properties"]["kind"]["enum"]
     check(actual_operations == OPERATIONS, "edit_apply:39-operation-order", failures)
+    check(len(actual_operations) == 39, "edit_apply:39-operation-count", failures)
     output_operation_enums = []
     for name in PRODUCT:
         for node in walk(schemas[name]["outputSchema"]):

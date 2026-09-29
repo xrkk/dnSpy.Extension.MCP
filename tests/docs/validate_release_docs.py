@@ -20,9 +20,12 @@ for gate in ("enabled", "disabled"):
         families, operations = registry.source_registry(mode, gate)
         assert len(operations) == 39 and len(set(operations)) == 39
         profiles[f"{mode}/{gate}"] = len(families)
+# 2026-09-29 token-optimization release: +get_type_overview (static) and
+# +debug_snapshot (debug); the previously frozen debug advertisement count 22
+# was revised to 23 by the audited plan (IMP-503/IMP-504, D-03/D-08).
 assert profiles == {
-    "production/enabled": 72, "acceptance/enabled": 78,
-    "production/disabled": 51, "acceptance/disabled": 57,
+    "production/enabled": 74, "acceptance/enabled": 80,
+    "production/disabled": 52, "acceptance/disabled": 58,
 }, profiles
 
 test_seams = registry.quoted_array(ROOT / "Editing/EditToolProvider.cs", r"static readonly string\[\] TestTools")
@@ -45,7 +48,7 @@ for path in (ROOT / "README.md", ROOT / "README.zh-CN.md",
              ROOT / "docs/MCP-TOOLS.md", ROOT / "docs/MCP-TOOLS.zh-CN.md",
              ROOT / "docs/mcp-resources/overview.md"):
     body = texts[path]
-    assert all(str(n) in body for n in (72, 78, 51, 57, 9)), path
+    assert all(str(n) in body for n in (74, 80, 52, 58, 9)), path
     assert not re.search(r"\b8 (?:callable|个可调用|个不通告).*edit_test", body), path
 
 reference = texts[ROOT / "docs/AI-TOOL-REFERENCE.zh-CN.md"]
@@ -72,8 +75,11 @@ schema = json.loads((ROOT / "Editing/Contracts/p03-tool-schemas.json").read_text
 # authoritative schema, including its strict mutually exclusive selectors.
 appendix = reference.split("## 附录 C：", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
 assert json.loads(appendix)["edit_begin"]["inputSchema"] == schema["edit_begin"]["inputSchema"]
-schema_operations = [branch["properties"]["kind"]["const"] for branch in
-                     schema["edit_apply"]["inputSchema"]["properties"]["operation"]["oneOf"]]
+# IMP-502: the operation schema is the compact discriminating union; the 39
+# kind names come from its enum in the frozen OperationKinds order.
+operation_schema = schema["edit_apply"]["inputSchema"]["properties"]["operation"]
+schema_operations = operation_schema["properties"]["kind"]["enum"]
+assert len(schema_operations) == 39
 assert schema_operations == source_operations, "edit_apply schema differs from OperationKinds"
 
 def description_count(description: str) -> int:
@@ -110,7 +116,7 @@ resource_source = (ROOT / "BepInExResources.cs").read_text(encoding="utf-8")
 editing_resource = (ROOT / "docs/mcp-resources/il-editing.md").read_text(encoding="utf-8")
 assert "Instructions = McpDocumentationResources.Instructions" in server_source
 assert "McpDocumentationResources.AddTo(resources)" in resource_source
-assert len(re.findall(r'new Definition\("dnspy://docs/', documentation_source)) == 8
+assert len(re.findall(r'new Definition\("dnspy://docs/', documentation_source)) == 9
 assert len(re.findall(r'resources\["bepinex://docs/', resource_source)) == 6
 assert all(name in source_description and name in schema for name in
            ("edit_begin", "edit_apply", "edit_review", "edit_rollback", "edit_commit",
@@ -151,4 +157,4 @@ print(json.dumps({"status": "PASS", "profiles": profiles, "operations": 39,
                   "registry_description_operations": 39,
                   "negative_mutation_37_rejected": True,
                   "negative_mutation_old_initialize_rejected": True,
-                  "initialize_resources_checked": 14}, ensure_ascii=False))
+                  "initialize_resources_checked": 15}, ensure_ascii=False))

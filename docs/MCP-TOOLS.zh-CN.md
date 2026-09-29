@@ -1,6 +1,6 @@
 # dnSpy MCP — 工具完整说明（中文）
 
-与线上 `tools/list` 注册表机检一致：双功能门启用时生产面 72 个（静态 32 + 调试 22 + 编辑 18）；`DNMCP_TEST=1` 验收进程另通告 6 个 `debug_test_*` 探针，形成 78 工具快照，9 个可调用 `edit_test_*` 测试缝仍不通告。调试门关闭时只保留 `debug_capabilities`，对应生产 51 / 验收 57 个。先用 `debug_capabilities` 与实时注册表辨认 profile；计数来自带明确 profile/门状态参数的 `tools/export_tool_registry.py`。
+与线上 `tools/list` 注册表机检一致：双功能门启用时生产面 74 个（静态 33 + 调试 23 + 编辑 18）；`DNMCP_TEST=1` 验收进程另通告 6 个 `debug_test_*` 探针，形成 80 工具快照，9 个可调用 `edit_test_*` 测试缝仍不通告。调试门关闭时只保留 `debug_capabilities`，对应生产 52 / 验收 58 个。先用 `debug_capabilities` 与实时注册表辨认 profile；计数来自带明确 profile/门状态参数的 `tools/export_tool_registry.py`。2026-09-29 token 优化版新增 `get_type_overview` 与 `debug_snapshot` 两个组合工具（调试冻结通告数由 22 修订为 23，既有 72 工具的 schema 与行为不变）。
 
 另见：[README.zh-CN.md](../README.zh-CN.md) · [English reference](MCP-TOOLS.md)
 
@@ -10,15 +10,24 @@
 - 信封：事务编辑与调试工具返回结构化的 `schema_version`/`ok`/`state`；编辑失败携带 `error.code`、`error.message`、`error.current_state`、`error.recovery`。静态分析/生成工具通常返回文本，不能把统一信封强加给它们；有通告的 `outputSchema` 以实时定义为准。
 - 会话：编辑/调试事务由单个已初始化 MCP 会话拥有；`request_id` 提供幂等重试。
 
-## 2. 静态分析与代码生成（32 个工具）
+## 2. 静态分析与代码生成（33 个工具）
 
-open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 逐工具参数及返回结构见[单文件 AI 工具手册](AI-TOOL-REFERENCE.zh-CN.md)。
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · get_type_overview · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly —— 逐工具参数及返回结构见[单文件 AI 工具手册](AI-TOOL-REFERENCE.zh-CN.md)。
+
+**2026-09-29 token 优化版变更**：
+
+- 新增 `get_type_overview(assembly_name, type_full_name, members_filter?, max_members?=50)` —— 一次返回 `{type: get_type_info(compact) 结果, methods: list_methods 行结构, fields: get_type_fields(pattern="*") 行结构}`；`max_members` 分别截断 methods 与 fields 两个表，各段保留 `total_count` 与续读 cursor，把 3 次浏览调用合并为 1 次。
+- `decompile_method` / `decompile_type` / `decompile_by_token` 新增可选 `max_lines`（默认 0=不限，不传时输出与原版逐字节一致）与 `start_line`（默认 0）；截断时响应为 JSON 信封 `{truncated:true, total_lines, start_line, next_line_offset, code, note}`，用 `start_line=next_line_offset` 续读。
+- `list_assemblies` 响应新增 `total_count`（`name_filter` 过滤后的总数）。
+- `list_methods` 新增可选 `names_only`（true 时 items 为方法名字符串数组；`total_count` 不变）。
 
 末尾六个旧写工具只是通往结构化编辑协调器的兼容入口。修改会提交检查点；`revert_method_il` 只能撤销匹配的当前历史头 IL 编辑，无匹配时返回 `EDIT_HISTORY_CONFLICT`。`save_assembly` 仅在 ArtifactRoot 下导出精确检查点，不覆盖源样本，也不创建原地备份。这些工具不声明静态 outputSchema，但编辑域拒绝仍返回 code/state/recovery。
 
-## 3. 仅启动式动态调试（生产面 22 个；验收模式 28 个）
+## 3. 仅启动式动态调试（生产面 23 个；验收模式 29 个）
 
-debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy。验收模式另通告 `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`。启动是唯一执行门禁：静态工具绝不运行样本代码。
+debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_snapshot · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy。验收模式另通告 `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`。启动是唯一执行门禁：静态工具绝不运行样本代码。
+
+**2026-09-29 新增 `debug_snapshot`**：`debug_snapshot(session_id, generation, pause_epoch, frame_handle?, page_size?)` —— 暂停态一次返回 `{debug_context(最新 generation/pause_epoch/state), stack, locals}`；stack 段取第一个托管线程的栈页、locals 段默认栈顶帧首页（可传 `frame_handle` 指定帧），两段复用 `debug_get_stack`/`debug_get_locals` 的既有结构与句柄，返回的 frame/value 句柄可直接喂给后续工具。未暂停时返回与 `debug_get_stack` 同语义的域错误。
 
 ## 4. 事务式结构化编辑（通告 18 个）
 
@@ -56,6 +65,8 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 操作 schema、`EditWire.OperationKinds` 和当前 `edit_apply` 注册描述均为 39 类；可接受种类以实时 inputSchema 为准。
 
+**2026-09-29 token 优化版 `edit_apply` 变更**：`operation` 参数的 inputSchema 收敛为紧凑判别式（`kind` enum 39 项 + `additionalProperties:true`），完整逐操作字段目录（必填/可选/语义）移入新资源 `dnspy://docs/edit-ops`。字段级验证改由服务器运行时白名单承接：未知 kind、越界字段（如拼写错误 `naem`）与缺失必填字段均返回 `EDIT_VALIDATION_FAILED`（错误 details 含 kind 与字段定位）且不入检查点历史——与旧版 schema 层 `additionalProperties:false` 行为对齐，仅错误通道由协议层 -32602 迁至域错误包（已披露的设计变化）。
+
 ## 5. 错误码与恢复（冻结）
 
 `EditWire.Message` / `EditWire.Recovery` 为事实来源；稳定集合含 EDIT_TRANSACTION_BUSY、EDIT_TRANSACTION_NOT_FOUND、EDIT_OWNER_REQUIRED/MISMATCH、EDIT_REVISION_CONFLICT、EDIT_LIVE_MODULE_CONFLICT、EDIT_REVIEW_STALE、EDIT_VALIDATION_FAILED、EDIT_RISK_CONFIRMATION_REQUIRED、EDIT_CAPABILITY_UNAVAILABLE、EDIT_CAPACITY_EXCEEDED、EDIT_DEBUG_NOT_IDLE、EDIT_LIVE_STATE_UNKNOWN、EDIT_CHECKPOINT_INVALID/COMMIT_FAILED/CLEANUP_FAILED、EDIT_EXPORT_BLOCKED、EDIT_REPLAY_CONFIRMATION_REQUIRED/UNVERIFIED、EDIT_OPERATION_VERSION_UNSUPPORTED、EDIT_HISTORY_CONFLICT、EDIT_BRANCH_SELECTION_REQUIRED、EDIT_LINEAGE_DIVERGED、EDIT_SOURCE_IDENTITY_CONFLICT、EDIT_RECOVERY_NOT_FOUND、REQUEST_ID_REUSE。
@@ -66,7 +77,7 @@ PDB 文档以归一化的完整元数据键识别；无法表示的同 URL 异�
 
 ## 6. 资源面
 
-MCP resources 面通告 14 个具体资源（程序集列表、类型索引、编辑状态、调试事件……）；`resources/templates/list` 有意为空。tools/list 与 resources 面是两个机器可读注册表。
+MCP resources 面通告 15 个具体资源（程序集列表、类型索引、编辑状态、调试事件、`dnspy://docs/edit-ops` 39 操作目录、python-client 批处理指南……）；`resources/templates/list` 有意为空。tools/list 与 resources 面是两个机器可读注册表。
 
 ## 7. dnSpy UI：MCP Edit Explorer
 

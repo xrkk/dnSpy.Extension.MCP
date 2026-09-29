@@ -1,0 +1,548 @@
+{
+  "schema_version": "dnspy.edit.operation-whitelist.v1",
+  "source": "mechanically derived from dnspy.edit.p03-tool-schemas.json edit_apply.inputSchema.properties.operation oneOf (39 branches); regenerate together with that schema",
+  "operations": {
+    "type_add": {
+      "allowed": [
+        "attributes",
+        "base_type",
+        "kind",
+        "layout",
+        "name",
+        "namespace",
+        "owner_type"
+      ],
+      "required": [
+        "kind",
+        "name"
+      ]
+    },
+    "type_update": {
+      "allowed": [
+        "attributes",
+        "base_type",
+        "kind",
+        "layout",
+        "name",
+        "namespace",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "type_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "method_add": {
+      "allowed": [
+        "attributes",
+        "body",
+        "custom_debug_infos",
+        "impl_attributes",
+        "kind",
+        "name",
+        "overrides",
+        "owner_type",
+        "pinvoke",
+        "signature"
+      ],
+      "required": [
+        "kind",
+        "name",
+        "owner_type",
+        "signature"
+      ]
+    },
+    "method_update": {
+      "allowed": [
+        "attributes",
+        "has_this",
+        "impl_attributes",
+        "kind",
+        "name",
+        "overrides",
+        "pinvoke",
+        "return_type",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "method_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "field_add": {
+      "allowed": [
+        "attributes",
+        "constant",
+        "field_offset",
+        "field_type",
+        "initial_data",
+        "kind",
+        "marshal",
+        "name",
+        "owner_type"
+      ],
+      "required": [
+        "field_type",
+        "kind",
+        "name",
+        "owner_type"
+      ]
+    },
+    "field_update": {
+      "allowed": [
+        "attributes",
+        "clear_constant",
+        "constant",
+        "field_offset",
+        "field_type",
+        "initial_data",
+        "kind",
+        "marshal",
+        "name",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "field_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "property_add": {
+      "allowed": [
+        "attributes",
+        "getter",
+        "index_parameter_types",
+        "kind",
+        "name",
+        "owner_type",
+        "property_type",
+        "setter"
+      ],
+      "required": [
+        "kind",
+        "name",
+        "owner_type",
+        "property_type"
+      ]
+    },
+    "property_update": {
+      "allowed": [
+        "attributes",
+        "getter",
+        "index_parameter_types",
+        "kind",
+        "name",
+        "property_type",
+        "setter",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "property_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "event_add": {
+      "allowed": [
+        "add_method",
+        "attributes",
+        "event_type",
+        "kind",
+        "name",
+        "owner_type",
+        "raise_method",
+        "remove_method"
+      ],
+      "required": [
+        "add_method",
+        "event_type",
+        "kind",
+        "name",
+        "owner_type",
+        "remove_method"
+      ]
+    },
+    "event_update": {
+      "allowed": [
+        "add_method",
+        "attributes",
+        "event_type",
+        "kind",
+        "name",
+        "raise_method",
+        "remove_method",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "event_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "parameter_add": {
+      "allowed": [
+        "attributes",
+        "kind",
+        "marshal",
+        "name",
+        "owner_method",
+        "parameter_index",
+        "parameter_type"
+      ],
+      "required": [
+        "kind",
+        "name",
+        "owner_method",
+        "parameter_index",
+        "parameter_type"
+      ]
+    },
+    "parameter_update": {
+      "allowed": [
+        "attributes",
+        "kind",
+        "marshal",
+        "name",
+        "parameter_target",
+        "parameter_type"
+      ],
+      "required": [
+        "kind",
+        "parameter_target"
+      ]
+    },
+    "parameter_remove": {
+      "allowed": [
+        "kind",
+        "parameter_target",
+        "remove_mode"
+      ],
+      "required": [
+        "kind",
+        "parameter_target",
+        "remove_mode"
+      ]
+    },
+    "generic_parameter_add": {
+      "allowed": [
+        "attributes",
+        "constraints",
+        "generic_index",
+        "kind",
+        "name",
+        "owner"
+      ],
+      "required": [
+        "generic_index",
+        "kind",
+        "name",
+        "owner"
+      ]
+    },
+    "generic_parameter_update": {
+      "allowed": [
+        "attributes",
+        "constraints",
+        "kind",
+        "name",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "generic_parameter_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "method_body_replace": {
+      "allowed": [
+        "body",
+        "custom_debug_infos",
+        "kind",
+        "target"
+      ],
+      "required": [
+        "body",
+        "kind",
+        "target"
+      ]
+    },
+    "attribute_add": {
+      "allowed": [
+        "constructor",
+        "fixed_arguments",
+        "kind",
+        "named_arguments",
+        "target"
+      ],
+      "required": [
+        "constructor",
+        "kind",
+        "target"
+      ]
+    },
+    "attribute_remove": {
+      "allowed": [
+        "kind",
+        "match",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "match",
+        "target"
+      ]
+    },
+    "security_add": {
+      "allowed": [
+        "action",
+        "kind",
+        "parent",
+        "xml"
+      ],
+      "required": [
+        "action",
+        "kind",
+        "parent",
+        "xml"
+      ]
+    },
+    "security_remove": {
+      "allowed": [
+        "action",
+        "index",
+        "kind",
+        "parent"
+      ],
+      "required": [
+        "action",
+        "kind",
+        "parent"
+      ]
+    },
+    "assembly_update": {
+      "allowed": [
+        "culture",
+        "kind",
+        "name",
+        "version"
+      ],
+      "required": [
+        "kind"
+      ]
+    },
+    "module_update": {
+      "allowed": [
+        "kind",
+        "name"
+      ],
+      "required": [
+        "kind",
+        "name"
+      ]
+    },
+    "assembly_ref_update": {
+      "allowed": [
+        "culture",
+        "kind",
+        "name",
+        "target",
+        "version"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "entry_point_set": {
+      "allowed": [
+        "entry_point",
+        "kind"
+      ],
+      "required": [
+        "kind"
+      ]
+    },
+    "managed_resource_add": {
+      "allowed": [
+        "attributes",
+        "data_base64",
+        "kind",
+        "name"
+      ],
+      "required": [
+        "data_base64",
+        "kind",
+        "name"
+      ]
+    },
+    "managed_resource_update": {
+      "allowed": [
+        "data_base64",
+        "entry",
+        "kind",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "target"
+      ]
+    },
+    "managed_resource_remove": {
+      "allowed": [
+        "kind",
+        "remove_mode",
+        "target"
+      ],
+      "required": [
+        "kind",
+        "remove_mode",
+        "target"
+      ]
+    },
+    "win32_resource_add": {
+      "allowed": [
+        "data_base64",
+        "kind",
+        "lang_id",
+        "name_id",
+        "name_string",
+        "type_id",
+        "type_name"
+      ],
+      "required": [
+        "data_base64",
+        "kind"
+      ]
+    },
+    "win32_resource_update": {
+      "allowed": [
+        "data_base64",
+        "kind",
+        "lang_id",
+        "name_id",
+        "name_string",
+        "type_id",
+        "type_name"
+      ],
+      "required": [
+        "data_base64",
+        "kind"
+      ]
+    },
+    "win32_resource_remove": {
+      "allowed": [
+        "kind",
+        "lang_id",
+        "name_id",
+        "name_string",
+        "remove_mode",
+        "type_id",
+        "type_name"
+      ],
+      "required": [
+        "kind",
+        "remove_mode"
+      ]
+    },
+    "strong_name_remove": {
+      "allowed": [
+        "dynamic_failure",
+        "kind"
+      ],
+      "required": [
+        "dynamic_failure",
+        "kind"
+      ]
+    },
+    "interface_add": {
+      "allowed": [
+        "interface",
+        "kind",
+        "owner_type"
+      ],
+      "required": [
+        "interface",
+        "kind",
+        "owner_type"
+      ]
+    },
+    "reference_add": {
+      "allowed": [
+        "kind",
+        "reference"
+      ],
+      "required": [
+        "kind",
+        "reference"
+      ]
+    }
+  }
+}

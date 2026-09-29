@@ -1,6 +1,6 @@
 # dnSpy MCP — Complete Tool Reference (EN)
 
-Machine-checked against `tools/list`: the production surface is 72 tools when both feature gates are enabled (32 static + 22 debug + 18 edit). A `DNMCP_TEST=1` acceptance process additionally advertises 6 `debug_test_*` probes, producing the 78-tool snapshot; 9 callable `edit_test_*` seams remain unadvertised. With the debug gate closed, the corresponding totals are 51 production / 57 acceptance (only `debug_capabilities` remains from the debug family). Use `debug_capabilities` and the live registry to identify the active profile. Counts come from `tools/export_tool_registry.py` with its explicit profile and debug-gate arguments.
+Machine-checked against `tools/list`: the production surface is 74 tools when both feature gates are enabled (33 static + 23 debug + 18 edit). A `DNMCP_TEST=1` acceptance process additionally advertises 6 `debug_test_*` probes, producing the 80-tool snapshot; 9 callable `edit_test_*` seams remain unadvertised. With the debug gate closed, the corresponding totals are 52 production / 58 acceptance (only `debug_capabilities` remains from the debug family). Use `debug_capabilities` and the live registry to identify the active profile. Counts come from `tools/export_tool_registry.py` with its explicit profile and debug-gate arguments. The 2026-09-29 token-optimization release added `get_type_overview` and `debug_snapshot` (the frozen debug advertisement count was revised from 22 to 23; the existing 72 tools keep their schemas and behavior).
 
 See also: [README.md](../README.md) · [中文完整说明](MCP-TOOLS.zh-CN.md)
 
@@ -10,15 +10,15 @@ See also: [README.md](../README.md) · [中文完整说明](MCP-TOOLS.zh-CN.md)
 - Envelope: transactional edit and debug tools return a structured `schema_version`/`ok`/`state` result; edit failures carry `error.code`, `error.message`, `error.current_state`, and `error.recovery`. Static analysis/codegen tools commonly return text; consult each live `outputSchema` when one is advertised, rather than assuming a universal envelope.
 - Sessions: edit/debug transactions are owned by one initialized MCP session; `request_id` gives idempotent retries.
 
-## 2. Static analysis & codegen (32 tools)
+## 2. Static analysis & codegen (33 tools)
 
-open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly — see the [single-file AI tool reference](AI-TOOL-REFERENCE.zh-CN.md) for per-tool arguments and return structures.
+open_files · list_assemblies · get_assembly_info · list_types · search_types · get_type_info · get_type_overview · list_methods · search_members · get_method_il · get_type_fields · get_type_property · list_string_constants · search_string_literals · search_constants · decompile_by_token · decompile_method · decompile_type · find_by_attribute · find_callees · find_callers · find_overrides · find_path_to_type · find_references · find_unity_messages · generate_harmony_patch · generate_bepinex_plugin · force_return · nop_method · patch_method_il · revert_method_il · rename_symbol_by_token · save_assembly — see the [single-file AI tool reference](AI-TOOL-REFERENCE.zh-CN.md) for per-tool arguments and return structures.
 
 The last six legacy write tools are compatibility routes through the structured edit coordinator. Mutations commit checkpoints; `revert_method_il` only Undoes a matching current-head IL edit and reports `EDIT_HISTORY_CONFLICT` if none exists. `save_assembly` exports an exact checkpoint below ArtifactRoot, never overwrites the source sample, and creates no in-place backup. These tools do not declare a static outputSchema; edit-domain rejections still include code/state/recovery.
 
-## 3. Launch-only dynamic debugging (22 production tools; 28 in acceptance mode)
+## 3. Launch-only dynamic debugging (23 production tools; 29 in acceptance mode)
 
-debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy. Acceptance mode additionally advertises `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`. Launch is the only execution gate: static tools never run sample code.
+debug_capabilities · debug_status · debug_launch · debug_pause · debug_continue · debug_restart · debug_terminate · debug_read_events · debug_wait_event · debug_set_breakpoint · debug_list_breakpoints · debug_set_breakpoint_enabled · debug_remove_breakpoint · debug_list_threads · debug_get_stack · debug_step · debug_get_locals · debug_snapshot · debug_expand_value · debug_list_modules · debug_read_memory · debug_dump_module · debug_set_exception_policy. Acceptance mode additionally advertises `debug_test_spy` · `debug_test_flood` · `debug_test_start` · `debug_test_dump` · `debug_test_clock` · `debug_test_adapter`. Launch is the only execution gate: static tools never run sample code.
 
 ## 4. Transactional structured editing (18 advertised)
 
@@ -56,6 +56,8 @@ debug_capabilities · debug_status · debug_launch · debug_pause · debug_conti
 
 The operation schema, `EditWire.OperationKinds` and current `edit_apply` registry description agree on 39 entries. Check the live input schema for accepted kinds.
 
+**2026-09-29 token-optimization `edit_apply` change**: the `operation` input schema is now a compact discriminating union (`kind` enum of 39 entries + `additionalProperties:true`); the full per-operation field catalog moved to the `dnspy://docs/edit-ops` resource. Field-level validation is enforced by a server-side runtime whitelist: unknown kinds, out-of-domain fields and missing required fields all reject with `EDIT_VALIDATION_FAILED` (details carry the kind and field) and never enter checkpoint history — aligned with the previous schema-layer `additionalProperties:false` behavior; only the error channel moved from protocol -32602 to the domain error envelope (a disclosed design change).
+
 ## 5. Error codes and recovery (frozen)
 
 `EditWire.Message` / `EditWire.Recovery` are the source of truth; the stable set includes EDIT_TRANSACTION_BUSY, EDIT_TRANSACTION_NOT_FOUND, EDIT_OWNER_REQUIRED/MISMATCH, EDIT_REVISION_CONFLICT, EDIT_LIVE_MODULE_CONFLICT, EDIT_REVIEW_STALE, EDIT_VALIDATION_FAILED, EDIT_RISK_CONFIRMATION_REQUIRED, EDIT_CAPABILITY_UNAVAILABLE, EDIT_CAPACITY_EXCEEDED, EDIT_DEBUG_NOT_IDLE, EDIT_LIVE_STATE_UNKNOWN, EDIT_CHECKPOINT_INVALID/COMMIT_FAILED/CLEANUP_FAILED, EDIT_EXPORT_BLOCKED, EDIT_REPLAY_CONFIRMATION_REQUIRED/UNVERIFIED, EDIT_OPERATION_VERSION_UNSUPPORTED, EDIT_HISTORY_CONFLICT, EDIT_BRANCH_SELECTION_REQUIRED, EDIT_LINEAGE_DIVERGED, EDIT_SOURCE_IDENTITY_CONFLICT, EDIT_RECOVERY_NOT_FOUND, REQUEST_ID_REUSE.
@@ -66,7 +68,7 @@ PDB document identity uses the normalized full metadata key; an incompatible sam
 
 ## 6. Resources
 
-The MCP resources face exposes 14 concrete resources (assembly list, type index, edit status, debug events, …); `resources/templates/list` is intentionally empty. The tools/list and resources faces are the two machine-readable registries.
+The MCP resources face exposes 15 concrete resources (assembly list, type index, edit status, debug events, the `dnspy://docs/edit-ops` 39-operation catalog, …); `resources/templates/list` is intentionally empty. The tools/list and resources faces are the two machine-readable registries.
 
 `managed_resource_update.entry` accepts 17 exact `value_kind` values (18 stored CLR resource codes, since `bytes` preserves ByteArray or Stream): the prior 13 plus `char` as `{code_unit: 0..65535}`, `decimal` as `{lo,mid,hi,negative,scale}`, `timespan` as `{ticks: "canonical signed int64"}`, and `datetime` as `{binary: "canonical signed int64 DateTime.ToBinary"}`. Edits preserve the original storage code and every untouched raw entry; custom values are never deserialized. The four new kinds require persisted operation `kind_version=2`; the prior kinds and whole blob remain v1. Windows public acceptance is pending.
 

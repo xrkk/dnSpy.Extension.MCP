@@ -23,11 +23,11 @@ English: see [README.md](README.md).
 
 ## 功能
 
-### MCP 工具（双功能门启用时生产面 72 个：静态/代码生成 32 + 动态调试 22 + 结构化编辑 18）
+### MCP 工具（双功能门启用时生产面 74 个：静态/代码生成 33 + 动态调试 23 + 结构化编辑 18）
 
-以 `DNMCP_TEST=1` 启动的验收进程另通告 6 个 `debug_test_*` 探针，因此其线上快照为 78 个；
+以 `DNMCP_TEST=1` 启动的验收进程另通告 6 个 `debug_test_*` 探针，因此其线上快照为 80 个；
 9 个可调用的 `edit_test_*` 测试缝仍不通告。调试门关闭时，21 个调试会话工具不通告，
-静态/代码生成与编辑工具仍可用：生产面 51 个、附加六个测试探针后 57 个。应以
+静态/代码生成与编辑工具仍可用：生产面 52 个、附加六个测试探针后 58 个。应以
 `debug_capabilities` 和实时 `tools/list` 判定当前 profile；net10 静态宿主实测不等于
 net10 动态调试通过。
 
@@ -128,7 +128,7 @@ PDB 编辑以归一化后的完整文档元数据识别文档，不能只比 URL
 
 CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_capabilities`。会话、generation、pause epoch 以及各种 handle 都有严格作用域，continue/step/restart 后必须重新获取。动态 dump 保留在 `ArtifactRoot\.dnspy-mcp-debug`；dnSpy 重启后旧 session 仍是不可信只读内容并计入配额，但不会阻断新 session，除非身份复核或配额检查失败。完整安全与部署要求见[动态调试部署指南](docs/deployment-dynamic-debugging.zh-CN.md)。
 
-### MCP 资源（共 14 个）
+### MCP 资源（共 15 个）
 
 内嵌的 BepInEx 开发文档，通过 `resources/list` / `resources/read` 提供：
 
@@ -139,8 +139,8 @@ CorDebug 要求 dnSpy 与目标进程位数一致；使用前先调用 `debug_ca
 5. **il2cpp-guide** — IL2CPP 开发指南
 6. **mono-vs-il2cpp** — Mono 与 IL2CPP 对比及迁移
 
-另外八个 `dnspy://docs/*` 资源向 AI 提供服务器自身的完整操作手册：文档索引、能力
-概览、静态分析、IL 编辑、动态调试、安全、Python 客户端集成以及任务导向工作流。
+另外九个 `dnspy://docs/*` 资源向 AI 提供服务器自身的完整操作手册：文档索引、能力
+概览、静态分析、IL 编辑、edit_apply 操作目录、动态调试、安全、Python 客户端集成以及任务导向工作流。
 `initialize` 响应会要求 MCP 宿主先读取索引，并在资源尚未打开时就提供关键安全规则。
 
 所有文档都内嵌在 DLL 中，**离线可用**。
@@ -445,7 +445,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 ### 客户端配置
 
 需要让 ZCode、Codex 或其他第三方 AI 通过 Python stdio client 完成全功能验收时，可直接把
-[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。文中要求先核 x64/x86 fixture/SHA；调试门开启时才是 78 工具 profile。还覆盖私有编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion。ZCode 只有工具面时，14 个 resources 必须另由支持 resources 的宿主读取；静态宿主或阻断项不可冒称完整验收。
+[第三方全功能测试提示词](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md)交给智能体读取并执行。文中要求先核 x64/x86 fixture/SHA；调试门开启时才是 80 工具 profile。还覆盖私有编辑、可恢复旧写入、模块 dump、幂等性和两层 value expansion。ZCode 只有工具面时，15 个 resources 必须另由支持 resources 的宿主读取；静态宿主或阻断项不可冒称完整验收。
 
 #### Claude Code
 
@@ -491,7 +491,7 @@ claude mcp list
 
 ## 已验证的兼容性
 
-- MCP `2025-06-18`：双功能门启用时生产面 72 个工具；`DNMCP_TEST=1` 验收快照 78 个工具。两者均有 14 个具体资源及空的 `resources/templates/list` 页面。
+- MCP `2025-06-18`：双功能门启用时生产面 74 个工具；`DNMCP_TEST=1` 验收快照 80 个工具。两者均有 15 个具体资源及空的 `resources/templates/list` 页面。
 - 22 个 debug inputSchema 均为自包含扁平对象；outputSchema 描述完整的成功/失败 envelope，不依赖客户端无法解析的缺失 `$defs`。
 - `list_assemblies` 使用对象型 `structuredContent`：`{ "assemblies": [...] }`。
 - 引入结构化编辑前的 54 工具基线已在 Win10 VM x64 与 x86 实机完成 54/54 成功路径，包括两层 `debug_expand_value`、断点命中、step/restart、模块 dump 与 request-id 幂等性。

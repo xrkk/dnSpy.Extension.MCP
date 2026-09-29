@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Editing/Contracts/p03-tool-schemas.json" LogicalName="dnspy.edit.p03-tool-schemas.json" />
+    <EmbeddedResource Include="Editing/Contracts/operation-whitelist.json" LogicalName="dnspy.edit.operation-whitelist.json" />
     <EmbeddedResource Include="Editing/Contracts/checkpoint-package.schema.json" LogicalName="dnspy.edit.checkpoint-package.schema.json" />
     <EmbeddedResource Include="Editing/Contracts/p03-acceptance.json" LogicalName="dnspy.edit.p03-acceptance.json" />
     <EmbeddedResource Include="PLAN/2026.09.03/P02-contract/generated/operation-lowering.json" LogicalName="dnspy.edit.operation-lowering.json" />
@@ -78,6 +79,7 @@
     <EmbeddedResource Include="tests/debug/contracts/dnspy.debug.v1.schema.json" />
     <EmbeddedResource Include="docs/mcp-resources/index.md" LogicalName="dnspy.docs.index.md" />
     <EmbeddedResource Include="docs/mcp-resources/overview.md" LogicalName="dnspy.docs.overview.md" />
+    <EmbeddedResource Include="docs/mcp-resources/edit-ops.md" LogicalName="dnspy.docs.edit-ops.md" />
     <EmbeddedResource Include="docs/mcp-resources/static-analysis.md" LogicalName="dnspy.docs.static-analysis.md" />
     <EmbeddedResource Include="docs/mcp-resources/il-editing.md" LogicalName="dnspy.docs.il-editing.md" />
     <EmbeddedResource Include="docs/mcp-resources/dynamic-debugging.md" LogicalName="dnspy.docs.dynamic-debugging.md" />

@@ -13,10 +13,12 @@ namespace dnSpy.Extension.MCP.Debugger;
 
 /// <summary>
 /// Debug tool advertisement and dispatch (CON-DYN-014 / §3.3). tools/list always gains exactly
-/// <c>debug_capabilities</c>; the remaining 21 tools are advertised only while the frozen gate
+/// <c>debug_capabilities</c>; the remaining 22 tools are advertised only while the frozen gate
 /// is active. The gate is frozen once per process from the authoritative settings snapshot; the
 /// StartupDbgWasIdle sampler is wired with the debugger contracts in IMP-005 — until then the
-/// gate stays false and an unsampleable gate must never enable debug tools.
+/// gate stays false and an unsampleable gate must never enable debug tools. The 22nd session
+/// tool is debug_snapshot (IMP-503); the frozen advertised count was revised 22 → 23 by the
+/// audited MCP token-optimization plan (CON-DYN-014 / RACC-DYN-011 addendum).
 /// </summary>
 [Export(typeof(IMcpToolProvider))]
 public sealed class DebugToolProvider : IMcpToolProvider {
@@ -161,7 +163,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 				},
 			});
 		}
-		// The 21 session-scoped tools are advertised only when the frozen gate is active AND
+		// The 22 session-scoped tools are advertised only when the frozen gate is active AND
 		// their handlers exist (staged with IMP-004..009); never advertise what cannot answer.
 		if (Gate.EffectiveDebugLaunch) {
 			// Never advertise what cannot answer: only session tools with a landed handler
@@ -316,8 +318,8 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		"debug_terminate", "debug_read_events", "debug_wait_event", "debug_set_breakpoint",
 		"debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug_remove_breakpoint",
 		"debug_list_threads", "debug_get_stack", "debug_step", "debug_get_locals",
-		"debug_expand_value", "debug_list_modules", "debug_read_memory", "debug_dump_module",
-		"debug_set_exception_policy",
+		"debug_snapshot", "debug_expand_value", "debug_list_modules", "debug_read_memory",
+		"debug_dump_module", "debug_set_exception_policy",
 	};
 
 	ToolInfo SessionTool(string name) => new ToolInfo {
@@ -490,6 +492,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		["debug_get_stack"] = "Page through the call stack of a thread.",
 		["debug_step"] = "Step into/over/out on a thread.",
 		["debug_get_locals"] = "Read locals/args/this of a frame (no function evaluation, raw views only).",
+		["debug_snapshot"] = "One-call paused-state snapshot: the first managed thread's stack page plus the leaf frame's locals first page, with fresh debug_context (same shapes as debug_get_stack/debug_get_locals).",
 		["debug_expand_value"] = "Expand a value handle's children (raw field/array access only).",
 		["debug_list_modules"] = "Page through loaded modules with identity metadata.",
 		["debug_read_memory"] = "Read at most 64 KiB of target memory (zero-fill semantics reported).",

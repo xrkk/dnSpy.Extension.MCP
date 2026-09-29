@@ -28,21 +28,64 @@ internal sealed class EditOperationOutcome {
 	public IReadOnlyList<Dictionary<string, object?>> Risks { get; init; } = Array.Empty<Dictionary<string, object?>>();
 }
 
-internal static partial class EditOperationRegistry {
-	static readonly Dictionary<string, OpCode> OpCodesByName = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
-		.Where(f => f.FieldType == typeof(OpCode)).Select(f => (OpCode)f.GetValue(null)!)
-		.ToDictionary(o => o.Name, StringComparer.OrdinalIgnoreCase);
-	static readonly Dictionary<string, uint> AttributeMasks = new Dictionary<string, uint>(StringComparer.Ordinal) {
-		["type"] = 16219583, ["method"] = 65535, ["method_impl"] = 6143, ["field"] = 47095,
-		["property"] = 5632, ["event"] = 1536, ["parameter"] = 12319, ["generic"] = 63, ["resource"] = 3,
-	};
+	internal static partial class EditOperationRegistry {
+		static readonly Dictionary<string, OpCode> OpCodesByName = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+			.Where(f => f.FieldType == typeof(OpCode)).Select(f => (OpCode)f.GetValue(null)!)
+			.ToDictionary(o => o.Name, StringComparer.OrdinalIgnoreCase);
+		static readonly Dictionary<string, uint> AttributeMasks = new Dictionary<string, uint>(StringComparer.Ordinal) {
+			["type"] = 16219583, ["method"] = 65535, ["method_impl"] = 6143, ["field"] = 47095,
+			["property"] = 5632, ["event"] = 1536, ["parameter"] = 12319, ["generic"] = 63, ["resource"] = 3,
+		};
 
-	public static EditOperationOutcome Apply(ModuleDef module, JsonElement operation,
-		Dictionary<string, IMDTokenProvider> objects, int operationIndex) {
-		if (operation.ValueKind != JsonValueKind.Object) Invalid("operation", "Operation must be an object");
-		RejectUnknownRawFields(operation);
-		var kind = RequiredString(operation, "kind");
-		if (!EditWire.OperationKinds.Contains(kind, StringComparer.Ordinal)) Invalid("operation.kind", "Unknown operation kind");
+		// D-01 (IMP-502): the advertised edit_apply operation schema is a compact discriminating
+		// union, so the per-kind field validation the old 39-branch oneOf performed at the schema
+		// layer is re-imposed here, before any handler runs and before the operation is staged:
+		// unknown kinds, fields outside the kind's allowed set and missing required fields reject
+		// with EDIT_VALIDATION_FAILED, matching the retired additionalProperties:false branches.
+		// The data is mechanically derived from those branches (dnspy.edit.operation-whitelist.json).
+		static readonly Lazy<Dictionary<string, KeyValuePair<HashSet<string>, HashSet<string>>>> OperationWhitelist =
+			new(LoadOperationWhitelist);
+
+		static Dictionary<string, KeyValuePair<HashSet<string>, HashSet<string>>> LoadOperationWhitelist() {
+			var assembly = typeof(EditOperationRegistry).Assembly;
+			foreach (var name in assembly.GetManifestResourceNames()) {
+				if (!name.EndsWith("dnspy.edit.operation-whitelist.json", StringComparison.OrdinalIgnoreCase)) continue;
+				using var stream = assembly.GetManifestResourceStream(name)
+					?? throw new InvalidOperationException("Embedded operation whitelist is empty");
+				using var document = JsonDocument.Parse(stream);
+				var result = new Dictionary<string, KeyValuePair<HashSet<string>, HashSet<string>>>(StringComparer.Ordinal);
+				foreach (var entry in document.RootElement.GetProperty("operations").EnumerateObject()) {
+					var allowed = new HashSet<string>(entry.Value.GetProperty("allowed").EnumerateArray()
+						.Select(x => x.GetString()!), StringComparer.Ordinal);
+					var required = new HashSet<string>(entry.Value.GetProperty("required").EnumerateArray()
+						.Select(x => x.GetString()!), StringComparer.Ordinal);
+					result[entry.Name] = new KeyValuePair<HashSet<string>, HashSet<string>>(allowed, required);
+				}
+				if (result.Count == 0) throw new InvalidOperationException("Embedded operation whitelist is empty");
+				return result;
+			}
+			throw new InvalidOperationException("Embedded operation whitelist is missing: dnspy.edit.operation-whitelist.json");
+		}
+
+		static void ValidateOperationWhitelist(JsonElement operation, string kind) {
+			if (!OperationWhitelist.Value.TryGetValue(kind, out var entry)) return; // unknown kinds are rejected above
+			var allowed = entry.Key;
+			var required = entry.Value;
+			foreach (var field in required)
+				if (!operation.TryGetProperty(field, out _))
+					Invalid("operation." + field, $"Operation '{kind}' is missing required field '{field}'");
+			foreach (var property in operation.EnumerateObject())
+				if (!allowed.Contains(property.Name))
+					Invalid("operation." + property.Name, $"Operation '{kind}' does not accept field '{property.Name}'");
+		}
+
+		public static EditOperationOutcome Apply(ModuleDef module, JsonElement operation,
+			Dictionary<string, IMDTokenProvider> objects, int operationIndex) {
+			if (operation.ValueKind != JsonValueKind.Object) Invalid("operation", "Operation must be an object");
+			RejectUnknownRawFields(operation);
+			var kind = RequiredString(operation, "kind");
+			if (!EditWire.OperationKinds.Contains(kind, StringComparer.Ordinal)) Invalid("operation.kind", "Unknown operation kind");
+			ValidateOperationWhitelist(operation, kind);
 		var pdbBefore = module.PdbState;
 		var outcome = kind switch {
 			"type_add" => TypeAdd(module, operation, objects, operationIndex),

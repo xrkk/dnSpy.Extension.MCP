@@ -144,6 +144,10 @@ namespace dnSpy.Extension.MCP
                                     ["additionalProperties"] = false,
                                 },
                             },
+                            ["total_count"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Total assemblies after the name_filter (IMP-506)."
+                            },
                         },
                         ["required"] = new List<string> { "assemblies" },
                         ["additionalProperties"] = false,
@@ -240,6 +244,32 @@ namespace dnSpy.Extension.MCP
                     }
                 },
                 new ToolInfo {
+                    Name = "get_type_overview",
+                    Description = "One-call type overview: the compact get_type_info result plus the type's method and field tables in a single response — the 3-call browse (get_type_info + list_methods + get_type_fields) collapsed into one. members_filter applies to the methods/fields tables (same matcher as get_type_info); max_members (default 50) caps each table, each segment keeps total_count and a cursor for paging with list_methods / get_type_fields.",
+                    InputSchema = new Dictionary<string, object> {
+                        ["type"] = "object",
+                        ["properties"] = new Dictionary<string, object> {
+                            ["assembly_name"] = new Dictionary<string, object> {
+                                ["type"] = "string",
+                                ["description"] = "Name of the assembly"
+                            },
+                            ["type_full_name"] = new Dictionary<string, object> {
+                                ["type"] = "string",
+                                ["description"] = "Full name of the type including namespace"
+                            },
+                            ["members_filter"] = new Dictionary<string, object> {
+                                ["type"] = "string",
+                                ["description"] = "Optional. Only include methods/fields whose name matches (case-insensitive substring, or '*' wildcard anchored to the whole name), e.g. '*Save*'."
+                            },
+                            ["max_members"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional per-table cap (default 50, max 1000). Truncates the methods and fields tables independently; each segment keeps total_count and a nextCursor for paging."
+                            }
+                        },
+                        ["required"] = new List<string> { "assembly_name", "type_full_name" }
+                    }
+                },
+                new ToolInfo {
                     Name = "decompile_method",
                     Description = "Decompile a specific method to C# code. For overloaded methods, pass parameter_types (array of fully-qualified type names from list_methods) or method_token (uint MDToken) to disambiguate.",
                     InputSchema = new Dictionary<string, object> {
@@ -269,6 +299,14 @@ namespace dnSpy.Extension.MCP
                             ["include_state_machine"] = new Dictionary<string, object> {
                                 ["type"] = "boolean",
                                 ["description"] = "Default true. For async / iterator methods, if the decompiler can't inline the state machine back into await/yield (common on Unity/Mono output), append the raw compiler-generated MoveNext body so the real logic isn't lost. Set false to get only the kickoff."
+                            },
+                            ["max_lines"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+                            },
+                            ["start_line"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
                             }
                         },
                         ["required"] = new List<string> { "assembly_name", "type_full_name", "method_name" }
@@ -341,7 +379,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "decompile_type",
-                    Description = "Decompile a whole TYPE to C# (all members) — the dnSpy 'click the class and read its source' view. Use it to understand a class in one shot, instead of decompiling members one by one. Nested / compiler-generated types are addressable (separator-tolerant: '.', '+', '/'). For very large types the output can be big — prefer get_type_info (compact=true) for an overview, or decompile_method for a single member.",
+                    Description = "Decompile a whole TYPE to C# (all members) — the dnSpy 'click the class and read its source' view. Use it to understand a class in one shot, instead of decompiling members one by one. Nested / compiler-generated types are addressable (separator-tolerant: '.', '+', '/'). For very large types the output can be big — pass max_lines to cap it, or prefer get_type_info (compact=true) / get_type_overview for an overview, or decompile_method for a single member.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -352,6 +390,14 @@ namespace dnSpy.Extension.MCP
                             ["type_full_name"] = new Dictionary<string, object> {
                                 ["type"] = "string",
                                 ["description"] = "Full name of the type (namespace + name; nested types may use '.', '+', or '/')."
+                            },
+                            ["max_lines"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+                            },
+                            ["start_line"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
                             }
                         },
                         ["required"] = new List<string> { "assembly_name", "type_full_name" }
@@ -374,6 +420,14 @@ namespace dnSpy.Extension.MCP
                             ["include_state_machine"] = new Dictionary<string, object> {
                                 ["type"] = "boolean",
                                 ["description"] = "Default true. For async/iterator methods, append the raw MoveNext body when the kickoff can't be reconstructed (same behavior as decompile_method)."
+                            },
+                            ["max_lines"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. Maximum decompiled lines to return (default 0 = unlimited). Truncation swaps the plain text for a JSON envelope carrying truncated, total_lines and next_line_offset."
+                            },
+                            ["start_line"] = new Dictionary<string, object> {
+                                ["type"] = "integer",
+                                ["description"] = "Optional. First decompiled line to return, 0-based (default 0); pair with max_lines to page through long output."
                             }
                         },
                         ["required"] = new List<string> { "token" }
@@ -818,7 +872,7 @@ namespace dnSpy.Extension.MCP
                 },
                 new ToolInfo {
                     Name = "list_methods",
-                    Description = "List methods of a type with unambiguous identifiers. Each entry includes the MethodDef token, parameter rows with Param tokens, method generic-parameter rows with GenericParam tokens, and parameter_types for overload disambiguation. Feed any renameable token to rename_symbol_by_token. Paginated (default page size 10).",
+                    Description = "List methods of a type with unambiguous identifiers. Each entry includes the MethodDef token, parameter rows with Param tokens, method generic-parameter rows with GenericParam tokens, and parameter_types for overload disambiguation. Feed any renameable token to rename_symbol_by_token. Paginated (default page size 10); names_only returns a flat list of method name strings.",
                     InputSchema = new Dictionary<string, object> {
                         ["type"] = "object",
                         ["properties"] = new Dictionary<string, object> {
@@ -829,6 +883,10 @@ namespace dnSpy.Extension.MCP
                             ["type_full_name"] = new Dictionary<string, object> {
                                 ["type"] = "string",
                                 ["description"] = "Fully qualified type name"
+                            },
+                            ["names_only"] = new Dictionary<string, object> {
+                                ["type"] = "boolean",
+                                ["description"] = "Default false. Return a flat list of method name strings instead of per-method rows — much cheaper in tokens. total_count still counts every method."
                             },
                             ["cursor"] = new Dictionary<string, object> {
                                 ["type"] = "string",
@@ -1115,6 +1173,7 @@ namespace dnSpy.Extension.MCP
                         "get_assembly_info" => GetAssemblyInfo(arguments),
                         "list_types" => ListTypes(arguments),
                         "get_type_info" => GetTypeInfo(arguments),
+                        "get_type_overview" => GetTypeOverview(arguments),
                         "decompile_method" => DecompileMethod(arguments),
                         "decompile_type" => DecompileType(arguments),
                         "decompile_by_token" => DecompileByToken(arguments),
@@ -1299,7 +1358,7 @@ namespace dnSpy.Extension.MCP
                 })
                 .ToList();
 
-            var result = JsonSerializer.Serialize(new { assemblies }, new JsonSerializerOptions { WriteIndented = true });
+            var result = JsonSerializer.Serialize(new { assemblies, total_count = assemblies.Count }, new JsonSerializerOptions { WriteIndented = true });
             return new CallToolResult
             {
                 Content = new List<ToolContent> {
@@ -1605,6 +1664,141 @@ namespace dnSpy.Extension.MCP
             };
         }
 
+        /// <summary>
+        /// IMP-504 (D-03): one-call type overview. Reuses the three existing projections
+        /// directly — the get_type_info handler (compact=true) for the type segment, and the
+        /// extracted BuildMethodRows / BuildFieldRows shapes (list_methods / get_type_fields
+        /// rows) for the member tables. members_filter applies to both tables (same matcher
+        /// semantics as get_type_info); max_members (AUD-606) truncates the methods and fields
+        /// tables independently, each keeping its total_count and a cursor for paging with the
+        /// dedicated tools.
+        /// </summary>
+        CallToolResult GetTypeOverview(Dictionary<string, object>? arguments)
+        {
+            if (arguments == null)
+                throw new ArgumentException("Arguments required");
+            if (!arguments.TryGetValue("assembly_name", out var assemblyNameObj))
+                throw new ArgumentException("assembly_name is required");
+            if (!arguments.TryGetValue("type_full_name", out var typeNameObj))
+                throw new ArgumentException("type_full_name is required");
+
+            var assemblyName = assemblyNameObj.ToString() ?? string.Empty;
+            var typeFullName = typeNameObj.ToString() ?? string.Empty;
+            var memberFilterRaw = ReadOptionalString(arguments, "members_filter");
+            var maxMembers = Math.Max(1, Math.Min(1000, ReadOptionalInt(arguments, "max_members") ?? 50));
+
+            // type segment: the existing get_type_info handler, compact projection, direct call.
+            var typeArgs = new Dictionary<string, object> {
+                ["assembly_name"] = assemblyName,
+                ["type_full_name"] = typeFullName,
+                ["compact"] = true,
+                ["page_size"] = maxMembers,
+            };
+            if (memberFilterRaw != null)
+                typeArgs["members_filter"] = memberFilterRaw;
+            using var typeDocument = JsonDocument.Parse(GetTypeInfo(typeArgs).Content[0].Text!);
+            var typeSegment = typeDocument.RootElement.Clone();
+
+            // Validate the target through the same resolvers the member tools use.
+            var assembly = FindAssemblyByName(assemblyName);
+            if (assembly == null)
+                throw new ArgumentException($"Assembly not found: {assemblyName}");
+            var type = FindTypeInAssembly(assembly, typeFullName);
+            if (type == null)
+                throw new ArgumentException($"Type not found: {typeFullName}");
+            var memberMatch = memberFilterRaw == null ? (_ => true) : BuildStringMatcher(memberFilterRaw);
+
+            // methods segment: the list_methods response shape (items/total_count/returned_count),
+            // filtered by members_filter, truncated to max_members.
+            var methodRows = BuildMethodRows(type).Where(r => memberMatch(r.Name)).ToList();
+            var methodsSegment = new Dictionary<string, object> {
+                ["items"] = methodRows.Take(maxMembers).Select(r => r.Row).ToList(),
+                ["total_count"] = methodRows.Count,
+                ["returned_count"] = Math.Min(maxMembers, methodRows.Count),
+            };
+            if (maxMembers < methodRows.Count)
+            {
+                methodsSegment["nextCursor"] = EncodeCursor(maxMembers, maxMembers);
+                methodsSegment["note"] = $"methods truncated to {maxMembers} of {methodRows.Count}; page the rest with list_methods and this cursor";
+            }
+
+            // fields segment: the get_type_fields response shape with pattern "*" (every field),
+            // same filter and cap.
+            var fieldRows = BuildFieldRows(type, "*").Where(r => memberMatch(r.Name)).ToList();
+            var fieldsSegment = new Dictionary<string, object> {
+                ["Type"] = typeFullName,
+                ["Pattern"] = "*",
+                ["MatchCount"] = fieldRows.Count,
+                ["ReturnedCount"] = Math.Min(maxMembers, fieldRows.Count),
+                ["Fields"] = fieldRows.Take(maxMembers).Select(r => (object)r.Row).ToList(),
+            };
+            if (maxMembers < fieldRows.Count)
+            {
+                fieldsSegment["nextCursor"] = EncodeCursor(maxMembers, maxMembers);
+                fieldsSegment["note"] = $"fields truncated to {maxMembers} of {fieldRows.Count}; page the rest with get_type_fields (pattern '*') and this cursor";
+            }
+
+            var overview = new Dictionary<string, object> {
+                ["type"] = typeSegment,
+                ["methods"] = methodsSegment,
+                ["fields"] = fieldsSegment,
+            };
+            var result = JsonSerializer.Serialize(overview, new JsonSerializerOptions { WriteIndented = true });
+            return new CallToolResult
+            {
+                Content = new List<ToolContent> {
+                    new ToolContent { Text = result }
+                }
+            };
+        }
+
+        /// <summary>
+        /// IMP-505 (D-05): optional decompile output windowing. With max_lines=0 and
+        /// start_line=0 (the defaults) the caller receives the plain decompiled text
+        /// byte-for-byte as before. Any other window swaps the plain text for a JSON envelope
+        /// {truncated, total_lines, start_line, next_line_offset?, code} so callers can cap
+        /// and page through long output. A window that happens to cover the whole text from
+        /// line 0 also returns the plain text unchanged.
+        /// </summary>
+        static CallToolResult DecompileWindowResult(string text, Dictionary<string, object>? arguments)
+        {
+            var maxLines = arguments != null ? ReadOptionalInt(arguments, "max_lines") ?? 0 : 0;
+            var startLine = arguments != null ? ReadOptionalInt(arguments, "start_line") ?? 0 : 0;
+            if (maxLines < 0 || startLine < 0)
+                throw new ArgumentException("max_lines and start_line must be >= 0");
+            if (maxLines == 0 && startLine == 0)
+                return PlainText(text);
+            var all = text.Split('\n');
+            // A trailing '\n' terminates the last line rather than starting an empty one.
+            var totalLines = all.Length - (text.EndsWith("\n") ? 1 : 0);
+            if (totalLines == 0 || (startLine == 0 && (maxLines == 0 || maxLines >= totalLines)))
+                return PlainText(text);
+            var take = Math.Max(0, Math.Min(maxLines == 0 ? totalLines : maxLines, totalLines - startLine));
+            var nextOffset = startLine + take;
+            var envelope = new Dictionary<string, object> {
+                ["truncated"] = nextOffset < totalLines,
+                ["total_lines"] = totalLines,
+                ["start_line"] = startLine,
+                ["code"] = string.Join("\n", all.Skip(startLine).Take(take)),
+            };
+            if (nextOffset < totalLines)
+            {
+                envelope["next_line_offset"] = nextOffset;
+                envelope["note"] = $"showing lines {startLine}..{nextOffset - 1} of {totalLines}; call again with start_line={nextOffset}";
+            }
+            return new CallToolResult
+            {
+                Content = new List<ToolContent> {
+                    new ToolContent { Text = JsonSerializer.Serialize(envelope) }
+                }
+            };
+        }
+
+        static CallToolResult PlainText(string text) => new CallToolResult
+        {
+            Content = new List<ToolContent> { new ToolContent { Text = text } }
+        };
+
         CallToolResult DecompileMethod(Dictionary<string, object>? arguments)
         {
             if (arguments == null)
@@ -1615,7 +1809,6 @@ namespace dnSpy.Extension.MCP
                 throw new ArgumentException("type_full_name is required");
             if (!arguments.TryGetValue("method_name", out var methodNameObj))
                 throw new ArgumentException("method_name is required");
-
             var assemblyName = assemblyNameObj.ToString() ?? string.Empty;
             var typeFullName = typeNameObj.ToString() ?? string.Empty;
             var methodName = methodNameObj.ToString() ?? string.Empty;
@@ -1634,12 +1827,7 @@ namespace dnSpy.Extension.MCP
             var method = FindMethod(type, methodName, parameterTypes, methodToken);
             var includeStateMachine = ReadOptionalBool(arguments, "include_state_machine") ?? true;
 
-            return new CallToolResult
-            {
-                Content = new List<ToolContent> {
-                    new ToolContent { Text = DecompileMethodToText(method, includeStateMachine) }
-                }
-            };
+            return DecompileWindowResult(DecompileMethodToText(method, includeStateMachine), arguments);
         }
 
         CallToolResult DecompileByToken(Dictionary<string, object>? arguments)
@@ -1711,12 +1899,7 @@ namespace dnSpy.Extension.MCP
                 text = output.ToString();
             }
 
-            return new CallToolResult
-            {
-                Content = new List<ToolContent> {
-                    new ToolContent { Text = text }
-                }
-            };
+            return DecompileWindowResult(text, arguments);
         }
 
         /// <summary>
@@ -1748,12 +1931,7 @@ namespace dnSpy.Extension.MCP
             var decompiler = decompilerService.Decompiler;
             var output = new StringBuilderDecompilerOutput();
             decompiler.Decompile(type, output, new DecompilationContext { CancellationToken = System.Threading.CancellationToken.None });
-            return new CallToolResult
-            {
-                Content = new List<ToolContent> {
-                    new ToolContent { Text = output.ToString() }
-                }
-            };
+            return DecompileWindowResult(output.ToString(), arguments);
         }
 
         /// <summary>
@@ -2765,33 +2943,8 @@ namespace dnSpy.Extension.MCP
             if (type == null)
                 throw new ArgumentException($"Type not found: {typeFullName}");
 
-            // Convert wildcard pattern to regex
-            var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern).Replace("\\*", ".*") + "$";
-            var regex = new System.Text.RegularExpressions.Regex(regexPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            var allMatchingFields = type.Fields
-                .Where(f => regex.IsMatch(f.Name.String))
-                .Select(f =>
-                {
-                    var row = new Dictionary<string, object>
-                    {
-                        ["Name"] = f.Name.String,
-                        ["Type"] = f.FieldType.FullName,
-                        ["IsPublic"] = f.IsPublic,
-                        ["IsStatic"] = f.IsStatic,
-                        ["IsLiteral"] = f.IsLiteral,
-                        ["IsReadOnly"] = f.IsInitOnly,
-                        ["Attributes"] = f.Attributes.ToString()
-                    };
-                    ReadFieldOffsetInfo(f, out var off, out var src, out var tok);
-                    if (off != null) row["Offset"] = off;
-                    if (src != null) row["OffsetSource"] = src;
-                    if (tok != null) row["Il2CppToken"] = tok;
-                    return row;
-                })
-                .ToList();
-
-            var fieldsToReturn = allMatchingFields.Skip(offset).Take(pageSize).ToList();
+            var allMatchingFields = BuildFieldRows(type, pattern);
+            var fieldsToReturn = allMatchingFields.Skip(offset).Take(pageSize).Select(r => r.Row).ToList();
             var hasMore = offset + pageSize < allMatchingFields.Count;
 
             var response = new Dictionary<string, object>
@@ -2816,6 +2969,37 @@ namespace dnSpy.Extension.MCP
                     new ToolContent { Text = result }
                 }
             };
+        }
+
+        /// <summary>The get_type_fields row shape (IMP-504: shared with get_type_overview,
+        /// which matches "*" and truncates without re-implementing the projection).</summary>
+        List<(string Name, Dictionary<string, object> Row)> BuildFieldRows(TypeDef type, string pattern)
+        {
+            // Convert wildcard pattern to regex
+            var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern).Replace("\\*", ".*") + "$";
+            var regex = new System.Text.RegularExpressions.Regex(regexPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            return type.Fields
+                .Where(f => regex.IsMatch(f.Name.String))
+                .Select(f =>
+                {
+                    var row = new Dictionary<string, object>
+                    {
+                        ["Name"] = f.Name.String,
+                        ["Type"] = f.FieldType.FullName,
+                        ["IsPublic"] = f.IsPublic,
+                        ["IsStatic"] = f.IsStatic,
+                        ["IsLiteral"] = f.IsLiteral,
+                        ["IsReadOnly"] = f.IsInitOnly,
+                        ["Attributes"] = f.Attributes.ToString()
+                    };
+                    ReadFieldOffsetInfo(f, out var off, out var src, out var tok);
+                    if (off != null) row["Offset"] = off;
+                    if (src != null) row["OffsetSource"] = src;
+                    if (tok != null) row["Il2CppToken"] = tok;
+                    return (f.Name.String, row);
+                })
+                .ToList();
         }
 
         CallToolResult GetTypeProperty(Dictionary<string, object>? arguments)

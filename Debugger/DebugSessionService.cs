@@ -95,7 +95,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		"debug_set_breakpoint", "debug_list_breakpoints", "debug_set_breakpoint_enabled",
 		"debug_remove_breakpoint", "debug_set_exception_policy",
 		"debug_list_threads", "debug_get_stack", "debug_step",
-		"debug_get_locals", "debug_expand_value",
+		"debug_get_locals", "debug_snapshot", "debug_expand_value",
 		"debug_list_modules", "debug_read_memory", "debug_dump_module",
 	};
 
@@ -903,6 +903,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				"debug_get_stack" => GetStack(arguments),
 				"debug_step" => Step(arguments, laneTicket),
 				"debug_get_locals" => GetLocals(arguments),
+				"debug_snapshot" => Snapshot(arguments),
 				"debug_expand_value" => ExpandValue(arguments),
 				"debug_list_modules" => ListModules(arguments),
 				"debug_read_memory" => ReadMemory(arguments),
@@ -2173,6 +2174,12 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		var classifyError = ClassifyThreadHandle(threadHandle, out var tid);
 		if (classifyError is not null)
 			return Fail(coordinator, classifyError, message: classifyError == DomainErrorCodes.StaleHandle ? "thread_handle belongs to an earlier pause" : "unknown thread_handle");
+		return Ok(coordinator, CollectStackPage(tid, threadHandle, start, pageSize), untrustedSampleData: true);
+	}
+
+	/// <summary>Collects one stack page for a paused thread, minting pause-epoch-bound frame
+	/// handles (shared by debug_get_stack and the debug_snapshot composite; IMP-503).</summary>
+	PagedItemsDto CollectStackPage(ulong tid, string threadHandle, int start, int pageSize) {
 		var frames = new List<(string module, uint token, uint offset)>();
 		var frameModuleFiles = new List<string?>();
 		PostVoidToDispatcherSync(() => {
@@ -2227,7 +2234,7 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		};
 		if (start + page.Count < frames.Count)
 			dto.NextPageCursor = (start + page.Count).ToString();
-		return Ok(coordinator, dto, untrustedSampleData: true);
+		return dto;
 	}
 
 	string Step(Dictionary<string, object>? args, DualLaneQueue.Ticket? laneTicket) {
@@ -2342,9 +2349,21 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 		if (frameError is not null)
 			return Fail(coordinator, frameError, message: frameError == DomainErrorCodes.StaleHandle ? "frame_handle belongs to an earlier pause" : "unknown frame_handle");
 		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 100));
-		// The pause-epoch-bound immutable snapshot (CON-DYN-007/§3.5): evaluation objects do
-		// not survive the dispatcher callback, so the whole breadth-first expansion (depth<=4,
-		// 1024 nodes) is materialized here with pre-allocated handles; expand only pages it.
+		var (roots, truncated) = CollectLocalsSnapshot(frameIndex);
+		if (roots.Count == 0)
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "frame not found or has no locals");
+		var dto = new LocalsResultDto { Items = roots.Take(pageSize).Select(e => (object)ValueNodeDtoOf(e)).ToList(), Truncated = truncated, TotalKnown = roots.Count };
+		if (pageSize < roots.Count)
+			dto.NextPageCursor = pageSize.ToString();
+		dto.Budgets = BudgetsUsed(truncated);
+		return Ok(coordinator, dto, untrustedSampleData: true);
+	}
+
+	/// <summary>Materializes the pause-epoch-bound immutable locals snapshot for one frame
+	/// (CON-DYN-007/§3.5): evaluation objects do not survive the dispatcher callback, so the
+	/// whole breadth-first expansion (depth<=4, 1024 nodes) happens here with pre-allocated
+	/// handles; expand only pages it. Shared by debug_get_locals and debug_snapshot (IMP-503).</summary>
+	(List<ValueHandleEntry> roots, bool truncated) CollectLocalsSnapshot(int frameIndex) {
 		var roots = new List<ValueHandleEntry>();
 		bool truncated = false;
 		PostVoidToDispatcherSync(() => {
@@ -2400,16 +2419,59 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 				context.Close();
 			}
 		});
-		if (roots.Count == 0)
-			return Fail(coordinator, DomainErrorCodes.NotFound, message: "frame not found or has no locals");
-		var items = new List<object>();
-		foreach (var entry in roots.Take(pageSize))
-			items.Add(ValueNodeDtoOf(entry));
-		var dto = new LocalsResultDto { Items = items, Truncated = truncated, TotalKnown = roots.Count };
+		return (roots, truncated);
+	}
+
+	/// <summary>
+	/// IMP-503 (D-03): combined paused-state read. One call returns the first managed thread's
+	/// stack page plus the leaf frame's locals first page, so an AI stepping through a target
+	/// does not need a debug_status handle refresh plus two more round trips per stop. Both
+	/// segments reuse the exact debug_get_stack / debug_get_locals shapes (same DTOs, handles
+	/// and budgets), so every handle returned here feeds the existing follow-up tools; the
+	/// envelope's debug_context carries the fresh generation/pause_epoch/state. Not paused
+	/// returns the same domain errors as debug_get_stack.
+	/// </summary>
+	string Snapshot(Dictionary<string, object>? args) {
+		if (!SessionAndGenerationMatch(args))
+			return Fail(coordinator, DomainErrorCodes.InvalidState, new List<string> { DebugStates.Paused });
+		var pausedGateFailure = PausedGateFailure(args);
+		if (pausedGateFailure is not null)
+			return pausedGateFailure;
+		// Optional explicit frame (any handle minted in this pause); default is the leaf frame,
+		// which is also what GetFrameByIndex addresses for locals evaluation. ArgString returns
+		// string.Empty (not null) for an absent optional field — an empty frame_handle must mean
+		// "leaf frame", never an unknown-handle rejection (ACC-062 fix).
+		int frameIndex = 0;
+		var frameHandle = ArgString(args, "frame_handle");
+		if (!string.IsNullOrEmpty(frameHandle)) {
+			var frameError = ClassifyFrameHandle(frameHandle, out frameIndex);
+			if (frameError is not null)
+				return Fail(coordinator, frameError, message: frameError == DomainErrorCodes.StaleHandle ? "frame_handle belongs to an earlier pause" : "unknown frame_handle");
+		}
+		int pageSize = (int)Math.Min(100, ArgLong(args, "page_size", 20));
+		// Stack of the first managed thread — the same thread GetFrameByIndex walks, so frame
+		// indices and minted frame handles line up between the stack and locals segments.
+		DbgThread? thread = null;
+		PostVoidToDispatcherSync(() => {
+			DbgProcess? process;
+			lock (sessionLock) process = ownedProcess;
+			if (process is not null && process.Threads.Length != 0)
+				thread = process.Threads[0];
+		});
+		if (thread is null)
+			return Fail(coordinator, DomainErrorCodes.NotFound, message: "no managed thread in the owned process");
+		var threadHandle = MintThreadHandle(thread);
+		var stackDto = CollectStackPage(thread.Id, threadHandle, 0, pageSize);
+		var (roots, truncated) = CollectLocalsSnapshot(frameIndex);
+		var localsDto = new LocalsResultDto {
+			Items = roots.Take(pageSize).Select(e => (object)ValueNodeDtoOf(e)).ToList(),
+			Truncated = truncated,
+			TotalKnown = roots.Count,
+		};
 		if (pageSize < roots.Count)
-			dto.NextPageCursor = pageSize.ToString();
-		dto.Budgets = BudgetsUsed(truncated);
-		return Ok(coordinator, dto, untrustedSampleData: true);
+			localsDto.NextPageCursor = pageSize.ToString();
+		localsDto.Budgets = BudgetsUsed(truncated);
+		return Ok(coordinator, new SnapshotResultDto { Stack = stackDto, Locals = localsDto }, untrustedSampleData: true);
 	}
 
 	object BudgetsUsed(bool truncated = false) {
@@ -4263,6 +4325,13 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 			string_utf8_limit = 65536, response_utf8_limit = 8388608,
 			depth_used = 0, nodes_used = 0, value_handles_used = 0,
 		};
+	}
+
+	/// <summary>IMP-503 debug_snapshot result: the debug_get_stack page shape plus the
+	/// debug_get_locals first-page shape, keyed by segment name.</summary>
+	public sealed class SnapshotResultDto {
+		[System.Text.Json.Serialization.JsonPropertyName("stack")] public PagedItemsDto Stack { get; set; } = new();
+		[System.Text.Json.Serialization.JsonPropertyName("locals")] public LocalsResultDto Locals { get; set; } = new();
 	}
 
 	public sealed class ValueNodeDto {

@@ -23,12 +23,12 @@ From zero to "ask Claude about your assembly" in a few minutes:
 
 ## Features
 
-### MCP Tools (72 production tools with both feature gates enabled: 32 static/codegen + 22 dynamic-debugging + 18 structured-edit)
+### MCP Tools (74 production tools with both feature gates enabled: 33 static/codegen + 23 dynamic-debugging + 18 structured-edit)
 
 Acceptance processes started with `DNMCP_TEST=1` additionally advertise 6 `debug_test_*` probes,
-so their wire snapshot contains 78 tools. The 9 callable `edit_test_*` seams remain unadvertised.
+so their wire snapshot contains 80 tools. The 9 callable `edit_test_*` seams remain unadvertised.
 If the dynamic-debugging gate is closed, the static/codegen and edit families remain available but
-the 21 debug session tools are not advertised: 51 production tools, or 57 with the six test probes.
+the 22 debug session tools are not advertised: 52 production tools, or 58 with the six test probes.
 Confirm the active profile with `debug_capabilities` and `tools/list`; a net10 static-host run does
 not establish net10 dynamic-debugging support.
 
@@ -138,7 +138,7 @@ Dynamic debugging is limited to processes launched and owned by the MCP; attach/
 
 CorDebug requires dnSpy and the target to have matching bitness. Call `debug_capabilities` first. Session, generation, pause epoch, and handle scopes are strict, so reacquire handles after continue/step/restart. Dynamic dumps remain under `ArtifactRoot\.dnspy-mcp-debug`; after a dnSpy restart, old sessions remain untrusted/read-only and quota-counted but do not block a fresh session unless identity or quota verification fails. See the [dynamic-debug deployment guide](docs/deployment-dynamic-debugging.zh-CN.md) for the full security model.
 
-### MCP Resources (14 total)
+### MCP Resources (15 total)
 
 Embedded BepInEx documentation served over `resources/list` / `resources/read`:
 
@@ -149,9 +149,9 @@ Embedded BepInEx documentation served over `resources/list` / `resources/read`:
 5. **il2cpp-guide**
 6. **mono-vs-il2cpp**
 
-Eight `dnspy://docs/*` resources give an AI the server's own operating manual: an index,
-overview, static analysis, IL editing, dynamic debugging, security, Python client integration,
-and task-oriented tool workflows. The `initialize` response tells MCP hosts to read the index
+Nine `dnspy://docs/*` resources give an AI the server's own operating manual: an index,
+overview, static analysis, IL editing, the edit_apply operation catalog, dynamic debugging,
+security, Python client integration, and task-oriented tool workflows. The `initialize` response tells MCP hosts to read the index
 and carries the critical safety rules even before a resource is opened.
 
 All docs ship inside the DLL — no network required.
@@ -464,7 +464,7 @@ curl -X POST "http://localhost:15378/message?sessionId=<sessionId>" \
 
 For a ZCode, Codex, or other third-party AI full-function acceptance run through the Python stdio
 client, use the Chinese [third-party full-function test prompt](docs/ZCODE-FULL-FUNCTION-TEST-PROMPT.zh-CN.md).
-It describes x64/x86 passes, fixture/hash preflight, the 78-tool profile when the debug gate is open,
+It describes x64/x86 passes, fixture/hash preflight, the 80-tool profile when the debug gate is open,
 reversible writes, dump, idempotency and two-level value expansion. ZCode's tools-only result must be
 paired with a resource-capable MCP host for the 14 resource reads; static-host or blocked legs are
 reported separately, not promoted to full acceptance.
@@ -514,7 +514,7 @@ See the Streamable HTTP section above for the `~/.codex/config.toml` snippet.
 ## Verified compatibility
 
 - MCP `2025-06-18`: 72 production tools when both feature gates are enabled; the
-  `DNMCP_TEST=1` acceptance snapshot has 78 tools. Both expose 14 concrete resources and an empty
+  `DNMCP_TEST=1` acceptance snapshot has 80 tools. Both expose 15 concrete resources and an empty
   `resources/templates/list` page.
 - All 22 debug input schemas are self-contained flat objects; output schemas describe the complete success/failure envelope without unresolved `$defs`.
 - `list_assemblies` returns object-shaped structured content: `{ "assemblies": [...] }`.

@@ -57,15 +57,17 @@ class LiveMcpContractTests(unittest.TestCase):
             return []
 
         # DNMCP_TEST exposes six debug_test_* fault-injection helpers in addition
-        # to the 22 public debugger tools.  They are test seams, not part of the
-        # published debugger contract counted by this assertion.
+        # to the 23 public debugger tools.  They are test seams, not part of the
+        # published debugger contract counted by this assertion.  The 23rd public
+        # tool is debug_snapshot (IMP-503; the previously frozen count of 22 was
+        # revised by the audited token-optimization plan).
         debug_tools = [
             tool
             for tool in self.client.iter_tools()
             if str(tool.get("name", "")).startswith("debug_")
             and not str(tool.get("name", "")).startswith("debug_test_")
         ]
-        self.assertEqual(22, len(debug_tools))
+        self.assertEqual(23, len(debug_tools))
         for tool in debug_tools:
             for field in ("inputSchema", "outputSchema"):
                 schema = tool.get(field)
@@ -105,7 +107,7 @@ class LiveMcpContractTests(unittest.TestCase):
         listed = self.client.list_resources()
         resources = listed.get("resources")
         self.assertIsInstance(resources, list)
-        self.assertEqual(14, len(resources))
+        self.assertEqual(15, len(resources))
         for resource in resources:
             self.assertIsInstance(resource, dict)
             uri = resource.get("uri")

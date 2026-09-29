@@ -80,14 +80,14 @@ else:
     raise AssertionError("old overwrite promise escaped validation")
 
 reference = (ROOT / "docs/AI-TOOL-REFERENCE.zh-CN.md").read_text(encoding="utf-8")
-appendix_match = re.search(r"## 附录 A：32 个静态工具的原样输入 schema[\s\S]*?```json\n([\s\S]*?)\n```", reference)
+appendix_match = re.search(r"## 附录 A：33 个静态工具的原样输入 schema[\s\S]*?```json\n([\s\S]*?)\n```", reference)
 assert appendix_match, "single-file static input appendix absent"
 appendix = json.loads(appendix_match.group(1))
 assert appendix["save_assembly"]["properties"]["output_path"]["description"] == output_path
 assert appendix["save_assembly"]["properties"]["assembly_name"]["description"] == "Name of the loaded assembly whose exact checkpoint is to be exported"
 baseline = json.loads((ROOT / "tests/snapshots/static-tools.baseline.json").read_text(encoding="utf-8"))
 baseline_by_name = {tool["name"]: tool for tool in baseline}
-assert len(baseline) == 32 and len(baseline_by_name) == 32
+assert len(baseline) == 33 and len(baseline_by_name) == 33
 for name in NAMES:
     assert baseline_by_name[name]["description"] == descriptions[name], name
     assert baseline_by_name[name]["inputSchema"] == appendix[name], name

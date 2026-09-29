@@ -46,6 +46,9 @@ namespace dnSpy.Extension.MCP
                 cursor = cursorObj?.ToString();
 
             var (offset, pageSize) = DecodeCursor(cursor);
+            // IMP-506: names_only mirrors list_types — a flat list of method name strings
+            // instead of the per-method rows; total_count keeps the full count.
+            var namesOnly = ReadOptionalBool(arguments, "names_only") ?? false;
 
             // Marshal to the UI thread: IDocumentTreeView nodes are DispatcherObjects and
             // throw "calling thread cannot access this object" when touched from an HTTP thread
@@ -59,7 +62,18 @@ namespace dnSpy.Extension.MCP
                 if (type == null)
                     throw new ArgumentException($"Type not found: {typeFullName}");
 
-                var methods = type.Methods.Select(m => new
+                if (namesOnly)
+                    return CreatePaginatedResponse(type.Methods.Select(m => m.Name.String).ToList(), offset, pageSize);
+
+                return CreatePaginatedResponse(BuildMethodRows(type).Select(r => r.Row).ToList(), offset, pageSize);
+            });
+        }
+
+        /// <summary>The list_methods row shape (IMP-504: shared with get_type_overview, which
+        /// filters and truncates these rows without re-implementing the projection).</summary>
+        List<(string Name, object Row)> BuildMethodRows(TypeDef type)
+        {
+            return type.Methods.Select(m => (m.Name.String, (object)new
                 {
                     name = m.Name.String,
                     token = m.MDToken.Raw,
@@ -87,10 +101,7 @@ namespace dnSpy.Extension.MCP
                     is_virtual = m.IsVirtual,
                     is_abstract = m.IsAbstract,
                     has_body = m.HasBody
-                }).ToList();
-
-                return CreatePaginatedResponse(methods, offset, pageSize);
-            });
+                })).ToList();
         }
 
         // ---------- get_method_il ----------

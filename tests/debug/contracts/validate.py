@@ -4,7 +4,10 @@
 Checks (all machine-verifiable):
   1. dnspy.debug.v1.schema.json is a valid Draft 2020-12 schema.
   2. Every UTF-8 byte-limit pointer resolves inside the schema.
-  3. Definition family counts: 25 API args, 22 results, 21 event payloads.
+  3. Definition family counts: 26 API args, 23 results, 21 event payloads
+     (debug_snapshot args/result appended by the audited token-optimization plan,
+     IMP-503; the previously frozen "exactly 22 enabled debug tools" count was
+     revised to 23 — existing defs are byte-identical).
   4. Fixture regeneration is deterministic (byte-identical output).
   5. Fixture invariants: structural expectations per kind, exact -32602 scope,
      2025-06-18 text/structuredContent deep equality, no-session zero counters,
@@ -84,9 +87,9 @@ def main():
     args = [d for d in defs if d.endswith("_args")]
     results = [d for d in defs if d.endswith("_result")]
     events = [d for d in defs if d.startswith("event_") and d not in ("event_envelope", "event_kind")]
-    if (len(args), len(results), len(events)) != (25, 22, 21):
-        fail(f"def family counts {len(args)}/{len(results)}/{len(events)} != 25/22/21")
-    print("def families: 25 args / 22 results / 21 events")
+    if (len(args), len(results), len(events)) != (26, 23, 21):
+        fail(f"def family counts {len(args)}/{len(results)}/{len(events)} != 26/23/21")
+    print("def families: 26 args / 23 results / 21 events")
 
     # Deterministic regeneration.
     with tempfile.TemporaryDirectory() as td:
