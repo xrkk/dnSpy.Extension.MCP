@@ -220,8 +220,44 @@ internal sealed class EditCompileFrontend : IMcpToolProvider, IDisposable {
 				.FirstOrDefault());
 			if (loaded?.Location is { Length: > 0 } location && modules.Add(location)) paths.Add(location);
 		}
+		// PD-001: the corlib fallback must match the TARGET's runtime family.
+		// typeof(object).Assembly.Location is a valid Roslyn corlib only when the
+		// host itself is .NET Framework (a real mscorlib); on a .NET host it points
+		// at System.Private.CoreLib.dll, which the compiler cannot use to bootstrap
+		// the predefined types (CS0518). Resolve a family-appropriate corlib first
+		// and only fall back to the host's own assembly when nothing matched.
 		var corlib = typeof(object).Assembly.Location;
-		if (corlib is { Length: > 0 } && modules.Add(corlib)) paths.Add(corlib);
+		var corlibResolved = false;
+		var classicTarget = references.Any(r => string.Equals(r, "mscorlib", StringComparison.OrdinalIgnoreCase));
+		if (classicTarget) {
+			var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+			if (windows is { Length: > 0 }) {
+				foreach (var frameworkDir in new[] { "Framework64", "Framework" }) {
+					var frameworkMscorlib = Path.Combine(windows, "Microsoft.NET", frameworkDir, "v4.0.30319", "mscorlib.dll");
+					if (File.Exists(frameworkMscorlib) && modules.Add(frameworkMscorlib)) {
+						paths.Add(frameworkMscorlib);
+						corlibResolved = true;
+						break;
+					}
+				}
+			}
+		}
+		else {
+			var runtimeDir = Path.GetDirectoryName(corlib);
+			if (runtimeDir is { Length: > 0 }) {
+				// Core targets: the shared-framework System.Runtime facade forwards
+				// the core types to System.Private.CoreLib — reference both so the
+				// compiler can follow the forwards.
+				foreach (var coreRef in new[] { "System.Runtime.dll", "System.Private.CoreLib.dll" }) {
+					var corePath = Path.Combine(runtimeDir, coreRef);
+					if (File.Exists(corePath) && modules.Add(corePath)) {
+						paths.Add(corePath);
+						corlibResolved = true;
+					}
+				}
+			}
+		}
+		if (!corlibResolved && corlib is { Length: > 0 } && modules.Add(corlib)) paths.Add(corlib);
 		if (paths.Count == 0) throw new EditDomainException("EDIT_CAPABILITY_UNAVAILABLE",
 			new Dictionary<string, object?> { ["kind"] = "capability", ["capability"] = "reference_closure",
 				["reason"] = "No reference assemblies resolved: closure=" + closure.Location + " refs=" + references.Length + " corlib=" + corlib });

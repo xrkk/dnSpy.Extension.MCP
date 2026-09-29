@@ -1,0 +1,74 @@
+{
+ "tfm": "net10",
+ "url": "http://192.168.204.240:15101/mcp",
+ "batches": [
+  {
+   "batch": "net10-sample",
+   "scenarios": [
+    {
+     "scenario": "S-F01-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  }
+ ],
+ "reconciliation": []
+}

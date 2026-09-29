@@ -1,0 +1,15 @@
+{
+  "触发": "用户指令: 错误修复后重测 (PD-001 授权修复)",
+  "产品修复": {
+    "文件": "Editing/EditCompileFrontend.cs ResolveReferencePaths",
+    "内容": "corlib 回退改为 TFM 感知: 经典目标(refs mscorlib)取 Framework64/Framework v4.0.30319 mscorlib; 核目标取运行时 System.Runtime+System.Private.CoreLib; 无匹配才回退宿主程序集",
+    "构建": "buildtree 双 TFM Release 0 错误; net48 sha 4b91644c… net10 sha bc961554… 双侧部署核验一致"
+  },
+  "验证": {
+    "探针": "net10 edit_compile success=true 0 诊断 (修复前 CS0518); net48 回归 success=true 0 错误",
+    "net48 全量复跑": "100/100, 对账 0 不一致",
+    "net10 抽样复验": "10/10 (含批间血统清理规程 PD-002), 与 net48 对应情景一致",
+    "矩阵": "72/72 工具 ≥5 (enforce exit 0)"
+  },
+  "结论": "ACC-049 10/10 达标; ACC-050 判据二 110/110 一致; RACC-001 达标"
+}

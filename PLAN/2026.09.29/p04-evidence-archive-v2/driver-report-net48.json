@@ -1,0 +1,677 @@
+{
+ "tfm": "net48",
+ "url": "http://192.168.204.240:15100/mcp",
+ "batches": [
+  {
+   "batch": "net48-fam01",
+   "scenarios": [
+    {
+     "scenario": "S-F01-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F01-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam02",
+   "scenarios": [
+    {
+     "scenario": "S-F02-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F02-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam03",
+   "scenarios": [
+    {
+     "scenario": "S-F03-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F03-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam04",
+   "scenarios": [
+    {
+     "scenario": "S-F04-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F04-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam05",
+   "scenarios": [
+    {
+     "scenario": "S-F05-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F05-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam06",
+   "scenarios": [
+    {
+     "scenario": "S-F06-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F06-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam07",
+   "scenarios": [
+    {
+     "scenario": "S-F07-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F07-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam08",
+   "scenarios": [
+    {
+     "scenario": "S-F08-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F08-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam09",
+   "scenarios": [
+    {
+     "scenario": "S-F09-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F09-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  },
+  {
+   "batch": "net48-fam10",
+   "scenarios": [
+    {
+     "scenario": "S-F10-01",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-02",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-03",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-04",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-05",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-06",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-07",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-08",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-09",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    },
+    {
+     "scenario": "S-F10-10",
+     "status": "pass",
+     "failure_class": null,
+     "pytest_rc": 0
+    }
+   ],
+   "stopped_at": null,
+   "reconciliation": []
+  }
+ ],
+ "reconciliation": []
+}
