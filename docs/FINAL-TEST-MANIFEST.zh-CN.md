@@ -32,7 +32,7 @@ ACC-018 为真实 UIA Explorer 断言（36+ 检查点树/属主取消/无旁路�
 | --- | --- | --- |
 | P01 VM 套件（EDIT-ACC-017/027/030 双架构） | **pass 6/6** | run_id `20260929-073304/073525/073531`（x64）、`20260929-073819/074119/074126`（x86）；VM 摘要 `C:\dnspy-mcp-artifacts\edit-tests\<run_id>\summary.json`；宿主汇总 `tests/edit/p01-vm-summary.json` |
 | 既有静态套件（tests\fixtures\run-tests.ps1，双架构） | **pass 2/2** | VM state `regression-fixtures-x64-b5de3fdd` / `regression-fixtures-x86-c72850ae`（result.json exit=0） |
-| 既有调试套件（tests\debug\run-debug-tests.ps1 ACC-001..036） | **pass 36/36**（002/003/023 为整改后定向重跑：vm_ip 同步 .240、补 Editing/Contracts 与 Debugger 源、urlacl .240:15100） | 结果树 `tests\debug\results\1572b4dc…`（33 案例）+ `e35c7d0f…`（ACC-002）+ `e883ca42…`（ACC-003/023） |
+| 既有调试套件（tests\debug\run-debug-tests.ps1 ACC-001..036） | **pass 36/36**（002/003/023 为整改后定向重跑：vm_ip 同步 .240、补 Editing/Contracts 与 Debugger 源、urlacl .240:15100） | 结果树 `1572b4dc…`（33 案例）+ `e883ca42…`（ACC-003 exit=0 9 断言/ACC-023 exit=0 6 断言）+ `378304fd…`（**ACC-002 exit=0，76 断言 0 失败**）；`1572b4dc/e883ca42/e35c7d0f` 树中的 ACC-002 与 `1572b4dc` 树中的 003/023 为中间失败尝试（分别缺 Editing/Contracts、Editing 源、Debugger 源或 vm_ip 未同步），如实保留 |
 | live 调试输出契约（tests.python.test_live_debug_output_contract，VM 实例 + AccFixture 调试目标） | **15 pass + 1 skip**（skip=expand fixture 未配置，设计内门控） | 2026-09-29 运行于 loopback 实例（settings `live-debug-contract3`，运行后已清理）；22 调试工具输出对 published schema 逐项校验 |
 | P02 VM 套件（事务族含故障矩阵） | **fail（阻断）** | x64 operations 阶段 `EDIT_VALIDATION_FAILED/live_private_fingerprint`（row 3 `Microsoft.CodeAnalysis.EmbeddedAttribute`）；产品守卫按契约拒绝、零副作用。根因线索：P02DynamicFixture（2026-09-04 构建）与 fault-golden 基线（f1ca384，2026-09-14）均早于私有 dnlib 部署（fa43769，2026-09-28）；P02 测试资产需对私有 dnlib 再基线后重跑 |
 
