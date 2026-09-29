@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests/edit"))
 
-from ui_apply_settings import UiMcpClient, apply_settings  # noqa: E402
+from ui_apply_settings import UiMcpClient, apply_settings, find_target  # noqa: E402
 
 VM_URL = "http://192.168.204.240:28787/mcp"
 VM_ROOT = r"C:\Tools\dnspy-mcp-edit-tests\repo"
@@ -84,6 +84,11 @@ def deploy_tree(client: UiMcpClient, dll: Path) -> str:
         ROOT / "tests/edit/cases/EDIT-ACC-017.json",
         ROOT / "tests/edit/cases/EDIT-ACC-027.json",
         ROOT / "tests/edit/cases/EDIT-ACC-030.json",
+        # The debug regression cases (ACC-002 et al.) read the committed P03
+        # contract snapshots from the repo tree; ship them with the deployment.
+        ROOT / "Editing/Contracts/p03-tool-schemas.json",
+        ROOT / "Editing/Contracts/p03-acceptance.json",
+        ROOT / "Editing/Contracts/checkpoint-package.schema.json",
     ]
     print("[deploy] stopping dnSpy and exact DLL-locking debugger processes", flush=True)
     powershell(client, (
@@ -109,7 +114,7 @@ def deploy_tree(client: UiMcpClient, dll: Path) -> str:
         archive_path = Path(temp.name)
     try:
         with tarfile.open(archive_path, "w:gz") as archive:
-            for relative_root in ("tests/debug", "tests/fixtures", "tests/snapshots", "dnspy_mcp"):
+            for relative_root in ("tests/debug", "tests/fixtures", "tests/snapshots", "dnspy_mcp", "Editing", "Debugger"):
                 source_root = ROOT / relative_root
                 for source in source_root.rglob("*"):
                     relative = source.relative_to(ROOT)
@@ -169,7 +174,19 @@ def start_dnspy(client: UiMcpClient, architecture: str) -> None:
 
 
 def configure_host(client: UiMcpClient, host: str) -> None:
-    apply_settings(client, False, host)
+    # apply_settings was hardened to require an explicit UI target (pid + exe
+    # path); the persisted VM settings keep EnableServer on, so only host/port
+    # are re-applied to restart the listener (same pattern as p09_final_regression).
+    target = None
+    for exe in (r"C:\Tools\dnSpy\dnSpy.exe", r"C:\Tools\dnSpy\dnSpy-x86.exe"):
+        try:
+            target = find_target(client, exe)
+            break
+        except Exception:
+            continue
+    if target is None:
+        raise RuntimeError("configure_host: no windowed dnSpy process to configure")
+    apply_settings(client, None, host, 15378, target=target)
     powershell(client, (
         'if("' + host + '" -eq "localhost"){ '
         '$ready=$false; for($i=0;$i -lt 40;$i++){ '
@@ -189,6 +206,9 @@ def run_arch(client: UiMcpClient, architecture: str) -> dict[str, Any]:
         print(f"[{architecture}] {case_id} started", flush=True)
         state_root = rf"C:\Tools\dnspy-mcp-edit-tests\state\{architecture}-{case_id}-{uuid.uuid4().hex[:8]}"
         signal_root = state_root + r"\ui-signals"
+        # The detached cases restart dnSpy between signals, so resolve the UI
+        # target fresh for every apply instead of caching one pid.
+        ui_exe = r"C:\Tools\dnSpy\dnSpy.exe" if architecture == "x64" else r"C:\Tools\dnSpy\dnSpy-x86.exe"
         powershell(client, (
             f'New-Item -ItemType Directory -Force -Path "{state_root}" | Out-Null; '
             f'Start-Process powershell -WindowStyle Hidden -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass",'
@@ -206,7 +226,8 @@ def run_arch(client: UiMcpClient, architecture: str) -> dict[str, Any]:
             if request_body.strip():
                 request = json.loads(request_body)
                 try:
-                    apply_settings(client, bool(request["enable"]), str(request.get("host", "")))
+                    apply_settings(client, bool(request["enable"]), str(request.get("host", "")),
+                                   target=find_target(client, ui_exe))
                     acknowledgement = {"result": "PASS", "sequence": next_signal}
                 except Exception as exc:
                     acknowledgement = {

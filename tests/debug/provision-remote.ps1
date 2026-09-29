@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   ACC-023 / ACC-002 remote tuple: binding the MCP server to the VM's host-only IP
-  (http://192.168.204.149:15100/) requires an http.sys URL reservation and an inbound
+  (http://192.168.204.240:15100/) requires an http.sys URL reservation and an inbound
   firewall rule. Both need elevation once; the driver itself never elevates.
 
   Run elevated to provision:
@@ -18,7 +18,7 @@
 [CmdletBinding()]
 param(
     [switch]$Undo,
-    [string]$BindIp = '192.168.204.149',
+    [string]$BindIp = '192.168.204.240',
     [int]$Port = 15100,
     [string]$RuleName = 'dnspy-mcp-acc-remote'
 )

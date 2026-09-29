@@ -608,6 +608,10 @@ def main() -> int:
                                     "detail": str(ex)[:400]})
                     continue
             summary = run_case_isolated(client, case, arch, run_id, iso)
+            if summary:
+                # Summary files carry case_id (no case/arch); normalize so
+                # build_manifest and the final pass/fail scan read one shape.
+                summary["arch"] = arch
             results.append(summary or {"case": case, "arch": arch, "status": "no-summary"})
             print(f"[{arch}] {case}: {(summary or {}).get('status')}", flush=True)
             # Always restart between cases on BOTH architectures: the legacy
@@ -652,8 +656,18 @@ def build_manifest(overall: dict, results: list) -> str:
                 "EDIT-ACC-006": "P07", "EDIT-ACC-015": "P07", "EDIT-ACC-032": "P07",
                 "EDIT-ACC-007": "P08", "EDIT-ACC-008": "P08", "EDIT-ACC-016": "P08", "EDIT-ACC-033": "P08",
                 "EDIT-ACC-018": "P09", "EDIT-ACC-021": "P09", "EDIT-ACC-023": "P09"}
+    by_case = {}
+    order = []
     for row in results:
-        lines.append(f"| {row.get('case')} | {phase_of.get(row.get('case'), '?')} | {row.get('status')} | {row.get('status')} | {RUN_ID_PREFIX}-{row.get('arch', '?')} |")
+        case = row.get("case_id") or row.get("case")
+        if case not in by_case:
+            by_case[case] = {}
+            order.append(case)
+        by_case[case][row.get("arch", "?")] = row.get("status")
+    for case in order:
+        st = by_case[case]
+        lines.append(f"| {case} | {phase_of.get(case, '?')} | {st.get('x64', '')} |"
+                     f" {st.get('x86', '')} | {RUN_ID_PREFIX}-x64/x86 |")
     lines.append("")
     lines.append("## 已有证据的既有验收（本轮未重跑的汇总行）")
     lines.append("")

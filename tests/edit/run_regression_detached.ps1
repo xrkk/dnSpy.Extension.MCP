@@ -13,8 +13,25 @@ Set-Location $RepoRoot
 if ($Mode -eq 'fixtures') {
     if ($Architecture -notin @('x64','x86')) { throw 'fixtures mode requires x64 or x86 Architecture' }
     $dnSpyExe = if ($Architecture -eq 'x64') { 'C:\Tools\dnSpy\dnSpy.exe' } else { 'C:\Tools\dnSpy\dnSpy-x86.exe' }
+    # run-tests.ps1 made -SettingsFile mandatory and no longer rewrites shared
+    # user config: derive a private settings file whose committed snapshot carries
+    # the loopback tuple and roots that contain the uploaded fixture (same JSON
+    # shape the debug runner writes via New-SnapshotJson).
+    $template = Join-Path $env:APPDATA 'dnSpy\dnSpy.xml'
+    if (-not (Test-Path -LiteralPath $template)) { throw "fixtures mode: settings template missing: $template" }
+    $settingsFile = Join-Path $StateRoot 'dnSpy-settings.xml'
+    Copy-Item -LiteralPath $template -Destination $settingsFile -Force
+    $sampleRoot = Join-Path $RepoRoot 'tests\fixtures'
+    $artifactRoot = Join-Path $StateRoot 'artifact'
+    New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+    [xml]$sx = Get-Content -LiteralPath $settingsFile
+    $snapNode = $sx.SelectSingleNode("//section[@_='352907a0-9df5-4b2b-b47b-95e504cac301']")
+    if (-not $snapNode) { throw "fixtures mode: settings template carries no MCP section: $template" }
+    $snapJson = '{"AllowedSampleRoot":"' + ($sampleRoot -replace '\\','\\') + '","ArtifactRoot":"' + ($artifactRoot -replace '\\','\\') + '","DebugToolsEnabled":true,"DedicatedDebugInstanceAcknowledged":true,"EnableServer":true,"Host":"localhost","Port":15378,"RemoteAllowedCidrs":[],"RemoteHostOnlyAcknowledged":false,"RemoteTokenVerifier":null,"SchemaVersion":"dnspy.mcp.settings.v1"}'
+    $snapNode.SetAttribute('SettingsSnapshotJson', $snapJson)
+    $sx.Save($settingsFile)
     $output = & powershell -NoProfile -ExecutionPolicy Bypass -File tests\fixtures\run-tests.ps1 `
-        -SkipBuild -Tfm net48 -DnSpyExe $dnSpyExe 2>&1 | Out-String
+        -SkipBuild -Tfm net48 -DnspyExe $dnSpyExe -SettingsFile $settingsFile 2>&1 | Out-String
 }
 else {
     if ($Case -notmatch '^ACC-\d{3}$') { throw 'debug mode requires ACC-xxx Case' }
