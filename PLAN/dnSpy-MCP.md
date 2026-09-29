@@ -107,7 +107,6 @@ GLM 执行此清单.
 - 每个接口最少要包含在 5 个 "情景" 中
 需求不清晰可以用 grill-with-docs 提问 (每次只问一个问题, 给出选项 ABC (最少 2 个), 推荐选项放 A, 且要说明理由)
 
-
 总纲方案: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.29/2026.09.29-02-总纲-dnSpy-MCP情景链路测试.md`
 需求文档: `/home/adminn/projects/dnSpy.Extension.MCP/PLAN/2026.09.29/2026.09.29-01-需求提炼-dnSpy-MCP情景链路测试.md`
 
