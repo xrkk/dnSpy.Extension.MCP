@@ -52,6 +52,10 @@
    "sha256": "4572b0064244a16b28c6abd58ab7bef164c66f2ded0b510a2f530b8e7d8bb4e0"
   },
   {
+   "path": "scenario/resource-01/strings.resources",
+   "sha256": "132050ef9984c9783f8daa57e186dc5199c66e06106543362a83d3b0a2d13c48"
+  },
+  {
    "path": "scenario/runtarget-01/runtarget-01.exe",
    "sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced"
   },
@@ -74,5 +78,10 @@
   "条数": 12,
   "再生成核验": "2026-09-29 重跑 build-all.ps1: 产物 sha 变化(csc 非确定性), 4 样本类型面逐项一致 → ACC-047 语义等价分支"
  },
- "runtarget_sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced"
+ "runtarget_sha256": "8aac59523304a3ccf45c99dd6b2d3f5887593fb74eacf53966c61c819d38bced",
+ "p04_append": {
+  "时间": "2026-09-29",
+  "来源": "F06 导入源资源 strings.resources 入样本根 (产品 AllowedSampleRoot 契约, 处置循环)",
+  "条数": 17
+ }
 }

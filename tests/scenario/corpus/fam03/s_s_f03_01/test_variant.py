@@ -1,7 +1,7 @@
 """恶意静态分析: 特征串与标注面取证(变体 01)"""
 
 SCENARIO_ID = 'S-F03-01'
-DECLARED_TOOLS = ["open_files", "get_assembly_info", "list_types", "search_string_literals", "find_by_attribute", "decompile_by_token", "find_references", "search_constants", "get_type_fields", "search_members", "decompile_method", "list_methods"]
+DECLARED_TOOLS = ["open_files", "list_assemblies", "get_assembly_info", "list_types", "search_string_literals", "find_by_attribute", "decompile_by_token", "find_references", "search_constants", "get_type_fields", "search_members", "decompile_method", "list_methods", "edit_status"]
 
 import sys
 from pathlib import Path

@@ -87,10 +87,11 @@ def run_f04(env, sid):
     face2 = {i["FullName"] for i in client.call_tool_json(
         "search_types", {"query": "", "assembly_name": A, "page_size": 50}).get("items", [])}
     asserts.strong_set(client.step_seq, face2, OBF_TYPES, "obf type face")
-    mem_q = ["d", "f", "h", "m"][(v - 1) % 4]
-    mem = client.call_tool_json("search_members", {"query": mem_q, "assembly_name": A})
-    asserts.weak_ok(client.step_seq, bool(mem), f"member '{mem_q}' found")
-    tname = ["a.b", "a.g", "a.k"][(v - 1) % 3]
+    valid_pairs = [("a.b", "d"), ("a.b", "f"), ("a.g", "h"), ("a.g", "Equals"),
+                   ("a.k", "m")]
+    tname, meth = valid_pairs[(v - 1) % 5]
+    mem = client.call_tool_json("search_members", {"query": meth, "assembly_name": A})
+    asserts.weak_ok(client.step_seq, bool(mem), f"member '{meth}' found")
     dec = client.call_tool_json("decompile_type", {"assembly_name": A, "type_full_name": tname})
     asserts.weak_ok(client.step_seq, bool(dec), f"decompile {tname}")
     ti = client.call_tool_json("get_type_info", {"assembly_name": A, "type_full_name": tname,
@@ -100,10 +101,10 @@ def run_f04(env, sid):
                                  {"assembly_name": A, "from_type": "a.b", "to_type": "a.k",
                                   "max_depth": 4})
     asserts.weak_ok(client.step_seq, bool(path), "path b->k")
-    m = ["d", "f", "h", "m"][(v - 1) % 4]
     decm = client.call_tool_json("decompile_method",
-                                 {"assembly_name": A, "type_full_name": tname, "method_name": m})
-    asserts.weak_ok(client.step_seq, bool(decm), f"decompile {tname}.{m}")
+                                 {"assembly_name": A, "type_full_name": tname,
+                                  "method_name": meth})
+    asserts.weak_ok(client.step_seq, bool(decm), f"decompile {tname}.{meth}")
     lms = client.call_tool_json("list_methods", {"assembly_name": A, "type_full_name": tname})
     asserts.weak_ok(client.step_seq, bool(lms), "list methods")
     reset_and_close(env)
@@ -131,18 +132,25 @@ def run_f08(env, sid):
                                      "type_full_name": "XRefApp.Client", "method_name": "TotalArea"})
     callee_sigs = {c.get("target_assembly") for c in callees.get("items", [])}
     asserts.strong_in_set(client.step_seq, "xref-b", callee_sigs, "cross-assembly callee")
-    refs_target = [("method", "XRefLib.IShape", "Area"), ("type", "XRefLib.Circle", None),
-                   ("method", "XRefLib.Geometry", "Describe"), ("type", "XRefApp.Square", None)][
-        (v - 1) % 4]
+    refs_target = [("method", "XRefLib.IShape", "Area", "xref-b"),
+                   ("method", "XRefLib.Geometry", "Describe", "xref-b"),
+                   ("method", "XRefApp.Client", "TotalArea", "xref-a"),
+                   ("method", "XRefApp.Square", "Area", "xref-a")][(v - 1) % 4]
     refs = client.call_tool_json("find_references",
-                                 {"target_kind": refs_target[0], "assembly_name": "xref-b",
+                                 {"target_kind": "method", "assembly_name": refs_target[3],
                                   "type_full_name": refs_target[1],
-                                  **({"method_name": refs_target[2]} if refs_target[2] else {})})
-    asserts.weak_ok(client.step_seq, bool(refs), f"refs {refs_target[1]}")
+                                  "method_name": refs_target[2]})
+    asserts.weak_ok(client.step_seq, bool(refs), f"refs {refs_target[1]}.{refs_target[2]}")
     path = client.call_tool_json("find_path_to_type",
                                  {"assembly_name": "xref-a", "from_type": "XRefApp.Client",
                                   "to_type": "XRefApp.Square", "max_depth": 4})
     asserts.weak_ok(client.step_seq, bool(path), "path Client->Square")
+    face_b = {i["FullName"] for i in client.call_tool_json(
+        "search_types", {"query": "", "assembly_name": "xref-b",
+                         "page_size": 50}).get("items", [])}
+    asserts.strong_set(client.step_seq, face_b,
+                       {"<Module>", "XRefLib.IShape", "XRefLib.Circle", "XRefLib.Geometry"},
+                       "xref-b type face")
     dec = client.call_tool_json("decompile_method",
                                 {"assembly_name": "xref-a", "type_full_name": "XRefApp.Client",
                                  "method_name": "TotalArea"})

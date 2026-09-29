@@ -1,7 +1,7 @@
 """资源提取替换链 + 恢复面探针(变体 06)"""
 
 SCENARIO_ID = 'S-F06-06'
-DECLARED_TOOLS = ["open_files", "get_assembly_info", "edit_begin", "edit_resource_export", "edit_resource_import", "edit_apply", "edit_review", "edit_commit", "edit_history", "edit_undo", "edit_redo", "edit_recover", "edit_accept_live", "edit_status", "search_types"]
+DECLARED_TOOLS = ["open_files", "get_assembly_info", "edit_resource_export", "edit_begin", "edit_apply", "edit_review", "edit_commit", "edit_history", "edit_status", "edit_resource_import", "edit_undo", "edit_redo", "edit_recover"]
 
 import sys
 from pathlib import Path

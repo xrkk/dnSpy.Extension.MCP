@@ -35,6 +35,83 @@ SAMPLES = {
 }
 
 
+
+def variant_tools(fam: int, v: int) -> list[str]:
+    """Per-variant DECLARED_TOOLS matching the workflow's actual call set."""
+    if fam == 1:
+        base = ["open_files", "list_assemblies", "search_types", "search_string_literals",
+                "list_string_constants", "decompile_method", "find_callers", "get_method_il",
+                "revert_method_il", "edit_status"]
+        writes = []
+        if v <= 5:
+            writes.append("force_return")
+        if v in (3, 4, 8, 9, 10):
+            writes.append("nop_method")
+        if v >= 6:
+            writes.append("patch_method_il")
+        tools = base + writes
+        if v in (2, 4, 5, 7, 9):
+            tools.append("save_assembly")
+        return tools
+    if fam == 2:
+        base = ["open_files", "list_assemblies", "get_type_info", "list_methods",
+                "find_unity_messages", "decompile_method", "edit_begin", "edit_apply",
+                "edit_impact_scan", "edit_status"]
+        tools = base + [("generate_bepinex_plugin" if v <= 5 else "generate_harmony_patch")]
+        if v <= 7:
+            tools += ["edit_compile", "edit_import"]
+        tools += (["edit_review", "edit_commit"] if v >= 6 else ["edit_rollback"])
+        return tools
+    if fam == 3:
+        return ["open_files", "list_assemblies", "get_assembly_info", "list_types",
+                "search_string_literals", "find_by_attribute", "decompile_by_token",
+                "find_references", "search_constants", "get_type_fields", "search_members",
+                "decompile_method", "list_methods", "edit_status"]
+    if fam == 4:
+        return ["open_files", "get_assembly_info", "list_types", "search_members",
+                "decompile_type", "get_type_info", "find_path_to_type", "decompile_method",
+                "list_methods", "search_types", "edit_status"]
+    if fam == 5:
+        core = ["debug_capabilities", "open_files", "list_assemblies", "debug_launch",
+                "debug_status", "debug_read_events", "debug_list_modules",
+                "debug_set_breakpoint", "debug_wait_event", "debug_get_stack",
+                "debug_get_locals", "debug_continue", "debug_pause", "debug_terminate"]
+        tools = core + F05_EXTRA[f"{v:02d}"]
+        if v <= 6:
+            tools += F05_BP_TOOLS
+        return tools
+    if fam == 6:
+        base = ["open_files", "get_assembly_info", "edit_resource_export", "edit_begin",
+                "edit_apply", "edit_review", "edit_commit", "edit_history", "edit_status"]
+        tools = base + ["edit_resource_import"] if v % 2 == 0 else list(base)
+        tools.append("edit_undo")
+        if v > 5:
+            tools.append("edit_redo")
+        tools.append("edit_accept_live" if v <= 5 else "edit_recover")
+        return tools
+    if fam == 7:
+        base = ["open_files", "search_types", "get_type_info", "list_methods",
+                "rename_symbol_by_token", "decompile_type", "get_type_property",
+                "edit_begin", "edit_export", "edit_history", "edit_restore",
+                "edit_rollback", "edit_status"]
+        tools = list(base)
+        if v <= 5:
+            tools.append("save_assembly")
+        tools.append("edit_accept_live" if v <= 5 else "edit_recover")
+        return tools
+    if fam == 8:
+        return ["open_files", "list_assemblies", "find_overrides", "find_callers",
+                "find_callees", "find_references", "find_path_to_type", "decompile_method",
+                "search_members", "get_type_info", "list_methods", "search_types",
+                "edit_status"]
+    if fam == 9:
+        return ["open_files", "search_string_literals", "list_string_constants",
+                "search_constants", "decompile_method", "get_type_info", "get_method_il",
+                "find_by_attribute", "search_types", "list_methods", "edit_status"]
+    return ["open_files", "find_unity_messages", "get_type_info", "list_methods",
+            "decompile_method", "generate_bepinex_plugin", "search_types", "get_method_il",
+            "find_callers", "search_members", "edit_status"]
+
 def emit_variant(fam: Path, sid: str, tools: list[str], doc: str) -> None:
     d = fam / ("s_" + sid.lower().replace("-", "_"))
     d.mkdir(parents=True, exist_ok=True)
@@ -88,7 +165,7 @@ F05_BP_TOOLS = ["debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug
 # ---------------------------------------------------------------- generator
 
 def gen_f01(fam: Path) -> None:
-    tools = F01_TOOLS
+    FAM = 1
     spec = ["# F01 许可证/授权绕过 — 族级规格", "",
             "- 样本: license-01（LicenseSample: LicenseGate/AppMain/LicenseStrings, 4 类型）",
             "- 骨架: open → search_types(LicenseGate) → search_string_literals(INVALID) → list_string_constants(LicenseGate) → decompile_method(Check) → find_callers(Validate) → get_method_il(Check) → 变体写操作 → revert → (变体) save_assembly → edit_status → close",
@@ -100,16 +177,11 @@ def gen_f01(fam: Path) -> None:
     (fam / "SPEC-fam01.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for v, w, s in F01_VARIANTS:
         sid = f"S-F01-{v}"
-        emit_variant(fam, sid, tools,
+        emit_variant(fam, sid, variant_tools(1, int(v)),
                      f"许可证绕过: 对 LicenseGate 实施 {w} 写操作并还原{'+保存产物' if s else ''}")
 
 
 def gen_f02(fam: Path) -> None:
-    tools = ["open_files", "get_type_info", "list_methods", "find_unity_messages",
-             "decompile_method", "edit_begin", "edit_compile", "edit_import",
-             "edit_apply", "edit_impact_scan", "edit_review", "edit_commit",
-             "edit_rollback", "edit_status", "generate_harmony_patch",
-             "generate_bepinex_plugin", "search_types"]
     spec = ["# F02 BepInEx/Harmony 模组开发 — 族级规格", "",
             "- 样本: hooktarget-01（Combatant/Tank/Scout/Battle, 5 类型）",
             "- 骨架: open → get_type_info(Combatant) → list_methods → find_unity_messages(0) → 生成器(变体五五分) → decompile_method(Damage) → edit_begin → edit_compile(方法体文档) → edit_import → edit_apply(type_add 最小操作) → edit_impact_scan → edit_review → v6-10 edit_commit / v1-5 edit_rollback → edit_status",
@@ -123,7 +195,7 @@ def gen_f02(fam: Path) -> None:
         spec.append(f"| S-F02-{i:02d} | {gen} | {tgt} | {closing} |")
     (fam / "SPEC-fam02.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F02-{i:02d}", tools,
+        emit_variant(fam, f"S-F02-{i:02d}", variant_tools(2, i),
                      f"模组开发链: { 'harmony 补丁' if i >= 6 else 'bepinex 插件' } + 编辑事务({'commit' if i >= 6 else 'rollback'})")
 
 
@@ -145,7 +217,7 @@ def gen_f03(fam: Path) -> None:
         spec.append(f"| S-F03-{i:02d} | {q} | {m} |")
     (fam / "SPEC-fam03.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F03-{i:02d}", tools, f"恶意静态分析: 特征串与标注面取证(变体 {i:02d})")
+        emit_variant(fam, f"S-F03-{i:02d}", variant_tools(3, i), f"恶意静态分析: 特征串与标注面取证(变体 {i:02d})")
 
 
 def gen_f04(fam: Path) -> None:
@@ -161,14 +233,14 @@ def gen_f04(fam: Path) -> None:
         spec.append(f"| S-F04-{i:02d} | 目标 {['a.b','a.g','a.k'][i%3]} / 方法 {['d','f','h','m'][i%4]} |")
     (fam / "SPEC-fam04.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F04-{i:02d}", tools, f"混淆识别: 单字符符号面遍历(变体 {i:02d})")
+        emit_variant(fam, f"S-F04-{i:02d}", variant_tools(4, i), f"混淆识别: 单字符符号面遍历(变体 {i:02d})")
 
 
 def gen_f05(fam: Path) -> None:
     for i in range(1, 11):
         v = f"{i:02d}"
         tools = F05_CORE + F05_EXTRA[v] + (F05_BP_TOOLS if i <= 6 else [])
-        emit_variant(fam, f"S-F05-{v}", tools,
+        emit_variant(fam, f"S-F05-{v}", variant_tools(5, int(v)),
                      f"动态调试排障: runtarget 全链(变体 {v}: 附加 {'+'.join(F05_EXTRA[v])})")
     spec = ["# F05 动态调试排障 — 族级规格", "",
             f"- 样本: runtarget-01.exe（sha256={RUNTARGET_SHA}; Worker.Accumulate 确定性循环, TOTAL=70, 退出码 70）",
@@ -197,7 +269,7 @@ def gen_f06(fam: Path) -> None:
         spec.append(f"| S-F06-{i:02d} | {'是' if i % 2 == 0 else '否'} | {'undo' if i <= 5 else 'redo'} | {'accept_live' if i <= 5 else 'recover'} |")
     (fam / "SPEC-fam06.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F06-{i:02d}", tools,
+        emit_variant(fam, f"S-F06-{i:02d}", variant_tools(6, i),
                      f"资源提取替换链 + 恢复面探针(变体 {i:02d})")
 
 
@@ -216,7 +288,7 @@ def gen_f07(fam: Path) -> None:
         spec.append(f"| S-F07-{i:02d} | rename→{['OldRepository','OldService','UglyName_1'][i%3]}2 | 探针 {'accept_live' if i<=5 else 'recover'} |")
     (fam / "SPEC-fam07.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F07-{i:02d}", tools,
+        emit_variant(fam, f"S-F07-{i:02d}", variant_tools(7, i),
                      f"重命名重构链 + 血统导出/恢复面(变体 {i:02d})")
 
 
@@ -233,7 +305,7 @@ def gen_f08(fam: Path) -> None:
         spec.append(f"| S-F08-{i:02d} | refs→{['IShape.Area','Circle','Geometry.Describe','Square.Area'][i%4]} |")
     (fam / "SPEC-fam08.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F08-{i:02d}", tools, f"跨集影响分析(变体 {i:02d})")
+        emit_variant(fam, f"S-F08-{i:02d}", variant_tools(8, i), f"跨集影响分析(变体 {i:02d})")
 
 
 def gen_f09(fam: Path) -> None:
@@ -249,7 +321,7 @@ def gen_f09(fam: Path) -> None:
         spec.append(f"| S-F09-{i:02d} | q={ ['ALPHA','beta','cache.db','SELECT'][i%4] } v={ [8443,100,28,42][i%4] } m={ ['Join','Sum','PathOf'][i%3] } |")
     (fam / "SPEC-fam09.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F09-{i:02d}", tools, f"字符串/常量取证(变体 {i:02d})")
+        emit_variant(fam, f"S-F09-{i:02d}", variant_tools(9, i), f"字符串/常量取证(变体 {i:02d})")
 
 
 def gen_f10(fam: Path) -> None:
@@ -265,7 +337,7 @@ def gen_f10(fam: Path) -> None:
         spec.append(f"| S-F10-{i:02d} | msg={ ['Awake','Start','Update','OnTriggerEnter','PeekHealth'][i%5] } plugin=UnityPlug{i:02d} |")
     (fam / "SPEC-fam10.md").write_text("\n".join(spec) + "\n", encoding="utf-8")
     for i in range(1, 11):
-        emit_variant(fam, f"S-F10-{i:02d}", tools, f"Unity 消息面分析 + 插件生成(变体 {i:02d})")
+        emit_variant(fam, f"S-F10-{i:02d}", variant_tools(10, i), f"Unity 消息面分析 + 插件生成(变体 {i:02d})")
 
 
 GENS = {1: gen_f01, 2: gen_f02, 3: gen_f03, 4: gen_f04, 5: gen_f05,

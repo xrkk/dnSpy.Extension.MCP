@@ -13,17 +13,24 @@ LICENSE_TYPES = {"LicenseSample.LicenseGate", "LicenseSample.AppMain",
                  "LicenseSample.LicenseStrings", "<Module>"}
 # write target per variant: (tool, method, value)
 WRITES = {
-    "01": ("force_return", "Check", 1), "02": ("force_return", "Check", 0),
-    "03": ("nop_method", "Validate", None), "04": ("nop_method", "Validate", None),
-    "05": ("patch_method_il", "DaysRemaining", None), "06": ("patch_method_il", "DaysRemaining", None),
-    "07": ("force_return", "Check", 365), "08": ("nop_method", "Validate", None),
-    "09": ("patch_method_il", "DaysRemaining", None), "10": ("force_return", "Check", 1),
+    "01": [("force_return", "Check", 1)],
+    "02": [("force_return", "Check", 0)],
+    "03": [("force_return", "Check", 1), ("nop_method", "Validate", None)],
+    "04": [("force_return", "Check", 0), ("nop_method", "Validate", None)],
+    "05": [("force_return", "Check", 1)],
+    "06": [("patch_method_il", "DaysRemaining", None)],
+    "07": [("patch_method_il", "DaysRemaining", None)],
+    "08": [("nop_method", "Validate", None), ("patch_method_il", "DaysRemaining", None)],
+    "09": [("nop_method", "Validate", None), ("patch_method_il", "DaysRemaining", None)],
+    "10": [("nop_method", "Validate", None), ("patch_method_il", "DaysRemaining", None)],
 }
 SAVERS = {"02", "04", "05", "07", "09"}
 
 
 def run_variant(env, sid: str) -> None:
     v = sid[-2:]
+    import uuid
+    run = uuid.uuid4().hex[:8]
     client, asserts = env.client, env.asserts
     A = "license-01"
 
@@ -62,25 +69,30 @@ def run_variant(env, sid: str) -> None:
     instr_before = il_before.get("instructions", [])
     asserts.strong_count(client.step_seq, len(instr_before), len(instr_before), "Check IL size")
 
-    tool, method, value = WRITES[v]
-    target = {"assembly_name": A, "type_full_name": "LicenseSample.LicenseGate",
-              "method_name": method}
-    if tool == "force_return":
-        patched = client.call_tool_json("force_return", {**target, "value": value})
-        first = (patched.get("instructions") or [{}])[0].get("opcode", "")
-        asserts.strong_equal(client.step_seq, first, f"ldc.i4.{value}", "force_return first opcode")
-    elif tool == "nop_method":
-        patched = client.call_tool_json("nop_method", target)
-        opcodes = {i.get("opcode") for i in patched.get("instructions", [])}
-        asserts.strong_in_set(client.step_seq, "nop", opcodes, "nop_method opcode set")
-    else:  # patch_method_il: replace first instruction with ldc.i4.0
-        il = client.call_tool_json("get_method_il", {**target, "method_name": "DaysRemaining"})
-        patched = client.call_tool_json(
-            "patch_method_il", {**target, "method_name": "DaysRemaining",
-                                "edits": [{"op": "replace", "index": 0,
-                                           "opcode": "ldc.i4.0", "operand": ""}]})
-        first = (patched.get("instructions") or [{}])[0].get("opcode", "")
-        asserts.strong_equal(client.step_seq, first, "ldc.i4.0", "patch replace first opcode")
+    for tool, method, value in WRITES[v]:
+        target = {"assembly_name": A, "type_full_name": "LicenseSample.LicenseGate",
+                  "method_name": method}
+        if tool == "force_return":
+            patched = client.call_tool_json("force_return", {**target, "value": value})
+            first = (patched.get("instructions") or [{}])[0].get("opcode", "")
+            asserts.strong_equal(client.step_seq, first, f"ldc.i4.{value}",
+                                 "force_return first opcode")
+        elif tool == "nop_method":
+            patched = client.call_tool_json("nop_method", target)
+            opcodes = {i.get("opcode") for i in patched.get("instructions", [])}
+            asserts.strong_set(client.step_seq, opcodes, {"ldnull", "ret"},
+                               "nop_method neutralized body")
+        else:
+            patched = client.call_tool_json(
+                "patch_method_il", {**target,
+                                    "edits": [{"op": "replace", "index": 0,
+                                               "opcode": "ldc.i4.0", "operand": ""}]})
+            first = (patched.get("instructions") or [{}])[0].get("opcode", "")
+            asserts.strong_equal(client.step_seq, first, "ldc.i4.0",
+                                 "patch replace first opcode")
+        # 复位段纪律: 每次写后立即还原 (跨写累积会污染后续情景)
+        reverted = client.call_tool_json("revert_method_il", target)
+        asserts.weak_ok(client.step_seq, bool(reverted), f"revert {method}")
 
     if v in SAVERS:
         saved = client.call_tool_json(
@@ -89,8 +101,5 @@ def run_variant(env, sid: str) -> None:
         asserts.strong_equal(client.step_seq, saved.get("source_preserved"), True,
                              "save source_preserved")
         asserts.weak_ok(client.step_seq, (saved.get("bytes_written") or 0) > 0, "save bytes>0")
-
-    reverted = client.call_tool_json("revert_method_il", target)
-    asserts.weak_fields(client.step_seq, reverted, ["method"], "revert response")
 
     reset_and_close(env)

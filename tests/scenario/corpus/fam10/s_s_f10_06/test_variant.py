@@ -1,7 +1,7 @@
 """Unity 消息面分析 + 插件生成(变体 06)"""
 
 SCENARIO_ID = 'S-F10-06'
-DECLARED_TOOLS = ["open_files", "find_unity_messages", "get_type_info", "list_methods", "decompile_method", "generate_bepinex_plugin", "search_types", "get_method_il", "find_callers", "search_members"]
+DECLARED_TOOLS = ["open_files", "find_unity_messages", "get_type_info", "list_methods", "decompile_method", "generate_bepinex_plugin", "search_types", "get_method_il", "find_callers", "search_members", "edit_status"]
 
 import sys
 from pathlib import Path

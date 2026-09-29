@@ -1,7 +1,7 @@
 """字符串/常量取证(变体 07)"""
 
 SCENARIO_ID = 'S-F09-07'
-DECLARED_TOOLS = ["open_files", "search_string_literals", "list_string_constants", "search_constants", "decompile_method", "get_type_info", "get_method_il", "find_by_attribute", "search_types", "list_methods"]
+DECLARED_TOOLS = ["open_files", "search_string_literals", "list_string_constants", "search_constants", "decompile_method", "get_type_info", "get_method_il", "find_by_attribute", "search_types", "list_methods", "edit_status"]
 
 import sys
 from pathlib import Path

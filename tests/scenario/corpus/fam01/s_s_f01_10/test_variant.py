@@ -1,7 +1,7 @@
 """许可证绕过: 对 LicenseGate 实施 force_return 写操作并还原"""
 
 SCENARIO_ID = 'S-F01-10'
-DECLARED_TOOLS = ["open_files", "list_assemblies", "search_types", "search_string_literals", "list_string_constants", "decompile_method", "find_callers", "get_method_il", "force_return", "nop_method", "patch_method_il", "revert_method_il", "save_assembly", "edit_status"]
+DECLARED_TOOLS = ["open_files", "list_assemblies", "search_types", "search_string_literals", "list_string_constants", "decompile_method", "find_callers", "get_method_il", "revert_method_il", "edit_status", "nop_method", "patch_method_il"]
 
 import sys
 from pathlib import Path

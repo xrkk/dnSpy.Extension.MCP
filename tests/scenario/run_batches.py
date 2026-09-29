@@ -67,7 +67,7 @@ def last_result(path: Path) -> dict | None:
 
 
 def run_scenario(sid: str, url: str, batch: str, root: Path, tfm: str) -> dict:
-    fam = sid[2:4]
+    fam = sid.split("-")[1][1:]
     target = CORPUS / f"fam{fam}" / f"s_{sid.lower().replace('-', '_')}" / "test_variant.py"
     if not target.exists():
         return {"scenario": sid, "status": "missing-module"}
@@ -87,7 +87,7 @@ def run_scenario(sid: str, url: str, batch: str, root: Path, tfm: str) -> dict:
     env.update({"SCENARIO_BATCH": batch, "SCENARIO_URL": url, "SCENARIO_TFM": tfm,
                 "SCENARIO_LEDGER_ROOT": str(root)})
     proc = subprocess.run(
-        [str(PYTEST), "-q", "--no-header", "-p", "no:cacheprovider", str(target)],
+        [str(PYTEST), "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", str(target)],
         cwd=str(REPO), env=env, capture_output=True, text=True, timeout=300)
     result = last_result(lp)
     status = (result or {}).get("outcome") or ("no-ledger" if proc.returncode else "unknown")

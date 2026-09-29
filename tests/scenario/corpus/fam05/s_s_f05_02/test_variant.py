@@ -1,7 +1,7 @@
 """动态调试排障: runtarget 全链(变体 02: 附加 debug_expand_value+debug_read_memory)"""
 
 SCENARIO_ID = 'S-F05-02'
-DECLARED_TOOLS = ["debug_capabilities", "open_files", "list_assemblies", "debug_launch", "debug_status", "debug_set_breakpoint", "debug_wait_event", "debug_get_stack", "debug_get_locals", "debug_pause", "debug_continue", "debug_read_events", "debug_terminate", "debug_expand_value", "debug_read_memory", "debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug_remove_breakpoint"]
+DECLARED_TOOLS = ["debug_capabilities", "open_files", "list_assemblies", "debug_launch", "debug_status", "debug_read_events", "debug_list_modules", "debug_set_breakpoint", "debug_wait_event", "debug_get_stack", "debug_get_locals", "debug_continue", "debug_pause", "debug_terminate", "debug_expand_value", "debug_read_memory", "debug_list_breakpoints", "debug_set_breakpoint_enabled", "debug_remove_breakpoint"]
 
 import sys
 from pathlib import Path

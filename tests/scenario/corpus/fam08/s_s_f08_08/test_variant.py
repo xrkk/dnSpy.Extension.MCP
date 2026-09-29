@@ -1,7 +1,7 @@
 """跨集影响分析(变体 08)"""
 
 SCENARIO_ID = 'S-F08-08'
-DECLARED_TOOLS = ["open_files", "find_references", "find_callers", "find_callees", "find_overrides", "find_path_to_type", "decompile_method", "search_members", "get_type_info", "list_methods", "search_types"]
+DECLARED_TOOLS = ["open_files", "list_assemblies", "find_overrides", "find_callers", "find_callees", "find_references", "find_path_to_type", "decompile_method", "search_members", "get_type_info", "list_methods", "search_types", "edit_status"]
 
 import sys
 from pathlib import Path

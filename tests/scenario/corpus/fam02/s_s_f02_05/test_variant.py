@@ -1,7 +1,7 @@
 """模组开发链: bepinex 插件 + 编辑事务(rollback)"""
 
 SCENARIO_ID = 'S-F02-05'
-DECLARED_TOOLS = ["open_files", "get_type_info", "list_methods", "find_unity_messages", "decompile_method", "edit_begin", "edit_compile", "edit_import", "edit_apply", "edit_impact_scan", "edit_review", "edit_commit", "edit_rollback", "edit_status", "generate_harmony_patch", "generate_bepinex_plugin", "search_types"]
+DECLARED_TOOLS = ["open_files", "list_assemblies", "get_type_info", "list_methods", "find_unity_messages", "decompile_method", "edit_begin", "edit_apply", "edit_impact_scan", "edit_status", "generate_bepinex_plugin", "edit_compile", "edit_import", "edit_rollback"]
 
 import sys
 from pathlib import Path
