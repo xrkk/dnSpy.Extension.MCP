@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
@@ -44,6 +45,15 @@ namespace dnSpy.Extension.MCP {
 		readonly AdmissionGate shortRequestGate = new AdmissionGate(16);
 		readonly AdmissionGate longConnectionGate = new AdmissionGate(8);
 		const int MaxTransportSessions = 16;
+		internal const long HandshakeTimeoutMs = 30000;
+		internal const long SessionIdleTimeoutMs = 600000;
+		readonly Func<long> sessionClock;
+		readonly int keepAliveMs;
+		Timer? sessionReaper;
+		bool acceptingSessions;
+		long capacityRejections;
+		long reclaimedHandshakes;
+		long reclaimedIdleSessions;
 		// CON-DYN-009: fixed -32700 wire object; error carries no data (§3.4).
 		const string ParseErrorResponseJson = "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
 
@@ -104,7 +114,14 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		[ImportingConstructor]
 		public McpServer(McpSettings settings, McpToolRegistry toolRegistry, BepInExResources bepinexResources,
-			McpTransportSessionLifecycle sessionLifecycle) {
+			McpTransportSessionLifecycle sessionLifecycle)
+			: this(settings, toolRegistry, bepinexResources, sessionLifecycle,
+				() => (long)(Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency))) { }
+
+		internal McpServer(McpSettings settings, McpToolRegistry toolRegistry, BepInExResources bepinexResources,
+			McpTransportSessionLifecycle sessionLifecycle, Func<long> sessionClock, int keepAliveMs = sseKeepAliveMs) {
+			this.sessionClock = sessionClock;
+			this.keepAliveMs = keepAliveMs;
 			this.settings = settings;
 			this.toolRegistry = toolRegistry;
 			this.bepinexResources = bepinexResources;
@@ -182,6 +199,10 @@ namespace dnSpy.Extension.MCP {
 				httpListener = listener;
 				activeSnapshot = snapshot;
 				actualPort = port;
+				lock (streamableSessions) {
+					acceptingSessions = true;
+					sessionReaper = new Timer(_ => ReapStreamableSessions(), null, keepAliveMs, keepAliveMs);
+				}
 				settings.SetServerRunning(true);
 				// Run the accept loop on a dedicated background thread, not a ThreadPool task:
 				// the loop blocks forever in GetContext(), so on the pool it would permanently
@@ -238,6 +259,7 @@ namespace dnSpy.Extension.MCP {
 					bool isLong = IsLongConnectionRequest(context);
 					var gate = isLong ? longConnectionGate : shortRequestGate;
 					if (!gate.TryEnter()) {
+						LogTransportRejection(isLong ? "long_connection_capacity" : "short_request_capacity");
 						WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
 						continue;
 					}
@@ -486,7 +508,7 @@ namespace dnSpy.Extension.MCP {
 			if (c == null)
 				return true;
 			try {
-				return c.Token.WaitHandle.WaitOne(sseKeepAliveMs);
+				return c.Token.WaitHandle.WaitOne(keepAliveMs);
 			}
 			catch (ObjectDisposedException) {
 				return true; // Stop() disposed the CTS while we were waiting — treat as cancelled.
@@ -552,6 +574,7 @@ namespace dnSpy.Extension.MCP {
 			// CON-DYN-009: the 17th transport session on this transport is rejected before
 			// allocation; the check-and-add is atomic so racing opens cannot exceed the cap.
 			if (sseSessions.Count >= MaxTransportSessions) {
+				LogTransportRejection("legacy_session_capacity");
 				WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
 				return;
 			}
@@ -564,6 +587,7 @@ namespace dnSpy.Extension.MCP {
 			var session = new SseSession(sessionId, context.Response.OutputStream);
 			lock (sseSessions) {
 				if (sseSessions.Count >= MaxTransportSessions) {
+					LogTransportRejection("legacy_session_capacity");
 					WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
 					try { context.Response.OutputStream.Close(); } catch { /* ignore */ }
 					return;
@@ -681,52 +705,59 @@ namespace dnSpy.Extension.MCP {
 		/// by the spec as an alternative to an SSE stream). Notifications get `202 Accepted`.
 		/// </summary>
 		void HandleStreamableHttpPost(HttpListenerContext context) {
-			if (!TryReadRequestBody(context, out var body))
-				return;
-
-			McpRequest? request;
-			try {
-				request = JsonSerializer.Deserialize<McpRequest>(body);
-			}
-			catch (JsonException ex) {
-				settings.Log($"Streamable HTTP parse error: {ex.Message}");
-				WriteParseError(context);
-				return;
-			}
-
-			if (request == null || string.IsNullOrEmpty(request.Method)) {
-				WriteParseError(context);
-				return;
-			}
-
-			var headerSessionId = context.Request.Headers["Mcp-Session-Id"];
-			bool isInitialize = string.Equals(request.Method, "initialize", StringComparison.Ordinal);
 			StreamableHttpSession? requestSession = null;
-
-			if (isInitialize) {
-				// CON-DYN-009: the 17th session is rejected after parse, before allocation.
+			try {
 				lock (streamableSessions) {
-					if (streamableSessions.Count >= MaxTransportSessions) {
-						WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+					ReapStreamableSessionsLocked();
+					var id = context.Request.Headers["Mcp-Session-Id"];
+					if (!acceptingSessions || (!string.IsNullOrEmpty(id) && !streamableSessions.TryGetValue(id!, out requestSession))) {
+						WriteUnknownStreamableSession(context);
 						return;
 					}
-					var newId = Guid.NewGuid().ToString("N");
-					requestSession = new StreamableHttpSession(newId);
-					streamableSessions[newId] = requestSession;
-					context.Response.Headers["Mcp-Session-Id"] = newId;
+					requestSession?.BeginRequest(sessionClock());
 				}
-				settings.Log($"Streamable HTTP session opened");
+				if (!TryReadRequestBody(context, out var body)) return;
+				McpRequest? request;
+				try { request = JsonSerializer.Deserialize<McpRequest>(body); }
+				catch (JsonException) { WriteParseError(context); return; }
+				if (request == null || string.IsNullOrEmpty(request.Method)) { WriteParseError(context); return; }
+				if (string.Equals(request.Method, "initialize", StringComparison.Ordinal)) {
+					lock (streamableSessions) {
+						requestSession?.EndRequest(sessionClock());
+						requestSession = null;
+						ReapStreamableSessionsLocked();
+						if (!acceptingSessions) { WriteUnknownStreamableSession(context); return; }
+						if (streamableSessions.Count >= MaxTransportSessions) {
+							capacityRejections++;
+							LogTransportRejection("streamable_session_capacity");
+							WritePreParseReject(context, HttpRejectShapes.StatusTooManyRequests, addWwwAuthenticate: false, retryAfter: HttpRejectShapes.RetryAfterSeconds);
+							return;
+						}
+						requestSession = new StreamableHttpSession(Guid.NewGuid().ToString("N"), sessionClock());
+						requestSession.BeginRequest(sessionClock());
+						streamableSessions[requestSession.Id] = requestSession;
+						context.Response.Headers["Mcp-Session-Id"] = requestSession.Id;
+						settings.Log($"Streamable HTTP session opened: count={streamableSessions.Count}/{MaxTransportSessions}");
+					}
+				}
+				if (request.Method == "notifications/initialized" && requestSession != null) {
+					lock (streamableSessions) requestSession.CompleteHandshake();
+				}
+				WriteStreamableHttpPostResponse(context, request!, requestSession);
 			}
-			else if (!string.IsNullOrEmpty(headerSessionId) && !streamableSessions.TryGetValue(headerSessionId!, out requestSession)) {
-				// If the client presents a session ID we don't recognise, reject — the client
-				// should then re-initialize. Missing header is tolerated for leniency.
-				context.Response.StatusCode = 404;
-				var bytes = Encoding.UTF8.GetBytes("Unknown Mcp-Session-Id");
-				context.Response.OutputStream.Write(bytes, 0, bytes.Length);
-				context.Response.Close();
-				return;
+			finally {
+				lock (streamableSessions) requestSession?.EndRequest(sessionClock());
 			}
+		}
 
+		static void WriteUnknownStreamableSession(HttpListenerContext context) {
+			context.Response.StatusCode = 404;
+			var bytes = Encoding.UTF8.GetBytes("Unknown Mcp-Session-Id");
+			context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+			context.Response.Close();
+		}
+
+		void WriteStreamableHttpPostResponse(HttpListenerContext context, McpRequest request, StreamableHttpSession? requestSession) {
 			bool isNotification = request.Method.StartsWith("notifications/", StringComparison.Ordinal) || request.Id == null;
 			var callContext = requestSession is null
 				? McpCallContext.CompatibilityPlainHttp(supportedProtocolVersions[0])
@@ -782,22 +813,23 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		void HandleStreamableHttpGet(HttpListenerContext context) {
 			var sessionId = context.Request.Headers["Mcp-Session-Id"];
-			if (string.IsNullOrEmpty(sessionId) || !streamableSessions.ContainsKey(sessionId!)) {
-				context.Response.StatusCode = 404;
-				var bytes = Encoding.UTF8.GetBytes("Unknown Mcp-Session-Id");
-				context.Response.OutputStream.Write(bytes, 0, bytes.Length);
-				context.Response.Close();
-				return;
+			StreamableHttpSession? logicalSession;
+			lock (streamableSessions) {
+				ReapStreamableSessionsLocked();
+				if (!acceptingSessions || string.IsNullOrEmpty(sessionId) || !streamableSessions.TryGetValue(sessionId!, out logicalSession)) {
+					WriteUnknownStreamableSession(context);
+					return;
+				}
+				logicalSession.OpenStream(context.Response, sessionClock());
 			}
-
-			context.Response.ContentType = "text/event-stream";
-			context.Response.Headers["Cache-Control"] = "no-cache";
-			context.Response.SendChunked = true;
-			context.Response.KeepAlive = true;
-
-			settings.Log($"Streamable HTTP GET stream opened: {sessionId}");
-			var session = new SseSession(sessionId!, context.Response.OutputStream);
 			try {
+				context.Response.ContentType = "text/event-stream";
+				context.Response.Headers["Cache-Control"] = "no-cache";
+				context.Response.SendChunked = true;
+				context.Response.KeepAlive = true;
+
+				settings.Log($"Streamable HTTP GET stream opened: {sessionId}");
+				var session = new SseSession(sessionId!, context.Response.OutputStream);
 				// Flush the response headers immediately by writing an initial SSE comment.
 				// The official MCP client (e.g. the Go SDK used by Antigravity / Codex) opens
 				// this standalone GET stream *synchronously during connect* and blocks until
@@ -813,7 +845,7 @@ namespace dnSpy.Extension.MCP {
 				while (true) {
 					// Cancellation-aware wait so server shutdown tears the stream down promptly
 					// instead of blocking up to a full ping interval in a plain sleep.
-					if (WaitForKeepAliveOrStop())
+					if (WaitForKeepAliveOrStop() || logicalSession.IsClosed)
 						break;
 					try {
 						session.WriteComment("ping");
@@ -824,6 +856,7 @@ namespace dnSpy.Extension.MCP {
 				}
 			}
 			finally {
+				lock (streamableSessions) logicalSession.CloseStream(context.Response, sessionClock());
 				settings.Log($"Streamable HTTP GET stream closed: {sessionId}");
 				try { context.Response.OutputStream.Close(); } catch { /* ignore */ }
 				try { context.Response.Close(); } catch { /* ignore */ }
@@ -837,10 +870,10 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		void HandleStreamableHttpDelete(HttpListenerContext context) {
 			var sessionId = context.Request.Headers["Mcp-Session-Id"];
-			if (!string.IsNullOrEmpty(sessionId) && sessionLifecycle.RemoveAndNotify(streamableSessions,
-				McpTransportKind.StreamableHttp, sessionId!, McpTransportCloseReasons.ClientDelete,
-				ActiveTransportSessionCount))
-				settings.Log($"Streamable HTTP session closed by DELETE: {sessionId}");
+			lock (streamableSessions) {
+				if (!string.IsNullOrEmpty(sessionId))
+					RemoveStreamableSession(sessionId!, McpTransportCloseReasons.ClientDelete);
+			}
 			context.Response.StatusCode = 200;
 			context.Response.ContentLength64 = 0;
 			context.Response.Close();
@@ -877,7 +910,12 @@ namespace dnSpy.Extension.MCP {
 		/// </summary>
 		public void Stop() {
 			try {
-				CloseAllTransportSessions();
+				lock (streamableSessions) {
+					acceptingSessions = false;
+					sessionReaper?.Dispose();
+					sessionReaper = null;
+					CloseAllTransportSessions();
+				}
 				cts?.Cancel();
 				httpListener?.Stop();
 				httpListener?.Close();
@@ -901,8 +939,46 @@ namespace dnSpy.Extension.MCP {
 				sessionLifecycle.RemoveAndNotify(sseSessions, McpTransportKind.LegacySse, sessionId,
 					McpTransportCloseReasons.ListenerStop, ActiveTransportSessionCount);
 			foreach (var sessionId in streamableSessions.Keys)
-				sessionLifecycle.RemoveAndNotify(streamableSessions, McpTransportKind.StreamableHttp, sessionId,
-					McpTransportCloseReasons.ListenerStop, ActiveTransportSessionCount);
+				RemoveStreamableSession(sessionId, McpTransportCloseReasons.ListenerStop);
+		}
+
+		internal void ReapStreamableSessions() {
+			lock (streamableSessions) {
+				if (acceptingSessions) ReapStreamableSessionsLocked();
+			}
+		}
+
+		void ReapStreamableSessionsLocked() {
+			var now = sessionClock();
+			foreach (var entry in streamableSessions) {
+				var session = entry.Value;
+				var reason = session.ExpirationReason(now);
+				if (reason == null || sessionLifecycle.HasSessionLease(McpTransportKind.StreamableHttp, entry.Key)) continue;
+				if (RemoveStreamableSession(entry.Key, reason)) {
+					if (reason == McpTransportCloseReasons.HandshakeTimeout) reclaimedHandshakes++;
+					else reclaimedIdleSessions++;
+				}
+			}
+		}
+
+		bool RemoveStreamableSession(string id, string reason) =>
+			sessionLifecycle.RemoveAndNotify(streamableSessions, McpTransportKind.StreamableHttp, id, reason,
+				ActiveTransportSessionCount, removed => {
+					removed.AbortStreams();
+					settings.Log($"Streamable HTTP session removed: reason={reason}, count={streamableSessions.Count}/{MaxTransportSessions}");
+				});
+
+		void LogTransportRejection(string reason) {
+			lock (streamableSessions) {
+				var now = sessionClock();
+				var sessions = streamableSessions.Values.ToArray();
+				settings.Log($"MCP transport rejected: reason={reason}, short_requests={16 - shortRequestGate.CurrentCount}/16, long_connections={8 - longConnectionGate.CurrentCount}/8, streamable_sessions={sessions.Length}/{MaxTransportSessions}, " +
+					$"legacy_sessions={sseSessions.Count}, pending_handshakes={sessions.Count(s => !s.HandshakeComplete)}, " +
+					$"active_requests={sessions.Sum(s => s.ActiveRequests)}, open_streams={sessions.Sum(s => s.OpenStreams)}, " +
+					$"leased_sessions={sessions.Count(s => sessionLifecycle.HasSessionLease(McpTransportKind.StreamableHttp, s.Id))}, " +
+					$"oldest_idle_ms={(sessions.Length == 0 ? 0 : sessions.Max(s => now - s.LastActivityMs))}, " +
+					$"capacity_rejections={capacityRejections}, reclaimed_handshakes={reclaimedHandshakes}, reclaimed_idle={reclaimedIdleSessions}");
+			}
 		}
 
 		McpResponse HandleRequest(McpRequest request, McpCallContext callContext,
@@ -1171,16 +1247,32 @@ namespace dnSpy.Extension.MCP {
 	/// </summary>
 	sealed class StreamableHttpSession {
 		int initialized;
+		readonly long createdMs;
+		readonly HashSet<HttpListenerResponse> streams = new();
+		readonly McpTransportSessionLifetime lifetime = new();
 		public string Id { get; }
-		public DateTime CreatedAtUtc { get; } = DateTime.UtcNow;
 		public string ProtocolVersion { get; set; } = "2025-06-18";
+		public bool HandshakeComplete { get; private set; }
+		public bool IsClosed => lifetime.IsClosed;
+		public int ActiveRequests { get; private set; }
+		public int OpenStreams => streams.Count;
+		public long LastActivityMs { get; private set; }
 
-		public StreamableHttpSession(string id) {
-			Id = id;
+		// All liveness fields are accessed under the server's session admission lock.
+		public StreamableHttpSession(string id, long now) { Id = id; createdMs = LastActivityMs = now; }
+		public void BeginRequest(long now) { ActiveRequests++; LastActivityMs = now; }
+		public void EndRequest(long now) { ActiveRequests--; LastActivityMs = now; }
+		public void OpenStream(HttpListenerResponse response, long now) { streams.Add(response); LastActivityMs = now; }
+		public void CloseStream(HttpListenerResponse response, long now) { streams.Remove(response); LastActivityMs = now; }
+		public void AbortStreams() { lifetime.Close(); foreach (var response in streams) { try { response.Abort(); } catch { } } streams.Clear(); }
+		public void CompleteHandshake() => HandshakeComplete = true;
+		public string? ExpirationReason(long now) {
+			if (ActiveRequests != 0) return null;
+			if (!HandshakeComplete) return now - createdMs >= McpServer.HandshakeTimeoutMs ? McpTransportCloseReasons.HandshakeTimeout : null;
+			if (OpenStreams != 0) return null;
+			return now - LastActivityMs >= McpServer.SessionIdleTimeoutMs ? McpTransportCloseReasons.IdleTimeout : null;
 		}
-
 		public void MarkInitialized() => Interlocked.Exchange(ref initialized, 1);
-		public McpCallContext CreateCallContext() => McpCallContext.StreamableHttp(
-			Id, ProtocolVersion, Volatile.Read(ref initialized) == 1);
+		public McpCallContext CreateCallContext() => McpCallContext.StreamableHttp(Id, ProtocolVersion, Volatile.Read(ref initialized) == 1, lifetime);
 	}
 }

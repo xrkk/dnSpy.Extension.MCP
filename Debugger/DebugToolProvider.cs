@@ -21,11 +21,30 @@ namespace dnSpy.Extension.MCP.Debugger;
 /// audited MCP token-optimization plan (CON-DYN-014 / RACC-DYN-011 addendum).
 /// </summary>
 [Export(typeof(IMcpToolProvider))]
-public sealed class DebugToolProvider : IMcpToolProvider {
+[Export(typeof(IMcpTransportSessionLeaseGuard))]
+[Export(typeof(IMcpTransportSessionObserver))]
+[PartCreationPolicy(CreationPolicy.Shared)]
+public sealed class DebugToolProvider : IMcpToolProvider, IMcpTransportSessionLeaseGuard, IMcpTransportSessionObserver {
 	readonly McpSettings settings;
 	readonly DebugGateService gateService;
 	readonly DebugSessionService sessionService;
 	readonly IVirtualizationExecutionGate executionGate;
+	readonly DebugTransportSessionLeases transportLeases;
+	bool IMcpTransportSessionLeaseGuard.HasSessionLease(McpTransportKind kind, string sessionId) =>
+		transportLeases.HasSessionLease(kind, sessionId);
+	void IMcpTransportSessionObserver.OnSessionClosed(McpTransportSessionClosed closed) =>
+		transportLeases.OnSessionClosed(closed);
+	CallToolResult ExecuteSessionTool(string toolName, Dictionary<string, object>? arguments, McpCallContext context) {
+		var priorDebugSession = sessionService.ActiveTransportLeaseId;
+		CallToolResult? result = null;
+		try { return result = sessionService.Execute(toolName, arguments); }
+		finally {
+			// Requests pin their transport until this association is installed. Debug sessions
+			// can be used by a reconnected client; bind each participating transport, not all clients.
+			transportLeases.ObserveCall(context, result?.IsError == false
+				|| (toolName == "debug_launch" && sessionService.ActiveTransportLeaseId != priorDebugSession));
+		}
+	}
 	readonly object schemaLock = new object();
 	JsonDocument? schemaDoc;
 
@@ -35,6 +54,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 		this.settings = settings;
 		this.gateService = gateService;
 		this.sessionService = sessionService;
+		transportLeases = new DebugTransportSessionLeases(() => sessionService.ActiveTransportLeaseId);
 		this.executionGate = executionGate;
 	}
 
@@ -194,7 +214,7 @@ public sealed class DebugToolProvider : IMcpToolProvider {
 			if (toolName == "debug_test_spy" || toolName == "debug_test_clock" || toolName == "debug_test_adapter" || toolName == "debug_test_flood" || toolName == "debug_test_start" || toolName == "debug_test_dump" || toolName == "debug_test_settings" || toolName == "debug_test_artifact" || toolName == "debug_test_transport" || toolName == "debug_test_environment")
 				return sessionService.Execute(toolName, arguments);
 			if (sessionService.Handles(toolName))
-				return sessionService.Execute(toolName, arguments);
+				return ExecuteSessionTool(toolName, arguments, callContext);
 			return null; // session tools dispatch here as their handlers land (IMP-004..009)
 		}
 		var gate = Gate;

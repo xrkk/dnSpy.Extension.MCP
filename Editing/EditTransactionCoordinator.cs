@@ -18,8 +18,9 @@ namespace dnSpy.Extension.MCP.Editing;
 
 [Export(typeof(EditTransactionCoordinator))]
 [Export(typeof(IMcpTransportSessionObserver))]
+[Export(typeof(IMcpTransportSessionLeaseGuard))]
 [PartCreationPolicy(CreationPolicy.Shared)]
-internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver, IDisposable {
+internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver, IMcpTransportSessionLeaseGuard, IDisposable {
 	sealed class Transaction {
 		public string Id = string.Empty;
 		public string Owner = string.Empty;
@@ -2101,6 +2102,13 @@ internal sealed class EditTransactionCoordinator : IMcpTransportSessionObserver,
 			["length"] = value.Prepared.Temp.Length, ["sha256"] = value.Prepared.Temp.Sha256 },
 		["original_failure"] = value.OriginalFailure,
 	};
+
+	public bool HasSessionLease(McpTransportKind kind, string sessionId) { lock (gate) {
+		ExpireLocked();
+		return (active?.Owner == sessionId && active.Transport == kind)
+			|| (pendingBeginOwner == sessionId && pendingBeginTransport == kind)
+			|| verifyingBySession.ContainsKey(sessionId);
+	} }
 
 	public void OnSessionClosed(McpTransportSessionClosed closed) { lock (gate) {
 		if (verifyingBySession.TryGetValue(closed.SessionId, out var pendingVerifiers))

@@ -12,6 +12,11 @@ internal interface IMcpTransportSessionObserver
     void OnSessionClosed(McpTransportSessionClosed closedSession);
 }
 
+internal interface IMcpTransportSessionLeaseGuard
+{
+    bool HasSessionLease(McpTransportKind transportKind, string sessionId);
+}
+
 internal sealed class McpTransportSessionClosed
 {
     public McpTransportKind TransportKind { get; }
@@ -37,6 +42,8 @@ internal static class McpTransportCloseReasons
     public const string ClientDelete = "client_delete";
     public const string LegacyDisconnect = "legacy_disconnect";
     public const string ListenerStop = "listener_stop";
+    public const string HandshakeTimeout = "handshake_timeout";
+    public const string IdleTimeout = "idle_timeout";
 }
 
 /// <summary>
@@ -50,6 +57,7 @@ internal sealed class McpTransportSessionLifecycle
     const int MaxTestEvents = 256;
     readonly McpSettings settings;
     readonly IMcpTransportSessionObserver[] observers;
+    readonly IMcpTransportSessionLeaseGuard[] leaseGuards;
     readonly ConcurrentQueue<McpTransportSessionClosed> testEvents = new();
     int testEventCount;
     int faultNextObserver;
@@ -59,12 +67,29 @@ internal sealed class McpTransportSessionLifecycle
     [ImportingConstructor]
     public McpTransportSessionLifecycle(
         McpSettings settings,
-        [ImportMany] IEnumerable<IMcpTransportSessionObserver> observers)
+        [ImportMany] IEnumerable<IMcpTransportSessionObserver> observers,
+        [ImportMany] IEnumerable<IMcpTransportSessionLeaseGuard> leaseGuards)
     {
         this.settings = settings;
         this.observers = observers.ToArray();
+        this.leaseGuards = leaseGuards.ToArray();
         if (TestModeEnabled)
             Interlocked.Exchange(ref testInstance, this);
+    }
+
+    // A guard failure must retain the session: reclaiming uncertain ownership is unsafe.
+    public bool HasSessionLease(McpTransportKind kind, string sessionId)
+    {
+        foreach (var guard in leaseGuards)
+        {
+            try { if (guard.HasSessionLease(kind, sessionId)) return true; }
+            catch (Exception ex)
+            {
+                settings.Log($"MCP session lease check failed: {ex.GetType().Name}");
+                return true;
+            }
+        }
+        return false;
     }
 
     public bool RemoveAndNotify<TSession>(
@@ -72,10 +97,14 @@ internal sealed class McpTransportSessionLifecycle
         McpTransportKind transportKind,
         string sessionId,
         string reason,
-        Func<int> activeSessionCount)
+        Func<int> activeSessionCount,
+        Action<TSession>? onRemoved = null)
     {
-        if (!sessions.TryRemove(sessionId, out _))
+        if (!sessions.TryRemove(sessionId, out var removed))
             return false;
+
+        try { onRemoved?.Invoke(removed); }
+        catch (Exception ex) { settings.Log($"MCP session resource cleanup failed: {ex.GetType().Name}"); }
 
         var closed = new McpTransportSessionClosed(
             transportKind,

@@ -53,3 +53,32 @@ is never automatically deleted. Existing debug-session directories survive dnSpy
 read-only, identity-checked, quota-counted stale data. A copied marker never establishes writer
 provenance, and valid stale sessions do not block a new randomly named session unless identity or
 quota verification fails.
+
+## Streamable HTTP session retention
+
+The Streamable HTTP transport retains at most 16 logical sessions. Send
+`notifications/initialized` after the initialize response: unfinished handshakes expire
+30 seconds after allocation, even if their GET stream is open. Completed sessions with no
+GET stream expire after 10 minutes of client inactivity. A GET disconnect starts a reconnect
+grace period; it does not delete the session. Reconnect with the same `Mcp-Session-Id` during
+that period, or initialize again after HTTP 404.
+
+Requests remain protected while their bodies are read, tools execute and responses are written.
+A connected GET protects a completed session; server keep-alive comments do not complete a
+handshake. Editing owners remain protected by their existing transaction lease, including
+verification and pending begin. Transports participating in the active debug session remain
+protected until that debug session ends or changes. Lease-check failures retain sessions.
+These protections can legitimately leave all 16 slots occupied; the server does not evict
+active work to admit another client.
+
+A sweep runs every 15 seconds and before Streamable HTTP admission. DELETE remains idempotent
+and explicitly ends a session regardless of its lease; listener shutdown also closes sessions.
+Timeout, DELETE and shutdown cleanup all use the same close notification path, including stream
+closure and editing cache cleanup. Ending a transport does not terminate the independently
+identified debug session.
+
+HTTP 429 keeps its empty body and `Retry-After` header. The dnSpy MCP log distinguishes
+`streamable_session_capacity`, `legacy_session_capacity`, `short_request_capacity` and
+`long_connection_capacity`. Diagnostics include occupied slots, pending handshakes, in-flight
+requests, GET streams, leased sessions, oldest inactivity and reclaim/rejection counts; removal
+logs report `handshake_timeout`, `idle_timeout`, `client_delete` or `listener_stop`.

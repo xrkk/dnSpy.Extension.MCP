@@ -41,6 +41,8 @@ public sealed class DebugSessionService : IDisposable, IEditDynamicValidationGat
 
 	readonly DebugSessionCoordinator coordinator = new();
 
+	internal string? ActiveTransportLeaseId => coordinator.ActiveSessionId;
+
 	/// <summary>P08 strong-name gate: reads the event at (session, cursor) for
 	/// evidence validation. Returns null when the session is unknown.</summary>
 	internal DebugEventBuffer.ReadResult? ReadEventsForEvidence(string sessionId, long afterCursor, int limit, IReadOnlyCollection<string>? kinds)
