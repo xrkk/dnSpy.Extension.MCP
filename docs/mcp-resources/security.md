@@ -56,7 +56,7 @@ quota verification fails.
 
 ## Streamable HTTP session retention
 
-The Streamable HTTP transport retains at most 16 logical sessions. Send
+The Streamable HTTP transport retains at most 100 logical sessions. Send
 `notifications/initialized` after the initialize response: unfinished handshakes expire
 30 seconds after allocation, even if their GET stream is open. Completed sessions with no
 GET stream expire after 10 minutes of client inactivity. A GET disconnect starts a reconnect
@@ -68,7 +68,7 @@ A connected GET protects a completed session; server keep-alive comments do not 
 handshake. Editing owners remain protected by their existing transaction lease, including
 verification and pending begin. Transports participating in the active debug session remain
 protected until that debug session ends or changes. Lease-check failures retain sessions.
-These protections can legitimately leave all 16 slots occupied; the server does not evict
+These protections can legitimately leave all 100 slots occupied; the server does not evict
 active work to admit another client.
 
 A sweep runs every 15 seconds and before Streamable HTTP admission. DELETE remains idempotent

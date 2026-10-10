@@ -44,7 +44,7 @@ namespace dnSpy.Extension.MCP {
 		// a finally block.
 		readonly AdmissionGate shortRequestGate = new AdmissionGate(16);
 		readonly AdmissionGate longConnectionGate = new AdmissionGate(8);
-		const int MaxTransportSessions = 16;
+		const int MaxTransportSessions = TransportSessionLimits.MaxSessions;
 		internal const long HandshakeTimeoutMs = 30000;
 		internal const long SessionIdleTimeoutMs = 600000;
 		readonly Func<long> sessionClock;
@@ -571,7 +571,7 @@ namespace dnSpy.Extension.MCP {
 		}
 
 		void HandleLegacySseGet(HttpListenerContext context) {
-			// CON-DYN-009: the 17th transport session on this transport is rejected before
+			// CON-DYN-009: the 101st transport session on this transport is rejected before
 			// allocation; the check-and-add is atomic so racing opens cannot exceed the cap.
 			if (sseSessions.Count >= MaxTransportSessions) {
 				LogTransportRejection("legacy_session_capacity");

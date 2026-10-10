@@ -7557,7 +7557,7 @@ operand 是带标签字符串：无操作数用空串；`int:<Int32>`、`int8:<S
               "const": 8388608
             },
             "transport_sessions": {
-              "const": 16
+              "const": 100
             },
             "parallel_short_requests": {
               "const": 16

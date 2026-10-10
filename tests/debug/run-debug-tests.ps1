@@ -4358,19 +4358,20 @@ function Run-ACC004 {
     }
     Assert-Cond 'a4-long-9th' 'ninth concurrent long connection = HTTP 429' "code=$ninthLong" ("$ninthLong" -eq '429') @(Save-Text 'a4-long-9th.txt' "code=$ninthLong")
 
-    # [4] Streamable HTTP sessions persist independently of connections: first 16 initialize,
-    # 17th initialize is the fixed 429 and allocates no session.
+    # [4] Streamable HTTP sessions persist independently of connections: first 100 initialize,
+    # 101st initialize is the fixed 429 and allocates no session.
     # The high-level Python API serializes initialize itself; no JSON ever crosses the
-    # PowerShell/native argv boundary. Keep all successful clients alive until attempt 17.
-    $codesJson = & $script:PythonExe -m dnspy_mcp.cli --url ($script:BaseUrl.TrimEnd('/') + '/') --timeout 5 session-limit --count 17
+    # PowerShell/native argv boundary. Complete handshakes and keep all successful
+    # clients alive until attempt 101 so the 30-second handshake timeout cannot skew capacity.
+    $codesJson = & $script:PythonExe -m dnspy_mcp.cli --url ($script:BaseUrl.TrimEnd('/') + '/') --timeout 5 session-limit --count 101
     $parsedCodes = ($codesJson -join "`n") | ConvertFrom-Json
     # Windows PowerShell 5.1 writes a top-level JSON array as one non-enumerated pipeline
-    # object. An explicit language foreach is required to obtain seventeen scalar codes.
+    # object. An explicit language foreach is required to obtain 101 scalar codes.
     $sessionCodes = @()
     foreach ($parsedCode in $parsedCodes) { $sessionCodes += "$parsedCode" }
-    $sessionEv = Save-Json 'a4-streamable-17th.json' $sessionCodes
-    $sessionOk = (@($sessionCodes | Where-Object { $_ -eq '200' }).Count -eq 16) -and ($sessionCodes[16] -eq '429')
-    Assert-Cond 'a4-streamable-17th' 'first 16 Streamable initialize sessions succeed; 17th = HTTP 429' "codes=$($sessionCodes -join ',')" $sessionOk @($sessionEv)
+    $sessionEv = Save-Json 'a4-streamable-101st.json' $sessionCodes
+    $sessionOk = (@($sessionCodes | Where-Object { $_ -eq '200' }).Count -eq 100) -and ($sessionCodes[100] -eq '429')
+    Assert-Cond 'a4-streamable-101st' 'first 100 Streamable initialize sessions succeed; 101st = HTTP 429' "codes=$($sessionCodes -join ',')" $sessionOk @($sessionEv)
 
     # [5] Framing and raw admission gates execute through the exact production classes. This
     # covers a lying small Content-Length and unknown/chunked stream at byte 1,048,577.

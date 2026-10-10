@@ -10,7 +10,7 @@ A monotonic virtual clock makes 30-second handshake and 600-second inactivity bo
 The internal constructor uses a 50 ms heartbeat/sweep in this harness; production remains 15 seconds.
 Raw TCP GET probes validate HTTP 200 before forcing RST, and wait for connection slots to release.
 
-Covered: 48 abnormal GET disconnects without initialized/DELETE; full-capacity recovery and no early
+Covered: 300 abnormal GET disconnects without initialized/DELETE; full-capacity recovery and no early
 reclaim; completed idle sessions and renewed activity; same-ID GET reconnect and connected-session
 retention; unfinished-handshake GET abort; blocked tools and partial request bodies; edit/debug lease
 retention and release; fail-closed lease checks; real debug lease association/reconnect/generation changes
@@ -30,3 +30,12 @@ original project's stale `PLAN/2026.09.03` resource paths to `PLAN/2026.09/2026.
 production project paths were left unchanged. Candidates and raw logs are retained at
 `.tmp/streamable-session-reclamation/`. No deployed DLL was replaced and Windows dnSpy end-to-end
 lease validation remains outstanding.
+
+The logical session capacity is now 100 (user adjustment after the initial fix). Capacity tests
+fill all 100 slots and require HTTP 429 for attempt 101; short-request and long-connection gates
+retain their separate 16/8 limits. The CLI capacity probe completes handshakes before filling
+slots, so the handshake deadline does not distort the result.
+Validation of the 100-session adjustment: 11 transport groups (300 TCP resets), 189 contract
+cases, 79 Python tests (7 host-dependent skips), documentation checks and both target-framework
+builds passed. Build outputs and .149 PE/hash evidence are in `.tmp/session-limit-100/`;
+VM queries were read-only and no deployed files were replaced.

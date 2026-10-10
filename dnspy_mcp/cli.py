@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--arguments", default="{}")
     group.add_argument("--arguments-file", type=Path)
     limit = sub.add_parser("session-limit", help="open N simultaneous sessions and print HTTP statuses")
-    limit.add_argument("--count", type=int, default=17)
+    limit.add_argument("--count", type=int, default=101)
     return parser
 
 
@@ -54,7 +54,7 @@ def _session_limit(args: argparse.Namespace) -> int:
             client = DnSpyClient(args.url, token=args.token, timeout=args.timeout, client_name="acc-004")
             clients.append(client)
             try:
-                client.initialize(send_initialized=False)
+                client.initialize(send_initialized=True)
             except DnSpyHttpError as exc:
                 statuses.append(exc.response.status)
             else:

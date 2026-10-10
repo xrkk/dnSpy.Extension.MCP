@@ -4,6 +4,7 @@ import io
 import json
 import threading
 import unittest
+from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +13,7 @@ from unittest.mock import patch
 
 from dnspy_mcp import DnSpyClient, DnSpyConnectionError, DnSpyHttpError, DnSpyProtocolError
 from dnspy_mcp.http_cli import main as http_cli_main
+from dnspy_mcp.cli import main as cli_main
 from dnspy_mcp.stdio import StdioProxy
 
 
@@ -19,7 +21,7 @@ class FakeDnSpyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     sessions: set[str] = set()
     next_session = 0
-    max_sessions = 16
+    max_sessions = 100
     lock = threading.Lock()
     requests: list[dict[str, Any]] = []
 
@@ -224,21 +226,33 @@ class ClientTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(b"000", output.read_bytes())
 
-    def test_seventeenth_session_is_429_without_shell_quoting(self) -> None:
+    def test_101st_session_is_429_without_shell_quoting(self) -> None:
         clients: list[DnSpyClient] = []
         try:
-            for index in range(16):
+            for index in range(100):
                 client = DnSpyClient(self.url, client_name=f"limit-{index}")
                 client.initialize(send_initialized=False)
                 clients.append(client)
-            seventeenth = DnSpyClient(self.url)
+            extra = DnSpyClient(self.url)
+            clients.append(extra)
             with self.assertRaises(DnSpyHttpError) as caught:
-                seventeenth.initialize(send_initialized=False)
+                extra.initialize(send_initialized=False)
             self.assertEqual(429, caught.exception.response.status)
-            self.assertEqual(16, len(FakeDnSpyHandler.sessions))
+            self.assertEqual(100, len(FakeDnSpyHandler.sessions))
         finally:
             for client in clients:
                 client.close()
+
+    def test_session_limit_cli_completes_handshakes_and_deletes_sessions(self) -> None:
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exit_code = cli_main(["--url", self.url, "session-limit"])
+        self.assertEqual(0, exit_code)
+        self.assertEqual([200] * 100 + [429], json.loads(stdout.getvalue()))
+        initialized = [r for r in FakeDnSpyHandler.requests
+                       if r["message"].get("method") == "notifications/initialized"]
+        self.assertEqual(100, len(initialized))
+        self.assertEqual(0, len(FakeDnSpyHandler.sessions))
 
     def test_stdio_proxy_is_transparent_and_silent_for_notifications(self) -> None:
         messages = [

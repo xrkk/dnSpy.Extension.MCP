@@ -5,6 +5,10 @@ using System.Text.Json;
 using System.Threading;
 
 namespace dnSpy.Extension.MCP.Transport {
+internal static class TransportSessionLimits {
+	public const int MaxSessions = 100;
+}
+
 /// <summary>
 /// CON-DYN-009 request-body hard limits. A known ContentLength64 above the limit is rejected
 /// before reading; regardless of what the header says, the raw read is bounded to one byte past

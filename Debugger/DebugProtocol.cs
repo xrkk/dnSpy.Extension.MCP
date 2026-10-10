@@ -271,7 +271,7 @@ public sealed class DebugCapabilitiesResultDto
     {
         [JsonPropertyName("request_body_bytes")] public int RequestBodyBytes { get; } = 1048576;
         [JsonPropertyName("tool_result_bytes")] public int ToolResultBytes { get; } = 8388608;
-        [JsonPropertyName("transport_sessions")] public int TransportSessions { get; } = 16;
+        [JsonPropertyName("transport_sessions")] public int TransportSessions { get; } = dnSpy.Extension.MCP.Transport.TransportSessionLimits.MaxSessions;
         [JsonPropertyName("parallel_short_requests")] public int ParallelShortRequests { get; } = 16;
         [JsonPropertyName("long_connections")] public int LongConnections { get; } = 8;
         [JsonPropertyName("waits")] public int Waits { get; } = 8;

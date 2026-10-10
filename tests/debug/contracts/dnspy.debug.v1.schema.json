@@ -503,7 +503,7 @@
           "properties": {
             "request_body_bytes": { "const": 1048576 },
             "tool_result_bytes": { "const": 8388608 },
-            "transport_sessions": { "const": 16 },
+            "transport_sessions": { "const": 100 },
             "parallel_short_requests": { "const": 16 },
             "long_connections": { "const": 8 },
             "waits": { "const": 8 },

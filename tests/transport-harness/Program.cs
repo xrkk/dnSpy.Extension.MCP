@@ -15,8 +15,10 @@ using dnSpy.Extension.MCP.Transport;
 using dnSpy.Extension.MCP.Debugger;
 
 static class Program {
+    const int MaxSessions = TransportSessionLimits.MaxSessions;
     static int passed;
     static void Main() {
+        Assert(MaxSessions == 100, "logical session capacity must be 100");
         Run("abnormal disconnect accumulation and handshake boundary", AbandonedHandshakes);
         Run("initialized idle accumulation and recent activity", IdleSessions);
         Run("legal GET reconnect and connected session retention", Reconnect);
@@ -38,24 +40,24 @@ static class Program {
     static void AbandonedHandshakes() {
         using var h = new Host();
         for (int round = 0; round < 3; round++) {
-            var ids = Enumerable.Range(0, 16).Select(_ => h.Initialize()).ToArray();
+            var ids = Enumerable.Range(0, MaxSessions).Select(_ => h.Initialize()).ToArray();
             foreach (var id in ids) h.ResetGet(id); // TCP reset, no notifications/initialized or DELETE.
             Wait(() => h.Streams == 0, "abnormal GET disconnect did not release streams");
             h.Advance(29999);
             h.ExpectInitialize(HttpStatusCode.TooManyRequests);
-            Assert(h.Count == 16 && h.Events.Count == 0, "premature reclaim before handshake deadline");
+            Assert(h.Count == MaxSessions && h.Events.Count == 0, "premature reclaim before handshake deadline");
             h.Advance(1);
             var fresh = h.Initialize(); // Admission itself must sweep, without waiting for timer.
-            Assert(h.Count == 1, "expired sessions still consume the 16 session capacity");
+            Assert(h.Count == 1, "expired sessions still consume the 100 session capacity");
             Assert(ids.All(id => h.ClosedCount(id, "handshake_timeout") == 1), "handshake cleanup must notify exactly once");
             h.Delete(fresh);
             h.Events.Clear();
         }
-        Assert(h.Settings.Logs.Any(l => l.Contains("reason=streamable_session_capacity") && l.Contains("pending_handshakes=16")), "missing capacity diagnostic");
+        Assert(h.Settings.Logs.Any(l => l.Contains("reason=streamable_session_capacity") && l.Contains($"pending_handshakes={MaxSessions}")), "missing capacity diagnostic");
     }
     static void IdleSessions() {
         using var h = new Host();
-        var ids = Enumerable.Range(0, 16).Select(_ => h.Initialize(true)).ToArray();
+        var ids = Enumerable.Range(0, MaxSessions).Select(_ => h.Initialize(true)).ToArray();
         h.Advance(599999); h.ExpectInitialize(HttpStatusCode.TooManyRequests);
         h.Ping(ids[0]); h.Advance(1);
         h.Initialize();
@@ -118,13 +120,13 @@ static class Program {
         h.Guard.Edit.Add(edit); h.Guard.Debug.Add(debug);
         h.Advance(600000); h.Server.ReapStreamableSessions();
         Assert(h.Count == 2 && h.Events.Count == 0, "edit/debug lease must prevent timeout cleanup");
-        for (int i = 0; i < 14; i++) { var id = h.Initialize(true); h.Guard.Edit.Add(id); }
+        for (int i = 0; i < MaxSessions - 2; i++) { var id = h.Initialize(true); h.Guard.Edit.Add(id); }
         h.Advance(600000); h.ExpectInitialize(HttpStatusCode.TooManyRequests);
-        Assert(h.Settings.Logs.Any(l => l.Contains("leased_sessions=16")), "lease rejection diagnostic missing");
+        Assert(h.Settings.Logs.Any(l => l.Contains($"leased_sessions={MaxSessions}")), "lease rejection diagnostic missing");
         h.Guard.Edit.Remove(edit); h.Server.ReapStreamableSessions();
         Assert(h.ClosedCount(edit, "idle_timeout") == 1 && h.Sessions.ContainsKey(debug), "release must only reclaim unleased owner");
         h.Guard.Debug.Remove(debug); h.Server.ReapStreamableSessions(); Assert(h.ClosedCount(debug, "idle_timeout") == 1, "debug lease never releases");
-        h.Guard.Throw = true; h.Advance(600000); h.Server.ReapStreamableSessions(); Assert(h.Count == 14, "uncertain lease ownership must fail closed");
+        h.Guard.Throw = true; h.Advance(600000); h.Server.ReapStreamableSessions(); Assert(h.Count == MaxSessions - 2, "uncertain lease ownership must fail closed");
     }
     static void DebugAssociations() {
         string? debugSession = "debug-1";
@@ -157,11 +159,11 @@ static class Program {
     }
     static void ConcurrentAdmission() {
         using var h = new Host();
-        Parallel.For(0, 32, _ => h.ExpectInitialize(null));
-        Assert(h.Count == 16, "parallel initialize exceeded capacity");
+        Parallel.For(0, MaxSessions * 2, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ => h.ExpectInitialize(null));
+        Assert(h.Count == MaxSessions, "parallel initialize did not fill bounded capacity");
         h.Advance(30000);
-        Parallel.Invoke(h.Server.ReapStreamableSessions, () => Parallel.For(0, 32, _ => h.ExpectInitialize(null)));
-        Assert(h.Count == 16 && h.Events.Count == 16, "parallel reclaim/admission failed boundedness or idempotence");
+        Parallel.Invoke(h.Server.ReapStreamableSessions, () => Parallel.For(0, MaxSessions * 2, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ => h.ExpectInitialize(null)));
+        Assert(h.Count == MaxSessions && h.Events.Count == MaxSessions, "parallel reclaim/admission failed boundedness or idempotence");
     }
     static void AdmissionDiagnostics() {
         using var h = new Host(); var id = h.Initialize(true);
