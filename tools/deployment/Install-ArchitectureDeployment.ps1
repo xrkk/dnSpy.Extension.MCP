@@ -1,4 +1,6 @@
 # Requires a stopped net48 deployment and verified, separately signed host candidates.
+# Historical first stage: its AnyCPU allowance does not satisfy the strict layout.
+# Finish with Move-NeutralDependencies.ps1; after relocation, update extensions in common.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$Root,
